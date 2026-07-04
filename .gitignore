@@ -18,6 +18,7 @@ release/
 secrets.json
 
 # ===== 日志 / 临时产物（旧项目教训：不让日志和临时脚本混进仓库）=====
+.omo/
 *.log
 npm-debug.log*
 pnpm-debug.log*

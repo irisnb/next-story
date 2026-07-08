@@ -1,0 +1,55 @@
+export interface AppDom {
+  welcomePage: HTMLElement;
+  newProjectPage: HTMLElement;
+  editorPage: HTMLElement;
+  btnNewProject: HTMLButtonElement;
+  btnOpenProject: HTMLButtonElement;
+  projectNameInput: HTMLInputElement;
+  saveLocationInput: HTMLInputElement;
+  btnBrowse: HTMLButtonElement;
+  btnCancelNew: HTMLButtonElement;
+  btnCreateProject: HTMLButtonElement;
+  nameError: HTMLElement;
+  locationError: HTMLElement;
+  currentProjectName: HTMLElement;
+  saveStatus: HTMLElement;
+  btnSave: HTMLButtonElement;
+  tabDraft: HTMLButtonElement;
+  tabMain: HTMLButtonElement;
+  draftTextarea: HTMLTextAreaElement;
+  mainTextarea: HTMLTextAreaElement;
+}
+
+function requireElement<T extends HTMLElement>(id: string): T {
+  const element = document.getElementById(id);
+
+  if (!element) {
+    throw new Error(`Missing required element: #${id}`);
+  }
+
+  return element as T;
+}
+
+export function getAppDom(): AppDom {
+  return {
+    welcomePage: requireElement("welcome-page"),
+    newProjectPage: requireElement("new-project-page"),
+    editorPage: requireElement("editor-page"),
+    btnNewProject: requireElement("btn-new-project"),
+    btnOpenProject: requireElement("btn-open-project"),
+    projectNameInput: requireElement("project-name"),
+    saveLocationInput: requireElement("save-location"),
+    btnBrowse: requireElement("btn-browse"),
+    btnCancelNew: requireElement("btn-cancel-new"),
+    btnCreateProject: requireElement("btn-create-project"),
+    nameError: requireElement("name-error"),
+    locationError: requireElement("location-error"),
+    currentProjectName: requireElement("current-project-name"),
+    saveStatus: requireElement("save-status"),
+    btnSave: requireElement("btn-save"),
+    tabDraft: requireElement("tab-draft"),
+    tabMain: requireElement("tab-main"),
+    draftTextarea: requireElement("draft-textarea"),
+    mainTextarea: requireElement("main-textarea"),
+  };
+}

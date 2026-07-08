@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Next Story</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <!-- Welcome Page -->
+    <main id="welcome-page" class="container">
+      <h1 class="app-title">Next Story</h1>
+      <p class="subtitle">剧本写作桌面编辑器</p>
+      
+      <div class="welcome-actions">
+        <button id="btn-new-project" class="action-btn">
+          新建作品
+        </button>
+        <button id="btn-open-project" class="action-btn">
+          打开作品
+        </button>
+      </div>
+    </main>
+
+    <!-- New Project Form -->
+    <main id="new-project-page" class="container hidden">
+      <div class="form-container">
+        <h2 class="form-title">新建作品</h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="project-name">作品名称</label>
+          <input type="text" id="project-name" class="form-input" placeholder="请输入作品名称" />
+          <p id="name-error" class="error-message hidden"></p>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="save-location">保存位置</label>
+          <div class="location-input-group">
+            <input type="text" id="save-location" class="form-input" placeholder="请选择保存位置" readonly />
+            <button id="btn-browse" class="browse-btn">浏览...</button>
+          </div>
+          <p id="location-error" class="error-message hidden"></p>
+        </div>
+        
+        <div class="form-actions">
+          <button id="btn-cancel-new" class="btn-secondary">取消</button>
+          <button id="btn-create-project" class="btn-primary" disabled>创建</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Editor Page -->
+    <main id="editor-page" class="editor-page hidden">
+      <header class="editor-header">
+        <h1 id="current-project-name" class="project-name"></h1>
+        <div class="editor-actions">
+          <span id="save-status" class="save-status">已保存</span>
+          <button id="btn-save" class="save-btn" disabled>保存</button>
+        </div>
+      </header>
+      
+      <nav class="editor-tabs">
+        <button id="tab-draft" class="tab-btn active">草稿本</button>
+        <button id="tab-main" class="tab-btn">正文本</button>
+      </nav>
+      
+      <div class="editor-content">
+        <textarea id="draft-textarea" class="notebook-textarea" placeholder="在这里写草稿..."></textarea>
+        <textarea id="main-textarea" class="notebook-textarea hidden" placeholder="在这里写正文..."></textarea>
+      </div>
+    </main>
+  </body>
+</html>

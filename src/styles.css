@@ -1,0 +1,338 @@
+:root {
+  font-family: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color: #333;
+  background-color: #fafafa;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+}
+
+.app-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: #666;
+  margin-bottom: 3rem;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 300px;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #4a5568;
+  color: white;
+}
+
+.action-btn:hover {
+  background-color: #2d3748;
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+  background-color: #1a202c;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e2e8f0;
+    background-color: #1a202c;
+  }
+
+  .app-title {
+    color: #f7fafc;
+  }
+
+  .subtitle {
+    color: #a0aec0;
+  }
+
+  .action-btn {
+    background-color: #4a5568;
+  }
+
+  .action-btn:hover {
+    background-color: #718096;
+  }
+
+  .action-btn:active {
+    background-color: #2d3748;
+  }
+}
+
+/* ========== Utility Classes ========== */
+.hidden {
+  display: none !important;
+}
+
+/* ========== New Project Form ========== */
+.form-container {
+  width: 100%;
+  max-width: 500px;
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.form-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #1a1a1a;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: #4a5568;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #4a5568;
+}
+
+.form-input.error {
+  border-color: #e53e3e;
+}
+
+.location-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.location-input-group .form-input {
+  flex: 1;
+  background-color: #f7fafc;
+}
+
+.browse-btn {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f7fafc;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.browse-btn:hover {
+  background: #edf2f7;
+}
+
+.error-message {
+  color: #e53e3e;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.btn-primary {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background-color: #4a5568;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: #2d3748;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  color: #4a5568;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #f7fafc;
+}
+
+/* ========== Editor Page ========== */
+.editor-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.project-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.save-status {
+  font-size: 0.85rem;
+  color: #718096;
+}
+
+.save-status.unsaved {
+  color: #e53e3e;
+}
+
+.save-status.saving {
+  color: #4a5568;
+}
+
+.save-status.error {
+  color: #e53e3e;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.save-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #4a5568;
+  color: white;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background-color: #2d3748;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editor-tabs {
+  display: flex;
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tab-btn {
+  padding: 1rem 2rem;
+  font-size: 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: #edf2f7;
+}
+
+.tab-btn.active {
+  background: white;
+  border-bottom-color: #4a5568;
+}
+
+.editor-content {
+  flex: 1;
+  display: flex;
+  padding: 1rem;
+}
+
+.notebook-textarea {
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  resize: none;
+}
+
+.notebook-textarea:focus {
+  outline: none;
+  border-color: #4a5568;
+}

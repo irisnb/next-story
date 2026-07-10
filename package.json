@@ -11,8 +11,9 @@
     "tauri:dev": "npm run tauri dev",
     "tauri:build": "npm run tauri build",
     "typecheck": "tsc --noEmit",
+    "test:frontend": "node --test tests/*.test.ts",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run typecheck && npm run build && npm run test:rust"
+    "check": "npm run typecheck && npm run test:frontend && npm run build && npm run test:rust"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

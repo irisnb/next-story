@@ -21,6 +21,9 @@
         <button id="btn-open-project" class="action-btn">
           打开作品
         </button>
+        <button id="btn-llm-config" class="action-btn">
+          LLM 配置
+        </button>
       </div>
     </main>
 
@@ -57,6 +60,7 @@
         <h1 id="current-project-name" class="project-name"></h1>
         <div class="editor-actions">
           <span id="save-status" class="save-status">已保存</span>
+          <button id="btn-settings" class="save-btn">设置</button>
           <button id="btn-save" class="save-btn" disabled>保存</button>
         </div>
       </header>
@@ -69,6 +73,43 @@
       <div class="editor-content">
         <textarea id="draft-textarea" class="notebook-textarea" placeholder="在这里写草稿..."></textarea>
         <textarea id="main-textarea" class="notebook-textarea hidden" placeholder="在这里写正文..."></textarea>
+      </div>
+    </main>
+
+    <!-- LLM Config Page -->
+    <main id="llm-config-page" class="container hidden">
+      <div class="form-container">
+        <h2 class="form-title">LLM 配置</h2>
+        <p class="config-warning">
+          开发期提醒：API Key 会作为 Bearer 凭据发送到你填写的 API 地址，并以本地明文方式保存在应用数据目录下。只使用你信任的地址，请勿在公共或不信任的设备上使用。
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="api-base-url">OpenAI-compatible API 基础地址</label>
+          <input type="text" id="api-base-url" class="form-input" placeholder="例如 https://api.openai.com/v1" />
+          <p class="form-help">不要填写 /chat/completions。远程地址必须使用 HTTPS；本机 localhost 可使用 HTTP。</p>
+          <p id="api-base-url-error" class="error-message hidden"></p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="api-key">API Key</label>
+          <input type="password" id="api-key" class="form-input" placeholder="例如 sk-..." />
+          <p id="api-key-error" class="error-message hidden"></p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="model-name">模型名</label>
+          <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
+          <p id="model-name-error" class="error-message hidden"></p>
+        </div>
+
+        <p id="llm-save-status" class="save-status">未保存</p>
+
+        <div class="form-actions">
+          <button id="btn-back-config" class="btn-secondary">返回</button>
+          <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
+          <button id="btn-save-config" class="btn-primary" disabled>保存</button>
+        </div>
       </div>
     </main>
   </body>

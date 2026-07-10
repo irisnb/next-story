@@ -63,4 +63,3 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **THEN** 系统在 `next-story-system/project.json` 中保存作品元信息
 - **AND** `project.json` 不包含草稿本正文内容
 - **AND** `project.json` 不包含正文本正文内容
-

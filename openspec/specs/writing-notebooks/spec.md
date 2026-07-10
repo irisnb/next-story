@@ -61,4 +61,3 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **THEN** 系统不存在 AI 面板写入草稿本的入口
 - **AND** 系统不存在 AI 面板写入正文本的入口
 - **AND** 系统不存在自动替换用户选区的入口
-

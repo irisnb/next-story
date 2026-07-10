@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { ProjectOpenResult } from "./types";
+import type { LlmConfig, ProjectOpenResult } from "./types";
 
 export async function selectDirectory(title: string): Promise<string | null> {
   const selected = await open({
@@ -38,4 +38,16 @@ export async function saveProject(
     draftContent,
     mainContent,
   });
+}
+
+export async function loadLlmConfig(): Promise<LlmConfig | null> {
+  return invoke<LlmConfig | null>("load_llm_config");
+}
+
+export async function saveLlmConfig(config: LlmConfig): Promise<void> {
+  await invoke("save_llm_config", { config });
+}
+
+export async function testLlmConnection(config: LlmConfig): Promise<void> {
+  await invoke("test_llm_connection", { config });
 }

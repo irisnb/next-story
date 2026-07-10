@@ -1,4 +1,4 @@
-export type PageId = "welcome-page" | "new-project-page" | "editor-page";
+export type PageId = "welcome-page" | "new-project-page" | "editor-page" | "llm-config-page";
 
 export function showPage(pages: HTMLElement[], pageId: PageId): void {
   for (const page of pages) {

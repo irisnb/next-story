@@ -1,10 +1,12 @@
 import type { AppDom } from "./dom";
 import { createProject, openProject, selectDirectory } from "./project-api";
+import { openProjectAfterAuthorization } from "./project-leave-flow";
 import type { ProjectState } from "./types";
 import { showPage } from "./views";
 
 interface ProjectFlowOptions {
   onProjectReady(projectState: ProjectState): void;
+  guardLeave(): Promise<boolean>;
 }
 
 export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void {
@@ -80,7 +82,6 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
         projectName: name,
         draftContent: "",
         mainContent: "",
-        hasUnsavedChanges: false,
       });
     } catch (error) {
       showError(dom.nameError, String(error));
@@ -89,24 +90,16 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
   }
 
   async function handleOpenProject(): Promise<void> {
-    try {
-      const selected = await selectDirectory("选择作品文件夹");
-      if (!selected) {
-        return;
-      }
-
-      const result = await openProject(selected);
-      options.onProjectReady({
-        projectPath: selected,
-        projectName: result.metadata.name,
-        draftContent: result.draft_content,
-        mainContent: result.main_content,
-        hasUnsavedChanges: false,
-      });
-    } catch (error) {
-      console.error("打开作品失败:", error);
-      alert(`打开作品失败: ${String(error)}`);
-    }
+    await openProjectAfterAuthorization({
+      authorize: options.guardLeave,
+      selectDirectory: () => selectDirectory("选择作品文件夹"),
+      openProject,
+      replaceProject: options.onProjectReady,
+      reportError: (error) => {
+        console.error("打开作品失败:", error);
+        alert(`打开作品失败: ${String(error)}`);
+      },
+    });
   }
 
   dom.btnNewProject.addEventListener("click", () => {

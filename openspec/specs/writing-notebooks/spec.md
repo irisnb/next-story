@@ -61,3 +61,130 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **THEN** 系统不存在 AI 面板写入草稿本的入口
 - **AND** 系统不存在 AI 面板写入正文本的入口
 - **AND** 系统不存在自动替换用户选区的入口
+
+### Requirement: Notebook switching preserves unsaved input
+系统 SHALL 在草稿本与正文本之间切换时，分别保留两个本子当前尚未保存的内存内容，且 MUST NOT 因标签切换要求用户保存。
+
+#### Scenario: Switch away from an edited draft notebook and return
+- **WHEN** 用户修改草稿本但尚未保存
+- **AND** 用户切换到正文本后再切回草稿本
+- **THEN** 草稿本显示切换前的全部未保存修改
+- **AND** 系统不显示离开作品提示
+- **AND** 系统不自动保存任何本子
+
+#### Scenario: Both notebooks contain unsaved input
+- **WHEN** 用户先后修改草稿本和正文本且尚未保存
+- **AND** 用户在两个标签页之间切换
+- **THEN** 两个本子分别显示各自当前的未保存内容
+- **AND** 任一本子的内容都不覆盖另一本子
+
+### Requirement: Leaving a project protects unsaved changes
+系统 SHALL 在应用内操作即将卸载当前作品且任一本子存在未保存修改时，要求用户选择“保存并离开”“不保存并离开”或“取消”。
+
+#### Scenario: Leave a project and save changes
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户执行打开其他作品、返回欢迎页或其他会卸载当前作品的操作
+- **AND** 用户选择“保存并离开”
+- **THEN** 系统同时保存草稿本和正文本的当前内容
+- **AND** 系统仅在保存成功后继续原来的离开操作
+
+#### Scenario: Leave a project without saving changes
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户执行会卸载当前作品的操作
+- **AND** 用户选择“不保存并离开”
+- **THEN** 系统不保存本次未保存修改
+- **AND** 系统继续原来的离开操作
+
+#### Scenario: Cancel leaving a project
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户执行会卸载当前作品的操作
+- **AND** 用户选择“取消”
+- **THEN** 系统留在当前作品
+- **AND** 草稿本和正文本的当前内容保持不变
+
+#### Scenario: Leave a project with no unsaved changes
+- **WHEN** 草稿本和正文本都不存在未保存修改
+- **AND** 用户执行会卸载当前作品的操作
+- **THEN** 系统不显示未保存修改提示
+- **AND** 系统继续原来的离开操作
+
+### Requirement: Closing the application protects unsaved changes
+系统 SHALL 在桌面窗口即将关闭且任一本子存在未保存修改时阻止默认关闭，并要求用户选择“保存并离开”“不保存并离开”或“取消”。
+
+#### Scenario: Close the application and save changes
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户请求关闭桌面窗口
+- **AND** 用户选择“保存并离开”
+- **THEN** 系统同时保存草稿本和正文本的当前内容
+- **AND** 系统仅在保存成功后关闭窗口
+
+#### Scenario: Close the application without saving changes
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户请求关闭桌面窗口
+- **AND** 用户选择“不保存并离开”
+- **THEN** 系统不保存本次未保存修改
+- **AND** 系统关闭窗口
+
+#### Scenario: Cancel closing the application
+- **WHEN** 任一本子存在未保存修改
+- **AND** 用户请求关闭桌面窗口
+- **AND** 用户选择“取消”
+- **THEN** 系统保持窗口打开
+- **AND** 草稿本和正文本的当前内容保持不变
+
+#### Scenario: Close the application with no unsaved changes
+- **WHEN** 草稿本和正文本都不存在未保存修改
+- **AND** 用户请求关闭桌面窗口
+- **THEN** 系统不显示未保存修改提示
+- **AND** 系统关闭窗口
+
+### Requirement: Save failure never discards current input
+系统 MUST 在“保存并离开”写盘失败时中止原来的离开或关闭操作，保留两个本子的当前输入，并向用户显示可读的失败信息。
+
+#### Scenario: Save fails while leaving a project
+- **WHEN** 用户选择“保存并离开”以离开当前作品
+- **AND** 保存草稿本或正文本失败
+- **THEN** 系统不执行原来的离开操作
+- **AND** 系统保留草稿本和正文本的当前输入
+- **AND** 系统显示保存失败信息
+
+#### Scenario: Save fails while closing the application
+- **WHEN** 用户选择“保存并离开”以关闭桌面窗口
+- **AND** 保存草稿本或正文本失败
+- **THEN** 系统保持窗口打开
+- **AND** 系统保留草稿本和正文本的当前输入
+- **AND** 系统显示保存失败信息
+
+### Requirement: Editor communicates save state
+系统 SHALL 根据两个本子的当前内存内容和最后一次成功保存的内容，显示“有未保存修改”“正在保存…”“已保存”或“保存失败：<原因>”中的对应状态。
+
+#### Scenario: User creates an unsaved change
+- **WHEN** 用户修改任一本子的内容，使其不同于最后一次成功保存的内容
+- **THEN** 系统显示“有未保存修改”
+
+#### Scenario: User reverts all edits before saving
+- **WHEN** 用户修改一个或两个本子后，又把两个本子的内容都恢复为最后一次成功保存的内容
+- **THEN** 系统显示“已保存”
+
+#### Scenario: Save is in progress
+- **WHEN** 系统正在保存草稿本和正文本
+- **THEN** 系统显示“正在保存…”
+- **AND** 系统不启动第二次并发保存
+
+#### Scenario: Save succeeds without later edits
+- **WHEN** 保存成功
+- **AND** 保存期间用户没有产生晚于本次保存快照的新修改
+- **THEN** 系统显示“已保存”
+
+#### Scenario: Current content changes after save snapshot
+- **WHEN** 系统已经冻结本次保存的草稿本和正文本内容快照
+- **AND** 当前内存内容在保存完成前后与该快照不同
+- **THEN** 系统显示“有未保存修改”
+- **AND** 系统 MUST NOT 把快照之后的修改标记为已保存
+
+#### Scenario: Manual save fails
+- **WHEN** 用户手动保存草稿本和正文本
+- **AND** 写盘失败
+- **THEN** 系统显示“保存失败：<原因>”
+- **AND** 当前内容仍被视为未保存修改
+

@@ -19,7 +19,6 @@ export interface ProjectState {
   projectName: string;
   draftContent: string;
   mainContent: string;
-  hasUnsavedChanges: boolean;
 }
 
 export type NotebookTab = "draft" | "main";

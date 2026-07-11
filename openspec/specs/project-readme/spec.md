@@ -20,8 +20,10 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 
 #### Scenario: README lists implemented capabilities
 - **WHEN** README 声明当前已实现的产品能力
-- **THEN** 每项声明都有 `desktop-project-lifecycle`、`writing-notebooks` 或 `llm-configuration` 中的正式要求作为依据
-- **AND** README 不把 AI 面板、选区召唤、备份、版本快照、多 provider 或多模型支持写成已实现
+- **THEN** 每项声明都有当前正式规格中的要求作为依据
+- **AND** 在本 change 归档后，README 可以将“只使用选区原文的 AI 最小实验闭环”写为已实现
+- **AND** README 不得把附近文本、整本摘要、AI 内容库、多轮对话、会话历史、持久化、流式输出、停止生成、多 provider 或多模型支持写成已实现
+- **AND** README MUST NOT 把该最小实验闭环宣称为已经完成带上下文的完整第一版 AI 闭环
 
 #### Scenario: README refers to future direction
 - **WHEN** README 提及尚未归档进正式规格的产品方向
@@ -105,3 +107,4 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 - **AND** README 说明 `openspec/specs/` 是已经实现的真相源
 - **AND** README 说明 `方向/` 记录未来方向而不是当前实现
 - **AND** README 说明 `openspec/changes/archive/` 中的归档 change 是变更历史
+

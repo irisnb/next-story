@@ -3,6 +3,7 @@ import { EditorSaveState } from "./editor-save-state";
 import { LeaveCoordinator } from "./leave-guard";
 import type { LeaveDialogController } from "./leave-dialog";
 import { saveProject } from "./project-api";
+import type { AiFeatureController } from "./ai-feature";
 import type { NotebookTab, ProjectState } from "./types";
 import { showPage } from "./views";
 
@@ -13,16 +14,21 @@ export interface EditorController {
   save(): Promise<boolean>;
   guardLeave(): Promise<boolean>;
   unload(): void;
+  getCurrentTab(): NotebookTab;
+  attachAi(ai: AiFeatureController): void;
 }
 
 export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): EditorController {
   const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage, dom.llmConfigPage];
   let currentState: ProjectState | null = null;
   let saveState: EditorSaveState | null = null;
+  let currentTab: NotebookTab = "draft";
+  let aiFeature: AiFeatureController | null = null;
 
   function unload(): void {
     currentState = null;
     saveState = null;
+    aiFeature?.endProject();
   }
 
   const leave = new LeaveCoordinator({
@@ -32,6 +38,7 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
   });
 
   function switchTab(tab: NotebookTab): void {
+    currentTab = tab;
     dom.tabDraft.classList.toggle("active", tab === "draft");
     dom.tabMain.classList.toggle("active", tab === "main");
     dom.draftTextarea.classList.toggle("hidden", tab !== "draft");
@@ -81,6 +88,7 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
   function showProject(projectState: ProjectState): void {
     currentState = projectState;
     saveState = new EditorSaveState(projectState.draftContent, projectState.mainContent);
+    aiFeature?.beginProject();
     dom.currentProjectName.textContent = projectState.projectName;
     dom.draftTextarea.value = projectState.draftContent;
     dom.mainTextarea.value = projectState.mainContent;
@@ -108,5 +116,9 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
     save,
     guardLeave: guardCurrentLeave,
     unload,
+    getCurrentTab: () => currentTab,
+    attachAi: (ai: AiFeatureController) => {
+      aiFeature = ai;
+    },
   };
 }

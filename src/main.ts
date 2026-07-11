@@ -6,6 +6,7 @@ import { setupEditor } from "./editor";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
 import { setupProjectFlow } from "./new-project-form";
+import { setupAiFeature } from "./ai-feature";
 import { showPage } from "./views";
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -14,6 +15,11 @@ window.addEventListener("DOMContentLoaded", () => {
   const leaveDialog = setupLeaveDialog(dom);
   const editor = setupEditor(dom, leaveDialog);
   const llmConfig = setupLlmConfigForm(dom, pages);
+  const ai = setupAiFeature(dom, {
+    getCurrentNotebook: () => editor.getCurrentTab(),
+    openConfigPage: (returnPage) => llmConfig.open(returnPage),
+  });
+  editor.attachAi(ai);
 
   dom.btnLlmConfig.addEventListener("click", () => llmConfig.open("welcome-page"));
   dom.btnSettings.addEventListener("click", () => llmConfig.open("editor-page"));

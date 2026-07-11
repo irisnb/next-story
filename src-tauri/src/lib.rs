@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tauri::Manager;
 
-use llm_config::LlmConfig;
+use llm_config::{GenerateAiResult, LlmConfig};
 use project::{CreateProjectParams, ProjectOpenResult};
 
 // ========== Tauri Commands ==========
@@ -66,6 +66,20 @@ async fn test_llm_connection(config: LlmConfig) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 使用唯一保存配置，围绕选区原文生成一次真实 AI 思考材料
+#[tauri::command]
+async fn generate_ai_thinking(
+    app: tauri::AppHandle,
+    selected_text: String,
+) -> Result<GenerateAiResult, String> {
+    let dir = match app.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
+    };
+
+    Ok(llm_config::generate_ai_result_in(&dir, &selected_text).await)
+}
+
 // ========== Application Entry Point ==========
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -79,7 +93,8 @@ pub fn run() {
             save_project,
             save_llm_config,
             load_llm_config,
-            test_llm_connection
+            test_llm_connection,
+            generate_ai_thinking
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

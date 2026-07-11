@@ -58,7 +58,111 @@ impl std::fmt::Display for LlmConfigError {
 
 impl std::error::Error for LlmConfigError {}
 
+// ========== AI 思考生成错误契约 ==========
+
+/// 生成错误的稳定分类码。前端只依据 `code` 切换状态，不解析 `message`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerateAiErrorCode {
+    /// 缺少或未保存完整 LLM 配置
+    ConfigurationRequired,
+    /// 认证失败（API Key 无效或无权）
+    Authentication,
+    /// 连接超时
+    Timeout,
+    /// 无法连接（地址错误、服务未启动）
+    Network,
+    /// 请求内容过长（如 413）
+    RequestTooLarge,
+    /// 服务拒绝或内部错误（4xx / 5xx）
+    Service,
+    /// 响应不是有效 JSON，或没有合法 assistant 回复
+    InvalidResponse,
+}
+
+/// 生成错误的稳定契约。
+/// `message` 为安全清洗后的中文说明，绝不包含 API Key、Authorization、请求正文或完整远端响应。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerateAiError {
+    pub code: GenerateAiErrorCode,
+    pub message: String,
+}
+
+impl GenerateAiError {
+    pub fn new(code: GenerateAiErrorCode, message: impl Into<String>) -> Self {
+        GenerateAiError {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+/// `generate_ai_thinking` 命令的窄返回。命令始终成功返回该结构，
+/// 便于前端在不依赖 Tauri 错误序列化细节的情况下区分成功与失败。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateAiResult {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<GenerateAiError>,
+}
+
+impl GenerateAiResult {
+    pub fn success(content: String) -> Self {
+        GenerateAiResult {
+            ok: true,
+            content: Some(content),
+            error: None,
+        }
+    }
+
+    pub fn failure(error: GenerateAiError) -> Self {
+        GenerateAiResult {
+            ok: false,
+            content: None,
+            error: Some(error),
+        }
+    }
+}
+
+pub mod generate;
+pub use generate::{generate_ai_thinking, generate_ai_thinking_with_timeout};
+
 mod http;
+pub use http::{
+    CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+};
+
+pub fn app_data_dir_failure_result() -> GenerateAiResult {
+    GenerateAiResult::failure(GenerateAiError::new(
+        GenerateAiErrorCode::ConfigurationRequired,
+        "无法访问 LLM 配置目录，请重启应用后重试",
+    ))
+}
+
+pub async fn generate_ai_result_in(base_dir: &Path, selected_text: &str) -> GenerateAiResult {
+    let config = match load_llm_config(base_dir) {
+        Ok(Some(config)) => config,
+        Ok(None) => {
+            return GenerateAiResult::failure(GenerateAiError::new(
+                GenerateAiErrorCode::ConfigurationRequired,
+                "缺少 LLM 配置，请先到设置中填写并保存 API 地址、Key 与模型名",
+            ));
+        }
+        Err(_) => {
+            return GenerateAiResult::failure(GenerateAiError::new(
+                GenerateAiErrorCode::ConfigurationRequired,
+                "LLM 配置无法读取，请重新保存配置",
+            ));
+        }
+    };
+
+    match generate_ai_thinking(&config, selected_text).await {
+        Ok(content) => GenerateAiResult::success(content),
+        Err(error) => GenerateAiResult::failure(error),
+    }
+}
 
 /// 计算应用级 LLM 配置文件路径
 pub fn config_path_in(base_dir: &Path) -> PathBuf {
@@ -113,7 +217,7 @@ pub async fn test_llm_connection(config: &LlmConfig) -> Result<(), LlmConfigErro
     http::test_connection(config, base_url).await
 }
 
-fn parse_api_base_url(raw: &str) -> Result<reqwest::Url, LlmConfigError> {
+pub(crate) fn parse_api_base_url(raw: &str) -> Result<reqwest::Url, LlmConfigError> {
     let trimmed = raw.trim();
     if trimmed.starts_with("http:///") || trimmed.starts_with("https:///") {
         return Err(LlmConfigError::InvalidApiBaseUrl(trimmed.to_string()));

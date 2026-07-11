@@ -5,8 +5,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use next_story_lib::llm_config::{
-    load_llm_config, save_llm_config, test_llm_connection, validate_llm_config, LlmConfig,
-    LlmConfigError,
+    app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
+    generate_ai_thinking_with_timeout, load_llm_config, save_llm_config, test_llm_connection,
+    validate_llm_config, GenerateAiError, GenerateAiErrorCode, LlmConfig, LlmConfigError,
+    CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
 };
 use tempfile::TempDir;
 
@@ -57,6 +59,65 @@ fn start_mock_with_headers(
         }
     });
 
+    base
+}
+
+fn start_capturing_mock(body: String) -> (String, mpsc::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
+    let base = format!("http://{}", listener.local_addr().expect("local addr"));
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 4096];
+        loop {
+            let size = stream.read(&mut buffer).expect("read request");
+            bytes.extend_from_slice(&buffer[..size]);
+            let text = String::from_utf8_lossy(&bytes);
+            let header_end = text.find("\r\n\r\n");
+            let content_length = text.lines().find_map(|line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("content-length: ")?
+                    .parse::<usize>()
+                    .ok()
+            });
+            if header_end.is_some_and(|end| {
+                content_length.is_some_and(|length| bytes.len() >= end + 4 + length)
+            }) {
+                break;
+            }
+        }
+        let request = String::from_utf8(bytes).expect("utf8 request");
+        let _ = sender.send(request);
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+    (base, receiver)
+}
+
+fn start_partial_body_mock(
+    declared_length: usize,
+    body_prefix: &'static [u8],
+    body_delay: Duration,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind partial mock");
+    let base = format!("http://{}", listener.local_addr().expect("local addr"));
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        let mut request = [0u8; 4096];
+        let _ = stream.read(&mut request);
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            declared_length
+        );
+        stream.write_all(headers.as_bytes()).expect("write headers");
+        stream.flush().expect("flush headers");
+        thread::sleep(body_delay);
+        let _ = stream.write_all(body_prefix);
+        let _ = stream.flush();
+    });
     base
 }
 
@@ -285,4 +346,223 @@ async fn test_connection_fails_with_readable_error_on_401() {
         }
         other => panic!("应返回 TestConnectionFailed，实际: {:?}", other),
     }
+}
+
+// ========== AI 思考生成用例 ==========
+
+#[tokio::test]
+async fn generate_returns_assistant_content_from_mock() {
+    let base = start_mock(
+        200,
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"换个视角会不会更好？\"}}]}",
+    );
+    let config = sample_config(base);
+    let content = generate_ai_thinking(&config, "背叛")
+        .await
+        .expect("生成应成功");
+    assert_eq!(content, "换个视角会不会更好？");
+}
+
+#[tokio::test]
+async fn generate_rejects_2xx_without_valid_reply() {
+    for body in [
+        "<html>login</html>",
+        "{\"error\":\"model unavailable\"}",
+        "{\"choices\":[]}",
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\"}}]}",
+    ] {
+        let base = start_mock(200, body);
+        let config = sample_config(base);
+        let result = generate_ai_thinking(&config, "x").await;
+        assert!(
+            matches!(
+                result,
+                Err(GenerateAiError {
+                    code: GenerateAiErrorCode::InvalidResponse,
+                    ..
+                })
+            ),
+            "应因无效响应失败，实际: {:?}",
+            result
+        );
+    }
+}
+
+#[tokio::test]
+async fn generate_maps_401_to_authentication_error_without_leaking_secrets() {
+    let base = start_mock(401, "{\"error\":\"unauthorized\"}");
+    let config = sample_config(base);
+    let error = generate_ai_thinking(&config, "x")
+        .await
+        .expect_err("应失败");
+    assert_eq!(error.code, GenerateAiErrorCode::Authentication);
+    assert!(!error.message.contains("Bearer"));
+    assert!(!error.message.contains("test-key"));
+    assert!(!error.message.contains("Authorization"));
+}
+
+#[tokio::test]
+async fn generate_maps_413_to_request_too_large() {
+    let base = start_mock(413, "too large");
+    let config = sample_config(base);
+    let error = generate_ai_thinking(&config, "x")
+        .await
+        .expect_err("应失败");
+    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
+}
+
+#[tokio::test]
+async fn generate_rejects_incomplete_config_as_configuration_required() {
+    let config = LlmConfig {
+        api_base_url: "".to_string(),
+        api_key: "k".to_string(),
+        model: "m".to_string(),
+    };
+    let error = generate_ai_thinking(&config, "x")
+        .await
+        .expect_err("应失败");
+    assert_eq!(error.code, GenerateAiErrorCode::ConfigurationRequired);
+}
+
+#[tokio::test]
+async fn generate_reports_network_error_without_leaking_secrets() {
+    // 指向一个未监听的端口，触发连接失败
+    let config = sample_config("http://127.0.0.1:1/v1".to_string());
+    let error = generate_ai_thinking(&config, "x")
+        .await
+        .expect_err("应失败");
+    assert_eq!(error.code, GenerateAiErrorCode::Network);
+    assert!(!error.message.contains("test-key"));
+}
+
+#[tokio::test]
+async fn generate_does_not_append_context_to_the_request_body() {
+    // 仅验证后端组装的请求体就是固定 Prompt + 选区原文，不含任何前后文/全文/摘要。
+    let base = start_mock(
+        200,
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}",
+    );
+    let config = sample_config(base);
+    let content = generate_ai_thinking(&config, "选区原文")
+        .await
+        .expect("生成应成功");
+    assert_eq!(content, "ok");
+}
+
+#[test]
+fn generate_error_codes_serialize_as_snake_case() {
+    assert_eq!(
+        serde_json::to_string(&GenerateAiErrorCode::ConfigurationRequired).unwrap(),
+        "\"configuration_required\""
+    );
+    assert_eq!(
+        serde_json::to_string(&GenerateAiErrorCode::RequestTooLarge).unwrap(),
+        "\"request_too_large\""
+    );
+    assert_eq!(
+        serde_json::to_string(&GenerateAiErrorCode::InvalidResponse).unwrap(),
+        "\"invalid_response\""
+    );
+}
+
+#[test]
+fn app_data_dir_failure_is_a_safe_stable_result() {
+    let result = app_data_dir_failure_result();
+    assert!(!result.ok);
+    let error = result.error.expect("failure error");
+    assert_eq!(error.code, GenerateAiErrorCode::ConfigurationRequired);
+    assert_eq!(error.message, "无法访问 LLM 配置目录，请重启应用后重试");
+}
+
+#[tokio::test]
+async fn corrupted_saved_config_returns_stable_failure_result() {
+    let temp = TempDir::new().expect("temp dir");
+    std::fs::write(temp.path().join("llm-config.json"), "{broken").expect("write corrupt config");
+    let result = generate_ai_result_in(temp.path(), "选区").await;
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.expect("failure error").code,
+        GenerateAiErrorCode::ConfigurationRequired
+    );
+}
+
+#[tokio::test]
+async fn generate_sends_exact_fixed_messages_without_context() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+    generate_ai_thinking(&sample_config(base), "选区原文")
+        .await
+        .expect("generate");
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    assert_eq!(value["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        value["messages"][0],
+        serde_json::json!({
+            "role":"system",
+            "content":"你是陪剧本创作者思考的助手。请围绕用户选中的剧本文字，提出能够帮助其继续思考的问题，并给出几个可能的思考方向。不要代写正文，不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+        })
+    );
+    assert_eq!(
+        value["messages"][1],
+        serde_json::json!({"role":"user","content":"选区原文"})
+    );
+    assert_eq!(value.as_object().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn generate_rejects_oversize_request_without_truncation() {
+    let config = sample_config("http://127.0.0.1:1".to_string());
+    let text = "界".repeat(MAX_REQUEST_BYTES / 3 + 1);
+    let error = generate_ai_thinking(&config, &text)
+        .await
+        .expect_err("oversize must fail");
+    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
+}
+
+#[tokio::test]
+async fn generate_rejects_oversize_response_without_truncation() {
+    let content = "x".repeat(MAX_RESPONSE_BYTES + 1);
+    let body = serde_json::json!({"choices":[{"message":{"role":"assistant","content":content}}]})
+        .to_string();
+    let (base, _captured) = start_capturing_mock(body);
+    let error = generate_ai_thinking(&sample_config(base), "x")
+        .await
+        .expect_err("oversize must fail");
+    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+    assert_eq!(error.message, "服务响应过长，已拒绝处理");
+}
+
+#[test]
+fn generation_and_connection_test_use_distinct_total_timeouts() {
+    assert_eq!(CONNECTION_TEST_TIMEOUT_SECS, 20);
+    assert_eq!(GENERATION_TIMEOUT_SECS, 60);
+}
+
+#[tokio::test]
+async fn delayed_response_body_maps_to_timeout_without_waiting_for_production_timeout() {
+    let base = start_partial_body_mock(64, b"", Duration::from_millis(150));
+    let error =
+        generate_ai_thinking_with_timeout(&sample_config(base), "x", Duration::from_millis(30))
+            .await
+            .expect_err("delayed body must time out");
+
+    assert_eq!(error.code, GenerateAiErrorCode::Timeout);
+    assert_eq!(error.message, "读取模型响应超时，请稍后重试");
+}
+
+#[tokio::test]
+async fn truncated_response_body_maps_to_distinct_interruption_error() {
+    let base = start_partial_body_mock(128, b"{\"choices\":[", Duration::ZERO);
+    let error =
+        generate_ai_thinking_with_timeout(&sample_config(base), "x", Duration::from_secs(1))
+            .await
+            .expect_err("truncated body must fail");
+
+    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+    assert_eq!(error.message, "服务响应传输中断，请稍后重试");
 }

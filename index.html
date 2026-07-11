@@ -62,6 +62,7 @@
           <span id="save-status" class="save-status">已保存</span>
           <button id="btn-back-welcome" class="save-btn">返回欢迎页</button>
           <button id="btn-settings" class="save-btn">设置</button>
+          <button id="btn-toggle-ai" class="save-btn">AI 面板</button>
           <button id="btn-save" class="save-btn" disabled>保存</button>
         </div>
       </header>
@@ -71,9 +72,34 @@
         <button id="tab-main" class="tab-btn">正文本</button>
       </nav>
       
-      <div class="editor-content">
-        <textarea id="draft-textarea" class="notebook-textarea" placeholder="在这里写草稿..."></textarea>
-        <textarea id="main-textarea" class="notebook-textarea hidden" placeholder="在这里写正文..."></textarea>
+      <div class="editor-body">
+        <div class="editor-notebooks">
+          <textarea id="draft-textarea" class="notebook-textarea" placeholder="在这里写草稿..."></textarea>
+          <textarea id="main-textarea" class="notebook-textarea hidden" placeholder="在这里写正文..."></textarea>
+        </div>
+
+        <aside id="ai-panel" class="ai-panel hidden" aria-live="polite">
+          <div class="ai-panel-header">
+            <span class="ai-panel-title">AI 思考</span>
+            <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
+          </div>
+          <div class="ai-panel-body">
+            <div id="ai-snapshot-block" class="ai-block hidden">
+              <div class="ai-block-label">本次选区</div>
+              <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
+            </div>
+            <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
+            <pre id="ai-response" class="ai-response hidden"></pre>
+            <div id="ai-error-block" class="ai-error-block hidden">
+              <div id="ai-error-message" class="ai-error-message"></div>
+              <button id="ai-retry" class="ai-panel-btn" type="button">重新请求</button>
+            </div>
+            <div id="ai-config-block" class="ai-config-block hidden">
+              <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+              <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
+            </div>
+          </div>
+        </aside>
       </div>
     </main>
 

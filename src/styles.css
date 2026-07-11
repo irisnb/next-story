@@ -386,3 +386,140 @@
   outline: none;
   border-color: #4a5568;
 }
+
+/* ========== Editor body + AI panel ========== */
+.editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.editor-notebooks {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  padding: 1rem;
+  position: relative;
+}
+
+.editor-notebooks .notebook-textarea {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.ai-panel {
+  width: 420px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: white;
+  border-left: 1px solid var(--color-border);
+}
+
+.ai-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-panel-title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.ai-panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ai-block-label {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin-bottom: 0.35rem;
+}
+
+.ai-snapshot,
+.ai-response {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f7fafc;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  max-height: 32vh;
+  overflow: auto;
+}
+
+.ai-loading {
+  color: var(--color-muted);
+  font-size: 0.95rem;
+}
+
+.ai-error-message {
+  color: var(--color-danger);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ai-config-message {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.ai-panel-btn {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: white;
+  color: var(--color-action);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.ai-panel-btn:hover {
+  background: #f7fafc;
+}
+
+.ai-summon-btn {
+  z-index: 20;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #4a5568;
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.ai-summon-btn:hover {
+  background-color: #2d3748;
+}
+
+/* 窄窗口：AI 面板切换为覆盖式抽屉，编辑区保持完整宽度 */
+@media (max-width: 760px) {
+  .ai-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 90vw);
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.18);
+    z-index: 30;
+  }
+}

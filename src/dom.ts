@@ -32,6 +32,9 @@ export interface AppDom {
   btnSaveConfig: HTMLButtonElement;
   btnTestConfig: HTMLButtonElement;
   btnBackConfig: HTMLButtonElement;
+  btnToggleAi: HTMLButtonElement;
+  aiPanel: HTMLElement;
+  aiResponse: HTMLPreElement;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -83,6 +86,9 @@ export function getAppDom(): AppDom {
     btnSaveConfig: requireElement("btn-save-config"),
     btnTestConfig: requireElement("btn-test-config"),
     btnBackConfig: requireElement("btn-back-config"),
+    btnToggleAi: requireElement("btn-toggle-ai"),
+    aiPanel: requireElement("ai-panel"),
+    aiResponse: requireElement("ai-response"),
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),
     btnDiscardAndLeave: requireElement("btn-discard-and-leave"),

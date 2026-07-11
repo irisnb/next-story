@@ -14,6 +14,7 @@ export interface AppDom {
   currentProjectName: HTMLElement;
   saveStatus: HTMLElement;
   btnSave: HTMLButtonElement;
+  btnBackWelcome: HTMLButtonElement;
   tabDraft: HTMLButtonElement;
   tabMain: HTMLButtonElement;
   draftTextarea: HTMLTextAreaElement;
@@ -31,6 +32,10 @@ export interface AppDom {
   btnSaveConfig: HTMLButtonElement;
   btnTestConfig: HTMLButtonElement;
   btnBackConfig: HTMLButtonElement;
+  leaveDialog: HTMLDialogElement;
+  btnSaveAndLeave: HTMLButtonElement;
+  btnDiscardAndLeave: HTMLButtonElement;
+  btnCancelLeave: HTMLButtonElement;
 }
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -60,6 +65,7 @@ export function getAppDom(): AppDom {
     currentProjectName: requireElement("current-project-name"),
     saveStatus: requireElement("save-status"),
     btnSave: requireElement("btn-save"),
+    btnBackWelcome: requireElement("btn-back-welcome"),
     tabDraft: requireElement("tab-draft"),
     tabMain: requireElement("tab-main"),
     draftTextarea: requireElement("draft-textarea"),
@@ -77,5 +83,9 @@ export function getAppDom(): AppDom {
     btnSaveConfig: requireElement("btn-save-config"),
     btnTestConfig: requireElement("btn-test-config"),
     btnBackConfig: requireElement("btn-back-config"),
+    leaveDialog: requireElement("leave-dialog"),
+    btnSaveAndLeave: requireElement("btn-save-and-leave"),
+    btnDiscardAndLeave: requireElement("btn-discard-and-leave"),
+    btnCancelLeave: requireElement("btn-cancel-leave"),
   };
 }

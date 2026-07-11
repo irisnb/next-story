@@ -60,6 +60,7 @@
         <h1 id="current-project-name" class="project-name"></h1>
         <div class="editor-actions">
           <span id="save-status" class="save-status">已保存</span>
+          <button id="btn-back-welcome" class="save-btn">返回欢迎页</button>
           <button id="btn-settings" class="save-btn">设置</button>
           <button id="btn-save" class="save-btn" disabled>保存</button>
         </div>
@@ -112,5 +113,17 @@
         </div>
       </div>
     </main>
+
+    <dialog id="leave-dialog" class="leave-dialog" aria-labelledby="leave-dialog-title" aria-describedby="leave-dialog-description">
+      <div class="leave-dialog-content">
+        <h2 id="leave-dialog-title" class="form-title">有未保存修改</h2>
+        <p id="leave-dialog-description" class="leave-dialog-description">离开前是否保存草稿本和正文本的修改？</p>
+        <div class="leave-dialog-actions">
+          <button id="btn-save-and-leave" class="btn-primary">保存并离开</button>
+          <button id="btn-discard-and-leave" class="btn-secondary danger">不保存并离开</button>
+          <button id="btn-cancel-leave" class="btn-secondary">取消</button>
+        </div>
+      </div>
+    </dialog>
   </body>
 </html>

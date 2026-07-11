@@ -1,114 +1,112 @@
 import type { AppDom } from "./dom";
+import { EditorSaveState } from "./editor-save-state";
+import { LeaveCoordinator } from "./leave-guard";
+import type { LeaveDialogController } from "./leave-dialog";
 import { saveProject } from "./project-api";
 import type { NotebookTab, ProjectState } from "./types";
 import { showPage } from "./views";
 
 export interface EditorController {
   showProject(projectState: ProjectState): void;
+  hasProject(): boolean;
+  hasUnsavedChanges(): boolean;
+  save(): Promise<boolean>;
+  guardLeave(): Promise<boolean>;
+  unload(): void;
 }
 
-export function setupEditor(dom: AppDom): EditorController {
-  const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage];
+export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): EditorController {
+  const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage, dom.llmConfigPage];
   let currentState: ProjectState | null = null;
-  let saveInProgress = false;
+  let saveState: EditorSaveState | null = null;
+
+  function unload(): void {
+    currentState = null;
+    saveState = null;
+  }
+
+  const leave = new LeaveCoordinator({
+    isDirty: () => saveState?.hasUnsavedChanges ?? false,
+    choose: leaveDialog.choose,
+    save,
+  });
 
   function switchTab(tab: NotebookTab): void {
-    if (tab === "draft") {
-      dom.tabDraft.classList.add("active");
-      dom.tabMain.classList.remove("active");
-      dom.draftTextarea.classList.remove("hidden");
-      dom.mainTextarea.classList.add("hidden");
-      return;
-    }
-
-    dom.tabDraft.classList.remove("active");
-    dom.tabMain.classList.add("active");
-    dom.draftTextarea.classList.add("hidden");
-    dom.mainTextarea.classList.remove("hidden");
+    dom.tabDraft.classList.toggle("active", tab === "draft");
+    dom.tabMain.classList.toggle("active", tab === "main");
+    dom.draftTextarea.classList.toggle("hidden", tab !== "draft");
+    dom.mainTextarea.classList.toggle("hidden", tab !== "main");
   }
 
-  function updateSaveStatus(hasChanges: boolean): void {
-    if (saveInProgress) {
-      dom.saveStatus.textContent = "正在保存...";
-      dom.saveStatus.className = "save-status saving";
-      dom.btnSave.disabled = true;
-      return;
-    }
-
-    if (hasChanges) {
-      dom.saveStatus.textContent = "有未保存更改";
-      dom.saveStatus.className = "save-status unsaved";
-      dom.btnSave.disabled = false;
-      return;
-    }
-
-    dom.saveStatus.textContent = "已保存";
+  function renderSaveState(): void {
+    if (!saveState) return;
+    dom.saveStatus.textContent = saveState.statusText;
     dom.saveStatus.className = "save-status";
-    dom.btnSave.disabled = true;
+    if (saveState.isSaving) dom.saveStatus.classList.add("saving");
+    else if (saveState.statusText.startsWith("保存失败")) dom.saveStatus.classList.add("error");
+    else if (saveState.hasUnsavedChanges) dom.saveStatus.classList.add("unsaved");
+    dom.btnSave.disabled = saveState.isSaving || !saveState.hasUnsavedChanges;
   }
 
-  function markUnsaved(): void {
-    if (!currentState) {
-      return;
-    }
-
-    currentState.draftContent = dom.draftTextarea.value;
-    currentState.mainContent = dom.mainTextarea.value;
-    currentState.hasUnsavedChanges = true;
-    updateSaveStatus(true);
+  function syncCurrent(): void {
+    saveState?.setCurrent(dom.draftTextarea.value, dom.mainTextarea.value);
+    renderSaveState();
   }
 
-  async function handleSave(): Promise<void> {
-    if (!currentState || saveInProgress) {
-      return;
+  async function save(): Promise<boolean> {
+    if (!currentState || !saveState) return true;
+    const state = saveState;
+    const path = currentState.projectPath;
+    const result = state.save((snapshot) => saveProject(path, snapshot.draft, snapshot.main));
+    renderSaveState();
+    const succeeded = await result;
+    renderSaveState();
+    return succeeded;
+  }
+
+  async function guardCurrentLeave(): Promise<boolean> {
+    const dirty = saveState?.hasUnsavedChanges ?? false;
+    if (dirty) {
+      dom.draftTextarea.disabled = true;
+      dom.mainTextarea.disabled = true;
     }
-
-    saveInProgress = true;
-    updateSaveStatus(true);
-
     try {
-      const draftContent = dom.draftTextarea.value;
-      const mainContent = dom.mainTextarea.value;
-
-      await saveProject(currentState.projectPath, draftContent, mainContent);
-
-      currentState.draftContent = draftContent;
-      currentState.mainContent = mainContent;
-      currentState.hasUnsavedChanges = false;
-      saveInProgress = false;
-      updateSaveStatus(false);
-    } catch (error) {
-      saveInProgress = false;
-      dom.saveStatus.textContent = `保存失败: ${String(error)}`;
-      dom.saveStatus.className = "save-status error";
-      dom.btnSave.disabled = false;
+      return await leave.run();
+    } finally {
+      dom.draftTextarea.disabled = false;
+      dom.mainTextarea.disabled = false;
     }
   }
 
   function showProject(projectState: ProjectState): void {
     currentState = projectState;
-    dom.currentProjectName.textContent = currentState.projectName;
-    dom.draftTextarea.value = currentState.draftContent;
-    dom.mainTextarea.value = currentState.mainContent;
-    updateSaveStatus(false);
+    saveState = new EditorSaveState(projectState.draftContent, projectState.mainContent);
+    dom.currentProjectName.textContent = projectState.projectName;
+    dom.draftTextarea.value = projectState.draftContent;
+    dom.mainTextarea.value = projectState.mainContent;
+    renderSaveState();
     switchTab("draft");
     showPage(pages, "editor-page");
   }
 
   dom.tabDraft.addEventListener("click", () => switchTab("draft"));
   dom.tabMain.addEventListener("click", () => switchTab("main"));
-  dom.draftTextarea.addEventListener("input", markUnsaved);
-  dom.mainTextarea.addEventListener("input", markUnsaved);
-  dom.btnSave.addEventListener("click", handleSave);
-
+  dom.draftTextarea.addEventListener("input", syncCurrent);
+  dom.mainTextarea.addEventListener("input", syncCurrent);
+  dom.btnSave.addEventListener("click", () => { void save(); });
   document.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
-      if (currentState?.hasUnsavedChanges) {
-        handleSave();
-      }
+      if (saveState?.hasUnsavedChanges) void save();
     }
   });
 
-  return { showProject };
+  return {
+    showProject,
+    hasProject: () => currentState !== null,
+    hasUnsavedChanges: () => saveState?.hasUnsavedChanges ?? false,
+    save,
+    guardLeave: guardCurrentLeave,
+    unload,
+  };
 }

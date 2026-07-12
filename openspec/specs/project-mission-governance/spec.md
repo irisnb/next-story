@@ -80,4 +80,3 @@ TBD - created by archiving change clarify-project-mission-and-boundaries. Update
 - **WHEN** 未来需要调整完整使命论证
 - **THEN** 上游核心方向宪章仍是唯一完整正文
 - **AND** 下游文档只需检查摘要、红线和链接是否仍然一致
-

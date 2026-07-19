@@ -1,28 +1,4 @@
-# ai-thinking-panel Specification
-
-## Purpose
-TBD - created by archiving change add-selection-ai-panel. Update Purpose after archive.
-## Requirements
-### Requirement: 编辑器提供独立可收起的 AI 面板
-系统 SHALL 在编辑器右侧提供独立 AI 面板，正常桌面宽度下默认约 420px 并与编辑区并排，窄窗口下 SHALL 切换为覆盖式抽屉。
-
-#### Scenario: 桌面宽度展开面板
-- **WHEN** 用户在正常桌面宽度下召唤 AI 或主动展开面板
-- **THEN** AI 面板在编辑器右侧展开
-- **AND** 编辑区使用剩余宽度且不被面板覆盖
-
-#### Scenario: 窄窗口展开面板
-- **WHEN** 应用窗口不足以同时提供可用编辑区和约 420px 面板
-- **THEN** AI 面板以覆盖式抽屉显示
-
-#### Scenario: 收起并重新展开
-- **WHEN** 面板已有选区或回复且用户收起后重新展开
-- **THEN** 系统恢复显示当前选区和回复
-- **AND** 收起动作不清空当前面板状态
-
-#### Scenario: 重启不恢复面板内容
-- **WHEN** 用户关闭并重新启动应用
-- **THEN** 系统不恢复上次 AI 选区、回复或错误
+## MODIFIED Requirements
 
 ### Requirement: 面板使用可替换的当前临时对话策略
 系统 SHALL 只显示一个由“本次冻结选区 + 当前线性轮次”组成的临时对话，并 SHALL 在新召唤被接受时替换整个当前临时对话且不建立历史记录。

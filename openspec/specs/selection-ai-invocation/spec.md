@@ -76,6 +76,23 @@ TBD - created by archiving change add-selection-ai-panel. Update Purpose after a
 - **WHEN** 系统组装首版模型请求
 - **THEN** 请求不包含选区前后文、当前本子全文、摘要、作品元数据或 AI 内容库
 
+### Requirement: 召唤入口不接收初始问题
+系统 MUST 保持“召唤 AI”为无文字输入的选区动作，并 MUST NOT 在点击召唤之前把用户问题或其他文字附加到首次模型请求。
+
+#### Scenario: 有效选区直接召唤
+- **WHEN** 用户形成有效选区并点击“召唤 AI”
+- **THEN** 系统立即冻结选区并发起首次请求
+- **AND** 系统不要求或允许用户先输入问题
+
+### Requirement: 新召唤接受后替换当前临时对话
+系统 SHALL 在一个新选区召唤被单请求协调器接受时，建立新的冻结选区上下文并替换此前当前临时对话。
+
+#### Scenario: 空闲时从新选区召唤
+- **WHEN** 当前已有成功临时对话且没有请求生成中
+- **AND** 用户对新选区点击“召唤 AI”
+- **THEN** 系统立即用新冻结选区和首次生成状态替换旧临时对话
+- **AND** 系统不保留旧临时对话历史
+
 ### Requirement: 同一时间只允许一个 AI 请求
 系统 SHALL 在首版使用单请求协调策略，生成期间允许用户继续写作，但 MUST NOT 并发发起第二个 AI 请求。
 
@@ -94,4 +111,3 @@ TBD - created by archiving change add-selection-ai-panel. Update Purpose after a
 - **WHEN** 当前 AI 请求成功或失败
 - **AND** 用户重新形成有效选区
 - **THEN** 系统允许发起新的 AI 请求
-

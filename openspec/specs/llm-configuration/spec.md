@@ -115,13 +115,36 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **AND** 系统不覆盖用户在此期间输入的内容
 
 ### Requirement: 唯一 LLM 配置支持受限 AI 思考生成
-系统 SHALL 在保存了完整唯一 LLM 配置后支持选区触发的真实单次 AI 思考生成，同时 MUST NOT 提供多 provider、多模型槽位或 AI 直接写入草稿本和正文本的能力。
+系统 SHALL 在保存了完整唯一 LLM 配置后支持选区触发的真实首次 AI 思考生成与当前临时对话的继续追问，同时 MUST NOT 提供多 provider、多模型槽位、服务端会话存储或 AI 直接写入草稿本和正文本的能力。
 
-#### Scenario: 保存配置驱动真实生成
+#### Scenario: 保存配置驱动真实首次生成
 - **WHEN** 用户已保存完整唯一 LLM 配置
 - **AND** 用户从有效选区明确召唤 AI
-- **THEN** 系统使用已保存的 API 地址、API Key 和模型名发起一次真实 OpenAI-compatible `chat/completions` 请求
+- **THEN** 系统使用已保存的 API 地址、API Key 和模型名发起一次真实非流式 OpenAI-compatible `chat/completions` 请求
+- **AND** 首次请求只包含后端固定行为任务和冻结选区原文
 - **AND** 前端不需要再次传入 API Key
+
+#### Scenario: 保存配置驱动真实追问生成
+- **WHEN** 当前冻结选区已有首次成功回应
+- **AND** 用户提交有效追问
+- **THEN** 系统使用同一份已保存的 API 地址、API Key 和模型名发起一次真实非流式 `chat/completions` 请求
+- **AND** 请求按原顺序包含后端固定行为规则、原冻结选区、此前全部成功轮次和本次追问
+- **AND** 本次追问在模型消息中只出现一次
+
+#### Scenario: 后端不持久保存临时对话
+- **WHEN** 系统完成首次或追问生成请求
+- **THEN** Rust 生成链路不创建会话编号或保存消息历史
+- **AND** 后续追问所需轮次由前端在每次请求中重新提交
+
+#### Scenario: 追问载荷必须合法
+- **WHEN** 前端提交继续追问载荷
+- **THEN** 系统只接受非空白冻结选区、非空白消息、合法 user 或 assistant 角色和成对的既有成功轮次
+- **AND** 系统拒绝前端提供 system 消息、非法角色顺序或待回答问题之后仍有消息的载荷
+
+#### Scenario: 不隐式添加或压缩上下文
+- **WHEN** 系统组装首次或追问模型请求
+- **THEN** 系统不添加选区附近文本、本子全文、摘要、作品元数据、用户确认的作品信息或 AI 内容库
+- **AND** 系统不自动摘要、截断、改写或丢弃前端提交的合法临时对话轮次
 
 #### Scenario: 生成响应必须包含合法模型结果
 - **WHEN** 模型服务返回 2xx
@@ -129,17 +152,16 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **AND** 空正文、无效 JSON、错误对象或无合法回复 MUST 被视为失败
 
 #### Scenario: 生成错误使用稳定安全契约
-- **WHEN** 生成因缺少配置、认证、超时、网络、请求过长、服务错误或无效响应而失败
+- **WHEN** 首次或追问生成因缺少配置、载荷无效、认证、超时、网络、请求过长、服务错误或无效响应而失败
 - **THEN** 系统返回稳定错误 `code` 和中文可读 `message`
-- **AND** 错误不得包含 API Key、Authorization、请求正文或完整远端响应
+- **AND** 错误不得包含 API Key、Authorization、请求正文、临时对话全文或完整远端响应
 
 #### Scenario: 配置能力保持单一
-- **WHEN** AI 思考生成功能可用
+- **WHEN** 首次生成与继续追问功能可用
 - **THEN** 系统仍只使用一份保存的 LLM 配置
 - **AND** 系统不展示多个 provider、多个模型槽位或不可调用的模型列表
 
 #### Scenario: 生成不改变草稿本和正文本
-- **WHEN** 系统使用唯一 LLM 配置生成 AI 思考材料
+- **WHEN** 系统使用唯一 LLM 配置生成首次或追问 AI 思考材料
 - **THEN** 系统不修改草稿本、正文本或作品元数据
-- **AND** 系统不存在将 AI 输出插入、替换、改写、移动或删除草稿本或正文本的入口
-
+- **AND** 系统不存在将 AI 输出插入、追加、替换、改写、移动、删除或整理草稿本或正文本的入口

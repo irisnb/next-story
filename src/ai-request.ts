@@ -1,8 +1,15 @@
-import type { GenerateAiError, GenerateAiResult, SelectionSnapshot } from "./types";
+import type { GenerateAiError, GenerateAiRequest, GenerateAiResult, SelectionSnapshot } from "./types";
 
 export interface AiRequestCallbacks {
   onSuccess(snapshot: SelectionSnapshot, content: string): void;
   onError(snapshot: SelectionSnapshot, error: GenerateAiError): void;
+  onStructuredSuccess?(content: string, identity: RequestIdentity): void;
+  onStructuredError?(error: GenerateAiError, identity: RequestIdentity): void;
+}
+
+export interface RequestIdentity {
+  conversationId: number;
+  turnId?: number;
 }
 
 /**
@@ -12,24 +19,30 @@ export interface AiRequestCallbacks {
  * 但浮动入口会禁用，无法发起第二个请求：当已有请求进行时，`request` 返回 null 且
  * 根本不执行第二个 client 调用，从根上避免结果乱序。
  *
- * 请求结果受当前作品实例令牌隔离：发起时记录令牌，返回时若令牌已变（作品卸载或替换），
- * 迟到结果被忽略，不会更新新作品或重新打开面板。进入配置页不卸载作品，因此令牌不变，
- * 请求可继续完成，但配置页返回不会自动发起第二个调用。
+ * 结果同时受作品、请求、临时对话和待回答轮次身份隔离。任一身份失效时，
+ * 成功结果、结构化失败和 Promise rejection 都不会触发回调。
  */
 export class AiRequestCoordinator {
   private inFlight: Promise<void> | null = null;
   private readonly generate: (selectedText: string) => Promise<GenerateAiResult>;
   private readonly callbacks: AiRequestCallbacks;
   private readonly getProjectToken: () => number;
+  private readonly structuredGenerate: ((request: GenerateAiRequest) => Promise<GenerateAiResult>) | null;
+  private activeRequestToken = 0;
+  private readonly getConversationIdentity: (() => RequestIdentity | null) | null;
 
   constructor(
     generate: (selectedText: string) => Promise<GenerateAiResult>,
     callbacks: AiRequestCallbacks,
     getProjectToken: () => number,
+    structuredGenerate: ((request: GenerateAiRequest) => Promise<GenerateAiResult>) | null = null,
+    getConversationIdentity: (() => RequestIdentity | null) | null = null,
   ) {
     this.generate = generate;
     this.callbacks = callbacks;
     this.getProjectToken = getProjectToken;
+    this.structuredGenerate = structuredGenerate;
+    this.getConversationIdentity = getConversationIdentity;
   }
 
   get busy(): boolean {
@@ -44,33 +57,77 @@ export class AiRequestCoordinator {
       return null;
     }
     const token = this.getProjectToken();
-    this.inFlight = this.run(snapshot, token);
+    const requestToken = ++this.activeRequestToken;
+    this.inFlight = this.run(snapshot, token, requestToken, null, () => this.generate(snapshot.selectedText));
     return this.inFlight;
   }
 
-  private async run(snapshot: SelectionSnapshot, token: number): Promise<void> {
+  requestStructured(
+    request: GenerateAiRequest,
+    identity: { conversationId: number; turnId?: number },
+  ): Promise<void> | null {
+    const generate = this.structuredGenerate;
+    if (this.inFlight || !generate) return null;
+    const token = this.getProjectToken();
+    const requestToken = ++this.activeRequestToken;
+    this.inFlight = this.run(
+      null,
+      token,
+      requestToken,
+      identity,
+      () => generate(request),
+    );
+    return this.inFlight;
+  }
+
+  private async run(
+    snapshot: SelectionSnapshot | null,
+    token: number,
+    requestToken: number,
+    identity: RequestIdentity | null,
+    generate: () => Promise<GenerateAiResult>,
+  ): Promise<void> {
+    let result: GenerateAiResult;
     try {
-      const result = await this.generate(snapshot.selectedText);
-      // 在回调之前解锁，使成功/失败后用户可立即再次召唤
-      this.inFlight = null;
-      if (token !== this.getProjectToken()) {
-        // 作品已被卸载或替换：忽略迟到结果，不污染新作品
-        return;
-      }
-      if (result.ok) {
-        this.callbacks.onSuccess(snapshot, result.content);
-      } else {
-        this.callbacks.onError(snapshot, result.error);
-      }
+      result = await generate();
     } catch {
       this.inFlight = null;
-      if (token !== this.getProjectToken()) {
-        return;
-      }
-      this.callbacks.onError(snapshot, {
+      if (this.isStale(token, requestToken, identity)) return;
+      const error: GenerateAiError = {
         code: "network",
         message: "AI 请求未能完成，请检查连接后重试",
-      });
+      };
+      if (identity && this.callbacks.onStructuredError) {
+        this.callbacks.onStructuredError(error, identity);
+      } else if (snapshot) {
+        this.callbacks.onError(snapshot, error);
+      }
+      return;
+    }
+
+    this.inFlight = null;
+    if (this.isStale(token, requestToken, identity)) return;
+    if (result.ok) {
+      if (identity && this.callbacks.onStructuredSuccess) {
+        this.callbacks.onStructuredSuccess(result.content, identity);
+      } else if (snapshot) {
+        this.callbacks.onSuccess(snapshot, result.content);
+      }
+    } else if (identity && this.callbacks.onStructuredError) {
+      this.callbacks.onStructuredError(result.error, identity);
+    } else if (snapshot) {
+      this.callbacks.onError(snapshot, result.error);
     }
   }
+
+  private isStale(token: number, requestToken: number, identity: RequestIdentity | null): boolean {
+    if (requestToken !== this.activeRequestToken || token !== this.getProjectToken()) return true;
+    return identity !== null &&
+      (this.getConversationIdentity === null ||
+        !sameIdentity(identity, this.getConversationIdentity()));
+  }
+}
+
+function sameIdentity(left: RequestIdentity | null, right: RequestIdentity | null): boolean {
+  return left !== null && right !== null && left.conversationId === right.conversationId && left.turnId === right.turnId;
 }

@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
     generate_ai_thinking_with_timeout, load_llm_config, save_llm_config, test_llm_connection,
-    validate_llm_config, GenerateAiError, GenerateAiErrorCode, LlmConfig, LlmConfigError,
+    validate_llm_config, GenerateAiError, GenerateAiErrorCode, GenerateAiMessage,
+    GenerateAiMessageRole, GenerateAiRequest, LlmConfig, LlmConfigError,
     CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
 };
 use tempfile::TempDir;
@@ -17,6 +18,29 @@ fn sample_config(api_base_url: String) -> LlmConfig {
         api_base_url,
         api_key: "test-key".to_string(),
         model: "test-model".to_string(),
+    }
+}
+
+fn first_request(selected_text: impl Into<String>) -> GenerateAiRequest {
+    GenerateAiRequest::First {
+        selected_text: selected_text.into(),
+    }
+}
+
+fn message(role: GenerateAiMessageRole, content: &str) -> GenerateAiMessage {
+    GenerateAiMessage {
+        role,
+        content: content.to_string(),
+    }
+}
+
+fn follow_up_request(
+    selected_text: impl Into<String>,
+    messages: Vec<GenerateAiMessage>,
+) -> GenerateAiRequest {
+    GenerateAiRequest::FollowUp {
+        selected_text: selected_text.into(),
+        messages,
     }
 }
 
@@ -512,6 +536,142 @@ async fn generate_sends_exact_fixed_messages_without_context() {
         serde_json::json!({"role":"user","content":"选区原文"})
     );
     assert_eq!(value.as_object().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn generate_follow_up_sends_exact_full_conversation_once_without_extra_context() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+    let request = follow_up_request(
+        "冻结选区",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "问题一"),
+            message(GenerateAiMessageRole::Assistant, "回答一"),
+            message(GenerateAiMessageRole::User, "当前问题"),
+        ],
+    );
+
+    generate_ai_thinking(&sample_config(base), &request)
+        .await
+        .expect("follow-up generate");
+
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    assert_eq!(
+        value["messages"],
+        serde_json::json!([
+            {
+                "role":"system",
+                "content":"你是陪剧本创作者思考的助手。请围绕用户选中的剧本文字，提出能够帮助其继续思考的问题，并给出几个可能的思考方向。不要代写正文，不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+            },
+            {"role":"user","content":"冻结选区"},
+            {"role":"assistant","content":"首次回应"},
+            {"role":"user","content":"问题一"},
+            {"role":"assistant","content":"回答一"},
+            {"role":"user","content":"当前问题"}
+        ])
+    );
+    assert_eq!(body.matches("当前问题").count(), 1);
+    for absent in [
+        "附近上下文",
+        "本子全文",
+        "自动摘要",
+        "作品信息",
+        "AI 内容库",
+    ] {
+        assert!(!body.contains(absent));
+    }
+    assert_eq!(value["stream"], false);
+}
+
+#[tokio::test]
+async fn generate_rejects_blank_selection_and_blank_messages_with_safe_stable_error() {
+    let cases = [
+        first_request(" \n\t "),
+        follow_up_request(
+            "冻结选区",
+            vec![
+                message(GenerateAiMessageRole::Assistant, "首次回应"),
+                message(GenerateAiMessageRole::User, " \n\t "),
+            ],
+        ),
+        follow_up_request(
+            "冻结选区",
+            vec![
+                message(GenerateAiMessageRole::Assistant, " \n\t "),
+                message(GenerateAiMessageRole::User, "当前问题"),
+            ],
+        ),
+    ];
+
+    for request in cases {
+        let error =
+            generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
+                .await
+                .expect_err("invalid payload must fail before network");
+        assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+        assert_eq!(error.message, "AI 请求内容无效，请重试");
+        assert!(!error.message.contains("冻结选区"));
+        assert!(!error.message.contains("首次回应"));
+        assert!(!error.message.contains("当前问题"));
+    }
+}
+
+#[tokio::test]
+async fn generate_rejects_illegal_follow_up_role_order_and_messages_after_pending_user() {
+    let cases = [
+        Vec::new(),
+        vec![message(GenerateAiMessageRole::User, "没有首次回应")],
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::Assistant, "连续 assistant"),
+            message(GenerateAiMessageRole::User, "当前问题"),
+        ],
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "未配对的旧问题"),
+            message(GenerateAiMessageRole::User, "待回答问题后仍有消息"),
+        ],
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "旧问题"),
+            message(GenerateAiMessageRole::Assistant, "旧回答"),
+        ],
+    ];
+
+    for messages in cases {
+        let request = follow_up_request("冻结选区", messages);
+        let error =
+            generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
+                .await
+                .expect_err("illegal order must fail before network");
+        assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+        assert_eq!(error.message, "AI 请求内容无效，请重试");
+    }
+}
+
+#[tokio::test]
+async fn generate_rejects_oversize_follow_up_without_truncation_or_text_leak() {
+    let current_question = "不能泄露的当前问题".repeat(MAX_REQUEST_BYTES / 12);
+    let request = follow_up_request(
+        "冻结选区",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, &current_question),
+        ],
+    );
+    let error = generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
+        .await
+        .expect_err("oversize follow-up must fail");
+
+    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
+    assert_eq!(error.message, "请求内容过长，请缩短当前临时对话");
+    assert!(!error.message.contains("不能泄露的当前问题"));
 }
 
 #[tokio::test]

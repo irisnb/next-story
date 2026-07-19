@@ -88,6 +88,62 @@ pub struct GenerateAiError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerateAiMessageRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerateAiMessage {
+    pub role: GenerateAiMessageRole,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GenerateAiRequest {
+    First {
+        selected_text: String,
+    },
+    FollowUp {
+        selected_text: String,
+        messages: Vec<GenerateAiMessage>,
+    },
+}
+
+pub fn parse_generate_ai_request(
+    value: serde_json::Value,
+) -> Result<GenerateAiRequest, GenerateAiError> {
+    serde_json::from_value(value).map_err(|_| {
+        GenerateAiError::new(
+            GenerateAiErrorCode::InvalidResponse,
+            "AI 请求内容无效，请重试",
+        )
+    })
+}
+
+impl From<&str> for GenerateAiRequest {
+    fn from(selected_text: &str) -> Self {
+        GenerateAiRequest::First {
+            selected_text: selected_text.to_string(),
+        }
+    }
+}
+
+impl From<&String> for GenerateAiRequest {
+    fn from(selected_text: &String) -> Self {
+        GenerateAiRequest::from(selected_text.as_str())
+    }
+}
+
+impl From<&GenerateAiRequest> for GenerateAiRequest {
+    fn from(request: &GenerateAiRequest) -> Self {
+        request.clone()
+    }
+}
+
 impl GenerateAiError {
     pub fn new(code: GenerateAiErrorCode, message: impl Into<String>) -> Self {
         GenerateAiError {
@@ -141,7 +197,15 @@ pub fn app_data_dir_failure_result() -> GenerateAiResult {
     ))
 }
 
-pub async fn generate_ai_result_in(base_dir: &Path, selected_text: &str) -> GenerateAiResult {
+pub async fn generate_ai_result_in(
+    base_dir: &Path,
+    request: impl Into<GenerateAiRequest>,
+) -> GenerateAiResult {
+    let request = request.into();
+    if let Err(error) = generate::validate_generate_ai_request(&request) {
+        return GenerateAiResult::failure(error);
+    }
+
     let config = match load_llm_config(base_dir) {
         Ok(Some(config)) => config,
         Ok(None) => {
@@ -158,7 +222,7 @@ pub async fn generate_ai_result_in(base_dir: &Path, selected_text: &str) -> Gene
         }
     };
 
-    match generate_ai_thinking(&config, selected_text).await {
+    match generate_ai_thinking(&config, request).await {
         Ok(content) => GenerateAiResult::success(content),
         Err(error) => GenerateAiResult::failure(error),
     }

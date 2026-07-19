@@ -280,6 +280,7 @@
 /* ========== Editor Page ========== */
 .editor-page {
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -464,6 +465,101 @@
 .ai-loading {
   color: var(--color-muted);
   font-size: 0.95rem;
+}
+
+.ai-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ai-message {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.ai-message-assistant {
+  padding: var(--space-3);
+  background: #f7fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ai-message-user {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-action);
+  color: var(--color-text);
+}
+
+.ai-message-status {
+  color: var(--color-muted);
+}
+
+.ai-follow-up-error,
+.ai-follow-up-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-follow-up-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ai-follow-up-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-action);
+}
+
+.ai-follow-up-input {
+  width: 100%;
+  min-height: 5.5rem;
+  max-height: 12rem;
+  resize: vertical;
+  padding: var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.ai-follow-up-input:focus {
+  outline: 2px solid var(--color-action);
+  outline-offset: 1px;
+}
+
+.ai-follow-up-input:disabled {
+  background: #f7fafc;
+  cursor: not-allowed;
+}
+
+.ai-follow-up-send {
+  align-self: flex-end;
+  min-width: 5rem;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-surface);
+  background: var(--color-action);
+  border: 1px solid var(--color-action);
+  border-radius: var(--radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-follow-up-send:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+.ai-follow-up-send:disabled,
+.ai-panel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ai-error-message {

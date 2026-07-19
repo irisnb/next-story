@@ -35,6 +35,10 @@ export interface AppDom {
   btnToggleAi: HTMLButtonElement;
   aiPanel: HTMLElement;
   aiResponse: HTMLPreElement;
+  aiConversation: HTMLElement;
+  aiFollowUpForm: HTMLFormElement;
+  aiFollowUpInput: HTMLTextAreaElement;
+  aiFollowUpSend: HTMLButtonElement;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -89,6 +93,10 @@ export function getAppDom(): AppDom {
     btnToggleAi: requireElement("btn-toggle-ai"),
     aiPanel: requireElement("ai-panel"),
     aiResponse: requireElement("ai-response"),
+    aiConversation: requireElement("ai-conversation"),
+    aiFollowUpForm: requireElement("ai-follow-up-form"),
+    aiFollowUpInput: requireElement("ai-follow-up-input"),
+    aiFollowUpSend: requireElement("ai-follow-up-send"),
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),
     btnDiscardAndLeave: requireElement("btn-discard-and-leave"),

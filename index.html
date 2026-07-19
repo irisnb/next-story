@@ -90,6 +90,7 @@
             </div>
             <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
             <pre id="ai-response" class="ai-response hidden"></pre>
+            <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
             <div id="ai-error-block" class="ai-error-block hidden">
               <div id="ai-error-message" class="ai-error-message"></div>
               <button id="ai-retry" class="ai-panel-btn" type="button">重新请求</button>
@@ -98,6 +99,18 @@
               <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
               <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
             </div>
+            <div id="ai-follow-up-error" class="ai-follow-up-error hidden">
+              <div id="ai-follow-up-error-message" class="ai-error-message"></div>
+              <div class="ai-follow-up-error-actions">
+                <button id="ai-follow-up-retry" class="ai-panel-btn" type="button">原样重试</button>
+                <button id="ai-follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
+              </div>
+            </div>
+            <form id="ai-follow-up-form" class="ai-follow-up-form hidden">
+              <label class="ai-follow-up-label" for="ai-follow-up-input">继续追问</label>
+              <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
+              <button id="ai-follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
+            </form>
           </div>
         </aside>
       </div>

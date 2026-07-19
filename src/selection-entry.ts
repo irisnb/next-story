@@ -17,11 +17,17 @@ export function decideSummonVisibility(input: EntryVisibilityInput): boolean {
   return input.hasMeaningfulSelection && input.focusEndVisible;
 }
 
-function sameRange(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
-  return a.notebook === b.notebook && a.start === b.start && a.end === b.end;
+export function isSameSummonedSelection(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
+  return (
+    a.notebook === b.notebook &&
+    a.start === b.start &&
+    a.end === b.end &&
+    a.selectedText === b.selectedText
+  );
 }
 
 export interface SelectionEntryController {
+  reset(): void;
   destroy(): void;
 }
 
@@ -78,7 +84,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     const snapshot = captureSelection(tabToNotebookKind(getCurrentNotebook()), textarea);
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
-    if (frozen && snapshot && sameRange(snapshot, frozen)) {
+    if (frozen && snapshot && isSameSummonedSelection(snapshot, frozen)) {
       button.classList.add("hidden");
       return;
     }
@@ -121,6 +127,10 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   document.addEventListener("selectionchange", update);
 
   return {
+    reset(): void {
+      frozen = null;
+      button.classList.add("hidden");
+    },
     destroy(): void {
       document.removeEventListener("selectionchange", update);
       button.remove();

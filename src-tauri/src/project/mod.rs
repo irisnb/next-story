@@ -91,7 +91,7 @@ impl ProjectPaths {
     pub fn new(root: PathBuf) -> Self {
         let user_text_dir = root.join("作品文本");
         let system_dir = root.join("next-story-system");
-        
+
         Self {
             user_text_dir: user_text_dir.clone(),
             draft_file: user_text_dir.join("草稿本.txt"),

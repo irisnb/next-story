@@ -12,12 +12,10 @@ pub fn create_project(name: String, save_location: PathBuf) -> Result<PathBuf, P
     let paths = ProjectPaths::new(project_root.clone());
 
     let create_result = (|| -> Result<(), ProjectError> {
-        fs::create_dir(&project_root)
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+        fs::create_dir(&project_root).map_err(|e| ProjectError::WriteError(e.to_string()))?;
         fs::create_dir(&paths.user_text_dir)
             .map_err(|e| ProjectError::WriteError(e.to_string()))?;
-        fs::create_dir(&paths.system_dir)
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+        fs::create_dir(&paths.system_dir).map_err(|e| ProjectError::WriteError(e.to_string()))?;
 
         // 创建空的文本文件
         fs::OpenOptions::new()
@@ -72,21 +70,15 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
     }
 
     if !paths.system_dir.is_dir() {
-        return Err(ProjectError::InvalidStructure(
-            "缺少系统文件夹".to_string(),
-        ));
+        return Err(ProjectError::InvalidStructure("缺少系统文件夹".to_string()));
     }
 
     // 检查必要文件是否存在
     if !paths.draft_file.is_file() {
-        return Err(ProjectError::InvalidStructure(
-            "缺少草稿本.txt".to_string(),
-        ));
+        return Err(ProjectError::InvalidStructure("缺少草稿本.txt".to_string()));
     }
     if !paths.main_file.is_file() {
-        return Err(ProjectError::InvalidStructure(
-            "缺少正文本.txt".to_string(),
-        ));
+        return Err(ProjectError::InvalidStructure("缺少正文本.txt".to_string()));
     }
     if !paths.metadata_file.is_file() {
         return Err(ProjectError::InvalidStructure(
@@ -116,14 +108,14 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
     // 读取元信息
     let metadata_json = fs::read_to_string(&paths.metadata_file)
         .map_err(|e| ProjectError::ReadError(e.to_string()))?;
-    let metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    let metadata: ProjectMetadata =
+        serde_json::from_str(&metadata_json).map_err(|e| ProjectError::ReadError(e.to_string()))?;
 
     // 读取文本内容
     let draft_content = fs::read_to_string(&paths.draft_file)
         .map_err(|e| ProjectError::ReadError(e.to_string()))?;
-    let main_content = fs::read_to_string(&paths.main_file)
-        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    let main_content =
+        fs::read_to_string(&paths.main_file).map_err(|e| ProjectError::ReadError(e.to_string()))?;
 
     Ok(ProjectOpenResult {
         metadata,
@@ -147,11 +139,11 @@ pub fn save_project(
     // 更新元信息中的更新时间
     let metadata_json = fs::read_to_string(&paths.metadata_file)
         .map_err(|e| ProjectError::ReadError(e.to_string()))?;
-    let mut metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
-    
+    let mut metadata: ProjectMetadata =
+        serde_json::from_str(&metadata_json).map_err(|e| ProjectError::ReadError(e.to_string()))?;
+
     metadata.updated_at = Utc::now().to_rfc3339();
-    
+
     let updated_json = serde_json::to_string_pretty(&metadata)
         .map_err(|e| ProjectError::WriteError(e.to_string()))?;
     write_file_atomically(&paths.metadata_file, &updated_json)?;
@@ -160,9 +152,9 @@ pub fn save_project(
 }
 
 fn write_file_atomically(path: &Path, content: &str) -> Result<(), ProjectError> {
-    let parent = path.parent().ok_or_else(|| {
-        ProjectError::WriteError("目标文件缺少父目录".to_string())
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| ProjectError::WriteError("目标文件缺少父目录".to_string()))?;
 
     let mut temp_file = tempfile::NamedTempFile::new_in(parent)
         .map_err(|e| ProjectError::WriteError(e.to_string()))?;

@@ -34,14 +34,19 @@ pub fn validate_project_name(name: &str) -> Result<(), ProjectError> {
 
     // Windows 保留名称
     let reserved = [
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
-    
+
     let upper_name = name.to_uppercase();
-    if reserved.iter().any(|r| upper_name == *r || upper_name.starts_with(&format!("{}.", r))) {
-        return Err(ProjectError::InvalidNameChars(format!("保留名称: {}", name)));
+    if reserved
+        .iter()
+        .any(|r| upper_name == *r || upper_name.starts_with(&format!("{}.", r)))
+    {
+        return Err(ProjectError::InvalidNameChars(format!(
+            "保留名称: {}",
+            name
+        )));
     }
 
     Ok(())
@@ -52,22 +57,20 @@ pub fn validate_save_location(path: &Path) -> Result<(), ProjectError> {
     // 检查父目录是否存在
     if !path.exists() {
         return Err(ProjectError::InaccessibleLocation(
-            path.to_string_lossy().to_string()
+            path.to_string_lossy().to_string(),
         ));
     }
 
     if !path.is_dir() {
         return Err(ProjectError::InaccessibleLocation(
-            "保存位置不是文件夹".to_string()
+            "保存位置不是文件夹".to_string(),
         ));
     }
 
     // 检查是否可写
     if let Ok(metadata) = path.metadata() {
         if metadata.permissions().readonly() {
-            return Err(ProjectError::InaccessibleLocation(
-                "目录不可写".to_string()
-            ));
+            return Err(ProjectError::InaccessibleLocation("目录不可写".to_string()));
         }
     }
 
@@ -79,7 +82,7 @@ pub fn check_target_not_exists(parent: &Path, name: &str) -> Result<(), ProjectE
     let target = parent.join(name);
     if target.exists() {
         return Err(ProjectError::FolderExists(
-            target.to_string_lossy().to_string()
+            target.to_string_lossy().to_string(),
         ));
     }
     Ok(())

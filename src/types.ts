@@ -59,6 +59,22 @@ export interface GenerateAiError {
   message: string;
 }
 
+export interface GenerateAiMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type GenerateAiRequest =
+  | {
+      kind: "first";
+      selected_text: string;
+    }
+  | {
+      kind: "follow_up";
+      selected_text: string;
+      messages: GenerateAiMessage[];
+    };
+
 /**
  * `generate_ai_thinking` 命令的窄返回。命令始终成功返回该枚举，
  * 便于前端在不依赖 Tauri 错误序列化细节的情况下区分成功与失败。

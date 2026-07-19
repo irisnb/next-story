@@ -1,7 +1,12 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { GenerateAiResult, LlmConfig, ProjectOpenResult } from "./types";
+import type {
+  GenerateAiRequest,
+  GenerateAiResult,
+  LlmConfig,
+  ProjectOpenResult,
+} from "./types";
 
 /** 与 Tauri `invoke` 同形的窄类型，便于在测试中注入假实现。 */
 export type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -58,15 +63,15 @@ export async function testLlmConnection(config: LlmConfig): Promise<void> {
 }
 
 /**
- * 发起一次真实 AI 思考生成。首版只把用户选中的原文交给后端，
- * 由后端加载唯一保存配置并集中组装固定 Prompt。前端不传入 API Key，
+ * 发起一次真实 AI 思考生成。前端提交冻结选区和受限的临时对话轮次，
+ * 由后端加载唯一保存配置、校验请求并集中组装固定 Prompt。前端不传入 API Key，
  * 也不持有任何写入草稿本或正文本的入口（见零写回边界）。
  *
  * 接受可选的 `call` 以便测试注入假 `invoke`，不依赖 Tauri 运行时。
  */
 export async function generateAiThinking(
-  selectedText: string,
+  request: GenerateAiRequest,
   call: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
-  return call<GenerateAiResult>("generate_ai_thinking", { selectedText });
+  return call<GenerateAiResult>("generate_ai_thinking", { request });
 }

@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { generateAiThinking, type InvokeFn } from "../src/project-api.ts";
-import type { GenerateAiResult } from "../src/types.ts";
+import type {
+  GenerateAiMessage,
+  GenerateAiRequest,
+  GenerateAiResult,
+} from "../src/types.ts";
+
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() =>
+    Value extends Right ? 1 : 2
+    ? true
+    : false;
+type Assert<Condition extends true> = Condition;
+type _FrontendCannotSubmitSystemRole = Assert<
+  Equal<GenerateAiMessage["role"], "user" | "assistant">
+>;
 
 /** 记录每次调用的假 invoke。 */
 function fakeInvoke() {
@@ -15,15 +29,20 @@ function fakeInvoke() {
   return { invoke, calls };
 }
 
-test("sends only the selected text to the generate command", async () => {
+test("sends a structured first request with only the frozen selection", async () => {
   const { invoke, calls } = fakeInvoke();
-  const result = await generateAiThinking("背叛", invoke);
+  const request: GenerateAiRequest = {
+    kind: "first",
+    selected_text: "背叛",
+  };
+  const result = await generateAiThinking(request, invoke);
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].cmd, "generate_ai_thinking");
 
   const args = calls[0].args;
-  assert.equal(args.selectedText, "背叛");
+  assert.deepEqual(args.request, request);
+  assert.equal("selectedText" in args, false);
   assert.equal("selected_text" in args, false);
   // 不携带任何草稿本 / 正文本 / 保存命令参数
   assert.equal("draftContent" in args, false);
@@ -37,8 +56,35 @@ test("sends only the selected text to the generate command", async () => {
 
 test("newlines and spaces in the selection are passed through unchanged", async () => {
   const { invoke, calls } = fakeInvoke();
-  await generateAiThinking(" 前后有空格 \n 换行 ", invoke);
-  assert.equal(calls[0].args.selectedText, " 前后有空格 \n 换行 ");
+  await generateAiThinking(
+    { kind: "first", selected_text: " 前后有空格 \n 换行 " },
+    invoke,
+  );
+  assert.deepEqual(calls[0].args.request, {
+    kind: "first",
+    selected_text: " 前后有空格 \n 换行 ",
+  });
+});
+
+test("sends all successful turns and the current follow-up exactly once", async () => {
+  const { invoke, calls } = fakeInvoke();
+  const request: GenerateAiRequest = {
+    kind: "follow_up",
+    selected_text: "冻结选区",
+    messages: [
+      { role: "assistant", content: "首次回应" },
+      { role: "user", content: "第一个问题" },
+      { role: "assistant", content: "第一个回答" },
+      { role: "user", content: "当前问题" },
+    ],
+  };
+
+  await generateAiThinking(request, invoke);
+
+  assert.deepEqual(calls[0].args, { request });
+  const serialized = JSON.stringify(calls[0].args);
+  assert.equal(serialized.match(/当前问题/g)?.length, 1);
+  assert.equal(serialized.includes('"role":"system"'), false);
 });
 
 test("propagates a structured failure without leaking notebooks or save calls", async () => {
@@ -52,7 +98,10 @@ test("propagates a structured failure without leaking notebooks or save calls", 
     return Promise.resolve(failure as never);
   };
 
-  const result = await generateAiThinking("x", invoke);
+  const result = await generateAiThinking(
+    { kind: "first", selected_text: "x" },
+    invoke,
+  );
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.error.code, "authentication");

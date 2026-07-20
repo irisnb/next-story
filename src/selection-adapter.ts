@@ -1,4 +1,4 @@
-import type { NotebookKind, SelectionSnapshot } from "./types";
+import type { NotebookTab, SelectionSnapshot } from "./types";
 
 /** textarea 的最小可读接口，便于在不依赖真实 DOM 的情况下测试适配器。 */
 export interface TextareaLike {
@@ -13,9 +13,10 @@ export interface TextareaLike {
  *
  * 快照保留用户选中的原始文字（含前后空格、标点、换行），不主动裁剪、改写或静默截断。
  * `start/end` 取选区两端的归一化位置，仅用于快照身份校验，不会发送给模型。
+ * `notebook` 直接使用当前标签页代码值（`draft` | `main`），不再翻译。
  */
 export function captureSelection(
-  notebook: NotebookKind,
+  notebook: NotebookTab,
   textarea: TextareaLike,
 ): SelectionSnapshot | null {
   const rawStart = textarea.selectionStart ?? 0;
@@ -37,9 +38,4 @@ export function captureSelection(
  */
 export function isMeaningfulSelection(snapshot: SelectionSnapshot | null): snapshot is SelectionSnapshot {
   return snapshot !== null && snapshot.selectedText.trim().length > 0;
-}
-
-/** 把 UI 标签页标识映射到代码层本子标识（正文本用 `manuscript`）。 */
-export function tabToNotebookKind(tab: "draft" | "main"): NotebookKind {
-  return tab === "draft" ? "draft" : "manuscript";
 }

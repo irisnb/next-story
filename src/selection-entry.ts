@@ -1,5 +1,5 @@
 import type { AppDom } from "./dom.ts";
-import { captureSelection, isMeaningfulSelection, tabToNotebookKind } from "./selection-adapter.ts";
+import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
 import { getCaretCoordinates } from "./caret-coordinates.ts";
 import type { NotebookTab, SelectionSnapshot } from "./types.ts";
 
@@ -81,7 +81,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
 
   function update(): void {
     const textarea = activeTextarea();
-    const snapshot = captureSelection(tabToNotebookKind(getCurrentNotebook()), textarea);
+    const snapshot = captureSelection(getCurrentNotebook(), textarea);
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
     if (frozen && snapshot && isSameSummonedSelection(snapshot, frozen)) {
@@ -106,7 +106,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
 
   function handleSummonClick(): void {
     const textarea = activeTextarea();
-    const snapshot = captureSelection(tabToNotebookKind(getCurrentNotebook()), textarea);
+    const snapshot = captureSelection(getCurrentNotebook(), textarea);
     if (!isMeaningfulSelection(snapshot)) return;
     frozen = snapshot;
     button.classList.add("hidden");

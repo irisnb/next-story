@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { captureSelection, isMeaningfulSelection, tabToNotebookKind } from "../src/selection-adapter.ts";
-import type { NotebookKind } from "../src/types.ts";
+import { captureSelection, isMeaningfulSelection } from "../src/selection-adapter.ts";
 
-function textarea(value: string, start: number, end: number) {
+function textarea(value: string, start: number | null, end: number | null) {
   return { value, selectionStart: start, selectionEnd: end };
 }
 
@@ -18,9 +17,9 @@ test("captures a draft snapshot with the raw selected text", () => {
   });
 });
 
-test("captures a manuscript snapshot for the main notebook", () => {
-  const snapshot = captureSelection("manuscript", textarea("abc", 1, 3));
-  assert.equal(snapshot?.notebook, "manuscript");
+test("captures a main snapshot for the main notebook", () => {
+  const snapshot = captureSelection("main", textarea("abc", 1, 3));
+  assert.equal(snapshot?.notebook, "main");
   assert.equal(snapshot?.selectedText, "bc");
 });
 
@@ -65,13 +64,18 @@ test("snapshot is frozen: later edits to the textarea do not mutate it", () => {
   assert.equal(snapshot?.selectedText, "原始文字");
 });
 
-test("maps the main tab to the manuscript notebook kind", () => {
-  assert.equal(tabToNotebookKind("draft"), "draft");
-  assert.equal(tabToNotebookKind("main"), "manuscript");
+test("captureSelection keeps the passed main notebook id without translation", () => {
+  const snapshot = captureSelection("main", textarea("正文本选区", 0, 3));
+  assert.deepEqual(snapshot, {
+    notebook: "main",
+    selectedText: "正文本",
+    start: 0,
+    end: 3,
+  });
 });
 
 test("selection direction does not affect the captured range", () => {
-  const forward = captureSelection("draft" as NotebookKind, textarea("abcdef", 1, 4));
-  const backward = captureSelection("draft" as NotebookKind, textarea("abcdef", 4, 1));
+  const forward = captureSelection("draft", textarea("abcdef", 1, 4));
+  const backward = captureSelection("draft", textarea("abcdef", 4, 1));
   assert.deepEqual(forward, backward);
 });

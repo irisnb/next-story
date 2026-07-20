@@ -21,21 +21,23 @@ export interface ProjectState {
   mainContent: string;
 }
 
-export type NotebookTab = "draft" | "main";
-
 /**
- * 代码层本子标识。
- * - `draft` 对应草稿本（UI 的 `draft` 标签页）。
- * - `manuscript` 只作为明确对应“正文本”的代码层标识，不作为第二个产品名称。
+ * 两个用户文本本子的唯一代码标识。
+ * - `draft` 对应草稿本
+ * - `main` 对应正文本
+ *
+ * 标签页、本子内存状态与选区快照共用这套值。
+ * 注意：这是本子标识，与 Tauri 窗口 id、入口文件 `main.ts` / `main.rs` 无关。
  */
-export type NotebookKind = "draft" | "manuscript";
+export type NotebookTab = "draft" | "main";
 
 /**
  * 与具体编辑器控件解耦的选区快照。
  * 点击“召唤 AI”时冻结；`start/end` 仅用于快照身份校验，不发送给模型。
+ * `notebook` 与标签页共用 `draft | main`，不发送给模型。
  */
 export interface SelectionSnapshot {
-  notebook: NotebookKind;
+  notebook: NotebookTab;
   selectedText: string;
   start: number;
   end: number;

@@ -1,3 +1,9 @@
+# summon-ai-follow-up Specification
+
+## Purpose
+定义选区召唤 AI 首次回应成功后的单条线性临时追问能力，包括追问入口开放时机、冻结选区锚点、失败恢复和迟到结果隔离。
+
+## Requirements
 ### Requirement: 首次回应成功后才能继续追问
 系统 SHALL 只在当前召唤 AI 的首次回应成功后开放追问输入，并 MUST NOT 在选区召唤之前或首次请求生成期间提供召唤文字输入。
 

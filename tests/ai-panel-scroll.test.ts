@@ -25,7 +25,7 @@ test("resets for the initial request and each different snapshot identity", () =
   assert.equal(controller.shouldReset(loading(first)), true);
   assert.equal(controller.shouldReset(loading(snapshot("不同文字", "draft", 0))), true);
   assert.equal(controller.shouldReset(loading(snapshot("相同文字", "draft", 5))), true);
-  assert.equal(controller.shouldReset(loading(snapshot("相同文字", "manuscript", 0))), true);
+  assert.equal(controller.shouldReset(loading(snapshot("相同文字", "main", 0))), true);
 });
 
 test("preserves scroll when retrying the same frozen snapshot", () => {

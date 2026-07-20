@@ -19,6 +19,32 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **WHEN** 用户点击草稿本标签页
 - **THEN** 系统显示草稿本编辑区
 
+### Requirement: 两个本子的代码标识唯一对应
+系统在编辑器标签页、本子内存状态与保存相关前端状态中，对两个用户文本本子的代码标识 SHALL 仅为 `draft` 与 `main`，并 MUST 分别唯一对应草稿本与正文本。系统 MUST NOT 为同一本子引入第二套并行英文标识（例如用 `manuscript` 再指正文本）。用户可见名称与磁盘文件名仍为中文「草稿本」「正文本」及既有路径，本要求不授权修改磁盘文件名。
+
+#### Scenario: 标签页与状态使用 draft/main
+- **WHEN** 实现或读取当前本子标签、本子内存内容键或保存快照中的本子字段
+- **THEN** 草稿本使用代码标识 `draft`
+- **AND** 正文本使用代码标识 `main`
+- **AND** 不存在第三种本子代码标识表示上述二者之一
+
+#### Scenario: 代码标识不改变用户可见命名
+- **WHEN** 用户查看编辑器标签或作品文件夹中的文本文件
+- **THEN** 仍看到草稿本与正文本（及既有 `作品文本/草稿本.txt`、`作品文本/正文本.txt`）
+- **AND** 代码层 `draft`/`main` 不作为第二套产品中文名展示给用户
+
+#### Scenario: 保存字段语义保持不变
+- **WHEN** 系统保存或重新打开作品
+- **THEN** 草稿本内容仍按既有草稿本保存流程处理
+- **AND** 正文本内容仍按既有正文本保存流程处理
+- **AND** 本要求不授权把 Rust 或 IPC 中既有 `main_content` 语义改为其它名称
+
+#### Scenario: 禁止为正文本恢复第二英文名
+- **WHEN** 后续实现新增与两个本子相关的前端状态、测试夹具或内部快照字段
+- **THEN** 草稿本 SHALL 使用 `draft`
+- **AND** 正文本 SHALL 使用 `main`
+- **AND** 不得使用 `manuscript`、`screenplay` 或其它英文名再次表示正文本
+
 ### Requirement: User can edit draft and main text
 系统 SHALL 允许用户在草稿本和正文本中输入和编辑纯文本。
 
@@ -187,4 +213,3 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 写盘失败
 - **THEN** 系统显示“保存失败：<原因>”
 - **AND** 当前内容仍被视为未保存修改
-

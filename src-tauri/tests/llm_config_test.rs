@@ -13,6 +13,13 @@ use next_story_lib::llm_config::{
 };
 use tempfile::TempDir;
 
+const EXPECTED_FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文。\
+你只能基于这段选区原文回应，先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
+追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
+不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
+不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
+不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
+
 fn sample_config(api_base_url: String) -> LlmConfig {
     LlmConfig {
         api_base_url,
@@ -528,7 +535,7 @@ async fn generate_sends_exact_fixed_messages_without_context() {
         value["messages"][0],
         serde_json::json!({
             "role":"system",
-            "content":"你是陪剧本创作者思考的助手。请围绕用户选中的剧本文字，提出能够帮助其继续思考的问题，并给出几个可能的思考方向。不要代写正文，不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+            "content": EXPECTED_FIXED_SYSTEM_PROMPT
         })
     );
     assert_eq!(
@@ -536,6 +543,84 @@ async fn generate_sends_exact_fixed_messages_without_context() {
         serde_json::json!({"role":"user","content":"选区原文"})
     );
     assert_eq!(value.as_object().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn generate_first_prompt_declares_grounding_and_output_boundaries() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+
+    generate_ai_thinking(&sample_config(base), "选区原文")
+        .await
+        .expect("generate");
+
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    let system_prompt = value["messages"][0]["content"]
+        .as_str()
+        .expect("system prompt");
+
+    for required in [
+        "冻结选区原文",
+        "只能基于这段选区原文",
+        "从文字里看到的内容",
+        "可能解释",
+        "问题",
+        "可能方向",
+        "不直接改草稿本或正文本",
+        "不代写正文",
+        "不润色",
+        "不提供替换文本",
+        "不判断故事好坏",
+        "不判断正确或错误",
+        "不判断高级或低级",
+    ] {
+        assert!(
+            system_prompt.contains(required),
+            "首轮 prompt 缺少约束: {required}\n{system_prompt}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn generate_prompt_rejects_unavailable_context_and_memory_claims() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+
+    generate_ai_thinking(&sample_config(base), "选区原文")
+        .await
+        .expect("generate");
+
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    let system_prompt = value["messages"][0]["content"]
+        .as_str()
+        .expect("system prompt");
+
+    for prohibited_claim in [
+        "选区前后文",
+        "当前本子全文",
+        "摘要",
+        "作品元数据",
+        "AI 内容库",
+        "历史会话",
+        "记忆",
+        "用户确认的作品事实",
+    ] {
+        let expected = format!("不能声称读取或使用{prohibited_claim}");
+        assert!(
+            system_prompt.contains(&expected),
+            "prompt 缺少不可用上下文声明: {expected}\n{system_prompt}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -567,7 +652,7 @@ async fn generate_follow_up_sends_exact_full_conversation_once_without_extra_con
         serde_json::json!([
             {
                 "role":"system",
-                "content":"你是陪剧本创作者思考的助手。请围绕用户选中的剧本文字，提出能够帮助其继续思考的问题，并给出几个可能的思考方向。不要代写正文，不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+                "content": EXPECTED_FIXED_SYSTEM_PROMPT
             },
             {"role":"user","content":"冻结选区"},
             {"role":"assistant","content":"首次回应"},
@@ -577,16 +662,58 @@ async fn generate_follow_up_sends_exact_full_conversation_once_without_extra_con
         ])
     );
     assert_eq!(body.matches("当前问题").count(), 1);
-    for absent in [
-        "附近上下文",
-        "本子全文",
-        "自动摘要",
-        "作品信息",
-        "AI 内容库",
-    ] {
-        assert!(!body.contains(absent));
+    for message in value["messages"].as_array().unwrap().iter().skip(1) {
+        let content = message["content"].as_str().expect("message content");
+        for absent in [
+            "附近上下文",
+            "本子全文",
+            "自动摘要",
+            "作品信息",
+            "AI 内容库",
+        ] {
+            assert!(!content.contains(absent));
+        }
     }
     assert_eq!(value["stream"], false);
+}
+
+#[tokio::test]
+async fn generate_follow_up_prompt_anchors_to_frozen_selection_and_temporary_thread() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+    let request = follow_up_request(
+        "冻结选区",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "当前问题"),
+        ],
+    );
+
+    generate_ai_thinking(&sample_config(base), &request)
+        .await
+        .expect("follow-up generate");
+
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    let system_prompt = value["messages"][0]["content"]
+        .as_str()
+        .expect("system prompt");
+
+    for required in [
+        "追问仍锚定首次冻结选区",
+        "只把已有轮次当作当前临时线性对话",
+        "不当作持久历史",
+        "不当作作品事实",
+    ] {
+        assert!(
+            system_prompt.contains(required),
+            "追问 prompt 缺少约束: {required}\n{system_prompt}"
+        );
+    }
 }
 
 #[tokio::test]

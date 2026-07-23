@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>思维扩展预备态 · UI 预览</title>
+    <style>
+      :root {
+        --color-surface: #fff;
+        --color-page: #fafafa;
+        --color-text: #333;
+        --color-heading: #1a1a1a;
+        --color-muted: #718096;
+        --color-border: #e2e8f0;
+        --color-action: #4a5568;
+        --color-action-hover: #2d3748;
+        --color-soft: #f7fafc;
+        --color-soft-hover: #edf2f7;
+        --color-selection: #c6d4ea;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-6: 1.5rem;
+        --radius-md: 6px;
+        --radius-lg: 8px;
+        --panel-width: 420px;
+        --font: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont,
+          "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        font-family: var(--font);
+        font-size: 16px;
+        line-height: 1.5;
+        color: var(--color-text);
+        background: var(--color-page);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      /* Preview chrome: unobtrusive state switcher */
+      .preview-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-4);
+        padding: 0.55rem 1rem;
+        background: #f1f5f9;
+        border-bottom: 1px solid var(--color-border);
+        color: var(--color-muted);
+        font-size: 0.8rem;
+      }
+
+      .preview-bar-note {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .state-switch {
+        display: inline-flex;
+        flex: none;
+        padding: 2px;
+        background: #e2e8f0;
+        border-radius: var(--radius-md);
+      }
+
+      .state-switch button {
+        border: none;
+        background: transparent;
+        color: var(--color-action);
+        padding: 0.35rem 0.75rem;
+        border-radius: 4px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .state-switch button[aria-pressed="true"] {
+        background: var(--color-surface);
+        color: var(--color-heading);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      }
+
+      .state-switch button:hover:not([aria-pressed="true"]) {
+        color: var(--color-heading);
+      }
+
+      /* Editor shell */
+      .editor-page {
+        height: calc(100% - 2.4rem);
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2rem;
+        background: var(--color-surface);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .project-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-heading);
+      }
+
+      .editor-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .save-status {
+        font-size: 0.85rem;
+        color: var(--color-muted);
+        margin-right: 0.25rem;
+      }
+
+      .save-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+        border: none;
+        border-radius: var(--radius-md);
+        background: var(--color-action);
+        color: #fff;
+        cursor: default;
+      }
+
+      .save-btn.is-quiet {
+        background: #718096;
+      }
+
+      .editor-tabs {
+        display: flex;
+        background: var(--color-soft);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .tab-btn {
+        padding: 1rem 2rem;
+        font-size: 1rem;
+        border: none;
+        background: transparent;
+        color: var(--color-text);
+        border-bottom: 2px solid transparent;
+        cursor: default;
+      }
+
+      .tab-btn.active {
+        background: var(--color-surface);
+        border-bottom-color: var(--color-action);
+      }
+
+      .editor-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+
+      .editor-notebooks {
+        flex: 1;
+        display: flex;
+        min-width: 0;
+        padding: 1rem;
+        position: relative;
+      }
+
+      .notebook-surface {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        padding: 1.25rem 1.35rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.7;
+        color: var(--color-text);
+      }
+
+      .notebook-surface .sel {
+        background: var(--color-selection);
+        border-radius: 2px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+
+      /* Floating dual entry near selection */
+      .ai-entry {
+        position: absolute;
+        z-index: 20;
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+        left: 42%;
+        top: 38%;
+      }
+
+      body[data-state="entry"] .ai-entry {
+        display: flex;
+      }
+
+      .ai-entry-btn {
+        border: none;
+        background: transparent;
+        color: var(--color-action);
+        text-align: left;
+        padding: 0.45rem 0.8rem;
+        border-radius: 4px;
+        cursor: default;
+        white-space: nowrap;
+        font-size: 0.85rem;
+      }
+
+      .ai-entry-btn:hover {
+        background: var(--color-soft);
+        color: var(--color-heading);
+      }
+
+      .ai-entry-btn.primary {
+        background: var(--color-action);
+        color: #fff;
+      }
+
+      .ai-entry-btn.primary:hover {
+        background: var(--color-action-hover);
+      }
+
+      /* AI panel */
+      .ai-panel {
+        width: var(--panel-width);
+        flex: none;
+        display: none;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--color-surface);
+        border-left: 1px solid var(--color-border);
+      }
+
+      body[data-state="prestate"] .ai-panel {
+        display: flex;
+      }
+
+      body[data-state="prestate"] .save-btn[data-ai-toggle] {
+        background: var(--color-action-hover);
+      }
+
+      .ai-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .ai-panel-title {
+        font-weight: 600;
+        font-size: 1rem;
+        color: var(--color-heading);
+      }
+
+      .ai-panel-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-surface);
+        color: var(--color-action);
+        cursor: default;
+      }
+
+      .ai-panel-body {
+        flex: 1;
+        overflow: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .prestate {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+        flex: 1;
+      }
+
+      .prestate-meta {
+        font-size: 0.85rem;
+        color: var(--color-muted);
+      }
+
+      .prestate-input {
+        width: 100%;
+        min-height: 5.5rem;
+        max-height: 12rem;
+        resize: vertical;
+        padding: var(--space-3);
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+      }
+
+      .prestate-input:focus {
+        outline: 2px solid var(--color-action);
+        outline-offset: 1px;
+      }
+
+      .prestate-input::placeholder {
+        color: #a0aec0;
+      }
+
+      .prestate-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .prestate-start {
+        min-width: 5rem;
+        padding: var(--space-2) var(--space-4);
+        color: #fff;
+        background: var(--color-action);
+        border: 1px solid var(--color-action);
+        border-radius: var(--radius-md);
+        cursor: default;
+      }
+
+      .prestate-start:hover {
+        background: var(--color-action-hover);
+      }
+
+      .preview-boundary {
+        margin-top: auto;
+        padding-top: var(--space-4);
+        border-top: 1px dashed var(--color-border);
+        font-size: 0.75rem;
+        color: var(--color-muted);
+        line-height: 1.5;
+      }
+
+      @media (max-width: 760px) {
+        .editor-header {
+          padding: 0.75rem 1rem;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+
+        .ai-panel {
+          position: fixed;
+          top: 2.4rem;
+          right: 0;
+          bottom: 0;
+          width: min(420px, 90vw);
+          box-shadow: -2px 0 12px rgba(0, 0, 0, 0.18);
+          z-index: 30;
+        }
+
+        .preview-bar {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="entry">
+    <div class="preview-bar">
+      <span class="preview-bar-note">OpenSpec 提案预览 · 非最终实现 · 仅展示界面状态</span>
+      <div class="state-switch" role="group" aria-label="预览状态">
+        <button type="button" id="btn-state-entry" aria-pressed="true">选区入口</button>
+        <button type="button" id="btn-state-prestate" aria-pressed="false">思维扩展预备态</button>
+      </div>
+    </div>
+
+    <main class="editor-page" aria-label="编辑器预览">
+      <header class="editor-header">
+        <h1 class="project-name">未命名作品</h1>
+        <div class="editor-actions">
+          <span class="save-status">已保存</span>
+          <button type="button" class="save-btn is-quiet" tabindex="-1">返回欢迎页</button>
+          <button type="button" class="save-btn is-quiet" tabindex="-1">设置</button>
+          <button type="button" class="save-btn" data-ai-toggle tabindex="-1">AI 面板</button>
+          <button type="button" class="save-btn" tabindex="-1">保存</button>
+        </div>
+      </header>
+
+      <nav class="editor-tabs" aria-label="本子">
+        <button type="button" class="tab-btn active" tabindex="-1">草稿本</button>
+        <button type="button" class="tab-btn" tabindex="-1">正文本</button>
+      </nav>
+
+      <div class="editor-body">
+        <div class="editor-notebooks">
+          <div class="notebook-surface" aria-label="草稿本">
+内景 · 咖啡馆 · 日
+
+小雨坐在靠窗的位置，手指反复摩挲杯沿。对面的椅子空着。
+
+小雨
+你说过会回来。你说过，只要我还在这里等。
+
+她停顿，像是在把下一句从喉咙里拽出来。
+
+小雨
+<span class="sel">可你把这句话留下，自己却走了。我不知道该继续信你，还是该把杯子推开，像从没等过你一样。</span>
+
+店员擦着远处的桌子，没有看这边。窗外雨声变得更密。
+          </div>
+
+          <!-- State 1: dual floating entry near selection -->
+          <div class="ai-entry" role="toolbar" aria-label="AI 开启入口">
+        <button type="button" class="ai-entry-btn primary" tabindex="-1">及时召唤</button>
+            <button type="button" class="ai-entry-btn" id="btn-open-prestate" tabindex="-1">思维扩展</button>
+          </div>
+        </div>
+
+        <!-- State 2: thinking expansion prestate in AI panel -->
+        <aside class="ai-panel" aria-label="AI 面板">
+          <div class="ai-panel-header">
+            <span class="ai-panel-title">思维扩展</span>
+            <button type="button" class="ai-panel-btn" id="btn-collapse" tabindex="-1">收起</button>
+          </div>
+          <div class="ai-panel-body">
+            <div class="prestate">
+              <div class="prestate-meta">已选中 43 字</div>
+              <label class="visually-hidden" for="direction-input">方向</label>
+              <textarea
+                id="direction-input"
+                class="prestate-input"
+                rows="3"
+                placeholder="写下你想追的方向"
+              ></textarea>
+              <div class="prestate-actions">
+                <button type="button" class="prestate-start" tabindex="-1">开始</button>
+              </div>
+              <p class="preview-boundary">
+                预览说明：AI 只在本面板工作。界面无插入、替换、应用到正文等写回控件；草稿本与正文本保持用户手写内容。
+              </p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <style>
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+
+    <script>
+      (function () {
+        var body = document.body;
+        var btnEntry = document.getElementById("btn-state-entry");
+        var btnPrestate = document.getElementById("btn-state-prestate");
+        var btnOpenPrestate = document.getElementById("btn-open-prestate");
+        var btnCollapse = document.getElementById("btn-collapse");
+        var directionInput = document.getElementById("direction-input");
+
+        function setState(state) {
+          body.setAttribute("data-state", state);
+          var isEntry = state === "entry";
+          btnEntry.setAttribute("aria-pressed", isEntry ? "true" : "false");
+          btnPrestate.setAttribute("aria-pressed", isEntry ? "false" : "true");
+          if (!isEntry) {
+            // Optional focus for prestate, matching product intent
+            window.setTimeout(function () {
+              directionInput.focus();
+            }, 0);
+          }
+        }
+
+        btnEntry.addEventListener("click", function () {
+          setState("entry");
+        });
+        btnPrestate.addEventListener("click", function () {
+          setState("prestate");
+        });
+        btnOpenPrestate.addEventListener("click", function () {
+          setState("prestate");
+        });
+        btnCollapse.addEventListener("click", function () {
+          setState("entry");
+        });
+
+        // Decorative only: Start does not call any API
+        document.querySelector(".prestate-start").addEventListener("click", function (e) {
+          e.preventDefault();
+        });
+      })();
+    </script>
+  </body>
+</html>

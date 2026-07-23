@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>选区 AI 入口 · 方案 C 预览</title>
+    <style>
+      :root {
+        --color-surface: #fff;
+        --color-page: #fafafa;
+        --color-text: #333;
+        --color-heading: #1a1a1a;
+        --color-muted: #718096;
+        --color-border: #e2e8f0;
+        --color-action: #4a5568;
+        --color-action-hover: #2d3748;
+        --color-soft: #f7fafc;
+        --color-soft-hover: #edf2f7;
+        --color-selection: #c6d4ea;
+        --color-chip: #edf2f7;
+        --color-focus: #64748b;
+        --space-1: 0.25rem;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-5: 1.25rem;
+        --space-6: 1.5rem;
+        --radius-sm: 4px;
+        --radius-md: 6px;
+        --radius-lg: 8px;
+        --radius-pill: 999px;
+        --shadow-entry: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.06);
+        --shadow-menu: 0 4px 16px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(15, 23, 42, 0.06);
+        --panel-width: 360px;
+        --font: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+        --dur: 140ms;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        font-family: var(--font);
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--color-text);
+        background: #eef1f5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: var(--space-4) var(--space-4) var(--space-6);
+      }
+
+      .banner {
+        background: #f8fafc;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-3) var(--space-4);
+        margin-bottom: var(--space-4);
+        color: var(--color-muted);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+
+      .banner strong {
+        color: var(--color-heading);
+        font-weight: 600;
+      }
+
+      .banner-title {
+        display: block;
+        color: var(--color-heading);
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-bottom: 0.3rem;
+      }
+
+      code {
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 0.9em;
+        background: #e2e8f0;
+        padding: 0.05em 0.3em;
+        border-radius: 3px;
+        color: var(--color-heading);
+      }
+
+      .card {
+        background: var(--color-page);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      }
+
+      .card-state-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        padding: 0.45rem var(--space-3);
+        background: #f1f5f9;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .card-state-bar button {
+        border: none;
+        background: transparent;
+        color: var(--color-action);
+        padding: 0.28rem 0.55rem;
+        border-radius: var(--radius-sm);
+        font-size: 0.72rem;
+      }
+
+      .card-state-bar button[aria-pressed="true"] {
+        background: var(--color-surface);
+        color: var(--color-heading);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      }
+
+      .card-state-bar button:hover:not([aria-pressed="true"]) {
+        color: var(--color-heading);
+      }
+
+      .card-state-bar button:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 1px;
+      }
+
+      .scene {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 480px;
+        background: var(--color-page);
+      }
+
+      .scene-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.55rem 0.75rem;
+        background: var(--color-surface);
+        border-bottom: 1px solid var(--color-border);
+        gap: 0.5rem;
+      }
+
+      .scene-title {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--color-heading);
+      }
+
+      .scene-actions {
+        display: flex;
+        gap: 0.3rem;
+      }
+
+      .scene-chip {
+        padding: 0.22rem 0.5rem;
+        font-size: 0.68rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        background: var(--color-soft);
+        color: var(--color-muted);
+        cursor: default;
+      }
+
+      .scene-chip.is-on {
+        background: var(--color-action);
+        border-color: var(--color-action);
+        color: #fff;
+      }
+
+      .scene-tabs {
+        display: flex;
+        background: var(--color-soft);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .scene-tab {
+        padding: 0.45rem 0.85rem;
+        font-size: 0.78rem;
+        border: none;
+        background: transparent;
+        color: var(--color-text);
+        border-bottom: 2px solid transparent;
+        cursor: default;
+      }
+
+      .scene-tab.active {
+        background: var(--color-surface);
+        border-bottom-color: var(--color-action);
+        color: var(--color-heading);
+      }
+
+      .scene-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        position: relative;
+      }
+
+      .notebook-wrap {
+        flex: 1;
+        min-width: 0;
+        padding: 0.65rem;
+        position: relative;
+      }
+
+      .notebook {
+        height: 100%;
+        min-height: 320px;
+        padding: 0.85rem 0.95rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.7;
+        font-size: 0.86rem;
+        color: var(--color-text);
+      }
+
+      .notebook .sel {
+        background: var(--color-selection);
+        border-radius: 2px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+
+      /* ── 方案 C：跟随选区的极简入口 + 右侧浮层菜单 ── */
+      .entry-c {
+        position: absolute;
+        z-index: 20;
+        left: calc(56% + 0.4rem);
+        top: 41%;
+        display: none;
+      }
+
+      .entry-c::before {
+        content: "";
+        position: absolute;
+        left: -0.42rem;
+        top: 50%;
+        width: 0.38rem;
+        height: 1px;
+        background: #94a3b8;
+        opacity: 0.65;
+        transform: translateY(-50%);
+      }
+
+      .card[data-state="idle"] .entry-c,
+      .card[data-state="menu-open"] .entry-c {
+        display: block;
+      }
+
+      .entry-c-star {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: 1px solid var(--color-border);
+        border-radius: 50%;
+        background: var(--color-surface);
+        box-shadow: var(--shadow-entry);
+        color: var(--color-muted);
+        transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+          color var(--dur) var(--ease);
+      }
+
+      .entry-c-star:hover {
+        background: var(--color-soft);
+        border-color: #cbd5e1;
+        color: var(--color-action);
+      }
+
+      .entry-c-star:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 2px;
+      }
+
+      .card[data-state="menu-open"] .entry-c-star {
+        color: var(--color-action);
+        border-color: #cbd5e1;
+        background: var(--color-soft);
+      }
+
+      .entry-c-dot {
+        width: 0.38rem;
+        height: 0.38rem;
+        border-radius: 50%;
+        background: #94a3b8;
+        transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+      }
+
+      .entry-c-star:hover .entry-c-dot,
+      .card[data-state="menu-open"] .entry-c-dot {
+        background: var(--color-action);
+        transform: scale(1.08);
+      }
+
+      .entry-c-menu {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: calc(100% + 0.45rem);
+        transform: translateY(-50%);
+        min-width: 8.5rem;
+        padding: 0.28rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-menu);
+      }
+
+      .entry-c-menu::before {
+        content: "";
+        position: absolute;
+        left: -5px;
+        top: 50%;
+        width: 8px;
+        height: 8px;
+        border-left: 1px solid var(--color-border);
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface);
+        transform: translateY(-50%) rotate(45deg);
+      }
+
+      .card[data-state="menu-open"] .entry-c-menu {
+        display: block;
+      }
+
+      .entry-c-menu button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        color: var(--color-text);
+        padding: 0.48rem 0.7rem;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        white-space: nowrap;
+      }
+
+      .entry-c-menu button:hover {
+        background: var(--color-soft);
+        color: var(--color-heading);
+      }
+
+      .entry-c-menu button:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: -1px;
+      }
+
+      /* ── AI panel ── */
+      .ai-panel {
+        width: var(--panel-width);
+        max-width: 42%;
+        flex: none;
+        display: none;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--color-surface);
+        border-left: 1px solid var(--color-border);
+      }
+
+      .card[data-panel="open"] .ai-panel {
+        display: flex;
+      }
+
+      .ai-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.55rem 0.75rem;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .ai-panel-title {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--color-heading);
+      }
+
+      .ai-panel-btn {
+        padding: 0.28rem 0.55rem;
+        font-size: 0.72rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface);
+        color: var(--color-action);
+      }
+
+      .ai-panel-btn:hover {
+        background: var(--color-soft);
+      }
+
+      .ai-panel-btn:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 1px;
+      }
+
+      .ai-panel-body {
+        flex: 1;
+        overflow: auto;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        font-size: 0.8rem;
+      }
+
+      .panel-meta {
+        font-size: 0.75rem;
+        color: var(--color-muted);
+      }
+
+      .panel-empty {
+        color: var(--color-muted);
+        font-size: 0.8rem;
+        line-height: 1.55;
+      }
+
+      .panel-reply {
+        color: var(--color-text);
+        white-space: pre-wrap;
+        line-height: 1.65;
+        font-size: 0.8rem;
+      }
+
+      .prestate-input {
+        width: 100%;
+        min-height: 4.5rem;
+        resize: vertical;
+        padding: var(--space-2) var(--space-3);
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+
+      .prestate-input:focus {
+        outline: 2px solid var(--color-action);
+        outline-offset: 1px;
+      }
+
+      .prestate-input::placeholder {
+        color: #a0aec0;
+      }
+
+      .prestate-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .btn-primary {
+        min-width: 4.5rem;
+        padding: 0.4rem 0.9rem;
+        color: #fff;
+        background: var(--color-action);
+        border: 1px solid var(--color-action);
+        border-radius: var(--radius-md);
+        font-size: 0.82rem;
+      }
+
+      .btn-primary:hover {
+        background: var(--color-action-hover);
+      }
+
+      .btn-primary:focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 2px;
+      }
+
+      .panel-boundary {
+        margin-top: auto;
+        padding-top: var(--space-3);
+        border-top: 1px dashed var(--color-border);
+        font-size: 0.7rem;
+        color: var(--color-muted);
+        line-height: 1.5;
+      }
+
+      .footer-hint {
+        margin-top: var(--space-4);
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--color-muted);
+        line-height: 1.5;
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          padding: var(--space-3);
+        }
+
+        .ai-panel {
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          max-width: 88%;
+          width: min(320px, 88%);
+          box-shadow: -2px 0 12px rgba(0, 0, 0, 0.12);
+          z-index: 30;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="banner" role="note">
+        <span class="banner-title">方案 C 预览 · 非产品实现</span>
+        用 <code>file://</code> 直接打开即可。入口跟随当前选区末端出现；点击后从入口右侧展开功能菜单（当前两项：及时召唤、思维扩展）；选中后打开右侧 AI 面板。
+        AI 结果只在面板内，<strong>无插入 / 替换 / 应用到正文</strong>。
+      </div>
+
+      <article class="card" data-state="idle" data-panel="closed" id="preview">
+        <div class="card-state-bar" role="group" aria-label="预览状态">
+          <button type="button" data-set-state="idle" aria-pressed="true">选区入口</button>
+          <button type="button" data-set-state="menu-open" aria-pressed="false">菜单展开</button>
+          <button type="button" data-set-state="summoned" aria-pressed="false">及时召唤</button>
+          <button type="button" data-set-state="expanded" aria-pressed="false">思维扩展预备</button>
+        </div>
+
+        <div class="scene">
+          <div class="scene-header">
+            <span class="scene-title">未命名作品</span>
+            <div class="scene-actions">
+              <span class="scene-chip">已保存</span>
+              <span class="scene-chip" data-panel-chip>AI 面板</span>
+            </div>
+          </div>
+          <div class="scene-tabs">
+            <span class="scene-tab active">草稿本</span>
+            <span class="scene-tab">正文本</span>
+          </div>
+          <div class="scene-body">
+            <div class="notebook-wrap">
+              <div class="notebook" aria-label="草稿本示意">
+内景 · 咖啡馆 · 日
+
+小雨坐在靠窗的位置，手指反复摩挲杯沿。对面的椅子空着。
+
+小雨
+你说过会回来。你说过，只要我还在这里等。
+
+她停顿，像是在把下一句从喉咙里拽出来。
+
+小雨
+<span class="sel">可你把这句话留下，自己却走了。我不知道该继续信你，还是该把杯子推开，像从没等过你一样。</span>
+
+店员擦着远处的桌子，没有看这边。窗外雨声变得更密。
+              </div>
+
+              <div class="entry-c">
+                <button
+                  type="button"
+                  class="entry-c-star"
+                  data-act="toggle-menu"
+                  aria-label="打开 AI 功能菜单"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-controls="entry-c-menu"
+                >
+                  <span class="entry-c-dot" aria-hidden="true"></span>
+                </button>
+                <div class="entry-c-menu" id="entry-c-menu" role="menu" aria-label="AI 功能">
+                  <button type="button" role="menuitem" data-act="summon">及时召唤</button>
+                  <button type="button" role="menuitem" data-act="expand">思维扩展</button>
+                </div>
+              </div>
+            </div>
+
+            <aside class="ai-panel" aria-label="AI 面板">
+              <div class="ai-panel-header">
+                <span class="ai-panel-title" data-panel-title>AI 思考</span>
+                <button type="button" class="ai-panel-btn" data-act="close-panel">收起</button>
+              </div>
+              <div class="ai-panel-body" data-panel-body></div>
+            </aside>
+          </div>
+        </div>
+      </article>
+
+      <p class="footer-hint">
+        流程：选区 → 跟随选区的极简入口 → 右侧小抽屉 → 及时召唤 / 思维扩展 → 右侧 AI 面板。菜单结构可日后扩展更多功能项；当前仅两项。
+      </p>
+    </div>
+
+    <script>
+      (function () {
+        var card = document.getElementById("preview");
+
+        var PANEL = {
+          idle: {
+            open: false,
+            title: "AI 思考",
+            html:
+              '<p class="panel-empty">尚未开启。选中文字后，点选区旁的极简入口打开功能菜单。</p>' +
+              '<p class="panel-boundary">AI 只在本面板工作。界面无插入、替换、应用到正文等写回控件。</p>',
+          },
+          "menu-open": {
+            open: false,
+            title: "AI 思考",
+            html:
+              '<p class="panel-empty">功能菜单在选区旁展开；尚未打开 AI 面板。</p>' +
+              '<p class="panel-boundary">AI 只在本面板工作。界面无插入、替换、应用到正文等写回控件。</p>',
+          },
+          summoned: {
+            open: true,
+            title: "AI 思考",
+            html:
+              '<div class="panel-meta">及时召唤 · 已选中 43 字</div>' +
+              '<div class="panel-reply">' +
+              "示意回复（非真实请求）：\n\n" +
+              "1. 小雨真正害怕的是「被留下的句子」，还是「自己还在等」这件事本身？\n" +
+              "2. 若下一句不解释、只做动作，杯子会怎样？\n" +
+              "3. 店员与雨声：它们是旁观，还是在替她做决定？\n\n" +
+              "（可复制后自行粘贴；此处仅为临时材料。）" +
+              "</div>" +
+              '<p class="panel-boundary">无「应用到正文」。用户自行复制、粘贴、编辑、保存。</p>',
+          },
+          expanded: {
+            open: true,
+            title: "思维扩展",
+            html:
+              '<div class="panel-meta">已选中 43 字 · 预备态</div>' +
+              '<label class="visually-hidden" for="prestate-dir">方向</label>' +
+              '<textarea id="prestate-dir" class="prestate-input" rows="3" placeholder="写下你想追的方向（可留空）"></textarea>' +
+              '<div class="prestate-actions"><button type="button" class="btn-primary" data-act="noop">开始</button></div>' +
+              '<p class="panel-boundary">预览：开始后结果仍只出现在本面板，不写回正文。</p>',
+          },
+        };
+
+        function applyPanel(state) {
+          var conf = PANEL[state] || PANEL.idle;
+          var body = card.querySelector("[data-panel-body]");
+          var title = card.querySelector("[data-panel-title]");
+          var chip = card.querySelector("[data-panel-chip]");
+          var star = card.querySelector(".entry-c-star");
+          if (body) body.innerHTML = conf.html;
+          if (title) title.textContent = conf.title;
+          card.setAttribute("data-panel", conf.open ? "open" : "closed");
+          if (chip) {
+            if (conf.open) chip.classList.add("is-on");
+            else chip.classList.remove("is-on");
+          }
+          if (star) {
+            star.setAttribute("aria-expanded", state === "menu-open" ? "true" : "false");
+          }
+        }
+
+        function setState(state) {
+          card.setAttribute("data-state", state);
+          card.querySelectorAll("[data-set-state]").forEach(function (btn) {
+            btn.setAttribute(
+              "aria-pressed",
+              btn.getAttribute("data-set-state") === state ? "true" : "false"
+            );
+          });
+          applyPanel(state);
+        }
+
+        setState("idle");
+
+        card.addEventListener("click", function (e) {
+          var t = e.target.closest("[data-set-state], [data-act]");
+          if (!t || !card.contains(t)) return;
+
+          var state = t.getAttribute("data-set-state");
+          if (state) {
+            setState(state);
+            return;
+          }
+
+          var act = t.getAttribute("data-act");
+          if (act === "toggle-menu") {
+            var cur = card.getAttribute("data-state");
+            setState(cur === "menu-open" ? "idle" : "menu-open");
+            return;
+          }
+          if (act === "summon") {
+            setState("summoned");
+            return;
+          }
+          if (act === "expand") {
+            setState("expanded");
+            return;
+          }
+          if (act === "close-panel") {
+            setState("idle");
+            return;
+          }
+          if (act === "noop") {
+            e.preventDefault();
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

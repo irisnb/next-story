@@ -106,6 +106,9 @@ pub struct GenerateAiMessage {
 pub enum GenerateAiRequest {
     First {
         selected_text: String,
+        /// 思维扩展可选方向；缺省或空白表示空方向开始。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thinking_direction: Option<String>,
     },
     FollowUp {
         selected_text: String,
@@ -128,6 +131,7 @@ impl From<&str> for GenerateAiRequest {
     fn from(selected_text: &str) -> Self {
         GenerateAiRequest::First {
             selected_text: selected_text.to_string(),
+            thinking_direction: None,
         }
     }
 }

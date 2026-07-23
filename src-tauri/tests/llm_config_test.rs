@@ -13,8 +13,9 @@ use next_story_lib::llm_config::{
 };
 use tempfile::TempDir;
 
-const EXPECTED_FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文。\
-你只能基于这段选区原文回应，先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
+const EXPECTED_FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文，以及用户可选的探索方向。\
+你只能基于这段选区原文回应；若提供了探索方向，把它当作用户希望继续探索的角度，而不是作品事实或最终判断。\
+先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
 追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
 不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
 不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
@@ -31,6 +32,17 @@ fn sample_config(api_base_url: String) -> LlmConfig {
 fn first_request(selected_text: impl Into<String>) -> GenerateAiRequest {
     GenerateAiRequest::First {
         selected_text: selected_text.into(),
+        thinking_direction: None,
+    }
+}
+
+fn first_request_with_direction(
+    selected_text: impl Into<String>,
+    direction: impl Into<String>,
+) -> GenerateAiRequest {
+    GenerateAiRequest::First {
+        selected_text: selected_text.into(),
+        thinking_direction: Some(direction.into()),
     }
 }
 
@@ -542,6 +554,56 @@ async fn generate_sends_exact_fixed_messages_without_context() {
         value["messages"][1],
         serde_json::json!({"role":"user","content":"选区原文"})
     );
+    assert_eq!(value.as_object().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn generate_first_with_thinking_direction_appends_direction_without_extra_context() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+    generate_ai_thinking(
+        &sample_config(base),
+        first_request_with_direction("冻结选区", "想追的方向"),
+    )
+    .await
+    .expect("generate");
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    assert_eq!(value["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        value["messages"][0],
+        serde_json::json!({
+            "role":"system",
+            "content": EXPECTED_FIXED_SYSTEM_PROMPT
+        })
+    );
+    assert_eq!(
+        value["messages"][1],
+        serde_json::json!({
+            "role":"user",
+            "content": "选区原文：\n冻结选区\n\n用户希望探索的角度（不是作品事实或最终判断）：\n想追的方向"
+        })
+    );
+    let body_text = body.to_string();
+    for forbidden in [
+        "draft",
+        "main",
+        "notebook",
+        "summary",
+        "metadata",
+        "history",
+        "content_library",
+        "api_key",
+    ] {
+        assert!(
+            !body_text.contains(forbidden),
+            "request body must not contain unauthorized context: {forbidden}"
+        );
+    }
     assert_eq!(value.as_object().unwrap().len(), 3);
 }
 

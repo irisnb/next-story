@@ -9,8 +9,9 @@ use super::{
 
 /// 固定首版思考任务：围绕冻结选区提出观察、问题和可能方向，不代写正文。
 /// 该职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
-const FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文。\
-你只能基于这段选区原文回应，先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
+const FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文，以及用户可选的探索方向。\
+你只能基于这段选区原文回应；若提供了探索方向，把它当作用户希望继续探索的角度，而不是作品事实或最终判断。\
+先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
 追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
 不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
 不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
@@ -77,7 +78,7 @@ pub(crate) fn validate_generate_ai_request(
     request: &GenerateAiRequest,
 ) -> Result<(), GenerateAiError> {
     let (selected_text, turns) = match request {
-        GenerateAiRequest::First { selected_text } => (selected_text, None),
+        GenerateAiRequest::First { selected_text, .. } => (selected_text, None),
         GenerateAiRequest::FollowUp {
             selected_text,
             messages,
@@ -116,20 +117,39 @@ pub(crate) fn validate_generate_ai_request(
     Ok(())
 }
 
+fn first_user_content(selected_text: &str, thinking_direction: Option<&str>) -> String {
+    match thinking_direction.map(str::trim).filter(|d| !d.is_empty()) {
+        Some(direction) => format!(
+            "选区原文：\n{selected_text}\n\n用户希望探索的角度（不是作品事实或最终判断）：\n{direction}"
+        ),
+        None => selected_text.to_string(),
+    }
+}
+
 fn build_messages(request: &GenerateAiRequest) -> Result<Value, GenerateAiError> {
     validate_generate_ai_request(request)?;
 
-    let (selected_text, turns) = match request {
-        GenerateAiRequest::First { selected_text } => (selected_text, None),
+    let (selected_text, thinking_direction, turns) = match request {
+        GenerateAiRequest::First {
+            selected_text,
+            thinking_direction,
+        } => (
+            selected_text.as_str(),
+            thinking_direction.as_deref(),
+            None,
+        ),
         GenerateAiRequest::FollowUp {
             selected_text,
             messages,
-        } => (selected_text, Some(messages)),
+        } => (selected_text.as_str(), None, Some(messages)),
     };
 
     let mut provider_messages = vec![
         json!({ "role": "system", "content": FIXED_SYSTEM_PROMPT }),
-        json!({ "role": "user", "content": selected_text }),
+        json!({
+            "role": "user",
+            "content": first_user_content(selected_text, thinking_direction),
+        }),
     ];
 
     if let Some(turns) = turns {

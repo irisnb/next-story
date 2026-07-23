@@ -9,7 +9,7 @@ import {
   retryFollowUpAcceptedRequest,
 } from "../src/ai-feature.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
-import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
+import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
   return { notebook: "draft", selectedText: text, start: 0, end: text.length };
@@ -54,6 +54,26 @@ test("retry enters loading only when the coordinator accepts the request", () =>
     conversationId: 1,
     phase: "first",
   });
+});
+
+test("retry preserves the thinking expansion direction from the failed first request", () => {
+  const state = new AiPanelState();
+  const snap = snapshot("冻结选区");
+  const firstRequest: GenerateAiRequest = {
+    kind: "first",
+    selected_text: "冻结选区",
+    thinking_direction: "追人物的犹豫",
+  };
+  let retriedRequest: unknown = null;
+  state.beginRequest(snap, firstRequest);
+  state.fail(snap, { code: "network", message: "网络失败" });
+
+  assert.equal(retryAcceptedRequest(state, (_snapshot, request) => {
+    retriedRequest = request;
+    return Promise.resolve();
+  }), true);
+
+  assert.deepEqual(retriedRequest, firstRequest);
 });
 
 test("builds a follow-up payload from the frozen anchor and successful turns exactly once", () => {

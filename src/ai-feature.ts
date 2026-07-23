@@ -25,10 +25,13 @@ export function applyGenerateError(
 
 export function retryAcceptedRequest(
   state: AiPanelState,
-  request: (snapshot: SelectionSnapshot) => Promise<void> | null,
+  request: (
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+  ) => Promise<void> | null,
 ): boolean {
   const snapshot = state.retrySnapshot();
-  if (!snapshot || request(snapshot) === null) {
+  if (!snapshot || request(snapshot, state.retryFirstRequest() ?? undefined) === null) {
     return false;
   }
   return state.acceptFirstRetry();
@@ -164,11 +167,45 @@ export function setupAiFeature(
     () => state.conversationIdentity,
   );
 
+  function startFirstRequest(
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+  ): boolean {
+    const accepted = coordinator.request(snapshot, firstRequest);
+    if (accepted === null) return false;
+    state.beginRequest(snapshot, firstRequest);
+    return true;
+  }
+
+  function buildThinkingExpansionRequest(
+    snapshot: SelectionSnapshot,
+    direction: string,
+  ): Extract<GenerateAiRequest, { kind: "first" }> {
+    const trimmed = direction.trim();
+    if (trimmed) {
+      return {
+        kind: "first",
+        selected_text: snapshot.selectedText,
+        thinking_direction: trimmed,
+      };
+    }
+    return { kind: "first", selected_text: snapshot.selectedText };
+  }
+
   setupAiPanel(dom, state, {
     onRetry: () => {
-      retryAcceptedRequest(state, (snapshot) => coordinator.request(snapshot));
+      retryAcceptedRequest(state, (snapshot, firstRequest) =>
+        coordinator.request(snapshot, firstRequest));
     },
     onGoToConfig: () => openAiConfiguration(hooks.openConfigPage),
+    onStartThinkingExpansion: (direction) => {
+      const current = state.view.request;
+      if (current.kind !== "thinking_expansion") return false;
+      return startFirstRequest(
+        current.snapshot,
+        buildThinkingExpansionRequest(current.snapshot, direction),
+      );
+    },
     onSubmitFollowUp: (question) => followUpAcceptedRequest(
       state,
       question,
@@ -190,10 +227,11 @@ export function setupAiFeature(
     getCurrentNotebook: hooks.getCurrentNotebook,
     isRequestInFlight: () => coordinator.busy,
     onSummon: (snapshot: SelectionSnapshot) => {
-      const accepted = coordinator.request(snapshot);
-      if (accepted !== null) {
-        state.beginRequest(snapshot);
-      }
+      startFirstRequest(snapshot);
+    },
+    onThinkingExpansion: (snapshot: SelectionSnapshot) => {
+      if (coordinator.busy) return;
+      state.beginThinkingExpansion(snapshot);
     },
   });
 

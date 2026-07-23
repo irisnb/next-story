@@ -591,8 +591,65 @@
   background: #f7fafc;
 }
 
-.ai-summon-btn {
+.ai-selection-entry {
+  position: fixed;
   z-index: 20;
+  /* Anchor box is the trigger size only; menu is positioned absolutely so it never shifts the trigger. */
+  width: 18px;
+  height: 18px;
+}
+
+.ai-selection-entry.hidden {
+  display: none;
+}
+
+/* Larger outer circle with a quiet low-contrast ring; small solid inner dot via radial gradient. */
+#ai-selection-entry-trigger {
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid #a0aec0;
+  border-radius: 50%;
+  background-color: transparent;
+  background-image: radial-gradient(circle, #a0aec0 0 3px, transparent 3.5px);
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-image 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ai-selection-entry.menu-open #ai-selection-entry-trigger,
+#ai-selection-entry-trigger:hover {
+  border-color: #4a5568;
+  background-image: radial-gradient(circle, #4a5568 0 3px, transparent 3.5px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Menu expands from the locked trigger anchor without moving it (existing open/close classes). */
+#ai-selection-entry-menu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 0.35rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+#ai-selection-entry-menu.hidden {
+  display: none;
+}
+
+.ai-summon-btn,
+#ai-summon-btn,
+#ai-thinking-expansion-btn {
   padding: 0.35rem 0.8rem;
   font-size: 0.85rem;
   border: none;
@@ -600,11 +657,87 @@
   background-color: #4a5568;
   color: white;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
-.ai-summon-btn:hover {
+.ai-summon-btn:hover,
+#ai-summon-btn:hover,
+#ai-thinking-expansion-btn:hover {
   background-color: #2d3748;
+}
+
+.ai-thinking-expansion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ai-thinking-expansion.hidden {
+  display: none;
+}
+
+.ai-thinking-expansion-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ai-thinking-expansion-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ai-thinking-expansion-count {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.ai-thinking-expansion-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-thinking-expansion-input {
+  width: 100%;
+  min-height: 5.5rem;
+  max-height: 12rem;
+  resize: vertical;
+  padding: var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.ai-thinking-expansion-input:focus {
+  outline: 2px solid var(--color-action);
+  outline-offset: 1px;
+}
+
+.ai-thinking-expansion-start {
+  align-self: flex-end;
+  min-width: 5rem;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-surface);
+  background: var(--color-action);
+  border: 1px solid var(--color-action);
+  border-radius: var(--radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-thinking-expansion-start:hover:not(:disabled) {
+  background: var(--color-action-hover);
+}
+
+.ai-thinking-expansion-start:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 窄窗口：AI 面板切换为覆盖式抽屉，编辑区保持完整宽度 */

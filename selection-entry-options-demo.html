@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>选区入口两种方案演示</title>
+  <style>
+    :root {
+      --paper: #f5f1e8;
+      --ink: #26231f;
+      --muted: #7b7469;
+      --line: #d7cfc1;
+      --accent: #3c5f58;
+      --accent-soft: #e7efeb;
+      --select: #c9ddd7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #ebe5d8;
+      color: var(--ink);
+      font-family: "Microsoft YaHei", system-ui, sans-serif;
+      padding: 28px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .note {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .case {
+      position: relative;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 520px;
+      box-shadow: 0 16px 45px rgba(70, 55, 35, 0.12);
+    }
+
+    .case h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .desc {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .editor {
+      position: relative;
+      height: 390px;
+      background: #fffdf8;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 26px 34px;
+      overflow: hidden;
+      line-height: 2;
+      font-size: 17px;
+    }
+
+    .selected {
+      background: var(--select);
+      border-radius: 3px;
+      padding: 2px 0;
+    }
+
+    .entry {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid rgba(60, 95, 88, 0.35);
+      background: rgba(255, 253, 248, 0.94);
+      box-shadow: 0 8px 24px rgba(35, 54, 49, 0.18);
+      display: grid;
+      place-items: center;
+    }
+
+    .entry::after {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 6px var(--accent-soft);
+    }
+
+    .entry-a {
+      left: 285px;
+      top: 170px;
+    }
+
+    .entry-b {
+      right: 16px;
+      top: 170px;
+    }
+
+    .tag {
+      position: absolute;
+      left: 18px;
+      bottom: 16px;
+      right: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .bad { color: #8a4a37; }
+    .good { color: #315c51; }
+  </style>
+</head>
+<body>
+  <h1>选区入口：前两种方案快速对比</h1>
+  <p class="note">这里只演示尺寸和位置感觉：外圈大圆负责好点，内圈小圆保留轻提示。</p>
+
+  <main class="grid">
+    <section class="case">
+      <h2>方案 1：贴着选区末端</h2>
+      <p class="desc">入口跟随选区结束位置。关系最直接，但容易压到文字，也会受从左选/从右选影响。</p>
+      <div class="editor">
+        第一场，黄昏。屋子里没有开灯，窗外的光一点点往后退。<br>
+        他把杯子放在桌边，像是怕惊动谁。<span class="selected">她没有立刻回答，只是看着门缝里那条更亮的线。</span><br>
+        远处有人在楼道里说话，声音被墙磨得很薄。<br>
+        这一次，他先低下头，好像终于承认自己听见了。
+        <button class="entry entry-a" aria-label="AI 入口"></button>
+      </div>
+      <div class="tag bad">问题：贴文字太近，长选区、多行选区、反向选择时更容易跳或挡。</div>
+    </section>
+
+    <section class="case">
+      <h2>方案 2：固定在文本框右侧</h2>
+      <p class="desc">入口垂直跟随选区所在行，但水平固定在右侧安全区。更好点，也更稳定。</p>
+      <div class="editor">
+        第一场，黄昏。屋子里没有开灯，窗外的光一点点往后退。<br>
+        他把杯子放在桌边，像是怕惊动谁。<span class="selected">她没有立刻回答，只是看着门缝里那条更亮的线。</span><br>
+        远处有人在楼道里说话，声音被墙磨得很薄。<br>
+        这一次，他先低下头，好像终于承认自己听见了。
+        <button class="entry entry-b" aria-label="AI 入口"></button>
+      </div>
+      <div class="tag good">建议：不挡选中文字，点按面积足够，用户更容易形成固定预期。</div>
+    </section>
+  </main>
+</body>
+</html>

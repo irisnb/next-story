@@ -70,6 +70,8 @@ export type GenerateAiRequest =
   | {
       kind: "first";
       selected_text: string;
+      /** 思维扩展可选方向；空方向开始时省略，不附加到请求。 */
+      thinking_direction?: string;
     }
   | {
       kind: "follow_up";

@@ -50,15 +50,25 @@ export class AiRequestCoordinator {
   }
 
   /**
-   * 发起一次生成请求。若已有请求进行中，返回 `null` 且不执行第二个 client 调用。
+   * 发起一次首次生成请求。若已有请求进行中，返回 `null` 且不执行第二个 client 调用。
+   * 可选 `firstRequest` 用于思维扩展带方向开始；成功/失败仍按冻结选区走 onSuccess/onError。
    */
-  request(snapshot: SelectionSnapshot): Promise<void> | null {
+  request(
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+  ): Promise<void> | null {
     if (this.inFlight) {
       return null;
     }
     const token = this.getProjectToken();
     const requestToken = ++this.activeRequestToken;
-    this.inFlight = this.run(snapshot, token, requestToken, null, () => this.generate(snapshot.selectedText));
+    const structured = this.structuredGenerate;
+    this.inFlight = this.run(snapshot, token, requestToken, null, () => {
+      if (firstRequest && structured) {
+        return structured(firstRequest);
+      }
+      return this.generate(snapshot.selectedText);
+    });
     return this.inFlight;
   }
 

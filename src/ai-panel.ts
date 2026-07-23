@@ -5,6 +5,7 @@ import { AiPanelState } from "./ai-panel-state.ts";
 export interface AiPanelActions {
   onRetry: () => void;
   onGoToConfig: () => void;
+  onStartThinkingExpansion: (direction: string) => boolean;
   onSubmitFollowUp: (question: string) => boolean;
   onRetryFollowUp: () => boolean;
   onEditFollowUp: (question: string) => boolean;
@@ -39,6 +40,12 @@ export function setupAiPanel(
   const snapshotText = requireEl<HTMLPreElement>("ai-snapshot-text");
   const loading = requireEl("ai-loading");
   const response = dom.aiResponse;
+  const thinkingExpansionPrestate = requireEl("ai-thinking-expansion-prestate");
+  const thinkingExpansionTitle = requireEl("ai-thinking-expansion-title");
+  const thinkingExpansionCount = requireEl("ai-thinking-expansion-count");
+  const thinkingExpansionForm = requireEl<HTMLFormElement>("ai-thinking-expansion-form");
+  const thinkingExpansionInput = requireEl<HTMLTextAreaElement>("ai-thinking-expansion-input");
+  const thinkingExpansionStart = requireEl<HTMLButtonElement>("ai-thinking-expansion-start");
   const errorBlock = requireEl("ai-error-block");
   const errorMessage = requireEl("ai-error-message");
   const retryBtn = requireEl<HTMLButtonElement>("ai-retry");
@@ -56,6 +63,7 @@ export function setupAiPanel(
   const followUpEdit = requireEl<HTMLButtonElement>("ai-follow-up-edit");
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
+  let thinkingExpansionFocused = false;
 
   retryBtn.addEventListener("click", actions.onRetry);
   goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
@@ -77,6 +85,15 @@ export function setupAiPanel(
   followUpForm.addEventListener("submit", (event) => {
     event.preventDefault();
     submitFollowUp();
+  });
+  thinkingExpansionInput.addEventListener("input", () => {
+    state.updateThinkingExpansionDirection(thinkingExpansionInput.value);
+  });
+  thinkingExpansionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const request = state.view.request;
+    if (request.kind !== "thinking_expansion") return;
+    actions.onStartThinkingExpansion(request.direction);
   });
   followUpRetry.addEventListener("click", () => {
     actions.onRetryFollowUp();
@@ -147,6 +164,7 @@ export function setupAiPanel(
     }
 
     const hasSnapshot =
+      request.kind === "thinking_expansion" ||
       request.kind === "loading" ||
       request.kind === "success" ||
       request.kind === "error" ||
@@ -156,6 +174,24 @@ export function setupAiPanel(
     if (hasSnapshot) {
       // 纯文本绑定：保留换行、可选择复制，不解析 HTML/Markdown
       snapshotText.textContent = request.snapshot.selectedText;
+    }
+
+    const isThinkingExpansion = request.kind === "thinking_expansion";
+    thinkingExpansionPrestate.classList.toggle("hidden", !isThinkingExpansion);
+    if (isThinkingExpansion) {
+      thinkingExpansionTitle.textContent = "思维扩展";
+      thinkingExpansionCount.textContent = `已选中 ${request.snapshot.selectedText.length} 字`;
+      if (thinkingExpansionInput.value !== request.direction) {
+        thinkingExpansionInput.value = request.direction;
+      }
+      thinkingExpansionStart.disabled = false;
+      if (!thinkingExpansionFocused) {
+        thinkingExpansionInput.focus();
+        thinkingExpansionFocused = true;
+      }
+    } else {
+      thinkingExpansionFocused = false;
+      thinkingExpansionInput.value = "";
     }
 
     loading.classList.toggle(

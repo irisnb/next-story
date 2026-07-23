@@ -5,6 +5,11 @@ export type PanelVisibility = "open" | "closed";
 export type PanelRequestState =
   | { kind: "idle" }
   | {
+      kind: "thinking_expansion";
+      snapshot: SelectionSnapshot;
+      direction: string;
+    }
+  | {
       kind: "loading";
       snapshot: SelectionSnapshot;
       conversationId?: number;
@@ -41,6 +46,13 @@ export interface PanelStateView {
 
 export function idleRequest(): PanelRequestState {
   return { kind: "idle" };
+}
+
+export function thinkingExpansionRequest(
+  snapshot: SelectionSnapshot,
+  direction: string,
+): PanelRequestState {
+  return { kind: "thinking_expansion", snapshot, direction };
 }
 
 export function firstLoadingRequest(

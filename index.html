@@ -88,6 +88,16 @@
               <div class="ai-block-label">本次选区</div>
               <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
             </div>
+            <div id="ai-thinking-expansion-prestate" class="ai-thinking-expansion hidden">
+              <div class="ai-thinking-expansion-header">
+                <h2 id="ai-thinking-expansion-title" class="ai-thinking-expansion-title">思维扩展</h2>
+                <span id="ai-thinking-expansion-count" class="ai-thinking-expansion-count"></span>
+              </div>
+              <form id="ai-thinking-expansion-form" class="ai-thinking-expansion-form">
+                <textarea id="ai-thinking-expansion-input" class="ai-thinking-expansion-input" rows="4" placeholder="写下你想追的方向"></textarea>
+                <button id="ai-thinking-expansion-start" class="ai-thinking-expansion-start" type="submit">开始</button>
+              </form>
+            </div>
             <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
             <pre id="ai-response" class="ai-response hidden"></pre>
             <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>

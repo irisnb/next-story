@@ -264,3 +264,26 @@ test("returns a defensive conversation view that cannot mutate payload state", (
   const messages = state.followUpRequest()?.messages;
   assert.equal(messages?.[messages.length - 1]?.content, "问题");
 });
+
+test("beginThinkingExpansion opens a prestate anchored to the frozen selection", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("冻结选区");
+
+  state.beginThinkingExpansion(anchor);
+  state.updateThinkingExpansionDirection("想追的方向");
+
+  assert.equal(state.isOpen, true);
+  assert.deepEqual(state.view.request, {
+    kind: "thinking_expansion",
+    snapshot: anchor,
+    direction: "想追的方向",
+  });
+  assert.equal(state.conversation, null);
+
+  const changedSelection = snapshot("后来选区");
+  assert.equal(state.view.request.kind, "thinking_expansion");
+  if (state.view.request.kind === "thinking_expansion") {
+    assert.equal(state.view.request.snapshot.selectedText, "冻结选区");
+    assert.notDeepEqual(state.view.request.snapshot, changedSelection);
+  }
+});

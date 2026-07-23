@@ -52,6 +52,7 @@ class FakeElement {
   textContent = "";
   value = "";
   disabled = false;
+  focusCount = 0;
   scrollTop = 0;
   readonly id: string;
 
@@ -80,7 +81,7 @@ class FakeElement {
     this.children.length = 0;
     this.children.push(...children);
   }
-  focus(): void {}
+  focus(): void { this.focusCount += 1; }
   querySelector<T>(_selector: string): T | null { return null; }
 }
 
@@ -90,17 +91,21 @@ function snapshot(text: string): SelectionSnapshot {
 
 function harness(): {
   state: AiPanelState;
-  elements: Map<string, FakeElement>;
-  submitted: string[];
-  retried: number;
+	  elements: Map<string, FakeElement>;
+	  submitted: string[];
+	  startedThinkingExpansions: string[];
+	  retried: number;
   edited: string[];
   firstRetries: number;
   restore(): void;
 } {
-  const ids = [
-    "ai-snapshot-block", "ai-snapshot-text", "ai-loading", "ai-error-block",
-    "ai-error-message", "ai-retry", "ai-config-block", "ai-go-config",
-    "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
+	  const ids = [
+	    "ai-snapshot-block", "ai-snapshot-text", "ai-loading", "ai-error-block",
+	    "ai-error-message", "ai-retry", "ai-config-block", "ai-go-config",
+	    "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
+	    "ai-thinking-expansion-count", "ai-thinking-expansion-form",
+	    "ai-thinking-expansion-input", "ai-thinking-expansion-start",
+	    "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
     "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
     "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
   ];
@@ -127,9 +132,10 @@ function harness(): {
     createElement: (tag: string) => new FakeElement(tag),
   } as unknown as Document;
 
-  const state = new AiPanelState();
-  const submitted: string[] = [];
-  const edited: string[] = [];
+	  const state = new AiPanelState();
+	  const submitted: string[] = [];
+	  const startedThinkingExpansions: string[] = [];
+	  const edited: string[] = [];
   let retried = 0;
   let firstRetries = 0;
   setupAiPanel({
@@ -141,15 +147,17 @@ function harness(): {
   } as unknown as AppDom, state, {
     onRetry: () => { firstRetries += 1; },
     onGoToConfig: () => {},
-    onSubmitFollowUp: (question) => { submitted.push(question); return true; },
-    onRetryFollowUp: () => { retried += 1; return true; },
-    onEditFollowUp: (question) => { edited.push(question); return true; },
-  });
+	    onSubmitFollowUp: (question) => { submitted.push(question); return true; },
+	    onRetryFollowUp: () => { retried += 1; return true; },
+	    onEditFollowUp: (question) => { edited.push(question); return true; },
+	    onStartThinkingExpansion: (direction) => { startedThinkingExpansions.push(direction); return true; },
+	  });
 
   return {
     state,
-    elements,
-    submitted,
+	    elements,
+	    submitted,
+	    startedThinkingExpansions,
     get retried() { return retried; },
     edited,
     get firstRetries() { return firstRetries; },
@@ -162,6 +170,7 @@ function featureHarness(results: GenerateAiResult[]): {
   elements: Map<string, FakeElement>;
   requests: GenerateAiRequest[];
   summon(snap: SelectionSnapshot): void;
+  thinkingExpansion(snap: SelectionSnapshot): void;
   openedConfig: string[];
   restore(): void;
 } {
@@ -170,6 +179,9 @@ function featureHarness(results: GenerateAiResult[]): {
   const allIds = [
     "ai-snapshot-block", "ai-snapshot-text", "ai-loading", "ai-error-block",
     "ai-error-message", "ai-retry", "ai-config-block", "ai-go-config",
+    "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
+    "ai-thinking-expansion-count", "ai-thinking-expansion-form",
+    "ai-thinking-expansion-input", "ai-thinking-expansion-start",
     "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
     "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
     "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
@@ -198,6 +210,7 @@ function featureHarness(results: GenerateAiResult[]): {
   } as unknown as Document;
 
   let onSummon: ((snap: SelectionSnapshot) => void) | null = null;
+  let onThinkingExpansion: ((snap: SelectionSnapshot) => void) | null = null;
   const requests: GenerateAiRequest[] = [];
   const openedConfig: string[] = [];
 
@@ -219,6 +232,7 @@ function featureHarness(results: GenerateAiResult[]): {
     },
     setupEntry: (options) => {
       onSummon = options.onSummon;
+      onThinkingExpansion = options.onThinkingExpansion;
       return { reset: () => {}, destroy: () => {} };
     },
   });
@@ -230,6 +244,10 @@ function featureHarness(results: GenerateAiResult[]): {
     summon: (snap) => {
       if (!onSummon) throw new Error("summon callback missing");
       onSummon(snap);
+    },
+    thinkingExpansion: (snap) => {
+      if (!onThinkingExpansion) throw new Error("thinking expansion callback missing");
+      onThinkingExpansion(snap);
     },
     openedConfig,
     restore: () => { globalThis.document = previousDocument; },
@@ -249,6 +267,33 @@ test("follow-up composer appears only after the first response succeeds", () => 
     ui.state.succeed(anchor, "首次回应");
     assert.equal(form.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-follow-up-input")!.disabled, false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("thinking expansion prestate renders the approved form and starts from the draft direction", () => {
+  const ui = harness();
+  try {
+    const anchor = snapshot("冻结选区文本");
+
+    ui.state.beginThinkingExpansion(anchor);
+
+    assert.equal(ui.elements.get("ai-thinking-expansion-prestate")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-thinking-expansion-title")!.textContent, "思维扩展");
+    assert.equal(ui.elements.get("ai-thinking-expansion-count")!.textContent, "已选中 6 字");
+    assert.equal(ui.elements.get("ai-thinking-expansion-input")!.focusCount, 1);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区文本");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+
+    const input = ui.elements.get("ai-thinking-expansion-input")!;
+    input.value = "想追的方向";
+    input.dispatch("input");
+    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+
+    assert.deepEqual(ui.startedThinkingExpansions, ["想追的方向"]);
+    assert.equal((ui.elements.get("draft-textarea")?.value ?? "用户草稿"), "用户草稿");
+    assert.equal((ui.elements.get("main-textarea")?.value ?? "用户正文"), "用户正文");
   } finally {
     ui.restore();
   }
@@ -433,6 +478,15 @@ test("editor shell keeps the AI panel viewport-stable and scrolls its body", () 
   assert.match(styles, /\.ai-panel-body\s*\{[^}]*overflow:\s*auto;/s);
 });
 
+test("selection entry menu opens from a locked trigger anchor", () => {
+  const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*width:\s*18px;/s);
+  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*height:\s*18px;/s);
+  assert.match(styles, /#ai-selection-entry-menu\s*\{[^}]*position:\s*absolute;/s);
+  assert.match(styles, /#ai-selection-entry-menu\s*\{[^}]*left:\s*calc\(100% \+ 0\.35rem\);/s);
+});
+
 test("real AI feature flow never writes notebooks across success, failure, retry, and edit-resend", async () => {
   const ui = featureHarness([
     { ok: true, content: "首答" },
@@ -455,6 +509,57 @@ test("real AI feature flow never writes notebooks across success, failure, retry
 
     assert.deepEqual([draft.value, main.value], original);
     assert.equal(ui.requests.length, 4);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("real AI feature flow opens thinking expansion prestate and waits for Start before generating", async () => {
+  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
+  try {
+    const draft = ui.elements.get("draft-textarea")!;
+    const main = ui.elements.get("main-textarea")!;
+    const original = [draft.value, main.value];
+    const input = ui.elements.get("ai-thinking-expansion-input")!;
+
+    ui.thinkingExpansion(snapshot("冻结选区"));
+
+    assert.equal(ui.requests.length, 0);
+    assert.equal(ui.elements.get("ai-thinking-expansion-prestate")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区");
+
+    input.value = "想追的方向";
+    input.dispatch("input");
+    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    await Promise.resolve();
+
+    assert.deepEqual(ui.requests, [{
+      kind: "first",
+      selected_text: "冻结选区",
+      thinking_direction: "想追的方向",
+    }]);
+    assert.deepEqual([draft.value, main.value], original);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("real AI feature flow omits thinking direction when the prestate direction is blank", async () => {
+  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
+  try {
+    const input = ui.elements.get("ai-thinking-expansion-input")!;
+
+    ui.thinkingExpansion(snapshot("冻结选区"));
+
+    input.value = "   \n  ";
+    input.dispatch("input");
+    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    await Promise.resolve();
+
+    assert.deepEqual(ui.requests, [{
+      kind: "first",
+      selected_text: "冻结选区",
+    }]);
   } finally {
     ui.restore();
   }

@@ -14,6 +14,7 @@ import {
   followUpLoadingRequest,
   followUpSuccessRequest,
   idleRequest,
+  thinkingExpansionRequest,
   type PanelRequestState,
   type PanelStateView,
   type PanelVisibility,
@@ -49,6 +50,7 @@ export class AiPanelState {
   private request: PanelRequestState = idleRequest();
   private readonly conversationState = new TemporaryConversationState();
   private pendingFirstConversationId: number | null = null;
+  private pendingFirstRequest: Extract<GenerateAiRequest, { kind: "first" }> | null = null;
   private readonly onChange: () => void;
   private readonly listeners: Array<() => void> = [];
 
@@ -89,13 +91,32 @@ export class AiPanelState {
   }
 
   /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入 loading。 */
-  beginRequest(snapshot: SelectionSnapshot): void {
+  beginRequest(
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+  ): void {
     this.visibility = "open";
     this.conversationState.clear();
     const anchor = frozenSnapshot(snapshot);
     const conversationId = this.conversationState.allocateConversationId();
     this.request = firstLoadingRequest(anchor, conversationId);
     this.pendingFirstConversationId = conversationId;
+    this.pendingFirstRequest = firstRequest ?? { kind: "first", selected_text: anchor.selectedText };
+    this.emit();
+  }
+
+  beginThinkingExpansion(snapshot: SelectionSnapshot): void {
+    this.visibility = "open";
+    this.conversationState.clear();
+    this.request = thinkingExpansionRequest(frozenSnapshot(snapshot), "");
+    this.pendingFirstConversationId = null;
+    this.pendingFirstRequest = null;
+    this.emit();
+  }
+
+  updateThinkingExpansionDirection(direction: string): void {
+    if (this.request.kind !== "thinking_expansion") return;
+    this.request = thinkingExpansionRequest(this.request.snapshot, direction);
     this.emit();
   }
 
@@ -109,6 +130,7 @@ export class AiPanelState {
       response,
     );
     this.request = firstSuccessRequest(conversation.anchor, response, conversationId);
+    this.pendingFirstRequest = null;
     this.emit();
   }
 
@@ -255,12 +277,20 @@ export class AiPanelState {
     return null;
   }
 
+  retryFirstRequest(): Extract<GenerateAiRequest, { kind: "first" }> | null {
+    if (this.request.kind !== "error" && this.request.kind !== "configuration_required") {
+      return null;
+    }
+    return this.pendingFirstRequest;
+  }
+
   /** 作品卸载或替换后清空面板状态，避免旧内容污染新作品。 */
   reset(): void {
     this.visibility = "closed";
     this.request = idleRequest();
     this.conversationState.clear();
     this.pendingFirstConversationId = null;
+    this.pendingFirstRequest = null;
     this.emit();
   }
 }

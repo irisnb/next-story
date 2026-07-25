@@ -24,6 +24,7 @@ export interface RequestIdentity {
  */
 export class AiRequestCoordinator {
   private inFlight: Promise<void> | null = null;
+  private inFlightProjectToken: number | null = null;
   private readonly generate: (selectedText: string) => Promise<GenerateAiResult>;
   private readonly callbacks: AiRequestCallbacks;
   private readonly getProjectToken: () => number;
@@ -49,6 +50,13 @@ export class AiRequestCoordinator {
     return this.inFlight !== null;
   }
 
+  releaseStaleRequestOwnership(): void {
+    if (!this.inFlight || this.inFlightProjectToken === this.getProjectToken()) return;
+    this.inFlight = null;
+    this.inFlightProjectToken = null;
+    this.activeRequestToken += 1;
+  }
+
   /**
    * 发起一次首次生成请求。若已有请求进行中，返回 `null` 且不执行第二个 client 调用。
    * 可选 `firstRequest` 用于思维扩展带方向开始；成功/失败仍按冻结选区走 onSuccess/onError。
@@ -63,6 +71,7 @@ export class AiRequestCoordinator {
     const token = this.getProjectToken();
     const requestToken = ++this.activeRequestToken;
     const structured = this.structuredGenerate;
+    this.inFlightProjectToken = token;
     this.inFlight = this.run(snapshot, token, requestToken, null, () => {
       if (firstRequest && structured) {
         return structured(firstRequest);
@@ -80,6 +89,7 @@ export class AiRequestCoordinator {
     if (this.inFlight || !generate) return null;
     const token = this.getProjectToken();
     const requestToken = ++this.activeRequestToken;
+    this.inFlightProjectToken = token;
     this.inFlight = this.run(
       null,
       token,
@@ -101,7 +111,7 @@ export class AiRequestCoordinator {
     try {
       result = await generate();
     } catch {
-      this.inFlight = null;
+      this.clearRequestOwnership(requestToken);
       if (this.isStale(token, requestToken, identity)) return;
       const error: GenerateAiError = {
         code: "network",
@@ -115,7 +125,7 @@ export class AiRequestCoordinator {
       return;
     }
 
-    this.inFlight = null;
+    this.clearRequestOwnership(requestToken);
     if (this.isStale(token, requestToken, identity)) return;
     if (result.ok) {
       if (identity && this.callbacks.onStructuredSuccess) {
@@ -135,6 +145,12 @@ export class AiRequestCoordinator {
     return identity !== null &&
       (this.getConversationIdentity === null ||
         !sameIdentity(identity, this.getConversationIdentity()));
+  }
+
+  private clearRequestOwnership(requestToken: number): void {
+    if (requestToken !== this.activeRequestToken) return;
+    this.inFlight = null;
+    this.inFlightProjectToken = null;
   }
 }
 

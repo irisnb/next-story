@@ -162,6 +162,7 @@ test("forms one anchored linear conversation after the first success", () => {
   assert.deepEqual(state.conversation, {
     id: 1,
     anchor,
+    initialUserMaterial: { kind: "first", selected_text: "冻结选区" },
     firstResponse: "首次回应",
     turns: [],
     pending: null,

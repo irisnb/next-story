@@ -238,11 +238,13 @@ export function setupAiFeature(
   return {
     beginProject(): void {
       projectToken += 1;
+      coordinator.releaseStaleRequestOwnership();
       selectionEntry.reset();
       state.reset();
     },
     endProject(): void {
       projectToken += 1;
+      coordinator.releaseStaleRequestOwnership();
       selectionEntry.reset();
       state.reset();
     },

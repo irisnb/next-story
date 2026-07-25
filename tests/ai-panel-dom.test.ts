@@ -9,6 +9,7 @@ import type { AppDom } from "../src/dom.ts";
 import type { GenerateAiRequest, GenerateAiResult, SelectionSnapshot } from "../src/types.ts";
 
 type Listener = (event: FakeEvent) => void;
+type GenerateAiResultSource = GenerateAiResult | Promise<GenerateAiResult>;
 
 class FakeClassList {
   private readonly values = new Set<string>();
@@ -89,6 +90,30 @@ function snapshot(text: string): SelectionSnapshot {
   return { notebook: "draft", selectedText: text, start: 0, end: text.length };
 }
 
+function deferredGenerateResult(): {
+  promise: Promise<GenerateAiResult>;
+  resolve(result: GenerateAiResult): void;
+  reject(error: Error): void;
+} {
+  let resolveResult: ((result: GenerateAiResult) => void) | null = null;
+  let rejectResult: ((error: Error) => void) | null = null;
+  const promise = new Promise<GenerateAiResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  if (!resolveResult || !rejectResult) throw new Error("deferred result was not initialized");
+  return { promise, resolve: resolveResult, reject: rejectResult };
+}
+
+function conversationText(ui: { elements: Map<string, FakeElement> }): string[] {
+  return ui.elements.get("ai-conversation")!.children.map((child) => child.textContent);
+}
+
+async function flushAiFeatureFlow(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function harness(): {
   state: AiPanelState;
 	  elements: Map<string, FakeElement>;
@@ -165,7 +190,7 @@ function harness(): {
   };
 }
 
-function featureHarness(results: GenerateAiResult[]): {
+function featureHarness(results: GenerateAiResultSource[]): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
   requests: GenerateAiRequest[];
@@ -501,13 +526,13 @@ test("real AI feature flow never writes notebooks across success, failure, retry
     const main = ui.elements.get("main-textarea")!;
     const original = [draft.value, main.value];
     ui.summon(snapshot("冻结选区"));
-    await Promise.resolve();
+    await flushAiFeatureFlow();
     assert.equal(ui.controller.submitFollowUp("失败问题"), true);
-    await Promise.resolve();
+    await flushAiFeatureFlow();
     assert.equal(ui.controller.retryFollowUp(), true);
-    await Promise.resolve();
+    await flushAiFeatureFlow();
     assert.equal(ui.controller.editFollowUp("编辑问题"), true);
-    await Promise.resolve();
+    await flushAiFeatureFlow();
 
     assert.deepEqual([draft.value, main.value], original);
     assert.equal(ui.requests.length, 4);
@@ -567,6 +592,63 @@ test("real AI feature flow omits thinking direction when the prestate direction 
   }
 });
 
+test("thinking expansion follow-up reuses the original direction-bearing first material", async () => {
+  const ui = featureHarness([
+    { ok: true, content: "扩展回答" },
+    { ok: true, content: "追问回答" },
+  ]);
+  try {
+    const input = ui.elements.get("ai-thinking-expansion-input")!;
+
+    ui.thinkingExpansion(snapshot("冻结选区"));
+
+    input.value = "追人物的犹豫";
+    input.dispatch("input");
+    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    await flushAiFeatureFlow();
+
+    assert.equal(ui.controller.submitFollowUp("继续追问"), true);
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests[1], {
+      kind: "follow_up",
+      selected_text: "冻结选区",
+      thinking_direction: "追人物的犹豫",
+      messages: [
+        { role: "assistant", content: "扩展回答" },
+        { role: "user", content: "继续追问" },
+      ],
+    });
+  } finally {
+    ui.restore();
+  }
+});
+
+test("summon follow-up does not invent a thinking direction", async () => {
+  const ui = featureHarness([
+    { ok: true, content: "首答" },
+    { ok: true, content: "追问回答" },
+  ]);
+  try {
+    ui.summon(snapshot("普通选区"));
+    await flushAiFeatureFlow();
+
+    assert.equal(ui.controller.submitFollowUp("继续追问"), true);
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests[1], {
+      kind: "follow_up",
+      selected_text: "普通选区",
+      messages: [
+        { role: "assistant", content: "首答" },
+        { role: "user", content: "继续追问" },
+      ],
+    });
+  } finally {
+    ui.restore();
+  }
+});
+
 test("configuration navigation preserves the live feature and never starts generation", async () => {
   const ui = featureHarness([{ ok: true, content: "首答" }]);
   try {
@@ -577,6 +659,87 @@ test("configuration navigation preserves the live feature and never starts gener
     assert.equal(ui.requests.length, 1);
     assert.equal(ui.controller.submitFollowUp("回来后追问"), true);
     await Promise.resolve();
+  } finally {
+    ui.restore();
+  }
+});
+
+test("same-project first requests remain single-flight while the current request is pending", () => {
+  const pending = deferredGenerateResult();
+  const ui = featureHarness([pending.promise, { ok: true, content: "不应发起" }]);
+  try {
+    ui.summon(snapshot("当前作品选区一"));
+    ui.summon(snapshot("当前作品选区二"));
+
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "当前作品选区一" },
+    ]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("project replacement releases a stale first request so the new project can summon immediately", async () => {
+  const stale = deferredGenerateResult();
+  const ui = featureHarness([stale.promise, { ok: true, content: "新作品回应" }]);
+  try {
+    ui.summon(snapshot("旧作品选区"));
+    assert.equal(ui.requests.length, 1);
+
+    ui.controller.endProject();
+    ui.controller.beginProject();
+    ui.summon(snapshot("新作品选区"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "旧作品选区" },
+      { kind: "first", selected_text: "新作品选区" },
+    ]);
+    assert.deepEqual(conversationText(ui), ["新作品回应"]);
+
+    stale.resolve({ ok: true, content: "迟到旧作品回应" });
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["新作品回应"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("project replacement releases a stale follow-up request so the new project can summon immediately", async () => {
+  const stale = deferredGenerateResult();
+  const ui = featureHarness([
+    { ok: true, content: "旧作品首答" },
+    stale.promise,
+    { ok: true, content: "新作品首答" },
+  ]);
+  try {
+    ui.summon(snapshot("旧作品锚点"));
+    await Promise.resolve();
+    assert.equal(ui.controller.submitFollowUp("旧作品追问"), true);
+    assert.equal(ui.requests.length, 2);
+
+    ui.controller.endProject();
+    ui.controller.beginProject();
+    ui.summon(snapshot("新作品锚点"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "旧作品锚点" },
+      {
+        kind: "follow_up",
+        selected_text: "旧作品锚点",
+        messages: [
+          { role: "assistant", content: "旧作品首答" },
+          { role: "user", content: "旧作品追问" },
+        ],
+      },
+      { kind: "first", selected_text: "新作品锚点" },
+    ]);
+    assert.deepEqual(conversationText(ui), ["新作品首答"]);
+
+    stale.resolve({ ok: false, error: { code: "network", message: "迟到旧作品失败" } });
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["新作品首答"]);
   } finally {
     ui.restore();
   }

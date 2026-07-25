@@ -127,6 +127,7 @@ export class AiPanelState {
     const conversation = this.conversationState.createFromFirstSuccess(
       conversationId,
       snapshot,
+      this.pendingFirstRequest ?? { kind: "first", selected_text: snapshot.selectedText },
       response,
     );
     this.request = firstSuccessRequest(conversation.anchor, response, conversationId);

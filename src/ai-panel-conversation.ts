@@ -15,6 +15,7 @@ export interface PendingFollowUpTurn {
 export interface TemporaryConversation {
   id: number;
   anchor: SelectionSnapshot;
+  initialUserMaterial: Readonly<Extract<GenerateAiRequest, { kind: "first" }>>;
   firstResponse: string;
   turns: SuccessfulFollowUpTurn[];
   pending: PendingFollowUpTurn | null;
@@ -23,6 +24,7 @@ export interface TemporaryConversation {
 export type ReadonlyTemporaryConversation = Readonly<{
   id: number;
   anchor: Readonly<SelectionSnapshot>;
+  initialUserMaterial: Readonly<Extract<GenerateAiRequest, { kind: "first" }>>;
   firstResponse: string;
   turns: ReadonlyArray<Readonly<SuccessfulFollowUpTurn>>;
   pending: Readonly<PendingFollowUpTurn> | null;
@@ -82,6 +84,7 @@ export class TemporaryConversationState {
     return Object.freeze({
       id: conversation.id,
       anchor: Object.freeze({ ...conversation.anchor }),
+      initialUserMaterial: Object.freeze({ ...conversation.initialUserMaterial }),
       firstResponse: conversation.firstResponse,
       turns: Object.freeze(turns),
       pending,
@@ -91,12 +94,14 @@ export class TemporaryConversationState {
   createFromFirstSuccess(
     conversationId: number,
     snapshot: SelectionSnapshot,
+    firstRequest: Extract<GenerateAiRequest, { kind: "first" }>,
     response: string,
   ): TemporaryConversation {
     const anchor = frozenSnapshot(snapshot);
     this.currentConversation = {
       id: conversationId,
       anchor,
+      initialUserMaterial: Object.freeze({ ...firstRequest }),
       firstResponse: response,
       turns: [],
       pending: null,
@@ -197,7 +202,10 @@ export class TemporaryConversationState {
     messages.push({ role: "user", content: question });
     return {
       kind: "follow_up",
-      selected_text: conversation.anchor.selectedText,
+      selected_text: conversation.initialUserMaterial.selected_text,
+      ...(conversation.initialUserMaterial.thinking_direction
+        ? { thinking_direction: conversation.initialUserMaterial.thinking_direction }
+        : {}),
       messages,
     };
   }

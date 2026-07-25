@@ -76,6 +76,8 @@ export type GenerateAiRequest =
   | {
       kind: "follow_up";
       selected_text: string;
+      /** 追问复用首次思维扩展方向；普通召唤或空方向开始时省略。 */
+      thinking_direction?: string;
       messages: GenerateAiMessage[];
     };
 

@@ -1,3 +1,5 @@
+import type { LlmConfig } from "./types.ts";
+
 export type LlmConfigReturnPage = "welcome-page" | "editor-page";
 
 export interface RefreshCompletion {
@@ -12,12 +14,15 @@ export class LlmConfigUiState {
   private loading = false;
   private busy = false;
   private dirty = false;
+  private discardAuthorized = false;
+  private baseline: LlmConfig | null = null;
 
   beginOpen(returnPage: LlmConfigReturnPage): number {
     this.returnPage = returnPage;
     this.refreshGeneration += 1;
     this.loading = true;
     this.dirty = false;
+    this.discardAuthorized = false;
     return this.refreshGeneration;
   }
 
@@ -32,6 +37,22 @@ export class LlmConfigUiState {
 
   markDirty(): void {
     this.dirty = true;
+    this.discardAuthorized = false;
+  }
+
+  commitBaseline(config: LlmConfig): void {
+    this.baseline = { ...config };
+    this.dirty = false;
+    this.discardAuthorized = false;
+  }
+
+  discardChanges(): void {
+    this.dirty = false;
+    this.discardAuthorized = true;
+  }
+
+  hasUnsavedChanges(config: LlmConfig): boolean {
+    return !this.discardAuthorized && !sameConfig(config, this.baseline);
   }
 
   beginOperation(isValid: boolean): boolean {
@@ -54,4 +75,14 @@ export class LlmConfigUiState {
   fieldsDisabled(): boolean {
     return this.loading || this.busy;
   }
+}
+
+function sameConfig(left: LlmConfig, right: LlmConfig | null): boolean {
+  if (!right) {
+    return left.api_base_url === "" && left.api_key === "" && left.model === "";
+  }
+
+  return left.api_base_url === right.api_base_url
+    && left.api_key === right.api_key
+    && left.model === right.model;
 }

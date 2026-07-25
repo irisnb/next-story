@@ -112,6 +112,9 @@ pub enum GenerateAiRequest {
     },
     FollowUp {
         selected_text: String,
+        /// 追问复用首次思维扩展方向；缺省或空白表示普通召唤或空方向开始。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thinking_direction: Option<String>,
         messages: Vec<GenerateAiMessage>,
     },
 }

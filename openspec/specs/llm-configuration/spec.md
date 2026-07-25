@@ -62,12 +62,14 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **AND** 系统提示用户补全缺失项
 
 ### Requirement: 用户可以测试已配置模型的连接
-系统 SHALL 提供测试连接动作，并 MUST 使用用户填写的唯一 LLM 配置发起一次真实 OpenAI-compatible chat-completions 模型调用。
+系统 SHALL 提供测试连接动作，并 MUST 使用用户填写的唯一 LLM 配置发起一次真实 OpenAI-compatible chat-completions 模型调用。系统 MUST 使用与 AI 思考生成相同的 assistant 文本规范化规则判断响应是否包含合法模型结果。
 
 #### Scenario: 测试连接成功
 - **WHEN** 用户填写可调用的 API 地址、API Key 和模型名并触发测试连接
 - **THEN** 系统向该模型发起一次真实测试请求
 - **AND** 系统解析返回的 JSON 并确认至少存在一个合法的非空 `choices` 结果
+- **AND** 如果 assistant `message.content` 是字符串，系统以该字符串去除首尾空白后的非空结果作为合法模型结果
+- **AND** 如果 assistant `message.content` 是数组，系统按原顺序收集全部非空 `text` part，并以合并后的非空结果作为合法模型结果
 - **AND** 系统显示测试连接成功状态
 
 #### Scenario: 2xx 响应不包含有效模型结果
@@ -114,6 +116,79 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **THEN** 系统忽略较早请求的结果
 - **AND** 系统不覆盖用户在此期间输入的内容
 
+### Requirement: LLM 配置页未保存修改必须保护离开
+系统 SHALL 在 LLM 配置页存在未保存配置修改时保护离开流程，并 MUST 让用户明确选择保存并离开、放弃修改并离开，或取消离开。
+
+#### Scenario: 修改配置后返回前要求确认
+- **WHEN** 用户在 LLM 配置页修改 API 地址、API Key 或模型名
+- **AND** 用户未成功保存当前配置
+- **AND** 用户触发返回
+- **THEN** 系统显示离开确认
+- **AND** 系统不直接切换到欢迎页或编辑器
+
+#### Scenario: 保存并离开成功
+- **WHEN** LLM 配置页存在未保存配置修改
+- **AND** 用户触发返回并选择保存并离开
+- **AND** 当前配置保存成功
+- **THEN** 系统更新配置保存基线
+- **AND** 系统清除配置未保存状态
+- **AND** 系统离开 LLM 配置页
+
+#### Scenario: 保存并离开失败
+- **WHEN** LLM 配置页存在未保存配置修改
+- **AND** 用户触发返回并选择保存并离开
+- **AND** 当前配置保存失败
+- **THEN** 系统停留在 LLM 配置页
+- **AND** 系统保留当前输入
+- **AND** 系统保持配置未保存状态
+
+#### Scenario: 放弃修改并离开
+- **WHEN** LLM 配置页存在未保存配置修改
+- **AND** 用户触发返回并选择放弃修改并离开
+- **THEN** 系统离开 LLM 配置页
+- **AND** 系统不保存当前配置修改
+- **AND** 系统清除当前配置页的未保存状态
+
+#### Scenario: 取消离开继续编辑
+- **WHEN** LLM 配置页存在未保存配置修改
+- **AND** 用户触发返回并选择取消
+- **THEN** 系统停留在 LLM 配置页
+- **AND** 系统保留当前输入
+- **AND** 系统保持配置未保存状态
+
+#### Scenario: 离开确认不得泄露 API Key
+- **WHEN** LLM 配置页存在未保存 API Key 修改
+- **AND** 系统显示离开确认
+- **THEN** 离开确认不显示 API Key 明文
+
+### Requirement: LLM 配置未保存修改必须保护窗口关闭
+系统 SHALL 在原生窗口关闭前检查 LLM 配置页未保存修改，并 MUST 仅在相关离开保护全部通过后关闭窗口。
+
+#### Scenario: 仅配置未保存时关闭窗口要求确认
+- **WHEN** 编辑器文本没有未保存修改
+- **AND** LLM 配置页存在未保存配置修改
+- **AND** 用户触发窗口关闭
+- **THEN** 系统显示离开确认
+- **AND** 用户取消或保存失败时窗口保持打开
+
+#### Scenario: 配置保存后允许关闭窗口
+- **WHEN** LLM 配置页存在未保存配置修改
+- **AND** 用户触发窗口关闭并选择保存并离开
+- **AND** 当前配置保存成功
+- **THEN** 系统关闭窗口
+
+#### Scenario: 编辑器与配置都未保存时全部通过才关闭
+- **WHEN** 编辑器文本存在未保存修改
+- **AND** LLM 配置页存在未保存配置修改
+- **AND** 用户触发窗口关闭
+- **THEN** 系统分别保护需要保存或放弃的未保存内容
+- **AND** 只有全部离开保护通过后系统才关闭窗口
+- **AND** 任一保护取消或保存失败时窗口保持打开
+
+#### Scenario: 配置关闭保护不修改用户笔记本
+- **WHEN** 系统因 LLM 配置未保存修改保护窗口关闭
+- **THEN** 系统不修改草稿本、正文本或作品元数据
+
 ### Requirement: 唯一 LLM 配置支持受限 AI 思考生成
 系统 SHALL 在保存了完整唯一 LLM 配置后支持选区触发的真实首次 AI 思考生成与当前临时对话的继续追问，同时 MUST NOT 提供多 provider、多模型槽位、服务端会话存储或 AI 直接写入草稿本和正文本的能力。
 
@@ -149,7 +224,9 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 #### Scenario: 生成响应必须包含合法模型结果
 - **WHEN** 模型服务返回 2xx
 - **THEN** 系统仅在响应包含合法非空 assistant `choices` 内容时返回成功
-- **AND** 空正文、无效 JSON、错误对象或无合法回复 MUST 被视为失败
+- **AND** 如果 assistant `message.content` 是字符串，系统返回该字符串去除首尾空白后的文本
+- **AND** 如果 assistant `message.content` 是数组，系统按原顺序收集全部非空 `text` part，并使用换行分隔组合成返回文本
+- **AND** 空正文、无效 JSON、错误对象、无合法回复或数组中没有任何非空 `text` part MUST 被视为失败
 
 #### Scenario: 生成错误使用稳定安全契约
 - **WHEN** 首次或追问生成因缺少配置、载荷无效、认证、超时、网络、请求过长、服务错误或无效响应而失败

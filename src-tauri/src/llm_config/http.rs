@@ -159,33 +159,7 @@ fn map_status_error(status_code: u16) -> GenerateAiError {
 
 /// 校验响应是否包含合法非空的 assistant 回复（连接测试与生成共用）。
 pub(crate) fn has_valid_choice(value: &Value) -> bool {
-    value
-        .get("choices")
-        .and_then(Value::as_array)
-        .is_some_and(|choices| {
-            choices.iter().any(|choice| {
-                let Some(message) = choice.get("message") else {
-                    return false;
-                };
-                if message.get("role").and_then(Value::as_str) != Some("assistant") {
-                    return false;
-                }
-
-                let Some(content) = message.get("content") else {
-                    return false;
-                };
-                let has_content = content.as_str().is_some_and(|text| !text.trim().is_empty())
-                    || content.as_array().is_some_and(|parts| {
-                        parts.iter().any(|part| {
-                            part.get("text")
-                                .and_then(Value::as_str)
-                                .is_some_and(|text| !text.trim().is_empty())
-                        })
-                    });
-
-                has_content
-            })
-        })
+    extract_assistant_text(value).is_some()
 }
 
 /// 从响应体提取第一个合法非空的 assistant 文本。
@@ -200,24 +174,33 @@ pub(crate) fn extract_assistant_text(value: &Value) -> Option<String> {
                     return None;
                 }
                 let content = message.get("content")?;
-                if let Some(text) = content.as_str() {
-                    if !text.trim().is_empty() {
-                        return Some(text.to_string());
-                    }
-                    return None;
-                }
-                if let Some(parts) = content.as_array() {
-                    for part in parts {
-                        if let Some(text) = part.get("text").and_then(Value::as_str) {
-                            if !text.trim().is_empty() {
-                                return Some(text.to_string());
-                            }
-                        }
-                    }
-                }
-                None
+                normalize_assistant_content(content)
             })
         })
+}
+
+fn normalize_assistant_content(content: &Value) -> Option<String> {
+    if let Some(text) = content.as_str() {
+        if !text.trim().is_empty() {
+            return Some(text.to_string());
+        }
+        return None;
+    }
+
+    let parts = content.as_array()?;
+    let text_parts = parts
+        .iter()
+        .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>();
+
+    if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    }
 }
 
 /// 发起一次最小 chat-completions 请求，验证模型是否真实可调用。

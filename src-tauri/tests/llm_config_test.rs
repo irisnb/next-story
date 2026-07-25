@@ -59,6 +59,19 @@ fn follow_up_request(
 ) -> GenerateAiRequest {
     GenerateAiRequest::FollowUp {
         selected_text: selected_text.into(),
+        thinking_direction: None,
+        messages,
+    }
+}
+
+fn follow_up_request_with_direction(
+    selected_text: impl Into<String>,
+    direction: impl Into<String>,
+    messages: Vec<GenerateAiMessage>,
+) -> GenerateAiRequest {
+    GenerateAiRequest::FollowUp {
+        selected_text: selected_text.into(),
+        thinking_direction: Some(direction.into()),
         messages,
     }
 }
@@ -407,6 +420,59 @@ async fn generate_returns_assistant_content_from_mock() {
 }
 
 #[tokio::test]
+async fn generate_joins_all_multipart_assistant_text_in_order() {
+    let base = start_mock(
+        200,
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\" 第一段 \"},{\"type\":\"text\",\"text\":\"第二段\"}]}}]}",
+    );
+    let config = sample_config(base);
+
+    let content = generate_ai_thinking(&config, "背叛")
+        .await
+        .expect("生成应成功");
+
+    assert_eq!(content, "第一段\n第二段");
+}
+
+#[tokio::test]
+async fn generate_ignores_empty_and_unknown_multipart_parts() {
+    let base = start_mock(
+        200,
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"  \"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://example.com/a.png\"}},{\"type\":\"text\",\"text\":\" 可见文本 \"}]}}]}",
+    );
+    let config = sample_config(base);
+
+    let content = generate_ai_thinking(&config, "背叛")
+        .await
+        .expect("生成应成功");
+
+    assert_eq!(content, "可见文本");
+}
+
+#[tokio::test]
+async fn generate_rejects_multipart_without_valid_text() {
+    let base = start_mock(
+        200,
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"  \"},{\"type\":\"tool_call\",\"id\":\"x\"}]}}]}",
+    );
+    let config = sample_config(base);
+
+    let result = generate_ai_thinking(&config, "背叛").await;
+
+    assert!(
+        matches!(
+            result,
+            Err(GenerateAiError {
+                code: GenerateAiErrorCode::InvalidResponse,
+                ..
+            })
+        ),
+        "应因无有效文本失败，实际: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
 async fn generate_rejects_2xx_without_valid_reply() {
     for body in [
         "<html>login</html>",
@@ -737,6 +803,40 @@ async fn generate_follow_up_sends_exact_full_conversation_once_without_extra_con
         }
     }
     assert_eq!(value["stream"], false);
+}
+
+#[tokio::test]
+async fn generate_follow_up_reuses_direction_bearing_first_material() {
+    let response =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
+    let (base, captured) = start_capturing_mock(response);
+    let request = follow_up_request_with_direction(
+        "冻结选区",
+        "想追的方向",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "当前问题"),
+        ],
+    );
+
+    generate_ai_thinking(&sample_config(base), &request)
+        .await
+        .expect("follow-up generate");
+
+    let request = captured
+        .recv_timeout(Duration::from_secs(2))
+        .expect("captured request");
+    let body = request.split_once("\r\n\r\n").expect("request body").1;
+    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
+    assert_eq!(
+        value["messages"][1],
+        serde_json::json!({
+            "role":"user",
+            "content":"选区原文：\n冻结选区\n\n用户希望探索的角度（不是作品事实或最终判断）：\n想追的方向"
+        })
+    );
+    assert_eq!(body.matches("想追的方向").count(), 1);
+    assert_eq!(body.matches("当前问题").count(), 1);
 }
 
 #[tokio::test]

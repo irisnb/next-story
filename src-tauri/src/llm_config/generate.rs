@@ -81,6 +81,7 @@ pub(crate) fn validate_generate_ai_request(
         GenerateAiRequest::First { selected_text, .. } => (selected_text, None),
         GenerateAiRequest::FollowUp {
             selected_text,
+            thinking_direction: _,
             messages,
         } => (selected_text, Some(messages)),
     };
@@ -133,15 +134,12 @@ fn build_messages(request: &GenerateAiRequest) -> Result<Value, GenerateAiError>
         GenerateAiRequest::First {
             selected_text,
             thinking_direction,
-        } => (
-            selected_text.as_str(),
-            thinking_direction.as_deref(),
-            None,
-        ),
+        } => (selected_text.as_str(), thinking_direction.as_deref(), None),
         GenerateAiRequest::FollowUp {
             selected_text,
+            thinking_direction,
             messages,
-        } => (selected_text.as_str(), None, Some(messages)),
+        } => (selected_text.as_str(), thinking_direction.as_deref(), Some(messages)),
     };
 
     let mut provider_messages = vec![

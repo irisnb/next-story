@@ -481,8 +481,10 @@ test("editor shell keeps the AI panel viewport-stable and scrolls its body", () 
 test("selection entry menu opens from a locked trigger anchor", () => {
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
-  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*width:\s*18px;/s);
-  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*height:\s*18px;/s);
+  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*width:\s*44px;/s);
+  assert.match(styles, /\.ai-selection-entry\s*\{[^}]*height:\s*32px;/s);
+  assert.match(styles, /#ai-selection-entry-trigger\s*\{[^}]*border-radius:\s*999px;/s);
+  assert.match(styles, /#ai-selection-entry-trigger\s*\{[^}]*font-weight:\s*700;/s);
   assert.match(styles, /#ai-selection-entry-menu\s*\{[^}]*position:\s*absolute;/s);
   assert.match(styles, /#ai-selection-entry-menu\s*\{[^}]*left:\s*calc\(100% \+ 0\.35rem\);/s);
 });

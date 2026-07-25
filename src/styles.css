@@ -595,36 +595,37 @@
   position: fixed;
   z-index: 20;
   /* Anchor box is the trigger size only; menu is positioned absolutely so it never shifts the trigger. */
-  width: 18px;
-  height: 18px;
+  width: 44px;
+  height: 32px;
 }
 
 .ai-selection-entry.hidden {
   display: none;
 }
 
-/* Larger outer circle with a quiet low-contrast ring; small solid inner dot via radial gradient. */
 #ai-selection-entry-trigger {
   position: absolute;
   inset: 0;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1.5px solid #a0aec0;
-  border-radius: 50%;
-  background-color: transparent;
-  background-image: radial-gradient(circle, #a0aec0 0 3px, transparent 3.5px);
-  background-repeat: no-repeat;
-  background-position: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: 1px solid #a0aec0;
+  border-radius: 999px;
+  background-color: #ffffff;
+  color: #2d3748;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
   cursor: pointer;
-  transition: border-color 0.15s ease, background-image 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ai-selection-entry.menu-open #ai-selection-entry-trigger,
 #ai-selection-entry-trigger:hover {
   border-color: #4a5568;
-  background-image: radial-gradient(circle, #4a5568 0 3px, transparent 3.5px);
+  background-color: #f7fafc;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 

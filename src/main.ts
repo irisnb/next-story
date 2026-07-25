@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import { CloseCoordinator } from "./close-guard";
+import { CloseCoordinator, composeCloseGuards } from "./close-guard";
 import { getAppDom } from "./dom";
 import { setupEditor } from "./editor";
 import { setupLeaveDialog } from "./leave-dialog";
@@ -14,7 +14,9 @@ window.addEventListener("DOMContentLoaded", () => {
   const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage, dom.llmConfigPage];
   const leaveDialog = setupLeaveDialog(dom);
   const editor = setupEditor(dom, leaveDialog);
-  const llmConfig = setupLlmConfigForm(dom, pages);
+  const llmConfig = setupLlmConfigForm(dom, pages, {
+    chooseLeave: leaveDialog.choose,
+  });
   const ai = setupAiFeature(dom, {
     getCurrentNotebook: () => editor.getCurrentTab(),
     openConfigPage: (returnPage) => llmConfig.open(returnPage),
@@ -40,9 +42,13 @@ window.addEventListener("DOMContentLoaded", () => {
     console.error("关闭窗口失败:", error);
     alert(`关闭窗口失败：${String(error)}`);
   };
+  const closeGuard = composeCloseGuards([
+    { isDirty: editor.hasUnsavedChanges, guardLeave: editor.guardLeave },
+    { isDirty: llmConfig.hasUnsavedChanges, guardLeave: llmConfig.guardLeave },
+  ]);
   const close = new CloseCoordinator({
-    isDirty: editor.hasUnsavedChanges,
-    guardLeave: editor.guardLeave,
+    isDirty: closeGuard.isDirty,
+    guardLeave: closeGuard.guardLeave,
     destroy: () => appWindow.destroy(),
     reportError: reportCloseError,
   });

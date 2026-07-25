@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { guardLeave, LeaveCoordinator, type LeaveChoice } from "../src/leave-guard.ts";
-import { CloseCoordinator, orchestrateCloseRequest } from "../src/close-guard.ts";
+import { CloseCoordinator, composeCloseGuards, orchestrateCloseRequest } from "../src/close-guard.ts";
 import { EditorSaveState, type NotebookContents } from "../src/editor-save-state.ts";
 import { NotebookMemory } from "../src/notebook-memory.ts";
 
@@ -202,6 +202,50 @@ test("native destroy rejection is reported and keeps the window open", async () 
 
   assert.equal(result, "kept-open");
   assert.deepEqual(reported, [failure]);
+});
+
+test("native close is dirty when only LLM configuration has unsaved changes", async () => {
+  let editorPrompts = 0;
+  let configPrompts = 0;
+  const guard = composeCloseGuards([
+    {
+      isDirty: () => false,
+      guardLeave: async () => { editorPrompts += 1; return true; },
+    },
+    {
+      isDirty: () => true,
+      guardLeave: async () => { configPrompts += 1; return true; },
+    },
+  ]);
+
+  assert.equal(guard.isDirty(), true);
+  assert.equal(await guard.guardLeave(), true);
+  assert.equal(editorPrompts, 0);
+  assert.equal(configPrompts, 1);
+});
+
+test("native close requires editor and LLM configuration guards before destroying", async () => {
+  const calls: string[] = [];
+  const guard = composeCloseGuards([
+    {
+      isDirty: () => true,
+      guardLeave: async () => { calls.push("editor"); return true; },
+    },
+    {
+      isDirty: () => true,
+      guardLeave: async () => { calls.push("llm-config"); return false; },
+    },
+  ]);
+
+  const result = await orchestrateCloseRequest({
+    isDirty: guard.isDirty,
+    preventDefault: () => { calls.push("prevent-default"); },
+    guardLeave: guard.guardLeave,
+    destroy: async () => { calls.push("destroy"); },
+  });
+
+  assert.equal(result, "kept-open");
+  assert.deepEqual(calls, ["prevent-default", "editor", "llm-config"]);
 });
 
 test("duplicate native close requests share one confirmation and destroy exactly once", async () => {

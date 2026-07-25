@@ -8,6 +8,27 @@ export interface CloseRequestOptions {
 
 export type CloseRequestResult = "allow-default" | "closed" | "kept-open";
 
+export interface CloseGuard {
+  isDirty(): boolean;
+  guardLeave(): Promise<boolean>;
+}
+
+export function composeCloseGuards(guards: readonly CloseGuard[]): CloseGuard {
+  return {
+    isDirty(): boolean {
+      return guards.some((guard) => guard.isDirty());
+    },
+    async guardLeave(): Promise<boolean> {
+      for (const guard of guards) {
+        if (guard.isDirty() && !await guard.guardLeave()) {
+          return false;
+        }
+      }
+      return true;
+    },
+  };
+}
+
 export async function orchestrateCloseRequest(
   options: CloseRequestOptions,
 ): Promise<CloseRequestResult> {

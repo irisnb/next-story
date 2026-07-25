@@ -1,15 +1,42 @@
-import type { AppDom } from "./dom";
-import { LlmConfigUiState, type LlmConfigReturnPage } from "./llm-config-state";
-import { loadLlmConfig, saveLlmConfig, testLlmConnection } from "./project-api";
-import type { LlmConfig } from "./types";
-import { showPage } from "./views";
+import type { AppDom } from "./dom.ts";
+import { LeaveCoordinator, type LeaveChoice } from "./leave-guard.ts";
+import { LlmConfigUiState, type LlmConfigReturnPage } from "./llm-config-state.ts";
+import { loadLlmConfig, saveLlmConfig, testLlmConnection } from "./project-api.ts";
+import type { LlmConfig } from "./types.ts";
+import { showPage } from "./views.ts";
 
 export interface LlmConfigController {
   open(returnPage: LlmConfigReturnPage): void;
+  hasUnsavedChanges(): boolean;
+  save(): Promise<boolean>;
+  guardLeave(): Promise<boolean>;
 }
 
-export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfigController {
+export interface LlmConfigFormServices {
+  chooseLeave(): Promise<LeaveChoice>;
+  loadConfig(): Promise<LlmConfig | null>;
+  saveConfig(config: LlmConfig): Promise<void>;
+  testConnection(config: LlmConfig): Promise<void>;
+}
+
+export function setupLlmConfigForm(
+  dom: AppDom,
+  pages: HTMLElement[],
+  overrides: Partial<LlmConfigFormServices> = {},
+): LlmConfigController {
+  const services: LlmConfigFormServices = {
+    chooseLeave: async () => "cancel",
+    loadConfig: loadLlmConfig,
+    saveConfig: saveLlmConfig,
+    testConnection: testLlmConnection,
+    ...overrides,
+  };
   const uiState = new LlmConfigUiState();
+  const leave = new LeaveCoordinator({
+    isDirty: hasUnsavedChanges,
+    choose: chooseLeave,
+    save,
+  });
 
   function hideError(element: HTMLElement): void {
     element.classList.add("hidden");
@@ -72,9 +99,21 @@ export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfig
     };
   }
 
+  function hasUnsavedChanges(): boolean {
+    return uiState.hasUnsavedChanges(currentConfig());
+  }
+
+  async function chooseLeave(): Promise<LeaveChoice> {
+    const choice = await services.chooseLeave();
+    if (choice === "discard-and-leave") {
+      uiState.discardChanges();
+    }
+    return choice;
+  }
+
   async function loadSaved(generation: number): Promise<void> {
     try {
-      const saved = await loadLlmConfig();
+      const saved = await services.loadConfig();
       const completion = uiState.completeRefresh(generation);
       if (!completion.isCurrent) {
         return;
@@ -84,6 +123,7 @@ export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfig
         dom.apiBaseUrlInput.value = saved?.api_base_url ?? "";
         dom.apiKeyInput.value = saved?.api_key ?? "";
         dom.modelNameInput.value = saved?.model ?? "";
+        uiState.commitBaseline(currentConfig());
         setStatus(saved ? "已加载已保存配置" : "未保存");
       } else {
         setStatus("已保留当前输入");
@@ -98,24 +138,32 @@ export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfig
     }
   }
 
-  async function handleSave(): Promise<void> {
+  async function save(): Promise<boolean> {
     const valid = validateForm();
     if (!uiState.beginOperation(valid)) {
-      return;
+      return false;
     }
 
     validateForm();
     setStatus("正在保存...", "saving");
 
     try {
-      await saveLlmConfig(currentConfig());
+      const config = currentConfig();
+      await services.saveConfig(config);
+      uiState.commitBaseline(config);
       setStatus("已保存");
+      return true;
     } catch (error) {
       setStatus(`保存失败: ${String(error)}`, "error");
+      return false;
     } finally {
       uiState.endOperation();
       validateForm();
     }
+  }
+
+  async function handleSave(): Promise<void> {
+    await save();
   }
 
   async function handleTest(): Promise<void> {
@@ -128,7 +176,7 @@ export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfig
     setStatus("正在测试连接...", "saving");
 
     try {
-      await testLlmConnection(currentConfig());
+      await services.testConnection(currentConfig());
       setStatus("连接测试成功");
     } catch (error) {
       setStatus(`连接测试失败: ${String(error)}`, "error");
@@ -151,12 +199,23 @@ export function setupLlmConfigForm(dom: AppDom, pages: HTMLElement[]): LlmConfig
     void loadSaved(generation);
   }
 
+  async function handleBack(): Promise<void> {
+    if (await leave.run()) {
+      showPage(pages, uiState.returnPage);
+    }
+  }
+
   dom.btnSaveConfig.addEventListener("click", handleSave);
   dom.btnTestConfig.addEventListener("click", handleTest);
-  dom.btnBackConfig.addEventListener("click", () => showPage(pages, uiState.returnPage));
+  dom.btnBackConfig.addEventListener("click", () => { void handleBack(); });
   dom.apiBaseUrlInput.addEventListener("input", handleInput);
   dom.apiKeyInput.addEventListener("input", handleInput);
   dom.modelNameInput.addEventListener("input", handleInput);
 
-  return { open };
+  return {
+    open,
+    hasUnsavedChanges,
+    save,
+    guardLeave: () => leave.run(),
+  };
 }

@@ -72,3 +72,17 @@ test("shares one in-flight save and keeps baselines unchanged after failure", as
   assert.equal(state.hasUnsavedChanges, true);
   assert.equal(state.statusText, "保存失败：磁盘不可写");
 });
+
+test("keeps contents unsaved when a standalone backend save is rejected", async () => {
+  const state = new EditorSaveState("old draft", "old main");
+  state.setCurrent("new draft", "new main");
+
+  const saved = await state.save(async () => {
+    throw new Error("磁盘写入失败");
+  });
+
+  assert.equal(saved, false);
+  assert.equal(state.hasUnsavedChanges, true);
+  assert.equal(state.isSaving, false);
+  assert.equal(state.statusText, "保存失败：磁盘写入失败");
+});

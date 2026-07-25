@@ -3,8 +3,11 @@ import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts"
 import { getCaretCoordinates } from "./caret-coordinates.ts";
 import type { NotebookTab, SelectionSnapshot } from "./types.ts";
 
-/** Outer circle diameter for the selection entry trigger (CSS px). */
-export const SELECTION_ENTRY_TRIGGER_SIZE_PX = 18;
+/** Selection entry trigger width (CSS px). */
+export const SELECTION_ENTRY_TRIGGER_WIDTH_PX = 44;
+
+/** Selection entry trigger height (CSS px). */
+export const SELECTION_ENTRY_TRIGGER_HEIGHT_PX = 32;
 
 /** Gap between the focus-end character and the trigger, and clamp inset. */
 export const SELECTION_ENTRY_GAP_PX = 4;
@@ -62,7 +65,8 @@ export interface TriggerPlacementInput {
   /** Caret top relative to the textarea content box (scroll-adjusted). */
   caretTop: number;
   caretHeight: number;
-  triggerSize: number;
+  triggerWidth: number;
+  triggerHeight: number;
   gap: number;
 }
 
@@ -85,14 +89,15 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
     caretLeft,
     caretTop,
     caretHeight,
-    triggerSize,
+    triggerWidth,
+    triggerHeight,
     gap,
   } = input;
 
   const minLeft = editorLeft + gap;
-  const maxLeft = editorRight - triggerSize - gap;
+  const maxLeft = editorRight - triggerWidth - gap;
   const minTop = editorTop + gap;
-  const maxTop = editorBottom - triggerSize - gap;
+  const maxTop = editorBottom - triggerHeight - gap;
 
   const clamp = (value: number, min: number, max: number): number => {
     if (max < min) {
@@ -108,11 +113,11 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
   };
 
   const rightLeft = editorLeft + caretLeft + gap;
-  const rightTop = editorTop + caretTop + (caretHeight - triggerSize) / 2;
+  const rightTop = editorTop + caretTop + (caretHeight - triggerHeight) / 2;
   const fitsRight =
-    rightLeft + triggerSize + gap <= editorRight &&
+    rightLeft + triggerWidth + gap <= editorRight &&
     rightTop >= editorTop &&
-    rightTop + triggerSize <= editorBottom;
+    rightTop + triggerHeight <= editorBottom;
 
   if (fitsRight) {
     return {
@@ -123,7 +128,7 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
   }
 
   // Below the selected line, horizontally near the focus-end right edge (clamped to bounds).
-  const belowLeft = clamp(editorLeft + caretLeft - triggerSize, minLeft, maxLeft);
+  const belowLeft = clamp(editorLeft + caretLeft - triggerWidth, minLeft, maxLeft);
   const belowTop = editorTop + caretTop + caretHeight + gap;
 
   return {
@@ -166,7 +171,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   const trigger = document.createElement("button");
   trigger.id = "ai-selection-entry-trigger";
   trigger.type = "button";
-  trigger.textContent = "";
+  trigger.textContent = "AI";
   entry.appendChild(trigger);
 
   const menu = document.createElement("div");
@@ -225,7 +230,8 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       caretLeft: caret.left,
       caretTop: caret.top,
       caretHeight: caret.height,
-      triggerSize: SELECTION_ENTRY_TRIGGER_SIZE_PX,
+      triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
       gap: SELECTION_ENTRY_GAP_PX,
     });
     entry.style.position = "fixed";
@@ -274,6 +280,11 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     callback(snapshot);
   }
 
+  function keepTextareaSelectionVisible(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
+  trigger.addEventListener("mousedown", keepTextareaSelectionVisible);
   trigger.addEventListener("click", () => {
     if (menu.classList.contains("hidden")) {
       menu.classList.remove("hidden");
@@ -283,6 +294,8 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       closeMenu();
     }
   });
+  summonButton.addEventListener("mousedown", keepTextareaSelectionVisible);
+  thinkingButton.addEventListener("mousedown", keepTextareaSelectionVisible);
   summonButton.addEventListener("click", () => { freezeAndRun(onSummon); });
   thinkingButton.addEventListener("click", () => { freezeAndRun(onThinkingExpansion); });
 

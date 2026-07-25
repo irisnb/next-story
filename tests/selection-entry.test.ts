@@ -8,12 +8,21 @@ import {
   isSameSummonedSelection,
   setupSelectionEntry,
   SELECTION_ENTRY_GAP_PX,
-  SELECTION_ENTRY_TRIGGER_SIZE_PX,
+  SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+  SELECTION_ENTRY_TRIGGER_WIDTH_PX,
 } from "../src/selection-entry.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { SelectionSnapshot } from "../src/types.ts";
 
-type Listener = () => void;
+type Listener = (event: FakeEvent) => void;
+
+class FakeEvent {
+  defaultPrevented = false;
+
+  preventDefault(): void {
+    this.defaultPrevented = true;
+  }
+}
 
 class FakeClassList {
   private readonly values = new Set<string>();
@@ -89,8 +98,10 @@ class FakeElement {
 
   remove(): void {}
 
-  dispatch(type: string): void {
-    for (const listener of this.listeners.get(type) ?? []) listener();
+  dispatch(type: string): FakeEvent {
+    const event = new FakeEvent();
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+    return event;
   }
 }
 
@@ -177,7 +188,7 @@ test("offers no selection entry actions when the entry is hidden", () => {
   assert.deepEqual(actions, []);
 });
 
-test("selection entry opens a dot-triggered menu and freezes each action selection", () => {
+test("selection entry opens an AI pill-triggered menu and freezes each action selection", () => {
   const ui = installSelectionEntryDom();
   try {
     const draft = ui.dom.draftTextarea;
@@ -203,7 +214,7 @@ test("selection entry opens a dot-triggered menu and freezes each action selecti
     assert.ok(trigger);
     assert.ok(menu);
     assert.equal(trigger.type, "button");
-    assert.equal(trigger.textContent, "");
+    assert.equal(trigger.textContent, "AI");
     assert.equal(menu.classList.contains("hidden"), true);
 
     trigger.dispatch("click");
@@ -234,6 +245,43 @@ test("selection entry opens a dot-triggered menu and freezes each action selecti
     thinkingButton.dispatch("click");
 
     assert.deepEqual(expansions, [{ notebook: "draft", selectedText: "扩展选区", start: 2, end: 6 }]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("selection entry pointer presses preserve textarea focus before opening actions", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    const draft = ui.dom.draftTextarea;
+    draft.value = "点击入口仍保留原生选区高亮";
+    draft.selectionStart = 0;
+    draft.selectionEnd = 4;
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+    });
+    draft.dispatch("select");
+
+    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
+    assert.ok(entry);
+    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
+    const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
+    assert.ok(trigger);
+    assert.ok(menu);
+
+    const triggerMouseDown = trigger.dispatch("mousedown");
+    trigger.dispatch("click");
+    const actionMouseDowns = menu.children
+      .filter((child) => child.type === "button")
+      .map((button) => button.dispatch("mousedown"));
+
+    assert.equal(triggerMouseDown.defaultPrevented, true);
+    assert.deepEqual(actionMouseDowns.map((event) => event.defaultPrevented), [true, true]);
   } finally {
     ui.restore();
   }
@@ -316,7 +364,8 @@ test("places the trigger to the right of the focus end when right-side space is 
     caretLeft: 80,
     caretTop: 20,
     caretHeight: 16,
-    triggerSize: SELECTION_ENTRY_TRIGGER_SIZE_PX,
+    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -324,8 +373,13 @@ test("places the trigger to the right of the focus end when right-side space is 
   assert.equal(placement.left, 100 + 80 + SELECTION_ENTRY_GAP_PX);
   assert.equal(
     placement.top,
-    50 + 20 + (16 - SELECTION_ENTRY_TRIGGER_SIZE_PX) / 2,
+    50 + 20 + (16 - SELECTION_ENTRY_TRIGGER_HEIGHT_PX) / 2,
   );
+});
+
+test("selection entry trigger keeps the required AI pill hit area", () => {
+  assert.equal(SELECTION_ENTRY_TRIGGER_WIDTH_PX, 44);
+  assert.equal(SELECTION_ENTRY_TRIGGER_HEIGHT_PX, 32);
 });
 
 test("falls back below the selected line near the right side when the line is full", () => {
@@ -337,19 +391,20 @@ test("falls back below the selected line near the right side when the line is fu
     caretLeft: 190,
     caretTop: 40,
     caretHeight: 16,
-    triggerSize: SELECTION_ENTRY_TRIGGER_SIZE_PX,
+    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
   assert.equal(placement.mode, "below-line");
-  // Near the focus-end right edge (caretLeft - triggerSize), clamped into editor bounds.
+  // Near the focus-end right edge (caretLeft - triggerWidth), clamped into editor bounds.
   assert.equal(
     placement.left,
     Math.max(
       SELECTION_ENTRY_GAP_PX,
       Math.min(
-        190 - SELECTION_ENTRY_TRIGGER_SIZE_PX,
-        200 - SELECTION_ENTRY_TRIGGER_SIZE_PX - SELECTION_ENTRY_GAP_PX,
+        190 - SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+        200 - SELECTION_ENTRY_TRIGGER_WIDTH_PX - SELECTION_ENTRY_GAP_PX,
       ),
     ),
   );
@@ -360,20 +415,21 @@ test("clamps below-line placement so the trigger stays inside the editor bounds"
   const placement = decideTriggerPlacement({
     editorLeft: 10,
     editorTop: 10,
-    editorRight: 40,
+    editorRight: 80,
     editorBottom: 80,
     caretLeft: 50,
     caretTop: 12,
     caretHeight: 16,
-    triggerSize: SELECTION_ENTRY_TRIGGER_SIZE_PX,
+    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
   assert.equal(placement.mode, "below-line");
   assert.ok(placement.left >= 10 + SELECTION_ENTRY_GAP_PX);
-  assert.ok(placement.left + SELECTION_ENTRY_TRIGGER_SIZE_PX <= 40 - SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.left + SELECTION_ENTRY_TRIGGER_WIDTH_PX <= 80 - SELECTION_ENTRY_GAP_PX);
   assert.ok(placement.top >= 10 + SELECTION_ENTRY_GAP_PX);
-  assert.ok(placement.top + SELECTION_ENTRY_TRIGGER_SIZE_PX <= 80 - SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.top + SELECTION_ENTRY_TRIGGER_HEIGHT_PX <= 80 - SELECTION_ENTRY_GAP_PX);
 });
 
 test("keeps the trigger anchor fixed when the secondary menu opens", () => {

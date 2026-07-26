@@ -61,7 +61,7 @@ export function getCaretCoordinates(
   div.textContent = textarea.value.substring(0, position);
 
   const span = document.createElement("span");
-  span.textContent = textarea.value.substring(position) || ".";
+  span.textContent = ".";
   div.appendChild(span);
 
   document.body.appendChild(div);

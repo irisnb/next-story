@@ -1,11 +1,11 @@
-import type { AppDom } from "./dom";
-import { EditorSaveState } from "./editor-save-state";
-import { LeaveCoordinator } from "./leave-guard";
-import type { LeaveDialogController } from "./leave-dialog";
-import { saveProject } from "./project-api";
-import type { AiFeatureController } from "./ai-feature";
-import type { NotebookTab, ProjectState } from "./types";
-import { showPage } from "./views";
+import type { AppDom } from "./dom.ts";
+import { EditorSaveState } from "./editor-save-state.ts";
+import { LeaveCoordinator } from "./leave-guard.ts";
+import type { LeaveDialogController } from "./leave-dialog.ts";
+import { saveProject } from "./project-api.ts";
+import type { AiFeatureController } from "./ai-feature.ts";
+import type { NotebookTab, ProjectState } from "./types.ts";
+import { showPage } from "./views.ts";
 
 export interface EditorController {
   showProject(projectState: ProjectState): void;
@@ -38,11 +38,13 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
   });
 
   function switchTab(tab: NotebookTab): void {
+    const changedTab = currentTab !== tab;
     currentTab = tab;
     dom.tabDraft.classList.toggle("active", tab === "draft");
     dom.tabMain.classList.toggle("active", tab === "main");
     dom.draftTextarea.classList.toggle("hidden", tab !== "draft");
     dom.mainTextarea.classList.toggle("hidden", tab !== "main");
+    if (changedTab) aiFeature?.resetSelectionEntry();
   }
 
   function renderSaveState(): void {

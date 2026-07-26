@@ -18,6 +18,11 @@ type Listener = (event: FakeEvent) => void;
 
 class FakeEvent {
   defaultPrevented = false;
+  readonly relatedTarget: FakeElement | null;
+
+  constructor(options: { relatedTarget?: FakeElement | null } = {}) {
+    this.relatedTarget = options.relatedTarget ?? null;
+  }
 
   preventDefault(): void {
     this.defaultPrevented = true;
@@ -90,6 +95,11 @@ class FakeElement {
     return child;
   }
 
+  contains(target: FakeElement | null): boolean {
+    if (!target) return false;
+    return target === this || this.children.some((child) => child.contains(target));
+  }
+
   removeChild(child: FakeElement): FakeElement {
     const index = this.children.indexOf(child);
     if (index >= 0) this.children.splice(index, 1);
@@ -98,8 +108,8 @@ class FakeElement {
 
   remove(): void {}
 
-  dispatch(type: string): FakeEvent {
-    const event = new FakeEvent();
+  dispatch(type: string, options: { relatedTarget?: FakeElement | null } = {}): FakeEvent {
+    const event = new FakeEvent(options);
     for (const listener of this.listeners.get(type) ?? []) listener(event);
     return event;
   }
@@ -109,6 +119,7 @@ class FakeTextarea extends FakeElement {
   value = "";
   selectionStart: number | null = 0;
   selectionEnd: number | null = 0;
+  selectionDirection: "forward" | "backward" | "none" = "forward";
   scrollTop = 0;
   scrollLeft = 0;
   offsetTop = 0;
@@ -128,19 +139,32 @@ class FakeTextarea extends FakeElement {
   }
 }
 
-function installSelectionEntryDom(): { dom: AppDom; editorPage: FakeElement; restore: () => void } {
+function installSelectionEntryDom(): {
+  dom: AppDom;
+  editorPage: FakeElement;
+  dispatchDocument: (type: string) => void;
+  restore: () => void;
+} {
   const previousDocument = globalThis.document;
   const previousGetComputedStyle = globalThis.getComputedStyle;
   const editorPage = new FakeElement();
   const draftTextarea = new FakeTextarea();
   const mainTextarea = new FakeTextarea(["hidden"]);
   const body = new FakeElement();
+  const documentListeners = new Map<string, Listener[]>();
 
   globalThis.document = {
     body,
     createElement: (tag: string) => tag === "textarea" ? new FakeTextarea() : new FakeElement(),
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (type: string, listener: Listener) => {
+      const listeners = documentListeners.get(type) ?? [];
+      listeners.push(listener);
+      documentListeners.set(type, listeners);
+    },
+    removeEventListener: (type: string, listener: Listener) => {
+      const listeners = documentListeners.get(type) ?? [];
+      documentListeners.set(type, listeners.filter((current) => current !== listener));
+    },
   } as unknown as Document;
   globalThis.getComputedStyle = (() => ({
     getPropertyValue: (property: string) => property === "line-height" || property === "font-size" ? "16" : "0",
@@ -149,9 +173,38 @@ function installSelectionEntryDom(): { dom: AppDom; editorPage: FakeElement; res
   return {
     dom: { editorPage, draftTextarea, mainTextarea } as unknown as AppDom,
     editorPage,
+    dispatchDocument: (type: string) => {
+      const event = new FakeEvent();
+      for (const listener of documentListeners.get(type) ?? []) listener(event);
+    },
     restore: () => {
       globalThis.document = previousDocument;
       globalThis.getComputedStyle = previousGetComputedStyle;
+    },
+  };
+}
+
+function installAnimationFrameQueue(): { flush: () => void; restore: () => void } {
+  const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const previousCancelAnimationFrame = globalThis.cancelAnimationFrame;
+  const callbacks: FrameRequestCallback[] = [];
+
+  globalThis.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+    callbacks.push(callback);
+    return callbacks.length;
+  };
+  globalThis.cancelAnimationFrame = (handle: number): void => {
+    callbacks.splice(handle - 1, 1);
+  };
+
+  return {
+    flush: () => {
+      const pending = callbacks.splice(0, callbacks.length);
+      for (const callback of pending) callback(0);
+    },
+    restore: () => {
+      globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = previousCancelAnimationFrame;
     },
   };
 }
@@ -287,6 +340,111 @@ test("selection entry pointer presses preserve textarea focus before opening act
   }
 });
 
+test("selection entry measures the browser focus end for forward and backward selections", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
+    draft.value = "abcdef";
+    const measuredOffsets: number[] = [];
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+      measureCaret: (_textarea, offset) => {
+        measuredOffsets.push(offset);
+        return { left: 0, top: 0, height: 16 };
+      },
+    });
+
+    draft.selectionStart = 1;
+    draft.selectionEnd = 4;
+    draft.selectionDirection = "forward";
+    draft.dispatch("select");
+
+    draft.selectionStart = 1;
+    draft.selectionEnd = 4;
+    draft.selectionDirection = "backward";
+    draft.dispatch("select");
+
+    assert.deepEqual(measuredOffsets, [4, 1, 1, 4]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("coalesces repeated textarea updates into one geometry measurement frame", () => {
+  const ui = installSelectionEntryDom();
+  const frame = installAnimationFrameQueue();
+  try {
+    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
+    draft.value = "abcdef";
+    draft.selectionStart = 1;
+    draft.selectionEnd = 4;
+    draft.selectionDirection = "forward";
+    const measuredOffsets: number[] = [];
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+      measureCaret: (_textarea, offset) => {
+        measuredOffsets.push(offset);
+        return { left: offset * 10, top: 0, height: 16 };
+      },
+    });
+
+    draft.dispatch("select");
+    draft.dispatch("keyup");
+    draft.dispatch("mouseup");
+
+    assert.deepEqual(measuredOffsets, []);
+
+    frame.flush();
+
+    assert.deepEqual(measuredOffsets, [4, 1]);
+  } finally {
+    frame.restore();
+    ui.restore();
+  }
+});
+
+test("ignores document selectionchange outside the active writing textarea", () => {
+  const ui = installSelectionEntryDom();
+  const frame = installAnimationFrameQueue();
+  try {
+    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
+    draft.value = "abcdef";
+    draft.selectionStart = 1;
+    draft.selectionEnd = 4;
+    const measuredOffsets: number[] = [];
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+      measureCaret: (_textarea, offset) => {
+        measuredOffsets.push(offset);
+        return { left: offset * 10, top: 0, height: 16 };
+      },
+    });
+
+    ui.dispatchDocument("selectionchange");
+    frame.flush();
+
+    assert.deepEqual(measuredOffsets, []);
+  } finally {
+    frame.restore();
+    ui.restore();
+  }
+});
+
 test("destroy removes textarea listeners so stale selection events do not update", () => {
   const ui = installSelectionEntryDom();
   try {
@@ -311,6 +469,102 @@ test("destroy removes textarea listeners so stale selection events do not update
     draft.dispatch("select");
 
     assert.equal(selectionReads, 0);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("hides the entry when the active textarea blurs outside the entry and menu", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    const draft = ui.dom.draftTextarea;
+    draft.value = "失焦后入口应消失";
+    draft.selectionStart = 0;
+    draft.selectionEnd = 4;
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+    });
+    draft.dispatch("select");
+
+    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
+    assert.ok(entry);
+    assert.equal(entry.classList.contains("hidden"), false);
+
+    draft.dispatch("blur", { relatedTarget: null });
+
+    assert.equal(entry.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("keeps the entry visible when textarea blur moves into the controlled entry menu", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    const draft = ui.dom.draftTextarea;
+    draft.value = "点击入口不破坏选区";
+    draft.selectionStart = 0;
+    draft.selectionEnd = 4;
+
+    setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: () => {},
+      onThinkingExpansion: () => {},
+    });
+    draft.dispatch("select");
+
+    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
+    assert.ok(entry);
+    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
+    assert.ok(trigger);
+
+    draft.dispatch("blur", { relatedTarget: trigger });
+
+    assert.equal(entry.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("reset invalidates an open menu so stale action buttons cannot submit old context", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    const draft = ui.dom.draftTextarea;
+    draft.value = "旧菜单不能继续提交";
+    draft.selectionStart = 0;
+    draft.selectionEnd = 4;
+    const summons: SelectionSnapshot[] = [];
+
+    const controller = setupSelectionEntry({
+      dom: ui.dom,
+      getCurrentNotebook: () => "draft",
+      isRequestInFlight: () => false,
+      onSummon: (snap) => { summons.push(snap); },
+      onThinkingExpansion: () => {},
+    });
+    draft.dispatch("select");
+
+    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
+    assert.ok(entry);
+    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
+    const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
+    assert.ok(trigger);
+    assert.ok(menu);
+    trigger.dispatch("click");
+    const summonButton = menu.children.find((child) => child.id === "ai-summon-btn");
+    assert.ok(summonButton);
+
+    controller.reset();
+    summonButton.dispatch("click");
+
+    assert.deepEqual(summons, []);
   } finally {
     ui.restore();
   }
@@ -361,11 +615,13 @@ test("places the trigger to the right of the focus end when right-side space is 
     editorTop: 50,
     editorRight: 500,
     editorBottom: 250,
-    caretLeft: 80,
-    caretTop: 20,
-    caretHeight: 16,
-    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
-    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    focusRect: { left: 180, top: 70, right: 180, bottom: 86 },
+    selectionRect: { left: 120, top: 70, right: 180, bottom: 86 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -388,11 +644,13 @@ test("falls back below the selected line near the right side when the line is fu
     editorTop: 0,
     editorRight: 200,
     editorBottom: 300,
-    caretLeft: 190,
-    caretTop: 40,
-    caretHeight: 16,
-    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
-    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    focusRect: { left: 190, top: 40, right: 190, bottom: 56 },
+    selectionRect: { left: 130, top: 40, right: 190, bottom: 56 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 44, height: 0 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -417,11 +675,13 @@ test("clamps below-line placement so the trigger stays inside the editor bounds"
     editorTop: 10,
     editorRight: 80,
     editorBottom: 80,
-    caretLeft: 50,
-    caretTop: 12,
-    caretHeight: 16,
-    triggerWidth: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
-    triggerHeight: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    focusRect: { left: 60, top: 22, right: 60, bottom: 38 },
+    selectionRect: { left: 38, top: 22, right: 60, bottom: 38 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 44, height: 0 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -430,6 +690,131 @@ test("clamps below-line placement so the trigger stays inside the editor bounds"
   assert.ok(placement.left + SELECTION_ENTRY_TRIGGER_WIDTH_PX <= 80 - SELECTION_ENTRY_GAP_PX);
   assert.ok(placement.top >= 10 + SELECTION_ENTRY_GAP_PX);
   assert.ok(placement.top + SELECTION_ENTRY_TRIGGER_HEIGHT_PX <= 80 - SELECTION_ENTRY_GAP_PX);
+});
+
+test("places the trigger left of the focus end at the right edge when that avoids the selected text", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 0,
+    editorTop: 0,
+    editorRight: 260,
+    editorBottom: 180,
+    focusRect: { left: 236, top: 48, right: 238, bottom: 64 },
+    selectionRect: { left: 236, top: 48, right: 252, bottom: 64 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 0 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.equal(placement.mode, "left-of-focus");
+  assert.equal(placement.left, 236 - SELECTION_ENTRY_GAP_PX - SELECTION_ENTRY_TRIGGER_WIDTH_PX);
+  assert.ok(placement.left + SELECTION_ENTRY_TRIGGER_WIDTH_PX <= 236 - SELECTION_ENTRY_GAP_PX);
+});
+
+test("places the trigger above the selected line near the bottom edge", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 0,
+    editorTop: 0,
+    editorRight: 280,
+    editorBottom: 100,
+    focusRect: { left: 140, top: 78, right: 142, bottom: 94 },
+    selectionRect: { left: 96, top: 78, right: 142, bottom: 94 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 72 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.equal(placement.mode, "above-line");
+  assert.equal(placement.top, 78 - SELECTION_ENTRY_GAP_PX - SELECTION_ENTRY_TRIGGER_HEIGHT_PX);
+  assert.ok(placement.top + SELECTION_ENTRY_TRIGGER_HEIGHT_PX <= 78 - SELECTION_ENTRY_GAP_PX);
+});
+
+test("keeps the trigger inside a narrow editor when no preferred side has room", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 10,
+    editorTop: 20,
+    editorRight: 48,
+    editorBottom: 70,
+    focusRect: { left: 26, top: 36, right: 28, bottom: 52 },
+    selectionRect: { left: 18, top: 36, right: 38, bottom: 52 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 72 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.equal(placement.mode, "clamped");
+  assert.ok(placement.left >= 10 + SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.top >= 20 + SELECTION_ENTRY_GAP_PX);
+});
+
+test("clamps four-corner placement inside the editor bounds", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 100,
+    editorTop: 100,
+    editorRight: 160,
+    editorBottom: 148,
+    focusRect: { left: 154, top: 138, right: 156, bottom: 146 },
+    selectionRect: { left: 104, top: 104, right: 156, bottom: 146 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 72 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.ok(placement.left >= 100 + SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.top >= 100 + SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.left + SELECTION_ENTRY_TRIGGER_WIDTH_PX <= 160 - SELECTION_ENTRY_GAP_PX);
+  assert.ok(placement.top + SELECTION_ENTRY_TRIGGER_HEIGHT_PX <= 148 - SELECTION_ENTRY_GAP_PX);
+});
+
+test("moves below the selected text when side placement would overlap the selection", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 0,
+    editorTop: 0,
+    editorRight: 320,
+    editorBottom: 180,
+    focusRect: { left: 120, top: 50, right: 122, bottom: 66 },
+    selectionRect: { left: 74, top: 50, right: 176, bottom: 66 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 120, height: 72 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.equal(placement.mode, "below-line");
+  assert.ok(placement.top >= 66 + SELECTION_ENTRY_GAP_PX);
+});
+
+test("reserves menu footprint when choosing a trigger placement near the window edge", () => {
+  const placement = decideTriggerPlacement({
+    editorLeft: 0,
+    editorTop: 0,
+    editorRight: 360,
+    editorBottom: 244,
+    focusRect: { left: 260, top: 80, right: 262, bottom: 96 },
+    selectionRect: { left: 216, top: 80, right: 262, bottom: 96 },
+    triggerSize: {
+      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
+    },
+    menuSize: { width: 160, height: 96 },
+    gap: SELECTION_ENTRY_GAP_PX,
+  });
+
+  assert.equal(placement.mode, "below-line");
+  assert.ok(placement.left + 160 <= 360 - SELECTION_ENTRY_GAP_PX);
 });
 
 test("keeps the trigger anchor fixed when the secondary menu opens", () => {

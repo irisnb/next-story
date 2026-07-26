@@ -115,6 +115,8 @@ export interface AiFeatureController {
   beginProject(): void;
   /** 作品卸载（返回欢迎页）：使在途请求失效并清空面板。 */
   endProject(): void;
+  /** 编辑器本子切换：只清空当前浮动选区入口，不影响 AI 面板对话。 */
+  resetSelectionEntry(): void;
   submitFollowUp(question: string): boolean;
   retryFollowUp(): boolean;
   editFollowUp(question: string): boolean;
@@ -247,6 +249,9 @@ export function setupAiFeature(
       coordinator.releaseStaleRequestOwnership();
       selectionEntry.reset();
       state.reset();
+    },
+    resetSelectionEntry(): void {
+      selectionEntry.reset();
     },
     submitFollowUp(question: string): boolean {
       return followUpAcceptedRequest(state, question, (request, identity) =>

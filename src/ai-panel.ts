@@ -6,9 +6,9 @@ export interface AiPanelActions {
   onRetry: () => void;
   onGoToConfig: () => void;
   onStartThinkingExpansion: (direction: string) => boolean;
-  onSubmitFollowUp: (question: string) => boolean;
-  onRetryFollowUp: () => boolean;
-  onEditFollowUp: (question: string) => boolean;
+  onSubmitFollowUp: (question: string) => Promise<boolean>;
+  onRetryFollowUp: () => Promise<boolean>;
+  onEditFollowUp: (question: string) => Promise<boolean>;
 }
 
 function requireEl<T extends HTMLElement>(id: string): T {
@@ -113,12 +113,12 @@ export function setupAiPanel(
     followUpSend.disabled = followUpInput.disabled || !followUpInput.value.trim();
   }
 
-  function submitFollowUp(): void {
+  async function submitFollowUp(): Promise<void> {
     const question = followUpInput.value;
     if (followUpInput.disabled || !question.trim()) return;
-    const accepted = editingFailedQuestion
+    const accepted = await (editingFailedQuestion
       ? actions.onEditFollowUp(question)
-      : actions.onSubmitFollowUp(question);
+      : actions.onSubmitFollowUp(question));
     if (!accepted) return;
     editingFailedQuestion = false;
     followUpInput.value = "";

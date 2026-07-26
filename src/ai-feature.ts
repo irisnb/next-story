@@ -3,7 +3,7 @@ import { AiPanelState } from "./ai-panel-state.ts";
 import { AiRequestCoordinator } from "./ai-request.ts";
 import { setupAiPanel } from "./ai-panel.ts";
 import { setupSelectionEntry } from "./selection-entry.ts";
-import { generateAiThinking } from "./project-api.ts";
+import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
   GenerateAiRequest,
@@ -117,13 +117,15 @@ export interface AiFeatureController {
   endProject(): void;
   /** 编辑器本子切换：只清空当前浮动选区入口，不影响 AI 面板对话。 */
   resetSelectionEntry(): void;
-  submitFollowUp(question: string): boolean;
-  retryFollowUp(): boolean;
-  editFollowUp(question: string): boolean;
+  submitFollowUp(question: string): Promise<boolean>;
+  retryFollowUp(): Promise<boolean>;
+  editFollowUp(question: string): Promise<boolean>;
 }
 
 export interface AiFeatureDependencies {
   generate?: typeof generateAiThinking;
+  loadConfig?: typeof loadLlmConfig;
+  confirmCreativeContentSend?: (origin: string) => Promise<boolean>;
   setupEntry?: typeof setupSelectionEntry;
 }
 
@@ -141,7 +143,11 @@ export function setupAiFeature(
   const state = new AiPanelState();
   let projectToken = 0;
   const generate = dependencies.generate ?? generateAiThinking;
+  const loadConfig = dependencies.loadConfig ?? loadLlmConfig;
+  const confirmCreativeContentSend = dependencies.confirmCreativeContentSend ?? defaultCreativeContentConfirmation;
   const setupEntry = dependencies.setupEntry ?? setupSelectionEntry;
+  const confirmedCreativeContentOrigins = new Set<string>();
+  let creativeContentConfirmationPending = false;
 
   const coordinator = new AiRequestCoordinator(
     (selectedText: string) =>
@@ -169,13 +175,42 @@ export function setupAiFeature(
     () => state.conversationIdentity,
   );
 
+  async function confirmCreativeContentOrigin(): Promise<boolean> {
+    if (creativeContentConfirmationPending) return false;
+    creativeContentConfirmationPending = true;
+    try {
+      const config = await loadConfig();
+      if (!config) return false;
+      const origin = normalizedApiOrigin(config.api_base_url);
+      if (!origin) return false;
+      if (confirmedCreativeContentOrigins.has(origin)) return true;
+      const confirmed = await confirmCreativeContentSend(origin);
+      if (confirmed) {
+        confirmedCreativeContentOrigins.add(origin);
+      }
+      return confirmed;
+    } finally {
+      creativeContentConfirmationPending = false;
+    }
+  }
+
+  async function afterCreativeContentConfirmation(action: () => boolean): Promise<boolean> {
+    const confirmed = await confirmCreativeContentOrigin();
+    if (!confirmed) return false;
+    return action();
+  }
+
   function startFirstRequest(
     snapshot: SelectionSnapshot,
     firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
   ): boolean {
-    const accepted = coordinator.request(snapshot, firstRequest);
-    if (accepted === null) return false;
-    state.beginRequest(snapshot, firstRequest);
+    if (creativeContentConfirmationPending) return false;
+    void afterCreativeContentConfirmation(() => {
+      const accepted = coordinator.request(snapshot, firstRequest);
+      if (accepted === null) return false;
+      state.beginRequest(snapshot, firstRequest);
+      return true;
+    });
     return true;
   }
 
@@ -197,7 +232,7 @@ export function setupAiFeature(
   setupAiPanel(dom, state, {
     onRetry: () => {
       retryAcceptedRequest(state, (snapshot, firstRequest) =>
-        coordinator.request(snapshot, firstRequest));
+        startFirstRequest(snapshot, firstRequest) ? Promise.resolve() : null);
     },
     onGoToConfig: () => openAiConfiguration(hooks.openConfigPage),
     onStartThinkingExpansion: (direction) => {
@@ -208,20 +243,28 @@ export function setupAiFeature(
         buildThinkingExpansionRequest(current.snapshot, direction),
       );
     },
-    onSubmitFollowUp: (question) => followUpAcceptedRequest(
-      state,
-      question,
-      (request, identity) => coordinator.requestStructured(request, identity),
-    ),
-    onRetryFollowUp: () => retryFollowUpAcceptedRequest(
-      state,
-      (request, identity) => coordinator.requestStructured(request, identity),
-    ),
-    onEditFollowUp: (question) => editAndResendFollowUpAcceptedRequest(
-      state,
-      question,
-      (request, identity) => coordinator.requestStructured(request, identity),
-    ),
+    onSubmitFollowUp: (question) => {
+      return afterCreativeContentConfirmation(() => {
+        return followUpAcceptedRequest(
+          state,
+          question,
+          (request, identity) => coordinator.requestStructured(request, identity),
+        );
+      });
+    },
+    onRetryFollowUp: () => afterCreativeContentConfirmation(() => {
+      return retryFollowUpAcceptedRequest(
+        state,
+        (request, identity) => coordinator.requestStructured(request, identity),
+      );
+    }),
+    onEditFollowUp: (question) => afterCreativeContentConfirmation(() => {
+      return editAndResendFollowUpAcceptedRequest(
+        state,
+        question,
+        (request, identity) => coordinator.requestStructured(request, identity),
+      );
+    }),
   });
 
   const selectionEntry = setupEntry({
@@ -253,20 +296,41 @@ export function setupAiFeature(
     resetSelectionEntry(): void {
       selectionEntry.reset();
     },
-    submitFollowUp(question: string): boolean {
-      return followUpAcceptedRequest(state, question, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      );
+    submitFollowUp(question: string): Promise<boolean> {
+      return afterCreativeContentConfirmation(() => {
+        return followUpAcceptedRequest(state, question, (request, identity) =>
+          coordinator.requestStructured(request, identity),
+        );
+      });
     },
-    retryFollowUp(): boolean {
-      return retryFollowUpAcceptedRequest(state, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      );
+    retryFollowUp(): Promise<boolean> {
+      return afterCreativeContentConfirmation(() => {
+        return retryFollowUpAcceptedRequest(state, (request, identity) =>
+          coordinator.requestStructured(request, identity),
+        );
+      });
     },
-    editFollowUp(question: string): boolean {
-      return editAndResendFollowUpAcceptedRequest(state, question, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      );
+    editFollowUp(question: string): Promise<boolean> {
+      return afterCreativeContentConfirmation(() => {
+        return editAndResendFollowUpAcceptedRequest(state, question, (request, identity) =>
+          coordinator.requestStructured(request, identity),
+        );
+      });
     },
   };
+}
+
+function normalizedApiOrigin(apiBaseUrl: string): string | null {
+  try {
+    return new URL(apiBaseUrl).origin;
+  } catch (error) {
+    if (error instanceof TypeError) return null;
+    throw error;
+  }
+}
+
+async function defaultCreativeContentConfirmation(origin: string): Promise<boolean> {
+  return window.confirm(
+    `AI 生成将把冻结选区原文、思维扩展方向或当前临时对话发送到 ${origin}。第三方服务如何处理数据，取决于你和该服务的协议与设置。是否继续？`,
+  );
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { AppDom } from "../src/dom.ts";
@@ -50,6 +51,17 @@ const savedConfig: LlmConfig = {
   api_key: "saved-key",
   model: "saved-model",
 };
+
+test("LLM config page distinguishes connection test data from AI generation data", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  assert.match(html, /测试连接[^。]*固定测试语句/);
+  assert.match(html, /不会发送用户剧本文字或临时对话/);
+  assert.match(html, /AI 生成[^。]*冻结选区原文/);
+  assert.match(html, /思维扩展方向/);
+  assert.match(html, /当前临时对话/);
+  assert.match(html, /第三方服务如何处理数据/);
+});
 
 function cloneConfig(config: LlmConfig): LlmConfig {
   return { ...config };

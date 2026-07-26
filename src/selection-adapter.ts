@@ -5,6 +5,22 @@ export interface TextareaLike {
   value: string;
   selectionStart: number | null;
   selectionEnd: number | null;
+  selectionDirection?: "forward" | "backward" | "none";
+}
+
+export interface SelectionFocusInput {
+  readonly selectionStart: number | null;
+  readonly selectionEnd: number | null;
+  readonly selectionDirection?: "forward" | "backward" | "none";
+}
+
+export function resolveFocusOffset(input: SelectionFocusInput): number {
+  const rawStart = input.selectionStart ?? 0;
+  const rawEnd = input.selectionEnd ?? 0;
+  if (input.selectionDirection === "backward") {
+    return Math.min(rawStart, rawEnd);
+  }
+  return Math.max(rawStart, rawEnd);
 }
 
 /**

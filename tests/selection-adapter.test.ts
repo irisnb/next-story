@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { captureSelection, isMeaningfulSelection } from "../src/selection-adapter.ts";
+import { captureSelection, isMeaningfulSelection, resolveFocusOffset } from "../src/selection-adapter.ts";
 
 function textarea(value: string, start: number | null, end: number | null) {
   return { value, selectionStart: start, selectionEnd: end };
 }
+
+test("resolves the focus offset from the browser selection direction", () => {
+  assert.equal(resolveFocusOffset({ selectionStart: 1, selectionEnd: 4, selectionDirection: "forward" }), 4);
+  assert.equal(resolveFocusOffset({ selectionStart: 1, selectionEnd: 4, selectionDirection: "none" }), 4);
+  assert.equal(resolveFocusOffset({ selectionStart: 1, selectionEnd: 4, selectionDirection: "backward" }), 1);
+});
 
 test("captures a draft snapshot with the raw selected text", () => {
   const snapshot = captureSelection("draft", textarea("你好世界", 0, 2));

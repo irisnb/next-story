@@ -7,6 +7,7 @@ import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
   GenerateAiRequest,
+  LlmConfig,
   NotebookTab,
   SelectionSnapshot,
 } from "./types.ts";
@@ -181,17 +182,21 @@ export function setupAiFeature(
     try {
       const config = await loadConfig();
       if (!config) return false;
-      const origin = normalizedApiOrigin(config.api_base_url);
-      if (!origin) return false;
-      if (confirmedCreativeContentOrigins.has(origin)) return true;
-      const confirmed = await confirmCreativeContentSend(origin);
-      if (confirmed) {
-        confirmedCreativeContentOrigins.add(origin);
-      }
-      return confirmed;
+      return confirmCreativeContentOriginForConfig(config);
     } finally {
       creativeContentConfirmationPending = false;
     }
+  }
+
+  async function confirmCreativeContentOriginForConfig(config: LlmConfig): Promise<boolean> {
+    const origin = normalizedApiOrigin(config.api_base_url);
+    if (!origin) return false;
+    if (confirmedCreativeContentOrigins.has(origin)) return true;
+    const confirmed = await confirmCreativeContentSend(origin);
+    if (confirmed) {
+      confirmedCreativeContentOrigins.add(origin);
+    }
+    return confirmed;
   }
 
   async function afterCreativeContentConfirmation(action: () => boolean): Promise<boolean> {
@@ -205,12 +210,24 @@ export function setupAiFeature(
     firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
   ): boolean {
     if (creativeContentConfirmationPending) return false;
-    void afterCreativeContentConfirmation(() => {
-      const accepted = coordinator.request(snapshot, firstRequest);
-      if (accepted === null) return false;
-      state.beginRequest(snapshot, firstRequest);
-      return true;
-    });
+    creativeContentConfirmationPending = true;
+    void (async () => {
+      try {
+        const config = await loadConfig();
+        if (!config) {
+          state.beginRequest(snapshot, firstRequest);
+          state.requireConfiguration(snapshot);
+          return;
+        }
+        if (!await confirmCreativeContentOriginForConfig(config)) return;
+
+        const accepted = coordinator.request(snapshot, firstRequest);
+        if (accepted === null) return;
+        state.beginRequest(snapshot, firstRequest);
+      } finally {
+        creativeContentConfirmationPending = false;
+      }
+    })();
     return true;
   }
 

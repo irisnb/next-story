@@ -6,7 +6,7 @@ import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiPanel } from "../src/ai-panel.ts";
 import type { AppDom } from "../src/dom.ts";
-import type { GenerateAiRequest, GenerateAiResult, SelectionSnapshot } from "../src/types.ts";
+import type { GenerateAiRequest, GenerateAiResult, LlmConfig, SelectionSnapshot } from "../src/types.ts";
 
 type Listener = (event: FakeEvent) => void;
 type GenerateAiResultSource = GenerateAiResult | Promise<GenerateAiResult>;
@@ -197,6 +197,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   readonly confirmationResults?: readonly boolean[];
   readonly apiBaseUrl?: string;
   readonly apiBaseUrls?: readonly string[];
+  readonly loadConfigResult?: LlmConfig | null;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
@@ -249,6 +250,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   const openedConfig: string[] = [];
   const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
   const confirmationResults = [...(options.confirmationResults ?? [])];
+  const loadConfigResult = options.loadConfigResult;
 
   const controller = setupAiFeature({
     aiPanel: panel,
@@ -266,11 +268,14 @@ function featureHarness(results: GenerateAiResultSource[], options: {
       if (!result) throw new Error("missing fake result");
       return result;
     },
-    loadConfig: async () => ({
-      api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
-      api_key: "saved-key",
-      model: "saved-model",
-    }),
+    loadConfig: async () => {
+      if (loadConfigResult !== undefined) return loadConfigResult;
+      return {
+        api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
+        api_key: "saved-key",
+        model: "saved-model",
+      };
+    },
     confirmCreativeContentSend: async (origin) => {
       confirmations.push(origin);
       return confirmationResults.shift() ?? options.confirmationResult ?? true;
@@ -313,6 +318,21 @@ test("canceling first creative-content confirmation keeps notebooks unchanged an
     assert.deepEqual(ui.requests, []);
     assert.equal(draft.value, "用户草稿");
     assert.equal(main.value, "用户正文");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("missing LLM config on first summon shows configuration-required controls and skips generation", async () => {
+  const ui = featureHarness([{ ok: true, content: "不应出现" }], { loadConfigResult: null });
+  try {
+    ui.summon(snapshot("冻结选区"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, []);
+    assert.equal(ui.elements.get("ai-config-block")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-retry")!.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
   } finally {
     ui.restore();

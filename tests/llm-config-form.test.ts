@@ -60,6 +60,8 @@ test("LLM config page distinguishes connection test data from AI generation data
   assert.match(html, /AI 生成[^。]*冻结选区原文/);
   assert.match(html, /思维扩展方向/);
   assert.match(html, /当前临时对话/);
+  assert.match(html, /回复只显示在 AI 面板/);
+  assert.match(html, /不会自动进入正文本或草稿本/);
   assert.match(html, /第三方服务如何处理数据/);
 });
 

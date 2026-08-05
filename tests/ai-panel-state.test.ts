@@ -110,6 +110,21 @@ test("configuration_required preserves the snapshot and stays collapsed", () => 
   }
 });
 
+test("blocked first request preserves the preview snapshot without creating a conversation", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("冻结选区");
+
+  state.previewFirstRequest(anchor);
+  state.blockFirstRequest(anchor);
+  assert.deepEqual(state.view.request, {
+    kind: "first_blocked",
+    snapshot: anchor,
+    message: "已有 AI 请求正在进行，本次请求没有发出。",
+  });
+  assert.equal(state.conversation, null);
+  assert.equal(state.followUpAvailable, false);
+});
+
 test("retry uses the original frozen snapshot, not any new selection", () => {
   const state = new AiPanelState();
   const original = snapshot("原选区");

@@ -164,6 +164,8 @@ export function setupAiPanel(
     }
 
     const hasSnapshot =
+      request.kind === "first_preview" ||
+      request.kind === "first_blocked" ||
       request.kind === "thinking_expansion" ||
       request.kind === "loading" ||
       request.kind === "success" ||
@@ -208,13 +210,19 @@ export function setupAiPanel(
     renderConversation();
 
     const isFollowUpFailure = conversation?.pending?.error !== undefined;
-    errorBlock.classList.toggle("hidden", request.kind !== "error" || isFollowUpFailure);
+    const isFirstTerminalFeedback = request.kind === "first_blocked";
+    errorBlock.classList.toggle(
+      "hidden",
+      !(request.kind === "error" || isFirstTerminalFeedback) || isFollowUpFailure,
+    );
     retryBtn.classList.toggle(
       "hidden",
       request.kind !== "error" && !(request.kind === "configuration_required" && conversation === null),
     );
     if (request.kind === "error" && !isFollowUpFailure) {
       errorMessage.textContent = request.error.message;
+    } else if (isFirstTerminalFeedback) {
+      errorMessage.textContent = request.message;
     }
 
     configBlock.classList.toggle("hidden", request.kind !== "configuration_required");

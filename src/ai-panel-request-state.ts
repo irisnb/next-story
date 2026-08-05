@@ -5,6 +5,15 @@ export type PanelVisibility = "open" | "closed";
 export type PanelRequestState =
   | { kind: "idle" }
   | {
+      kind: "first_preview";
+      snapshot: SelectionSnapshot;
+    }
+  | {
+      kind: "first_blocked";
+      snapshot: SelectionSnapshot;
+      message: string;
+    }
+  | {
       kind: "thinking_expansion";
       snapshot: SelectionSnapshot;
       direction: string;
@@ -46,6 +55,14 @@ export interface PanelStateView {
 
 export function idleRequest(): PanelRequestState {
   return { kind: "idle" };
+}
+
+export function firstPreviewRequest(snapshot: SelectionSnapshot): PanelRequestState {
+  return { kind: "first_preview", snapshot };
+}
+
+export function firstBlockedRequest(snapshot: SelectionSnapshot): PanelRequestState {
+  return { kind: "first_blocked", snapshot, message: "已有 AI 请求正在进行，本次请求没有发出。" };
 }
 
 export function thinkingExpansionRequest(

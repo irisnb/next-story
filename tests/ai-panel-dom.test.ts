@@ -193,10 +193,9 @@ function harness(): {
 }
 
 function featureHarness(results: GenerateAiResultSource[], options: {
-  readonly confirmationResult?: boolean;
-  readonly confirmationResults?: readonly boolean[];
   readonly apiBaseUrl?: string;
   readonly apiBaseUrls?: readonly string[];
+  readonly loadConfigError?: unknown;
   readonly loadConfigResult?: LlmConfig | null;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
@@ -246,10 +245,8 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   let onSummon: ((snap: SelectionSnapshot) => void) | null = null;
   let onThinkingExpansion: ((snap: SelectionSnapshot) => void) | null = null;
   const requests: GenerateAiRequest[] = [];
-  const confirmations: string[] = [];
   const openedConfig: string[] = [];
   const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
-  const confirmationResults = [...(options.confirmationResults ?? [])];
   const loadConfigResult = options.loadConfigResult;
 
   const controller = setupAiFeature({
@@ -269,16 +266,13 @@ function featureHarness(results: GenerateAiResultSource[], options: {
       return result;
     },
     loadConfig: async () => {
+      if (options.loadConfigError) throw options.loadConfigError;
       if (loadConfigResult !== undefined) return loadConfigResult;
       return {
         api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
         api_key: "saved-key",
         model: "saved-model",
       };
-    },
-    confirmCreativeContentSend: async (origin) => {
-      confirmations.push(origin);
-      return confirmationResults.shift() ?? options.confirmationResult ?? true;
     },
     setupEntry: (options) => {
       onSummon = options.onSummon;
@@ -291,7 +285,6 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     controller,
     elements,
     requests,
-    confirmations,
     summon: (snap) => {
       if (!onSummon) throw new Error("summon callback missing");
       onSummon(snap);
@@ -305,8 +298,8 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   };
 }
 
-test("canceling first creative-content confirmation keeps notebooks unchanged and skips generation", async () => {
-  const ui = featureHarness([{ ok: true, content: "不应出现" }], { confirmationResult: false });
+test("first summon sends directly without creative-content confirmation", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
   try {
     const draft = ui.elements.get("draft-textarea")!;
     const main = ui.elements.get("main-textarea")!;
@@ -314,11 +307,81 @@ test("canceling first creative-content confirmation keeps notebooks unchanged an
     ui.summon(snapshot("冻结选区"));
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.confirmations, ["https://api.example.com"]);
-    assert.deepEqual(ui.requests, []);
+    assert.deepEqual(ui.requests, [{ kind: "first", selected_text: "冻结选区" }]);
+    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区");
     assert.equal(draft.value, "用户草稿");
     assert.equal(main.value, "用户正文");
     assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["首答"]);
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("same-project first request rejection shows blocked feedback without generation", async () => {
+  const pending = deferredGenerateResult();
+  const ui = featureHarness([pending.promise, { ok: true, content: "不应发起" }]);
+  try {
+    ui.summon(snapshot("当前作品选区一"));
+    await flushAiFeatureFlow();
+
+    ui.summon(snapshot("当前作品选区二"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "当前作品选区一" },
+    ]);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "当前作品选区二");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-error-message")!.textContent, "已有 AI 请求正在进行，本次请求没有发出。");
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("first request preflight exception shows readable feedback without generation", async () => {
+  const ui = featureHarness([{ ok: true, content: "不应出现" }], {
+    loadConfigError: new Error("配置读取失败，请稍后重试"),
+  });
+  try {
+    ui.summon(snapshot("异常前冻结选区"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, []);
+    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "异常前冻结选区");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-error-message")!.textContent, "配置读取失败，请稍后重试");
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("first request string preflight rejection preserves the backend message", async () => {
+  const ui = featureHarness([{ ok: true, content: "不应出现" }], {
+    loadConfigError: "LLM 配置文件读取失败，请检查配置文件权限",
+  });
+  try {
+    ui.summon(snapshot("字符串异常前冻结选区"));
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, []);
+    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "字符串异常前冻结选区");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
+    assert.equal(
+      ui.elements.get("ai-error-message")!.textContent,
+      "LLM 配置文件读取失败，请检查配置文件权限",
+    );
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
   } finally {
     ui.restore();
   }
@@ -339,10 +402,9 @@ test("missing LLM config on first summon shows configuration-required controls a
   }
 });
 
-test("canceling changed-origin follow-up confirmation keeps the typed question and skips generation", async () => {
-  const ui = featureHarness([{ ok: true, content: "首答" }, { ok: true, content: "不应出现" }], {
+test("follow-up sends directly without changed-origin creative-content confirmation", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }, { ok: true, content: "追问回答" }], {
     apiBaseUrls: ["https://api.example.com/v1", "https://other.example.com/v1"],
-    confirmationResults: [true, false],
   });
   try {
     ui.summon(snapshot("冻结选区"));
@@ -354,10 +416,19 @@ test("canceling changed-origin follow-up confirmation keeps the typed question a
     ui.elements.get("ai-follow-up-form")!.dispatch("submit");
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.confirmations, ["https://api.example.com", "https://other.example.com"]);
-    assert.equal(input.value, "不要丢掉的追问");
-    assert.deepEqual(ui.requests, [{ kind: "first", selected_text: "冻结选区" }]);
-    assert.deepEqual(conversationText(ui), ["首答"]);
+    assert.equal(input.value, "");
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "冻结选区" },
+      {
+        kind: "follow_up",
+        selected_text: "冻结选区",
+        messages: [
+          { role: "assistant", content: "首答" },
+          { role: "user", content: "不要丢掉的追问" },
+        ],
+      },
+    ]);
+    assert.deepEqual(conversationText(ui), ["首答", "不要丢掉的追问", "追问回答"]);
   } finally {
     ui.restore();
   }

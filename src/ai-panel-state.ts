@@ -6,8 +6,10 @@ import {
 import {
   cancelFollowUpSuccessRequest,
   configurationRequiredRequest,
+  firstBlockedRequest,
   firstErrorRequest,
   firstLoadingRequest,
+  firstPreviewRequest,
   firstRetryLoadingRequest,
   firstSuccessRequest,
   followUpErrorRequest,
@@ -88,6 +90,28 @@ export class AiPanelState {
 
   get isOpen(): boolean {
     return this.visibility === "open";
+  }
+
+  /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入 loading。 */
+  previewFirstRequest(
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+  ): void {
+    this.visibility = "open";
+    this.conversationState.clear();
+    const anchor = frozenSnapshot(snapshot);
+    this.request = firstPreviewRequest(anchor);
+    this.pendingFirstConversationId = null;
+    this.pendingFirstRequest = firstRequest ?? { kind: "first", selected_text: anchor.selectedText };
+    this.emit();
+  }
+
+  blockFirstRequest(snapshot: SelectionSnapshot): void {
+    this.visibility = "open";
+    this.request = firstBlockedRequest(frozenSnapshot(snapshot));
+    this.pendingFirstConversationId = null;
+    this.pendingFirstRequest = null;
+    this.emit();
   }
 
   /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入 loading。 */

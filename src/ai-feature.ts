@@ -1,8 +1,18 @@
 import type { AppDom } from "./dom.ts";
+import {
+  buildThinkingExpansionRequest,
+  startFirstRequest,
+  type FirstRequestPreflightState,
+} from "./ai-feature-first-request.ts";
+import {
+  editAndResendFollowUpAcceptedRequest,
+  followUpAcceptedRequest,
+  retryFollowUpAcceptedRequest,
+} from "./ai-feature-follow-up.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
-import { AiRequestCoordinator } from "./ai-request.ts";
-import { setupAiPanel } from "./ai-panel.ts";
-import { setupSelectionEntry } from "./selection-entry.ts";
+import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
+import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
+import { setupSelectionEntry, type SelectionEntryController } from "./selection-entry.ts";
 import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
@@ -37,68 +47,6 @@ export function retryAcceptedRequest(
   return state.acceptFirstRetry();
 }
 
-export function followUpAcceptedRequest(
-  state: AiPanelState,
-  question: string,
-  request: (
-    payload: GenerateAiRequest,
-    identity: { conversationId: number; turnId: number },
-  ) => Promise<void> | null,
-): boolean {
-  const turnId = state.beginFollowUp(question);
-  const identity = state.conversationIdentity;
-  const payload = state.followUpRequest();
-  if (turnId === null || !identity || identity.turnId === undefined || !payload) return false;
-  const accepted = request(payload, {
-    conversationId: identity.conversationId,
-    turnId: identity.turnId,
-  });
-  if (accepted === null) {
-    state.cancelFollowUp(turnId);
-    return false;
-  }
-  return true;
-}
-
-export function retryFollowUpAcceptedRequest(
-  state: AiPanelState,
-  request: (
-    payload: GenerateAiRequest,
-    identity: { conversationId: number; turnId: number },
-  ) => Promise<void> | null,
-): boolean {
-  const payload = state.retryFollowUpRequest();
-  const identity = state.conversationIdentity;
-  if (!payload || !identity || identity.turnId === undefined) return false;
-  const accepted = request(payload, {
-    conversationId: identity.conversationId,
-    turnId: identity.turnId,
-  });
-  if (accepted === null) return false;
-  return state.acceptFollowUpRetry();
-}
-
-export function editAndResendFollowUpAcceptedRequest(
-  state: AiPanelState,
-  question: string,
-  request: (
-    payload: GenerateAiRequest,
-    identity: { conversationId: number; turnId: number },
-  ) => Promise<void> | null,
-): boolean {
-  const payload = state.followUpRequestForQuestion(question);
-  const identity = state.conversationIdentity;
-  if (!payload || !identity || identity.turnId === undefined) return false;
-  const accepted = request(payload, {
-    conversationId: identity.conversationId,
-    turnId: identity.turnId,
-  });
-  if (accepted === null) {
-    return false;
-  }
-  return state.acceptEditedFollowUp(question);
-}
-
 export function openAiConfiguration(
   openConfigPage: (returnPage: "editor-page") => void,
 ): void {
@@ -128,6 +76,113 @@ export interface AiFeatureDependencies {
   setupEntry?: typeof setupSelectionEntry;
 }
 
+type FirstRequestStarter = (
+  snapshot: SelectionSnapshot,
+  firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+) => boolean;
+
+type StructuredRequestSender = (
+  request: GenerateAiRequest,
+  identity: RequestIdentity,
+) => Promise<void> | null;
+
+interface AiPanelWiring {
+  readonly state: AiPanelState;
+  readonly openConfigPage: AiFeatureHooks["openConfigPage"];
+  readonly requestFirst: FirstRequestStarter;
+  readonly requestStructured: StructuredRequestSender;
+}
+
+interface SelectionEntryWiring {
+  readonly dom: AppDom;
+  readonly getCurrentNotebook: AiFeatureHooks["getCurrentNotebook"];
+  readonly coordinator: AiRequestCoordinator;
+  readonly state: AiPanelState;
+  readonly requestFirst: FirstRequestStarter;
+  readonly setupEntry: typeof setupSelectionEntry;
+}
+
+interface ProjectLifecycleWiring {
+  readonly state: AiPanelState;
+  readonly coordinator: AiRequestCoordinator;
+  readonly selectionEntry: SelectionEntryController;
+  readonly nextProjectToken: () => void;
+  readonly requestStructured: StructuredRequestSender;
+}
+
+function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
+  const { state, openConfigPage, requestFirst, requestStructured } = wiring;
+
+  return {
+    onRetry: () => {
+      retryAcceptedRequest(state, (snapshot, firstRequest) =>
+        requestFirst(snapshot, firstRequest) ? Promise.resolve() : null);
+    },
+    onGoToConfig: () => openAiConfiguration(openConfigPage),
+    onStartThinkingExpansion: (direction) => {
+      const current = state.view.request;
+      if (current.kind !== "thinking_expansion") return false;
+      return requestFirst(
+        current.snapshot,
+        buildThinkingExpansionRequest(current.snapshot, direction),
+      );
+    },
+    onSubmitFollowUp: async (question) => followUpAcceptedRequest(state, question, requestStructured),
+    onRetryFollowUp: async () => retryFollowUpAcceptedRequest(state, requestStructured),
+    onEditFollowUp: async (question) =>
+      editAndResendFollowUpAcceptedRequest(state, question, requestStructured),
+  };
+}
+
+function setupSelectionEntryCallbacks(wiring: SelectionEntryWiring): SelectionEntryController {
+  const { dom, getCurrentNotebook, coordinator, state, requestFirst, setupEntry } = wiring;
+
+  return setupEntry({
+    dom,
+    getCurrentNotebook,
+    isRequestInFlight: () => coordinator.busy,
+    onSummon: (snapshot: SelectionSnapshot) => {
+      requestFirst(snapshot);
+    },
+    onThinkingExpansion: (snapshot: SelectionSnapshot) => {
+      if (coordinator.busy) return;
+      state.beginThinkingExpansion(snapshot);
+    },
+  });
+}
+
+function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureController {
+  const { state, coordinator, selectionEntry, nextProjectToken, requestStructured } = wiring;
+
+  function resetProjectScopedAi(): void {
+    nextProjectToken();
+    coordinator.releaseStaleRequestOwnership();
+    selectionEntry.reset();
+    state.reset();
+  }
+
+  return {
+    beginProject(): void {
+      resetProjectScopedAi();
+    },
+    endProject(): void {
+      resetProjectScopedAi();
+    },
+    resetSelectionEntry(): void {
+      selectionEntry.reset();
+    },
+    submitFollowUp(question: string): Promise<boolean> {
+      return Promise.resolve(followUpAcceptedRequest(state, question, requestStructured));
+    },
+    retryFollowUp(): Promise<boolean> {
+      return Promise.resolve(retryFollowUpAcceptedRequest(state, requestStructured));
+    },
+    editFollowUp(question: string): Promise<boolean> {
+      return Promise.resolve(editAndResendFollowUpAcceptedRequest(state, question, requestStructured));
+    },
+  };
+}
+
 /**
  * 把选区入口、单请求协调器、生成桥接与面板状态接入编辑器。
  *
@@ -144,7 +199,7 @@ export function setupAiFeature(
   const generate = dependencies.generate ?? generateAiThinking;
   const loadConfig = dependencies.loadConfig ?? loadLlmConfig;
   const setupEntry = dependencies.setupEntry ?? setupSelectionEntry;
-  let firstRequestPreflightPending = false;
+  const firstRequestPreflight: FirstRequestPreflightState = { pending: false };
 
   const coordinator = new AiRequestCoordinator(
     (selectedText: string) =>
@@ -171,141 +226,47 @@ export function setupAiFeature(
     (request) => generate(request),
     () => state.conversationIdentity,
   );
+  const requestStructured: StructuredRequestSender = (request, identity) =>
+    coordinator.requestStructured(request, identity);
 
-  function startFirstRequest(
+  function requestFirst(
     snapshot: SelectionSnapshot,
     firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
   ): boolean {
-    if (firstRequestPreflightPending) return false;
-    state.previewFirstRequest(snapshot, firstRequest);
-    firstRequestPreflightPending = true;
-    void (async () => {
-      try {
-        const config = await loadConfig();
-        if (!config) {
-          state.beginRequest(snapshot, firstRequest);
-          state.requireConfiguration(snapshot);
-          return;
-        }
-
-        const accepted = coordinator.request(snapshot, firstRequest);
-        if (accepted === null) {
-          state.blockFirstRequest(snapshot);
-          return;
-        }
-        state.beginRequest(snapshot, firstRequest);
-      } catch (error) {
-        state.fail(snapshot, {
-          code: "network",
-          message: preflightErrorMessage(error),
-        });
-      } finally {
-        firstRequestPreflightPending = false;
-      }
-    })();
-    return true;
+    return startFirstRequest({
+      state,
+      snapshot,
+      firstRequest,
+      loadConfig,
+      request: (requestSnapshot, requestPayload) =>
+        coordinator.request(requestSnapshot, requestPayload),
+      preflight: firstRequestPreflight,
+    });
   }
 
-  function buildThinkingExpansionRequest(
-    snapshot: SelectionSnapshot,
-    direction: string,
-  ): Extract<GenerateAiRequest, { kind: "first" }> {
-    const trimmed = direction.trim();
-    if (trimmed) {
-      return {
-        kind: "first",
-        selected_text: snapshot.selectedText,
-        thinking_direction: trimmed,
-      };
-    }
-    return { kind: "first", selected_text: snapshot.selectedText };
-  }
+  setupAiPanel(dom, state, buildAiPanelActions({
+    state,
+    openConfigPage: hooks.openConfigPage,
+    requestFirst,
+    requestStructured,
+  }));
 
-  setupAiPanel(dom, state, {
-    onRetry: () => {
-      retryAcceptedRequest(state, (snapshot, firstRequest) =>
-        startFirstRequest(snapshot, firstRequest) ? Promise.resolve() : null);
-    },
-    onGoToConfig: () => openAiConfiguration(hooks.openConfigPage),
-    onStartThinkingExpansion: (direction) => {
-      const current = state.view.request;
-      if (current.kind !== "thinking_expansion") return false;
-      return startFirstRequest(
-        current.snapshot,
-        buildThinkingExpansionRequest(current.snapshot, direction),
-      );
-    },
-    onSubmitFollowUp: async (question) => {
-      return followUpAcceptedRequest(
-        state,
-        question,
-        (request, identity) => coordinator.requestStructured(request, identity),
-      );
-    },
-    onRetryFollowUp: async () => {
-      return retryFollowUpAcceptedRequest(
-        state,
-        (request, identity) => coordinator.requestStructured(request, identity),
-      );
-    },
-    onEditFollowUp: async (question) => {
-      return editAndResendFollowUpAcceptedRequest(
-        state,
-        question,
-        (request, identity) => coordinator.requestStructured(request, identity),
-      );
-    },
-  });
-
-  const selectionEntry = setupEntry({
+  const selectionEntry = setupSelectionEntryCallbacks({
     dom,
     getCurrentNotebook: hooks.getCurrentNotebook,
-    isRequestInFlight: () => coordinator.busy,
-    onSummon: (snapshot: SelectionSnapshot) => {
-      startFirstRequest(snapshot);
-    },
-    onThinkingExpansion: (snapshot: SelectionSnapshot) => {
-      if (coordinator.busy) return;
-      state.beginThinkingExpansion(snapshot);
-    },
+    coordinator,
+    state,
+    requestFirst,
+    setupEntry,
   });
 
-  return {
-    beginProject(): void {
+  return buildAiFeatureController({
+    state,
+    coordinator,
+    selectionEntry,
+    nextProjectToken: () => {
       projectToken += 1;
-      coordinator.releaseStaleRequestOwnership();
-      selectionEntry.reset();
-      state.reset();
     },
-    endProject(): void {
-      projectToken += 1;
-      coordinator.releaseStaleRequestOwnership();
-      selectionEntry.reset();
-      state.reset();
-    },
-    resetSelectionEntry(): void {
-      selectionEntry.reset();
-    },
-    submitFollowUp(question: string): Promise<boolean> {
-      return Promise.resolve(followUpAcceptedRequest(state, question, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      ));
-    },
-    retryFollowUp(): Promise<boolean> {
-      return Promise.resolve(retryFollowUpAcceptedRequest(state, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      ));
-    },
-    editFollowUp(question: string): Promise<boolean> {
-      return Promise.resolve(editAndResendFollowUpAcceptedRequest(state, question, (request, identity) =>
-        coordinator.requestStructured(request, identity),
-      ));
-    },
-  };
-}
-
-function preflightErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "AI 请求开始前发生异常。";
+    requestStructured,
+  });
 }

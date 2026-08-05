@@ -3,11 +3,17 @@ import test from "node:test";
 
 import {
   applyGenerateError,
-  editAndResendFollowUpAcceptedRequest,
   openAiConfiguration,
   retryAcceptedRequest,
-  retryFollowUpAcceptedRequest,
 } from "../src/ai-feature.ts";
+import {
+  editAndResendFollowUpAcceptedRequest,
+  retryFollowUpAcceptedRequest,
+} from "../src/ai-feature-follow-up.ts";
+import {
+  buildThinkingExpansionRequest,
+  startFirstRequest,
+} from "../src/ai-feature-first-request.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
 
@@ -36,6 +42,52 @@ test("routes non-configuration failures to the ordinary error state", () => {
   applyGenerateError(state, snap, error);
 
   assert.deepEqual(state.view.request, { kind: "error", snapshot: snap, error });
+});
+
+test("builds thinking expansion first request from frozen selection and trimmed direction", () => {
+  const snap = snapshot("冻结选区");
+
+  assert.deepEqual(buildThinkingExpansionRequest(snap, "  追人物的犹豫  "), {
+    kind: "first",
+    selected_text: "冻结选区",
+    thinking_direction: "追人物的犹豫",
+  });
+});
+
+test("builds thinking expansion first request without blank direction", () => {
+  const snap = snapshot("冻结选区");
+
+  assert.deepEqual(buildThinkingExpansionRequest(snap, "   \n  "), {
+    kind: "first",
+    selected_text: "冻结选区",
+  });
+});
+
+test("first request preflight previews selection before requiring configuration", async () => {
+  const state = new AiPanelState();
+  const snap = snapshot("冻结选区");
+  const observed: string[] = [];
+  const trackedState = new AiPanelState(() => {
+    observed.push(trackedState.view.request.kind);
+  });
+
+  assert.equal(startFirstRequest({
+    state: trackedState,
+    snapshot: snap,
+    loadConfig: () => Promise.resolve(null),
+    request: () => {
+      throw new Error("request should not run without config");
+    },
+  }), true);
+  await Promise.resolve();
+
+  assert.deepEqual(observed, ["first_preview", "loading", "configuration_required"]);
+  assert.deepEqual(trackedState.view.request, {
+    kind: "configuration_required",
+    snapshot: snap,
+    conversationId: 1,
+  });
+  assert.deepEqual(state.view.request, { kind: "idle" });
 });
 
 test("retry enters loading only when the coordinator accepts the request", () => {

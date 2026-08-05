@@ -647,7 +647,7 @@ test("editor lifecycle composition resets AI on project ready and unload", () =>
   const aiFeatureSource = readFileSync(new URL("../src/ai-feature.ts", import.meta.url), "utf8");
   assert.match(editorSource, /function unload\(\): void \{[\s\S]*aiFeature\?\.endProject\(\)/);
   assert.match(editorSource, /function showProject\([\s\S]*aiFeature\?\.beginProject\(\)/);
-  assert.match(aiFeatureSource, /const selectionEntry = setupEntry\(/);
+  assert.match(aiFeatureSource, /const selectionEntry = setupSelectionEntryCallbacks\(/);
   assert.match(aiFeatureSource, /beginProject\(\): void \{[\s\S]*selectionEntry\.reset\(\)/);
   assert.match(aiFeatureSource, /endProject\(\): void \{[\s\S]*selectionEntry\.reset\(\)/);
 });

@@ -128,7 +128,6 @@ TBD - created by archiving change add-selection-ai-panel. Update Purpose after a
 - **WHEN** `思维扩展`首次或追问成功显示回复
 - **THEN** 草稿本和正文本内容保持不变
 - **AND** 面板不存在“插入”“替换”“应用到正文”或等价入口
-
 ### Requirement: 面板显式呈现请求与轮次状态
 系统 SHALL 分别管理面板的打开或收起状态、当前临时对话、一个可选待回答用户轮次，以及请求的等待、生成中、成功、错误和缺少配置状态。
 
@@ -260,3 +259,19 @@ TBD - created by archiving change add-selection-ai-panel. Update Purpose after a
 - **WHEN** 当前作品已有一次 AI 请求正在生成
 - **AND** 用户在同一作品内尝试发起第二次 AI 请求
 - **THEN** 系统拒绝第二次请求直到当前作品的请求结束或作品失效
+
+### Requirement: 面板显式呈现首次请求未发出状态
+系统 SHALL 在 AI 面板已经为首次请求展开但模型请求没有被接受时，显式显示当前状态。该状态 MUST 保留冻结选区，MUST NOT 显示为生成中，MUST NOT 创建成功临时对话，MUST NOT 开放追问输入，并 MUST NOT 自动发起新的模型请求。
+
+#### Scenario: 首次请求因单请求限制而未接受
+- **WHEN** AI 面板已经基于`及时召唤`展开并显示冻结选区
+- **AND** 本次首次请求因为已有请求生成中而未被接受
+- **THEN** 面板显示中文可读的请求被阻止说明
+- **AND** 面板不显示生成中状态
+- **AND** 面板不显示首次模型回复
+- **AND** 面板不开放追问输入
+
+#### Scenario: 未发出状态不改变两个本子
+- **WHEN** AI 面板显示首次请求未接受状态
+- **THEN** 草稿本和正文本内容保持不变
+- **AND** 面板不存在“插入”“替换”“应用到正文”或等价入口

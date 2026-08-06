@@ -37,6 +37,12 @@ export interface SelectionEntryAction {
   label: string;
 }
 
+export interface SelectionEntryActionNode {
+  id: string;
+  textContent: string | null;
+  type?: string;
+}
+
 export function decideSelectionEntryActions(input: EntryVisibilityInput): readonly SelectionEntryAction[] {
   if (!decideSummonVisibility(input)) {
     return [];
@@ -46,6 +52,29 @@ export function decideSelectionEntryActions(input: EntryVisibilityInput): readon
     { kind: "summon", label: "及时召唤" },
     { kind: "thinking_expansion", label: "思维扩展" },
   ];
+}
+
+export function renderSelectionEntryActions<TNode extends SelectionEntryActionNode>(
+  menu: { readonly children: ArrayLike<TNode> },
+  actions: readonly SelectionEntryAction[],
+  createButton: () => TNode,
+): void {
+  const domMenu = menu as unknown as {
+    appendChild(child: TNode): unknown;
+    removeChild(child: TNode): unknown;
+  };
+
+  for (const child of Array.from(menu.children)) {
+    domMenu.removeChild(child);
+  }
+
+  for (const action of actions) {
+    const button = createButton();
+    button.id = action.kind === "summon" ? "ai-summon-btn" : "ai-thinking-expansion-btn";
+    button.type = "button";
+    button.textContent = action.label;
+    domMenu.appendChild(button);
+  }
 }
 
 export function isSameSummonedSelection(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
@@ -232,18 +261,6 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   menu.className = "hidden";
   entry.appendChild(menu);
 
-  const summonButton = document.createElement("button");
-  summonButton.id = "ai-summon-btn";
-  summonButton.type = "button";
-  summonButton.textContent = "及时召唤";
-  menu.appendChild(summonButton);
-
-  const thinkingButton = document.createElement("button");
-  thinkingButton.id = "ai-thinking-expansion-btn";
-  thinkingButton.type = "button";
-  thinkingButton.textContent = "思维扩展";
-  menu.appendChild(thinkingButton);
-
   // 最近一次召唤冻结的快照；在其存在期间抑制入口重现，直到用户形成新的不同选区。
   let frozen: SelectionSnapshot | null = null;
   let actionSnapshot: SelectionSnapshot | null = null;
@@ -361,14 +378,24 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     const focusOffset = resolveFocusOffset(textarea);
     const focusCaret = snapshot !== null ? measureCaret(textarea, focusOffset) : null;
     const focusVisible = focusCaret !== null && focusEndVisible(textarea, focusCaret);
-    const shouldShow = decideSummonVisibility({
+    const actions = decideSelectionEntryActions({
       hasMeaningfulSelection: isMeaningfulSelection(snapshot),
       focusEndVisible: focusVisible,
     });
-    if (shouldShow && snapshot !== null && focusCaret !== null) {
+    if (actions.length > 0 && snapshot !== null && focusCaret !== null) {
       // Keep the locked anchor while the secondary menu is open (click may blur/focus and re-fire update).
       if (!menuOpen) {
         positionEntry(textarea, snapshot, focusOffset, focusCaret);
+      }
+      renderSelectionEntryActions(menu, actions, () => document.createElement("button"));
+      for (const button of Array.from(menu.children)) {
+        button.addEventListener("mousedown", (event) => {
+          keepTextareaSelectionVisible(event as MouseEvent);
+        });
+        button.addEventListener("click", () => {
+          if (button.id === "ai-summon-btn") freezeAndRun(onSummon);
+          if (button.id === "ai-thinking-expansion-btn") freezeAndRun(onThinkingExpansion);
+        });
       }
       actionSnapshot = snapshot;
       entry.classList.remove("hidden");
@@ -418,8 +445,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       nextTarget === entry ||
       nextTarget === trigger ||
       nextTarget === menu ||
-      nextTarget === summonButton ||
-      nextTarget === thinkingButton
+      (nextTarget !== null && menu.contains(nextTarget as Node))
     ) {
       return;
     }
@@ -440,10 +466,6 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       closeMenu();
     }
   });
-  summonButton.addEventListener("mousedown", keepTextareaSelectionVisible);
-  thinkingButton.addEventListener("mousedown", keepTextareaSelectionVisible);
-  summonButton.addEventListener("click", () => { freezeAndRun(onSummon); });
-  thinkingButton.addEventListener("click", () => { freezeAndRun(onThinkingExpansion); });
 
   for (const textarea of textareas) {
     for (const eventType of textareaEventTypes) {

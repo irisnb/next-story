@@ -6,6 +6,7 @@ import {
   decideSummonVisibility,
   decideTriggerPlacement,
   isSameSummonedSelection,
+  renderSelectionEntryActions,
   setupSelectionEntry,
   SELECTION_ENTRY_GAP_PX,
   SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
@@ -239,6 +240,18 @@ test("offers no selection entry actions when the entry is hidden", () => {
   });
 
   assert.deepEqual(actions, []);
+});
+
+test("renders only the actions returned by the selection entry decision", () => {
+  const menu = new FakeElement();
+  const actions = [{ kind: "summon", label: "及时召唤" }] as const;
+
+  renderSelectionEntryActions(menu, actions, () => new FakeElement());
+
+  assert.deepEqual(
+    menu.children.map((button) => ({ id: button.id, text: button.textContent })),
+    [{ id: "ai-summon-btn", text: "及时召唤" }],
+  );
 });
 
 test("selection entry opens an AI pill-triggered menu and freezes each action selection", () => {

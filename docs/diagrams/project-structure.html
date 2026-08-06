@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Next Story 项目结构</title>
+<style>
+  /* ============ 设计系统 (Design Tokens) ============ */
+  :root {
+    /* 颜色：每层一个语义色族 */
+    --ink:            #1A1A2E;   /* 主文字 */
+    --ink-soft:       #45455f;   /* 次要文字 */
+    --page-bg:        #F4F6FB;   /* 画布背景 */
+    --card-bg:        #FFFFFF;
+
+    --ui:             #1976D2;   --ui-bg:    #E3F2FD;
+    --fe:             #2E7D32;   --fe-bg:    #E8F5E9;
+    --bridge:         #6A1B9A;   --bridge-bg:#F3E5F5;
+    --be:             #BF360C;   --be-bg:    #FBE9E7;
+    --store:          #455A64;   --store-bg: #ECEFF1;
+    --spec:           #F9A825;   --spec-bg:  #FFFDE7;
+    --test:           #00838F;   --test-bg:  #E0F7FA;
+    --ai:             #E65100;   --ai-bg:    #FFF3E0;
+    --redline:        #C62828;   --redline-bg:#FFEBEE;
+
+    /* 间距刻度 (8px 基准) */
+    --s1: 8px;  --s2: 16px;  --s3: 24px;  --s4: 32px;  --s5: 48px;
+
+    /* 字号刻度 */
+    --fs-title:  40px;
+    --fs-sub:    22px;
+    --fs-group:  26px;
+    --fs-h:      21px;
+    --fs-body:   17px;
+    --fs-file:   15px;
+
+    --radius: 14px;
+    --shadow: 0 3px 10px rgba(26,26,46,.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--page-bg);
+    font-family: "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #canvas {
+    width: 1680px;
+    padding: var(--s5) var(--s5) var(--s4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+  }
+
+  /* ============ 标题 ============ */
+  header { text-align: center; margin-bottom: var(--s2); }
+  header h1 {
+    font-size: var(--fs-title);
+    font-weight: 800;
+    letter-spacing: .5px;
+    line-height: 1.3;
+  }
+  header p {
+    margin-top: var(--s1);
+    font-size: var(--fs-sub);
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  /* ============ 主体两栏 ============ */
+  .body { display: grid; grid-template-columns: 1060px 1fr; gap: var(--s3); align-items: start; }
+  .flow { display: flex; flex-direction: column; gap: 0; }
+  .side { display: flex; flex-direction: column; gap: var(--s3); }
+
+  /* ============ 分层卡片 ============ */
+  .group {
+    background: var(--card-bg);
+    border: 3px solid var(--gc, #999);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: var(--s2) var(--s3) var(--s3);
+  }
+  .group > .glabel {
+    font-size: var(--fs-group);
+    font-weight: 800;
+    color: var(--gc);
+    margin-bottom: var(--s2);
+    display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap;
+  }
+  .group > .glabel .path {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: var(--fs-body);
+    font-weight: 700;
+    background: var(--gbg);
+    padding: 2px 10px; border-radius: 8px;
+  }
+  .group > .glabel .note {
+    font-size: var(--fs-body); font-weight: 500; color: var(--ink-soft);
+  }
+
+  .cards { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .card {
+    flex: 1 1 0;
+    min-width: 220px;
+    background: var(--cbg, #fff);
+    border: 2px solid var(--cc, #ccc);
+    border-radius: 10px;
+    padding: var(--s2);
+  }
+  .card h3 { font-size: var(--fs-h); font-weight: 700; margin-bottom: 6px; color: var(--cc); }
+  .card .desc { font-size: var(--fs-body); color: var(--ink-soft); line-height: 1.5; }
+  .card .files {
+    margin-top: 10px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: var(--fs-file);
+    line-height: 1.7;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  /* group color helpers */
+  .g-ui     { --gc: var(--ui);     --gbg: var(--ui-bg); }
+  .g-fe     { --gc: var(--fe);     --gbg: var(--fe-bg); }
+  .g-bridge { --gc: var(--bridge); --gbg: var(--bridge-bg); }
+  .g-be     { --gc: var(--be);     --gbg: var(--be-bg); }
+  .g-store  { --gc: var(--store);  --gbg: var(--store-bg); }
+  .g-spec   { --gc: var(--spec);   --gbg: var(--spec-bg); }
+  .g-test   { --gc: var(--test);   --gbg: var(--test-bg); }
+
+  .c-ui   { --cc: var(--ui);   --cbg: #fff; }
+  .c-fe   { --cc: var(--fe);   --cbg: #fff; }
+  .c-be   { --cc: var(--be);   --cbg: #fff; }
+  .c-store{ --cc: var(--store);--cbg: #fff; }
+  .c-spec { --cc: var(--spec); --cbg: #fff; }
+  .c-test { --cc: var(--test); --cbg: #fff; }
+  .c-ai   { --cc: var(--ai);   --cbg: var(--ai-bg); }
+
+  /* 桥接层是单行强调条 */
+  .bridge-bar { text-align: center; }
+  .bridge-bar .glabel { justify-content: center; margin-bottom: 0; }
+
+  /* ============ 箭头连接 ============ */
+  .arrow {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6px 0;
+  }
+  .arrow .lbl {
+    font-size: var(--fs-body); font-weight: 700; color: var(--ink-soft);
+    background: var(--page-bg); padding: 2px 12px;
+  }
+  .arrow .line {
+    width: 3px; height: 22px; background: #555;
+    position: relative;
+  }
+  .arrow .line::after {
+    content: ""; position: absolute; bottom: -1px; left: 50%;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 11px solid #555;
+  }
+
+  /* ============ 侧栏说明条 ============ */
+  .side .group .glabel { font-size: 23px; }
+  .side .stack { display: flex; flex-direction: column; gap: var(--s1); }
+  .side .row {
+    border: 2px solid var(--cc); border-radius: 10px; padding: 12px var(--s2);
+  }
+  .side .row .name {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: var(--fs-body); font-weight: 700; color: var(--cc);
+  }
+  .side .row .desc { font-size: var(--fs-file); color: var(--ink-soft); margin-top: 3px; }
+
+  .side-note {
+    margin-top: var(--s2); font-size: var(--fs-file); font-weight: 600;
+    color: var(--spec); display: flex; align-items: center; gap: 8px;
+  }
+  .side-note.tnote { color: var(--test); }
+
+  /* ============ AI 回流说明 ============ */
+  .aiflow {
+    border: 2px dashed var(--ai); background: var(--ai-bg);
+    border-radius: 10px; padding: 12px var(--s2);
+    font-size: var(--fs-body); font-weight: 600; color: var(--ai);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  /* ============ 红线铁律 ============ */
+  .redline {
+    border: 4px dashed var(--redline);
+    background: var(--redline-bg);
+    border-radius: var(--radius);
+    padding: var(--s3) var(--s4);
+    margin-top: var(--s2);
+  }
+  .redline h2 {
+    font-size: 27px; font-weight: 800; color: var(--redline);
+    display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  }
+  .redline ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .redline li {
+    font-size: 19px; line-height: 1.5; color: #7f1414; font-weight: 600;
+    padding-left: 26px; position: relative;
+  }
+  .redline li::before {
+    content: "✕"; position: absolute; left: 0; color: var(--redline); font-weight: 900;
+  }
+  .redline li.ok::before { content: "✓"; color: var(--fe); }
+  .redline li.ok { color: #1b5e20; }
+
+  footer { text-align: center; font-size: var(--fs-file); color: var(--ink-soft); margin-top: var(--s2); }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+  <header>
+    <h1>Next Story 项目结构</h1>
+    <p>Tauri 桌面剧本写作编辑器 · 架构与数据流总览</p>
+  </header>
+
+  <div class="body">
+    <!-- ========== 左：主数据流 ========== -->
+    <div class="flow">
+
+      <!-- 1. UI 层 -->
+      <section class="group g-ui">
+        <div class="glabel">产品 / UI 层 <span class="note">用户所见</span></div>
+        <div class="cards">
+          <div class="card c-ui">
+            <h3>编辑器</h3>
+            <div class="desc">草稿本 / 正文本，用户亲手写入的内容事实源</div>
+          </div>
+          <div class="card c-ai">
+            <h3>AI 面板</h3>
+            <div class="desc">及时召唤 / 思维扩展 / 临时追问</div>
+          </div>
+          <div class="card c-ui">
+            <h3>作品管理</h3>
+            <div class="desc">新建 / 打开 / 保存作品</div>
+          </div>
+          <div class="card c-ui">
+            <h3>LLM 配置</h3>
+            <div class="desc">模型配置表单</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="arrow"><span class="lbl">用户操作</span><span class="line"></span></div>
+
+      <!-- 2. 前端 -->
+      <section class="group g-fe">
+        <div class="glabel">TypeScript 前端 <span class="path">src/</span></div>
+        <div class="cards">
+          <div class="card c-fe">
+            <h3>应用外壳</h3>
+            <div class="files">main.ts<br>views.ts<br>dom.ts<br>types.ts</div>
+          </div>
+          <div class="card c-fe">
+            <h3>编辑器逻辑</h3>
+            <div class="files">editor.ts<br>editor-save-state.ts<br>notebook-memory.ts</div>
+          </div>
+          <div class="card c-ai">
+            <h3>AI 面板前端</h3>
+            <div class="files">ai-panel.ts / ai-panel-state.ts<br>ai-feature.ts / ai-request.ts<br>selection-adapter.ts<br>selection-entry.ts<br>caret-coordinates.ts</div>
+          </div>
+          <div class="card c-fe">
+            <h3>LLM 配置 / 项目流程</h3>
+            <div class="files">llm-config-form.ts<br>llm-config-state.ts<br>new-project-form.ts<br>project-leave-flow.ts<br>close-guard.ts / leave-guard.ts<br>leave-dialog.ts</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="arrow"><span class="lbl">调用桥接 API</span><span class="line"></span></div>
+
+      <!-- 3. 桥接层 -->
+      <section class="group g-bridge bridge-bar">
+        <div class="glabel">桥接层
+          <span class="path">src/project-api.ts</span>
+          <span class="note">前端 ↔ 后端唯一通道 · tauriInvoke</span>
+        </div>
+      </section>
+
+      <div class="arrow"><span class="lbl">tauriInvoke → Tauri 命令</span><span class="line"></span></div>
+
+      <!-- 4. 后端 -->
+      <section class="group g-be">
+        <div class="glabel">Tauri / Rust 后端 <span class="path">src-tauri/src/</span></div>
+        <div class="cards">
+          <div class="card c-be" style="flex:1.3 1 0;">
+            <h3>lib.rs — Tauri 命令边界</h3>
+            <div class="files">create_project / open_project<br>save_project<br>save_llm_config / load_llm_config<br>test_llm_connection<br>generate_ai_thinking</div>
+          </div>
+          <div class="card c-be">
+            <h3>project/ 作品域</h3>
+            <div class="files">mod.rs / operations.rs<br>validation.rs</div>
+            <div class="desc">建/开/存、路径与内容校验</div>
+          </div>
+          <div class="card c-be">
+            <h3>llm_config/ 模型域</h3>
+            <div class="files">mod.rs / http.rs<br>generate.rs</div>
+            <div class="desc">配置存取、连通性测试、生成请求</div>
+          </div>
+        </div>
+        <div class="cards" style="margin-top:var(--s2);">
+          <div class="card c-be">
+            <h3>main.rs</h3>
+            <div class="desc">应用入口，注册所有 Tauri 命令</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="arrow"><span class="lbl">读写文件 / HTTP 调用</span><span class="line"></span></div>
+
+      <!-- 5. 存储 / 外部服务 -->
+      <section class="group g-store">
+        <div class="glabel">存储 / 外部服务</div>
+        <div class="cards">
+          <div class="card c-store">
+            <h3>&#128193; 作品文件夹</h3>
+            <div class="desc">草稿本.txt / 正文本.txt / project.json 落盘文件</div>
+          </div>
+          <div class="card c-store">
+            <h3>&#128196; llm-config.json</h3>
+            <div class="desc">本地模型配置（作品文件夹之外）</div>
+          </div>
+          <div class="card c-store">
+            <h3>&#9729; 已配置的 LLM 服务</h3>
+            <div class="desc">外部 HTTP 接口（OpenAI 兼容格式）</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AI 回流说明 -->
+      <div class="aiflow" style="margin-top:var(--s3);">
+        &#8617; AI 回复只回到 <b>AI 面板</b>（临时材料，绝不落入草稿本 / 正文本）
+      </div>
+
+    </div>
+
+    <!-- ========== 右：规格 + 测试 ========== -->
+    <div class="side">
+
+      <section class="group g-spec">
+        <div class="glabel">规格 / 方向</div>
+        <div class="stack">
+          <div class="row c-spec">
+            <div class="name">AGENTS.md</div>
+            <div class="desc">项目宪法 / 铁律</div>
+          </div>
+          <div class="row c-spec">
+            <div class="name">openspec/specs</div>
+            <div class="desc">真相源：已经做成什么（归档后）</div>
+          </div>
+          <div class="row c-spec">
+            <div class="name">openspec/changes</div>
+            <div class="desc">进行中的变更，一次只开一个</div>
+          </div>
+          <div class="row c-spec">
+            <div class="name">方向/</div>
+            <div class="desc">核心方向宪章、第一版方向共识</div>
+          </div>
+        </div>
+        <div class="side-note">&#9660; 约束实现：先 propose → 用户确认 → apply</div>
+      </section>
+
+      <section class="group g-test">
+        <div class="glabel">测试 / 构建</div>
+        <div class="stack">
+          <div class="row c-test">
+            <div class="name">tests/</div>
+            <div class="desc">前端单元测试：ai-panel / editor / selection</div>
+          </div>
+          <div class="row c-test">
+            <div class="name">src-tauri/tests/</div>
+            <div class="desc">后端集成测试：project_test.rs / llm_config_test.rs</div>
+          </div>
+          <div class="row c-test">
+            <div class="name">package.json / tsconfig.json</div>
+            <div class="desc">vite.config.ts / index.html / Cargo（src-tauri）</div>
+          </div>
+          <div class="row c-test">
+            <div class="name">npm run check</div>
+            <div class="desc">类型检查 → 前端测试 → 构建 → Rust 测试</div>
+          </div>
+        </div>
+        <div class="side-note tnote">&#9660; 覆盖前端与后端实现</div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ========== 红线铁律 ========== -->
+  <section class="redline">
+    <h2>&#9888; 产品铁律：AI 面板输出永远只是临时材料</h2>
+    <ul>
+      <li>AI 永远不向 草稿本 / 正文本 写入、插入、追加、替换、删除或移动任何字符</li>
+      <li>界面不存在“一键应用到正文”之类入口；即使用户明确授权也不例外</li>
+      <li class="ok">用户亲手复制、粘贴、编辑、保存后，文字才进入作品，成为内容事实</li>
+      <li class="ok">判断权始终在用户手里：内容、解释、评价、方向都由用户决定</li>
+    </ul>
+  </section>
+
+  <footer>数据流方向表示“请求逐层向下传递”，处理结果与错误会沿原路返回前端显示。</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<mxfile host="app.diagrams.net" modified="2026-07-29T00:00:00.000Z" agent="Kiro" version="24.0.0" type="device">
+  <diagram id="next-story-structure" name="Next Story Project Structure">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ================= 标题 ================= -->
+        <mxCell id="title" value="Next Story 项目结构（Tauri 桌面剧本写作编辑器）" style="text;html=1;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;fontColor=#1A1A2E;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="880" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 1. 产品 / UI ================= -->
+        <mxCell id="grp_ui" value="产品 / UI 层（用户所见）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1976D2;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="880" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_editor" value="编辑器：草稿本 / 正文本&#10;（用户亲手写入的内容事实源）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1976D2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_aipanel" value="AI 面板&#10;（及时召唤 / 思维扩展 / 临时追问）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="100" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_project" value="新建 / 打开 / 保存作品" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1976D2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="540" y="100" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_llm" value="LLM 配置表单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1976D2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="730" y="100" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 2. TypeScript 前端 src/ ================= -->
+        <mxCell id="grp_fe" value="TypeScript 前端  src/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="210" width="880" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_app" value="应用外壳&#10;main.ts / views.ts / dom.ts / types.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="250" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_editor" value="编辑器逻辑&#10;editor.ts / editor-save-state.ts / notebook-memory.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="280" y="250" width="220" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_ai" value="AI 面板前端&#10;ai-panel*.ts / ai-feature.ts / ai-request.ts&#10;selection-adapter.ts / selection-entry.ts / caret-coordinates.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="520" y="245" width="380" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_llm" value="LLM 配置&#10;llm-config-form.ts / llm-config-state.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="320" width="220" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_project" value="项目 / 离开流程&#10;new-project-form.ts / project-leave-flow.ts&#10;close-guard.ts / leave-guard.ts / leave-dialog.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="300" y="320" width="300" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 3. 桥接层 ================= -->
+        <mxCell id="grp_bridge" value="桥接层  src/project-api.ts  （前端 ↔ 后端唯一通道，tauriInvoke）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontSize=13;fontStyle=1;verticalAlign=middle;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="880" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 4. Tauri / Rust 后端 ================= -->
+        <mxCell id="grp_be" value="Tauri / Rust 后端  src-tauri/src/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE9E7;strokeColor=#BF360C;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="510" width="880" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="be_lib" value="lib.rs — Tauri 命令边界&#10;create_project / open_project / save_project&#10;save_llm_config / load_llm_config&#10;test_llm_connection / generate_ai_thinking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BF360C;fontSize=11;verticalAlign=top;spacingTop=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="550" width="300" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="be_project" value="project/  作品域模块&#10;mod.rs / operations.rs / validation.rs&#10;（建/开/存、路径与内容校验）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BF360C;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="390" y="550" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="be_llm" value="llm_config/  模型配置与调用&#10;mod.rs / http.rs / generate.rs&#10;（保存/读取配置、连通性测试、生成请求）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BF360C;fontSize=11;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="390" y="645" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="be_main" value="main.rs&#10;（入口，注册命令）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BF360C;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="660" y="550" width="240" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 5. 存储 / 外部服务 ================= -->
+        <mxCell id="grp_store" value="存储 / 外部服务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="880" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="store_work" value="作品文件夹&#10;（草稿本 / 正文本 落盘文件）" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#455A64;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="825" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="store_cfg" value="llm-config.json&#10;（本地模型配置）" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#455A64;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="825" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="store_llm" value="已配置的 LLM 服务&#10;（外部 HTTP 接口）" style="shape=cloud;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#455A64;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="820" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 侧栏 A：规格 / 方向 ================= -->
+        <mxCell id="grp_spec" value="规格 / 方向（真相源与宪法）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#F9A825;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="980" y="60" width="440" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="spec_specs" value="openspec/specs&#10;（已归档：我们已经做成什么）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="100" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="spec_changes" value="openspec/changes&#10;（进行中的变更，一次只开一个）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="165" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="spec_agents" value="AGENTS.md&#10;（项目宪法 / 铁律）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="230" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="spec_dir" value="方向/&#10;（核心方向宪章、第一版方向共识）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F9A825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="295" width="400" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 侧栏 B：测试 / 构建 ================= -->
+        <mxCell id="grp_test" value="测试 / 构建" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="980" y="420" width="440" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="test_fe" value="tests/&#10;（前端单元测试：ai-panel / editor / selection 等）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="460" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="test_be" value="src-tauri/tests/&#10;（后端集成测试：project_test.rs / llm_config_test.rs）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="530" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="test_build" value="包管理 / 配置&#10;package.json / tsconfig.json / vite.config.ts&#10;index.html / src-tauri (Cargo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="600" width="400" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 产品不变量：红线注释 ================= -->
+        <mxCell id="invariant" value="⚠ 产品铁律：AI 面板输出只是临时材料&#10;AI 永远不向 草稿本 / 正文本 写入、插入、追加、替换、删除或移动任何字符。&#10;用户必须亲手复制、粘贴、编辑、保存，内容才进入作品。判断权始终在用户手里。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;strokeWidth=3;fontSize=13;fontStyle=1;fontColor=#B71C1C;align=center;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="790" width="440" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ================= 主数据流 箭头 ================= -->
+        <mxCell id="e1" value="用户操作" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="grp_ui" target="grp_fe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="调用桥接 API" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="grp_fe" target="grp_bridge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="tauriInvoke → Tauri 命令" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="grp_bridge" target="be_lib">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="作品建/开/存" style="endArrow=block;html=1;strokeColor=#BF360C;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="be_lib" target="be_project">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="配置 / 生成" style="endArrow=block;html=1;strokeColor=#BF360C;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="be_lib" target="be_llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="读写作品文件" style="endArrow=block;html=1;strokeColor=#455A64;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="be_project" target="store_work">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="读写配置" style="endArrow=block;html=1;strokeColor=#455A64;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="be_llm" target="store_cfg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="HTTP 调用 / 生成回复" style="endArrow=block;html=1;strokeColor=#455A64;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="be_llm" target="store_llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- AI 回复只回到 AI 面板（临时材料） -->
+        <mxCell id="e9" value="AI 回复仅回到 AI 面板（临时材料，不落作品）" style="endArrow=block;html=1;strokeColor=#E65100;strokeWidth=2;fontSize=11;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="be_llm" target="fe_ai">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="20" y="687" />
+              <mxPoint x="20" y="277" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- 规格 / 方向 约束整个项目 -->
+        <mxCell id="e10" value="约束实现（先 propose 后 apply）" style="endArrow=block;html=1;strokeColor=#F9A825;strokeWidth=2;fontSize=11;dashed=1;" edge="1" parent="1" source="grp_spec" target="grp_be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 测试覆盖 -->
+        <mxCell id="e11" value="覆盖" style="endArrow=block;html=1;strokeColor=#00838F;strokeWidth=1;fontSize=11;dashed=1;" edge="1" parent="1" source="grp_test" target="grp_be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

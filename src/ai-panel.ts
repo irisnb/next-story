@@ -1,6 +1,7 @@
 import type { AppDom } from "./dom.ts";
 import { AiPanelScrollResetController } from "./ai-panel-scroll.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
+import { buildAiPanelView, type ConversationView } from "./ai-panel-view-model.ts";
 
 export interface AiPanelActions {
   onRetry: () => void;
@@ -133,58 +134,41 @@ export function setupAiPanel(
     return element;
   }
 
-  function renderConversation(): void {
-    const conversation = state.conversation;
+  function renderConversation(conversation: ConversationView | null): void {
     conversationElement.replaceChildren();
     conversationElement.classList.toggle("hidden", conversation === null);
     if (!conversation) return;
 
-    conversationElement.append(message(conversation.firstResponse, "assistant"));
-    for (const turn of conversation.turns) {
-      conversationElement.append(
-        message(turn.question, "user"),
-        message(turn.response, "assistant"),
-      );
-    }
-    if (conversation.pending) {
-      conversationElement.append(message(conversation.pending.question, "user"));
-      if (!conversation.pending.error) {
-        conversationElement.append(message("正在思考…", "status"));
-      }
+    for (const item of conversation.messages) {
+      conversationElement.append(message(item.text, item.role));
     }
   }
 
   function render(): void {
-    panel.classList.toggle("hidden", !state.isOpen);
-    const request = state.view.request;
-    if (scrollReset.shouldReset(request)) {
+    // 所有请求/对话的显示决策交给纯函数 view model 推导；本函数只负责把结构化
+    // 结果落到既有 DOM 节点，并保留焦点、滚动、输入等交互态。
+    const view = buildAiPanelView(state.view, state.conversation);
+
+    panel.classList.toggle("hidden", !view.panelVisible);
+    if (scrollReset.shouldReset(state.view.request)) {
       panelBody.scrollTop = 0;
       snapshotText.scrollTop = 0;
       response.scrollTop = 0;
     }
 
-    const hasSnapshot =
-      request.kind === "first_preview" ||
-      request.kind === "first_blocked" ||
-      request.kind === "thinking_expansion" ||
-      request.kind === "loading" ||
-      request.kind === "success" ||
-      request.kind === "error" ||
-      request.kind === "configuration_required";
-
-    snapshotBlock.classList.toggle("hidden", !hasSnapshot);
-    if (hasSnapshot) {
+    snapshotBlock.classList.toggle("hidden", view.snapshot === null);
+    if (view.snapshot) {
       // 纯文本绑定：保留换行、可选择复制，不解析 HTML/Markdown
-      snapshotText.textContent = request.snapshot.selectedText;
+      snapshotText.textContent = view.snapshot.text;
     }
 
-    const isThinkingExpansion = request.kind === "thinking_expansion";
-    thinkingExpansionPrestate.classList.toggle("hidden", !isThinkingExpansion);
-    if (isThinkingExpansion) {
+    const thinkingExpansion = view.thinkingExpansion;
+    thinkingExpansionPrestate.classList.toggle("hidden", thinkingExpansion === null);
+    if (thinkingExpansion) {
       thinkingExpansionTitle.textContent = "思维扩展";
-      thinkingExpansionCount.textContent = `已选中 ${request.snapshot.selectedText.length} 字`;
-      if (thinkingExpansionInput.value !== request.direction) {
-        thinkingExpansionInput.value = request.direction;
+      thinkingExpansionCount.textContent = `已选中 ${thinkingExpansion.selectionLength} 字`;
+      if (thinkingExpansionInput.value !== thinkingExpansion.direction) {
+        thinkingExpansionInput.value = thinkingExpansion.direction;
       }
       thinkingExpansionStart.disabled = false;
       if (!thinkingExpansionFocused) {
@@ -196,53 +180,40 @@ export function setupAiPanel(
       thinkingExpansionInput.value = "";
     }
 
-    loading.classList.toggle(
-      "hidden",
-      request.kind !== "loading" || request.phase === "follow_up",
-    );
+    loading.classList.toggle("hidden", !view.loadingVisible);
 
-    const conversation = state.conversation;
-    response.classList.toggle("hidden", request.kind !== "success" || conversation !== null);
-    if (request.kind === "success" && conversation === null) {
-      response.textContent = request.response;
+    response.classList.toggle("hidden", view.response === null);
+    if (view.response !== null) {
+      response.textContent = view.response;
     }
 
-    renderConversation();
+    renderConversation(view.conversation);
 
-    const isFollowUpFailure = conversation?.pending?.error !== undefined;
-    const isFirstTerminalFeedback = request.kind === "first_blocked";
-    errorBlock.classList.toggle(
-      "hidden",
-      !(request.kind === "error" || isFirstTerminalFeedback) || isFollowUpFailure,
-    );
-    retryBtn.classList.toggle(
-      "hidden",
-      request.kind !== "error" && !(request.kind === "configuration_required" && conversation === null),
-    );
-    if (request.kind === "error" && !isFollowUpFailure) {
-      errorMessage.textContent = request.error.message;
-    } else if (isFirstTerminalFeedback) {
-      errorMessage.textContent = request.message;
+    errorBlock.classList.toggle("hidden", view.errorBlock === null);
+    if (view.errorBlock) {
+      errorMessage.textContent = view.errorBlock.message;
+    }
+    retryBtn.classList.toggle("hidden", !view.retryAvailable);
+
+    configBlock.classList.toggle("hidden", !view.configBlock);
+
+    const followUpErrorView = view.followUpError;
+    followUpError.classList.toggle("hidden", followUpErrorView === null);
+    if (followUpErrorView) {
+      followUpErrorMessage.textContent = followUpErrorView.message;
     }
 
-    configBlock.classList.toggle("hidden", request.kind !== "configuration_required");
-    followUpError.classList.toggle("hidden", !isFollowUpFailure);
-    if (isFollowUpFailure) {
-      followUpErrorMessage.textContent = conversation.pending?.error?.message ?? "";
-    }
-
-    const hasConversation = conversation !== null;
-    const hasPending = conversation?.pending !== null;
-    followUpForm.classList.toggle("hidden", !hasConversation);
-    if (!hasConversation) {
+    const followUpFormView = view.followUpForm;
+    followUpForm.classList.toggle("hidden", followUpFormView === null);
+    if (followUpFormView === null) {
       editingFailedQuestion = false;
       followUpInput.value = "";
       followUpSend.textContent = "发送";
     }
-    followUpInput.disabled = !hasConversation || hasPending;
-    followUpRetry.disabled = !isFollowUpFailure;
-    followUpEdit.disabled = !isFollowUpFailure;
-    if (!isFollowUpFailure && editingFailedQuestion) {
+    followUpInput.disabled = followUpFormView === null || !followUpFormView.inputEnabled;
+    followUpRetry.disabled = followUpErrorView === null || !followUpErrorView.retryAvailable;
+    followUpEdit.disabled = followUpErrorView === null || !followUpErrorView.editAvailable;
+    if (followUpErrorView === null && editingFailedQuestion) {
       editingFailedQuestion = false;
       followUpInput.value = "";
       followUpSend.textContent = "发送";

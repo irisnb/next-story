@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+规定 AI 功能编排拆分后的公开组合入口、行为保持要求，以及 AI 输出不得写回草稿本和正文本的边界。
+
+## Requirements
 
 ### Requirement: AI feature orchestration remains behavior-preserving after decomposition
 The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, thinking expansion, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of AI timely summon, thinking expansion, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation.

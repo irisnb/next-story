@@ -19,6 +19,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   const ai = setupAiFeature(dom, {
     getCurrentNotebook: () => editor.getCurrentTab(),
+    getCurrentEditor: () => editor.getCurrentEditor(),
     openConfigPage: (returnPage) => llmConfig.open(returnPage),
   });
   editor.attachAi(ai);

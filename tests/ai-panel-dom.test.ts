@@ -109,6 +109,12 @@ function conversationText(ui: { elements: Map<string, FakeElement> }): string[] 
   return ui.elements.get("ai-conversation")!.children.map((child) => child.textContent);
 }
 
+function fixtureElement(elements: Map<string, FakeElement>, id: string): FakeElement {
+  const element = elements.get(id);
+  assert.ok(element, `missing fixture element: ${id}`);
+  return element;
+}
+
 async function flushAiFeatureFlow(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -169,9 +175,7 @@ function harness(): {
     aiPanel: panel,
     aiResponse: response,
     btnToggleAi: toggle,
-    draftTextarea: draft,
-    mainTextarea: main,
-  } as unknown as AppDom, state, {
+  }, state, {
     onRetry: () => { firstRetries += 1; },
     onGoToConfig: () => {},
 	    onSubmitFollowUp: (question) => { submitted.push(question); return true; },
@@ -197,6 +201,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   readonly apiBaseUrls?: readonly string[];
   readonly loadConfigError?: unknown;
   readonly loadConfigResult?: LlmConfig | null;
+  readonly loadConfigPromise?: Promise<LlmConfig | null>;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
@@ -204,6 +209,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   confirmations: string[];
   summon(snap: SelectionSnapshot): void;
   thinkingExpansion(snap: SelectionSnapshot): void;
+  setCurrentNotebook(notebook: "draft" | "main"): void;
   openedConfig: string[];
   restore(): void;
 } {
@@ -248,6 +254,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   const openedConfig: string[] = [];
   const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
   const loadConfigResult = options.loadConfigResult;
+  let currentNotebook: "draft" | "main" = "draft";
 
   const controller = setupAiFeature({
     aiPanel: panel,
@@ -256,7 +263,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     draftTextarea: draft,
     mainTextarea: main,
   } as unknown as AppDom, {
-    getCurrentNotebook: () => "draft",
+    getCurrentNotebook: () => currentNotebook,
     openConfigPage: (returnPage) => { openedConfig.push(returnPage); },
   }, {
     generate: async (request) => {
@@ -267,6 +274,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     },
     loadConfig: async () => {
       if (options.loadConfigError) throw options.loadConfigError;
+      if (options.loadConfigPromise) return options.loadConfigPromise;
       if (loadConfigResult !== undefined) return loadConfigResult;
       return {
         api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
@@ -293,6 +301,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
       if (!onThinkingExpansion) throw new Error("thinking expansion callback missing");
       onThinkingExpansion(snap);
     },
+    setCurrentNotebook: (notebook) => { currentNotebook = notebook; },
     openedConfig,
     restore: () => { globalThis.document = previousDocument; },
   };
@@ -595,7 +604,12 @@ test("configuration-required first summon keeps an explicit retry action", () =>
 
 test("AI panel exposes no apply, insert, replace, or notebook writeback callback", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const panelSource = readFileSync(new URL("../src/ai-panel.ts", import.meta.url), "utf8");
   assert.doesNotMatch(html, /应用到正文|插入正文|替换正文|写入草稿|写入正文/);
+  assert.match(
+    panelSource,
+    /type AiPanelDom = Pick<AppDom, "aiPanel" \| "aiResponse" \| "btnToggleAi">;/,
+  );
 });
 
 test("collapse and reopen preserve conversation and draft without submitting", () => {
@@ -691,6 +705,95 @@ test("real AI feature flow never writes notebooks across success, failure, retry
 
     assert.deepEqual([draft.value, main.value], original);
     assert.equal(ui.requests.length, 4);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("first request, retry, and follow-up keep the clicked snapshot after editor context changes", async () => {
+  let resolveConfig: ((config: LlmConfig | null) => void) | null = null;
+  const configPromise = new Promise<LlmConfig | null>((resolve) => {
+    resolveConfig = resolve;
+  });
+  const ui = featureHarness([
+    { ok: false, error: { code: "network", message: "网络失败" } },
+    { ok: true, content: "重试回答" },
+    { ok: true, content: "追问回答" },
+  ], { loadConfigPromise: configPromise });
+  try {
+    const draft = fixtureElement(ui.elements, "draft-textarea");
+    const main = fixtureElement(ui.elements, "main-textarea");
+    const retry = fixtureElement(ui.elements, "ai-retry");
+
+    ui.summon(snapshot("点击时冻结选区"));
+    draft.value = "点击后改写的草稿与新选区";
+    main.value = "点击后切换到的正文与新选区";
+    ui.setCurrentNotebook("main");
+    if (!resolveConfig) throw new Error("config resolver missing");
+    resolveConfig({
+      api_base_url: "https://api.example.com/v1",
+      api_key: "saved-key",
+      model: "saved-model",
+    });
+    await flushAiFeatureFlow();
+
+    draft.value = "重试前再次改写草稿";
+    main.value = "重试前再次改变正文选区";
+    retry.dispatch("click");
+    await flushAiFeatureFlow();
+
+    draft.value = "追问前继续编辑草稿";
+    main.value = "追问前继续编辑正文";
+    assert.equal(await ui.controller.submitFollowUp("继续追问"), true);
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [
+      { kind: "first", selected_text: "点击时冻结选区" },
+      { kind: "first", selected_text: "点击时冻结选区" },
+      {
+        kind: "follow_up",
+        selected_text: "点击时冻结选区",
+        messages: [
+          { role: "assistant", content: "重试回答" },
+          { role: "user", content: "继续追问" },
+        ],
+      },
+    ]);
+    assert.deepEqual(
+      [draft.value, main.value],
+      ["追问前继续编辑草稿", "追问前继续编辑正文"],
+    );
+  } finally {
+    ui.restore();
+  }
+});
+
+test("thinking expansion keeps the clicked snapshot after editor context changes", async () => {
+  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
+  try {
+    const draft = fixtureElement(ui.elements, "draft-textarea");
+    const main = fixtureElement(ui.elements, "main-textarea");
+    const direction = fixtureElement(ui.elements, "ai-thinking-expansion-input");
+    const form = fixtureElement(ui.elements, "ai-thinking-expansion-form");
+
+    ui.thinkingExpansion(snapshot("思维扩展冻结选区"));
+    draft.value = "点击后改写的草稿与新选区";
+    main.value = "点击后切换到的正文与新选区";
+    ui.setCurrentNotebook("main");
+    direction.value = "追人物的犹豫";
+    direction.dispatch("input");
+    form.dispatch("submit");
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [{
+      kind: "first",
+      selected_text: "思维扩展冻结选区",
+      thinking_direction: "追人物的犹豫",
+    }]);
+    assert.deepEqual(
+      [draft.value, main.value],
+      ["点击后改写的草稿与新选区", "点击后切换到的正文与新选区"],
+    );
   } finally {
     ui.restore();
   }

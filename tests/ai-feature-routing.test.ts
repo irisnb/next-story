@@ -8,6 +8,7 @@ import {
 } from "../src/ai-feature.ts";
 import {
   editAndResendFollowUpAcceptedRequest,
+  followUpAcceptedRequest,
   retryFollowUpAcceptedRequest,
 } from "../src/ai-feature-follow-up.ts";
 import {
@@ -90,6 +91,72 @@ test("first request preflight previews selection before requiring configuration"
   assert.deepEqual(state.view.request, { kind: "idle" });
 });
 
+test("first request keeps the submitted snapshot after the editor selection changes", async () => {
+  const state = new AiPanelState();
+  const submitted = snapshot("首次冻结选区");
+  let currentEditorSelection = submitted;
+  let requestedSnapshot: SelectionSnapshot | null = null;
+  let requestedPayload: GenerateAiRequest | null = null;
+
+  assert.equal(startFirstRequest({
+    state,
+    snapshot: currentEditorSelection,
+    loadConfig: () => Promise.resolve({
+      api_base_url: "https://api.example.com",
+      api_key: "test-key",
+      model: "test-model",
+    }),
+    request: (requestSnapshot, requestPayload) => {
+      requestedSnapshot = requestSnapshot;
+      requestedPayload = requestPayload ?? {
+        kind: "first",
+        selected_text: requestSnapshot.selectedText,
+      };
+      return Promise.resolve();
+    },
+  }), true);
+
+  currentEditorSelection = {
+    notebook: "main",
+    selectedText: "后来选中的正文本",
+    start: 20,
+    end: 28,
+  };
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(currentEditorSelection.selectedText, "后来选中的正文本");
+  assert.deepEqual(requestedSnapshot, submitted);
+  assert.deepEqual(requestedPayload, {
+    kind: "first",
+    selected_text: "首次冻结选区",
+  });
+});
+
+test("thinking expansion keeps its prestate snapshot after editing and switching notebooks", () => {
+  const state = new AiPanelState();
+  const submitted = snapshot("扩展冻结选区");
+  let currentEditorSelection: SelectionSnapshot = submitted;
+  state.beginThinkingExpansion(submitted);
+
+  currentEditorSelection = {
+    notebook: "main",
+    selectedText: "正文本当前选区",
+    start: 9,
+    end: 16,
+  };
+
+  const request = state.view.request;
+  assert.equal(request.kind, "thinking_expansion");
+  assert.equal(currentEditorSelection.notebook, "main");
+  assert.deepEqual(request.snapshot, submitted);
+  assert.deepEqual(buildThinkingExpansionRequest(request.snapshot, "追人物选择"), {
+    kind: "first",
+    selected_text: "扩展冻结选区",
+    thinking_direction: "追人物选择",
+  });
+});
+
 test("retry enters loading only when the coordinator accepts the request", () => {
   const state = new AiPanelState();
   const snap = snapshot("原选区");
@@ -128,6 +195,29 @@ test("retry preserves the thinking expansion direction from the failed first req
   assert.deepEqual(retriedRequest, firstRequest);
 });
 
+test("first retry uses the failed request snapshot instead of the current editor selection", () => {
+  const state = new AiPanelState();
+  const submitted = snapshot("重试冻结选区");
+  let currentEditorSelection: SelectionSnapshot = submitted;
+  let retriedSnapshot: SelectionSnapshot | null = null;
+  state.beginRequest(submitted);
+  state.fail(submitted, { code: "network", message: "网络失败" });
+
+  currentEditorSelection = {
+    notebook: "main",
+    selectedText: "重试时的新选区",
+    start: 30,
+    end: 38,
+  };
+  assert.equal(retryAcceptedRequest(state, (requestSnapshot) => {
+    retriedSnapshot = requestSnapshot;
+    return Promise.resolve();
+  }), true);
+
+  assert.equal(currentEditorSelection.notebook, "main");
+  assert.deepEqual(retriedSnapshot, submitted);
+});
+
 test("builds a follow-up payload from the frozen anchor and successful turns exactly once", () => {
   const state = new AiPanelState();
   const anchor = snapshot("冻结");
@@ -147,6 +237,53 @@ test("builds a follow-up payload from the frozen anchor and successful turns exa
       { role: "user", content: "问题二" },
     ],
   });
+});
+
+test("follow-up and its retry keep the conversation anchor after later editor changes", () => {
+  const state = new AiPanelState();
+  const submitted = snapshot("追问冻结选区");
+  let currentEditorSelection: SelectionSnapshot = submitted;
+  const payloads: GenerateAiRequest[] = [];
+  state.beginRequest(submitted);
+  state.succeed(submitted, "首答");
+
+  currentEditorSelection = {
+    notebook: "main",
+    selectedText: "追问时的新选区",
+    start: 40,
+    end: 48,
+  };
+  assert.equal(followUpAcceptedRequest(state, "继续追问", (payload) => {
+    payloads.push(payload);
+    return Promise.resolve();
+  }), true);
+  assert.equal(state.failFollowUp(1, { code: "network", message: "网络失败" }), true);
+
+  currentEditorSelection = snapshot("再次改变的草稿选区");
+  assert.equal(retryFollowUpAcceptedRequest(state, (payload) => {
+    payloads.push(payload);
+    return Promise.resolve();
+  }), true);
+
+  assert.equal(currentEditorSelection.selectedText, "再次改变的草稿选区");
+  assert.deepEqual(payloads, [
+    {
+      kind: "follow_up",
+      selected_text: "追问冻结选区",
+      messages: [
+        { role: "assistant", content: "首答" },
+        { role: "user", content: "继续追问" },
+      ],
+    },
+    {
+      kind: "follow_up",
+      selected_text: "追问冻结选区",
+      messages: [
+        { role: "assistant", content: "首答" },
+        { role: "user", content: "继续追问" },
+      ],
+    },
+  ]);
 });
 
 test("preserves a failed follow-up as configuration-required without auto-requesting", () => {

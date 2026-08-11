@@ -12,7 +12,11 @@ import {
 import { AiPanelState } from "./ai-panel-state.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
-import { setupSelectionEntry, type SelectionEntryController } from "./selection-entry.ts";
+import {
+  setupSelectionEntry,
+  type SelectionEntryController,
+  type SelectionEntryEditor,
+} from "./selection-entry.ts";
 import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
@@ -55,6 +59,7 @@ export function openAiConfiguration(
 
 export interface AiFeatureHooks {
   getCurrentNotebook: () => NotebookTab;
+  getCurrentEditor: () => SelectionEntryEditor | null;
   openConfigPage: (returnPage: "editor-page") => void;
 }
 
@@ -96,6 +101,7 @@ interface AiPanelWiring {
 interface SelectionEntryWiring {
   readonly dom: AppDom;
   readonly getCurrentNotebook: AiFeatureHooks["getCurrentNotebook"];
+  readonly getCurrentEditor: AiFeatureHooks["getCurrentEditor"];
   readonly coordinator: AiRequestCoordinator;
   readonly state: AiPanelState;
   readonly requestFirst: FirstRequestStarter;
@@ -135,11 +141,12 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
 }
 
 function setupSelectionEntryCallbacks(wiring: SelectionEntryWiring): SelectionEntryController {
-  const { dom, getCurrentNotebook, coordinator, state, requestFirst, setupEntry } = wiring;
+  const { dom, getCurrentNotebook, getCurrentEditor, coordinator, state, requestFirst, setupEntry } = wiring;
 
   return setupEntry({
     dom,
     getCurrentNotebook,
+    getCurrentEditor,
     isRequestInFlight: () => coordinator.busy,
     onSummon: (snapshot: SelectionSnapshot) => {
       requestFirst(snapshot);
@@ -254,6 +261,7 @@ export function setupAiFeature(
   const selectionEntry = setupSelectionEntryCallbacks({
     dom,
     getCurrentNotebook: hooks.getCurrentNotebook,
+    getCurrentEditor: hooks.getCurrentEditor,
     coordinator,
     state,
     requestFirst,

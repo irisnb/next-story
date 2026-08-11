@@ -17,8 +17,8 @@ export interface AppDom {
   btnBackWelcome: HTMLButtonElement;
   tabDraft: HTMLButtonElement;
   tabMain: HTMLButtonElement;
-  draftTextarea: HTMLTextAreaElement;
-  mainTextarea: HTMLTextAreaElement;
+  draftTextarea: HTMLElement;
+  mainTextarea: HTMLElement;
   llmConfigPage: HTMLElement;
   btnLlmConfig: HTMLButtonElement;
   btnSettings: HTMLButtonElement;

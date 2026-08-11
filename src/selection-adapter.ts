@@ -1,26 +1,45 @@
+import type { PlainTextEditorSelection } from "./plain-text-editor.ts";
 import type { NotebookTab, SelectionSnapshot } from "./types";
 
-/** textarea 的最小可读接口，便于在不依赖真实 DOM 的情况下测试适配器。 */
-export interface TextareaLike {
-  value: string;
-  selectionStart: number | null;
-  selectionEnd: number | null;
-  selectionDirection?: "forward" | "backward" | "none";
+export interface SelectionEditor {
+  readonly getText: () => string;
+  readonly getSelection: () => PlainTextEditorSelection;
 }
 
-export interface SelectionFocusInput {
+export interface TextareaLike {
+  readonly value: string;
   readonly selectionStart: number | null;
   readonly selectionEnd: number | null;
   readonly selectionDirection?: "forward" | "backward" | "none";
 }
 
-export function resolveFocusOffset(input: SelectionFocusInput): number {
-  const rawStart = input.selectionStart ?? 0;
-  const rawEnd = input.selectionEnd ?? 0;
-  if (input.selectionDirection === "backward") {
-    return Math.min(rawStart, rawEnd);
+export function resolveFocusOffset(textarea: TextareaLike): number {
+  const start = textarea.selectionStart ?? 0;
+  const end = textarea.selectionEnd ?? 0;
+  return textarea.selectionDirection === "backward"
+    ? Math.min(start, end)
+    : Math.max(start, end);
+}
+
+function toPlainTextOffset(text: string, editorPosition: number): number {
+  const lines = text.split("\n");
+  let contentStart = 1;
+  let textOffset = 0;
+
+  for (const [index, line] of lines.entries()) {
+    const contentEnd = contentStart + line.length;
+    if (editorPosition <= contentEnd) {
+      return textOffset + Math.max(0, editorPosition - contentStart);
+    }
+
+    textOffset += line.length;
+    if (index < lines.length - 1) {
+      textOffset += 1;
+      contentStart = contentEnd + 2;
+    }
   }
-  return Math.max(rawStart, rawEnd);
+
+  return text.length;
 }
 
 /**
@@ -33,18 +52,28 @@ export function resolveFocusOffset(input: SelectionFocusInput): number {
  */
 export function captureSelection(
   notebook: NotebookTab,
-  textarea: TextareaLike,
+  source: SelectionEditor | TextareaLike,
 ): SelectionSnapshot | null {
-  const rawStart = textarea.selectionStart ?? 0;
-  const rawEnd = textarea.selectionEnd ?? 0;
-  const start = Math.min(rawStart, rawEnd);
-  const end = Math.max(rawStart, rawEnd);
+  const text = "getText" in source ? source.getText() : source.value;
+  let start: number;
+  let end: number;
+
+  if ("getSelection" in source) {
+    const selection = source.getSelection();
+    start = toPlainTextOffset(text, selection.from);
+    end = toPlainTextOffset(text, selection.to);
+  } else {
+    const rawStart = source.selectionStart ?? 0;
+    const rawEnd = source.selectionEnd ?? 0;
+    start = Math.min(rawStart, rawEnd);
+    end = Math.max(rawStart, rawEnd);
+  }
 
   if (start === end) {
     return null;
   }
 
-  const selectedText = textarea.value.slice(start, end);
+  const selectedText = text.slice(start, end);
   return { notebook, selectedText, start, end };
 }
 

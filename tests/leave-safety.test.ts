@@ -83,6 +83,31 @@ test("discard authorization stays valid without mutating project state", async (
   assert.equal(prompts, 1);
 });
 
+test("cancelled leave retains both current notebook strings for a later save", async () => {
+  const state = new EditorSaveState("saved draft", "saved main");
+  state.setCurrent("current draft", "current main");
+  const snapshots: NotebookContents[] = [];
+  const leave = new LeaveCoordinator({
+    isDirty: () => state.hasUnsavedChanges,
+    choose: async () => "cancel",
+    save: () => state.save(async (snapshot) => {
+      snapshots.push(snapshot);
+    }),
+  });
+
+  const canLeave = await leave.run();
+  const saved = await state.save(async (snapshot) => {
+    snapshots.push(snapshot);
+  });
+
+  assert.equal(canLeave, false);
+  assert.equal(saved, true);
+  assert.deepEqual(snapshots, [
+    { draft: "current draft", main: "current main" },
+  ]);
+  assert.equal(state.hasUnsavedChanges, false);
+});
+
 test("duplicate leave requests share one pending authorization", async () => {
   let resolveChoice!: (choice: LeaveChoice) => void;
   const choice = new Promise<LeaveChoice>((resolve) => { resolveChoice = resolve; });

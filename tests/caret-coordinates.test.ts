@@ -1,74 +1,58 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 
-import { getCaretCoordinates, mirroredCaretStyleProperties } from "../src/caret-coordinates.ts";
+import {
+  PlainTextEditorAdapter,
+  importPlainText,
+  type PlainTextEditorCoordinates,
+  type PlainTextEditorEngine,
+} from "../src/plain-text-editor.ts";
 
-test("caret mirror uses kebab-case CSS property names", () => {
-  assert.ok(mirroredCaretStyleProperties.includes("box-sizing"));
-  assert.ok(mirroredCaretStyleProperties.includes("border-top-width"));
-  assert.ok(mirroredCaretStyleProperties.includes("line-height"));
-  assert.ok(mirroredCaretStyleProperties.includes("tab-size"));
-  assert.equal(mirroredCaretStyleProperties.some((name) => /[A-Z]/.test(name)), false);
+test("legacy textarea mirror coordinate module is absent from production", () => {
+  const legacyModule = new URL("../src/caret-coordinates.ts", import.meta.url);
+
+  assert.equal(existsSync(legacyModule), false);
 });
 
-test("caret mirror does not copy the whole textarea suffix for long text", () => {
-  const previousDocument = globalThis.document;
-  const previousGetComputedStyle = globalThis.getComputedStyle;
-  const spanTexts: string[] = [];
+class CoordinateEngine implements PlainTextEditorEngine {
+  readonly coordinateReads: number[] = [];
 
-  class FakeStyle {
-    setProperty(_name: string, _value: string): void {}
+  getDocument() {
+    return importPlainText("坐标测试");
   }
 
-  class FakeElement {
-    readonly tagName: string;
+  onUpdate(_listener: () => void): void {}
 
-    constructor(tagName: string) {
-      this.tagName = tagName;
-    }
+  offUpdate(_listener: () => void): void {}
 
-    readonly style = new FakeStyle();
-    textContent = "";
-    offsetTop = 0;
-    offsetLeft = 0;
+  focus(): void {}
 
-    appendChild(child: FakeElement): FakeElement {
-      if (child.tagName === "span") {
-        spanTexts.push(child.textContent);
-      }
-      return child;
-    }
-
-    removeChild(child: FakeElement): FakeElement {
-      return child;
-    }
+  getSelection() {
+    return { from: 1, to: 4, head: 4 };
   }
 
-  const body = new FakeElement("body");
-  Object.defineProperty(globalThis, "document", {
-    configurable: true,
-    value: {
-      body,
-      createElement: (tagName: string) => new FakeElement(tagName),
-    },
-  });
-  Object.defineProperty(globalThis, "getComputedStyle", {
-    configurable: true,
-    value: () => ({
-      getPropertyValue: (property: string) => property === "line-height" || property === "font-size" ? "16" : "0",
-    }),
-  });
-
-  try {
-    getCaretCoordinates({
-      value: `${"a".repeat(10)}${"b".repeat(10_000)}`,
-      scrollTop: 0,
-      scrollLeft: 0,
-    } as HTMLTextAreaElement, 10);
-
-    assert.deepEqual(spanTexts, ["."]);
-  } finally {
-    Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument });
-    Object.defineProperty(globalThis, "getComputedStyle", { configurable: true, value: previousGetComputedStyle });
+  coordinatesAt(position: number): PlainTextEditorCoordinates {
+    this.coordinateReads.push(position);
+    return {
+      left: position * 10,
+      right: position * 10 + 1,
+      top: 20,
+      bottom: 36,
+    };
   }
+
+  destroy(): void {}
+}
+
+test("editor coordinates delegate directly to the kernel position API", () => {
+  const engine = new CoordinateEngine();
+  const editor = new PlainTextEditorAdapter(engine);
+
+  const start = editor.coordinatesAt(1);
+  const head = editor.coordinatesAt(4);
+
+  assert.deepEqual(engine.coordinateReads, [1, 4]);
+  assert.deepEqual(start, { left: 10, right: 11, top: 20, bottom: 36 });
+  assert.deepEqual(head, { left: 40, right: 41, top: 20, bottom: 36 });
 });

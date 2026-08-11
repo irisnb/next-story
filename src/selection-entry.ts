@@ -1,7 +1,9 @@
 import type { AppDom } from "./dom.ts";
-import { captureSelection, isMeaningfulSelection, resolveFocusOffset } from "./selection-adapter.ts";
-import { getCaretCoordinates } from "./caret-coordinates.ts";
-import type { CaretCoordinates } from "./caret-coordinates.ts";
+import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
+import type {
+  PlainTextEditorCoordinates,
+  PlainTextEditorSelection,
+} from "./plain-text-editor.ts";
 import type { NotebookTab, SelectionSnapshot } from "./types.ts";
 
 /** Selection entry trigger width (CSS px). */
@@ -19,7 +21,7 @@ const SELECTION_ENTRY_MENU_HEIGHT_PX = 96;
 export interface EntryVisibilityInput {
   /** 当前选区是否至少包含一个非空白字符。 */
   hasMeaningfulSelection: boolean;
-  /** 选区焦点端（selectionEnd）是否位于 textarea 内容视口内。 */
+  /** 编辑器选区焦点端是否位于当前内容视口内。 */
   focusEndVisible: boolean;
 }
 
@@ -223,13 +225,20 @@ export interface SelectionEntryController {
   destroy(): void;
 }
 
+export interface SelectionEntryEditor {
+  readonly element: HTMLElement;
+  getText(): string;
+  getSelection(): PlainTextEditorSelection;
+  coordinatesAt(position: number): PlainTextEditorCoordinates;
+}
+
 export interface SelectionEntryOptions {
   dom: AppDom;
   getCurrentNotebook: () => NotebookTab;
+  getCurrentEditor: () => SelectionEntryEditor | null;
   isRequestInFlight: () => boolean;
   onSummon: (snapshot: SelectionSnapshot) => void;
   onThinkingExpansion: (snapshot: SelectionSnapshot) => void;
-  measureCaret?: (textarea: HTMLTextAreaElement, position: number) => CaretCoordinates;
 }
 
 /**
@@ -240,10 +249,17 @@ export interface SelectionEntryOptions {
  * 锁定触发器锚点，不因菜单展开跳位。空白/空选区、点击别处、切换本子、焦点端滚出视区时隐藏。
  */
 export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEntryController {
-  const { dom, getCurrentNotebook, isRequestInFlight, onSummon, onThinkingExpansion } = options;
-  const measureCaret = options.measureCaret ?? getCaretCoordinates;
-  const textareas = [dom.draftTextarea, dom.mainTextarea];
-  const textareaEventTypes = ["mouseup", "keyup", "select", "focus", "click", "scroll", "input"] as const;
+  const {
+    dom,
+    getCurrentNotebook,
+    getCurrentEditor,
+    isRequestInFlight,
+    onSummon,
+    onThinkingExpansion,
+  } = options;
+  const editorElements = [dom.draftTextarea, dom.mainTextarea];
+  const editorEventTypes = ["mouseup", "keyup", "select", "focus", "click", "scroll", "input"] as const;
+  const captureEditorEvents = true;
 
   const entry = document.createElement("div");
   entry.id = "ai-selection-entry";
@@ -280,32 +296,12 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     actionSnapshot = null;
   }
 
-  function activeTextarea(): HTMLTextAreaElement {
-    return textareas.find((t) => !t.classList.contains("hidden")) ?? textareas[0];
-  }
-
   function focusEndVisible(
-    textarea: HTMLTextAreaElement,
-    caret: CaretCoordinates,
+    editor: SelectionEntryEditor,
+    coordinates: PlainTextEditorCoordinates,
   ): boolean {
-    const rect = textarea.getBoundingClientRect();
-    const caretTop = rect.top + caret.top;
-    const caretBottom = caretTop + caret.height;
-    return caretTop >= rect.top && caretBottom <= rect.bottom;
-  }
-
-  function toViewportCaretRect(
-    textareaRect: Pick<DOMRect, "left" | "top">,
-    caret: CaretCoordinates,
-  ): PlacementRect {
-    const left = textareaRect.left + caret.left;
-    const top = textareaRect.top + caret.top;
-    return {
-      left,
-      top,
-      right: left + 1,
-      bottom: top + caret.height,
-    };
+    const rect = editor.element.getBoundingClientRect();
+    return coordinates.top >= rect.top && coordinates.bottom <= rect.bottom;
   }
 
   function selectionRectFromCarets(
@@ -321,28 +317,29 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   }
 
   function positionEntry(
-    textarea: HTMLTextAreaElement,
-    snapshot: SelectionSnapshot,
-    focusOffset: number,
-    focusCaret: CaretCoordinates,
+    editor: SelectionEntryEditor,
+    selection: PlainTextEditorSelection,
+    focusCoordinates: PlainTextEditorCoordinates,
   ): void {
-    const rect = textarea.getBoundingClientRect();
-    const carets = new Map<number, CaretCoordinates>([[focusOffset, focusCaret]]);
-    const caretAt = (offset: number): CaretCoordinates => {
-      const cached = carets.get(offset);
+    const rect = editor.element.getBoundingClientRect();
+    const coordinates = new Map<number, PlainTextEditorCoordinates>([
+      [selection.head, focusCoordinates],
+    ]);
+    const coordinatesAt = (position: number): PlainTextEditorCoordinates => {
+      const cached = coordinates.get(position);
       if (cached) return cached;
-      const measured = measureCaret(textarea, offset);
-      carets.set(offset, measured);
+      const measured = editor.coordinatesAt(position);
+      coordinates.set(position, measured);
       return measured;
     };
-    const startRect = toViewportCaretRect(rect, caretAt(snapshot.start));
-    const endRect = toViewportCaretRect(rect, caretAt(snapshot.end));
+    const startRect = coordinatesAt(selection.from);
+    const endRect = coordinatesAt(selection.to);
     const placement = decideTriggerPlacement({
       editorLeft: rect.left,
       editorTop: rect.top,
       editorRight: rect.right,
       editorBottom: rect.bottom,
-      focusRect: toViewportCaretRect(rect, focusCaret),
+      focusRect: focusCoordinates,
       selectionRect: selectionRectFromCarets(startRect, endRect),
       triggerSize: {
         width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
@@ -360,8 +357,13 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   }
 
   function update(): void {
-    const textarea = activeTextarea();
-    const snapshot = captureSelection(getCurrentNotebook(), textarea);
+    const editor = getCurrentEditor();
+    if (editor === null) {
+      hideEntry();
+      return;
+    }
+    const selection = editor.getSelection();
+    const snapshot = captureSelection(getCurrentNotebook(), editor);
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
     if (frozen && snapshot && isSameSummonedSelection(snapshot, frozen)) {
@@ -375,22 +377,21 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       return;
     }
 
-    const focusOffset = resolveFocusOffset(textarea);
-    const focusCaret = snapshot !== null ? measureCaret(textarea, focusOffset) : null;
-    const focusVisible = focusCaret !== null && focusEndVisible(textarea, focusCaret);
+    const focusCoordinates = snapshot !== null ? editor.coordinatesAt(selection.head) : null;
+    const focusVisible = focusCoordinates !== null && focusEndVisible(editor, focusCoordinates);
     const actions = decideSelectionEntryActions({
       hasMeaningfulSelection: isMeaningfulSelection(snapshot),
       focusEndVisible: focusVisible,
     });
-    if (actions.length > 0 && snapshot !== null && focusCaret !== null) {
+    if (actions.length > 0 && snapshot !== null && focusCoordinates !== null) {
       // Keep the locked anchor while the secondary menu is open (click may blur/focus and re-fire update).
       if (!menuOpen) {
-        positionEntry(textarea, snapshot, focusOffset, focusCaret);
+        positionEntry(editor, selection, focusCoordinates);
       }
       renderSelectionEntryActions(menu, actions, () => document.createElement("button"));
       for (const button of Array.from(menu.children)) {
         button.addEventListener("mousedown", (event) => {
-          keepTextareaSelectionVisible(event as MouseEvent);
+          keepEditorSelectionVisible(event as MouseEvent);
         });
         button.addEventListener("click", () => {
           if (button.id === "ai-summon-btn") freezeAndRun(onSummon);
@@ -427,7 +428,8 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   }
 
   function handleDocumentSelectionChange(): void {
-    if (document.activeElement !== activeTextarea()) return;
+    const editor = getCurrentEditor();
+    if (editor === null || !editor.element.contains(document.activeElement)) return;
     scheduleUpdate();
   }
 
@@ -439,12 +441,13 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     callback(snapshot);
   }
 
-  function handleTextareaBlur(event: FocusEvent): void {
+  function handleEditorBlur(event: FocusEvent): void {
     const nextTarget = event.relatedTarget;
     if (
       nextTarget === entry ||
       nextTarget === trigger ||
       nextTarget === menu ||
+      (menuOpen && nextTarget === dom.btnToggleAi) ||
       (nextTarget !== null && menu.contains(nextTarget as Node))
     ) {
       return;
@@ -452,11 +455,11 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     hideEntry();
   }
 
-  function keepTextareaSelectionVisible(event: MouseEvent): void {
+  function keepEditorSelectionVisible(event: MouseEvent): void {
     event.preventDefault();
   }
 
-  trigger.addEventListener("mousedown", keepTextareaSelectionVisible);
+  trigger.addEventListener("mousedown", keepEditorSelectionVisible);
   trigger.addEventListener("click", () => {
     if (menu.classList.contains("hidden")) {
       menu.classList.remove("hidden");
@@ -467,11 +470,11 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     }
   });
 
-  for (const textarea of textareas) {
-    for (const eventType of textareaEventTypes) {
-      textarea.addEventListener(eventType, scheduleUpdate);
+  for (const element of editorElements) {
+    for (const eventType of editorEventTypes) {
+      element.addEventListener(eventType, scheduleUpdate, captureEditorEvents);
     }
-    textarea.addEventListener("blur", handleTextareaBlur);
+    element.addEventListener("blur", handleEditorBlur, captureEditorEvents);
   }
   document.addEventListener("selectionchange", handleDocumentSelectionChange);
 
@@ -483,11 +486,11 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     },
     destroy(): void {
       cancelScheduledUpdate();
-      for (const textarea of textareas) {
-        for (const eventType of textareaEventTypes) {
-          textarea.removeEventListener(eventType, scheduleUpdate);
+      for (const element of editorElements) {
+        for (const eventType of editorEventTypes) {
+          element.removeEventListener(eventType, scheduleUpdate, captureEditorEvents);
         }
-        textarea.removeEventListener("blur", handleTextareaBlur);
+        element.removeEventListener("blur", handleEditorBlur, captureEditorEvents);
       }
       document.removeEventListener("selectionchange", handleDocumentSelectionChange);
       entry.remove();

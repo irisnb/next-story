@@ -13,9 +13,18 @@ import {
   SELECTION_ENTRY_TRIGGER_WIDTH_PX,
 } from "../src/selection-entry.ts";
 import type { AppDom } from "../src/dom.ts";
+import type {
+  PlainTextEditorCoordinates,
+  PlainTextEditorSelection,
+} from "../src/plain-text-editor.ts";
 import type { SelectionSnapshot } from "../src/types.ts";
 
 type Listener = (event: FakeEvent) => void;
+
+type RegisteredListener = Readonly<{
+  listener: Listener;
+  capture: boolean;
+}>;
 
 class FakeEvent {
   defaultPrevented = false;
@@ -55,14 +64,12 @@ class FakeStyle {
 class FakeElement {
   readonly children: FakeElement[] = [];
   readonly classList: FakeClassList;
-  readonly listeners = new Map<string, Listener[]>();
+  readonly listeners = new Map<string, RegisteredListener[]>();
   readonly style = new FakeStyle();
+  parent: FakeElement | null = null;
   id = "";
   textContent = "";
   type = "";
-  /** Mirror-div geometry used by getCaretCoordinates in Node fakes. */
-  offsetTop = 0;
-  offsetLeft = 0;
 
   constructor(classes: readonly string[] = []) {
     this.classList = new FakeClassList(classes);
@@ -80,18 +87,34 @@ class FakeElement {
     }
   }
 
-  addEventListener(type: string, listener: Listener): void {
+  addEventListener(
+    type: string,
+    listener: Listener,
+    options: boolean | AddEventListenerOptions = false,
+  ): void {
     const listeners = this.listeners.get(type) ?? [];
-    listeners.push(listener);
+    listeners.push({
+      listener,
+      capture: typeof options === "boolean" ? options : options.capture ?? false,
+    });
     this.listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: Listener): void {
+  removeEventListener(
+    type: string,
+    listener: Listener,
+    options: boolean | EventListenerOptions = false,
+  ): void {
     const listeners = this.listeners.get(type) ?? [];
-    this.listeners.set(type, listeners.filter((current) => current !== listener));
+    const capture = typeof options === "boolean" ? options : options.capture ?? false;
+    this.listeners.set(
+      type,
+      listeners.filter((current) => current.listener !== listener || current.capture !== capture),
+    );
   }
 
   appendChild(child: FakeElement): FakeElement {
+    child.parent = this;
     this.children.push(child);
     return child;
   }
@@ -103,7 +126,10 @@ class FakeElement {
 
   removeChild(child: FakeElement): FakeElement {
     const index = this.children.indexOf(child);
-    if (index >= 0) this.children.splice(index, 1);
+    if (index >= 0) {
+      this.children.splice(index, 1);
+      child.parent = null;
+    }
     return child;
   }
 
@@ -111,52 +137,89 @@ class FakeElement {
 
   dispatch(type: string, options: { relatedTarget?: FakeElement | null } = {}): FakeEvent {
     const event = new FakeEvent(options);
-    for (const listener of this.listeners.get(type) ?? []) listener(event);
+    const ancestors: FakeElement[] = [];
+    let ancestor = this.parent;
+    while (ancestor !== null) {
+      ancestors.unshift(ancestor);
+      ancestor = ancestor.parent;
+    }
+    for (const current of ancestors) {
+      for (const registered of current.listeners.get(type) ?? []) {
+        if (registered.capture) registered.listener(event);
+      }
+    }
+    for (const registered of this.listeners.get(type) ?? []) registered.listener(event);
     return event;
   }
 }
 
-class FakeTextarea extends FakeElement {
-  value = "";
-  selectionStart: number | null = 0;
-  selectionEnd: number | null = 0;
-  selectionDirection: "forward" | "backward" | "none" = "forward";
-  scrollTop = 0;
-  scrollLeft = 0;
-  offsetTop = 0;
-  offsetLeft = 0;
-  clientWidth = 400;
-  clientHeight = 100;
+class FakeEditorElement extends FakeElement {
+  rect = { top: 0, bottom: 100, left: 0, right: 400, width: 400, height: 100 };
 
   getBoundingClientRect(): Pick<DOMRect, "top" | "bottom" | "left" | "right" | "width" | "height"> {
-    return {
-      top: 0,
-      bottom: this.clientHeight,
-      left: 0,
-      right: this.clientWidth,
-      width: this.clientWidth,
-      height: this.clientHeight,
-    };
+    return this.rect;
   }
 }
 
-function installSelectionEntryDom(): {
+class FakeSelectionEditor {
+  text = "";
+  selection: PlainTextEditorSelection = { from: 1, to: 1, head: 1 };
+  readonly coordinateReads: number[] = [];
+  readonly coordinates = new Map<number, PlainTextEditorCoordinates>();
+  readonly element: FakeEditorElement;
+
+  constructor(element: FakeEditorElement) {
+    this.element = element;
+  }
+
+  getText(): string {
+    return this.text;
+  }
+
+  getSelection(): PlainTextEditorSelection {
+    return this.selection;
+  }
+
+  coordinatesAt(position: number): PlainTextEditorCoordinates {
+    this.coordinateReads.push(position);
+    return this.coordinates.get(position) ?? {
+      left: position * 10,
+      right: position * 10 + 1,
+      top: 20,
+      bottom: 36,
+    };
+  }
+
+  dispatch(type: string): FakeEvent {
+    return this.element.dispatch(type);
+  }
+}
+
+type SelectionEntryFixture = Readonly<{
   dom: AppDom;
   editorPage: FakeElement;
+  btnToggleAi: FakeElement;
+  draft: FakeSelectionEditor;
+  main: FakeSelectionEditor;
   dispatchDocument: (type: string) => void;
+  setActiveElement: (element: FakeElement | null) => void;
   restore: () => void;
-} {
+}>;
+
+function installSelectionEntryDom(): SelectionEntryFixture {
   const previousDocument = globalThis.document;
-  const previousGetComputedStyle = globalThis.getComputedStyle;
   const editorPage = new FakeElement();
-  const draftTextarea = new FakeTextarea();
-  const mainTextarea = new FakeTextarea(["hidden"]);
-  const body = new FakeElement();
+  const btnToggleAi = new FakeElement();
+  const draftElement = new FakeEditorElement();
+  const mainElement = new FakeEditorElement(["hidden"]);
+  const draft = new FakeSelectionEditor(draftElement);
+  const main = new FakeSelectionEditor(mainElement);
   const documentListeners = new Map<string, Listener[]>();
+  let activeElement: FakeElement | null = draftElement;
 
   globalThis.document = {
-    body,
-    createElement: (tag: string) => tag === "textarea" ? new FakeTextarea() : new FakeElement(),
+    activeElement,
+    createElement: () => new FakeElement(),
     addEventListener: (type: string, listener: Listener) => {
       const listeners = documentListeners.get(type) ?? [];
       listeners.push(listener);
@@ -167,22 +230,89 @@ function installSelectionEntryDom(): {
       documentListeners.set(type, listeners.filter((current) => current !== listener));
     },
   } as unknown as Document;
-  globalThis.getComputedStyle = (() => ({
-    getPropertyValue: (property: string) => property === "line-height" || property === "font-size" ? "16" : "0",
-  })) as unknown as typeof getComputedStyle;
 
   return {
-    dom: { editorPage, draftTextarea, mainTextarea } as unknown as AppDom,
+    dom: {
+      editorPage,
+      btnToggleAi,
+      draftTextarea: draftElement,
+      mainTextarea: mainElement,
+    } as unknown as AppDom,
     editorPage,
+    btnToggleAi,
+    draft,
+    main,
     dispatchDocument: (type: string) => {
       const event = new FakeEvent();
       for (const listener of documentListeners.get(type) ?? []) listener(event);
     },
+    setActiveElement: (element: FakeElement | null) => {
+      activeElement = element;
+      Object.defineProperty(globalThis.document, "activeElement", {
+        configurable: true,
+        value: activeElement,
+      });
+    },
     restore: () => {
       globalThis.document = previousDocument;
-      globalThis.getComputedStyle = previousGetComputedStyle;
     },
   };
+}
+
+function setupEditorSelectionEntry(
+  ui: SelectionEntryFixture,
+  callbacks: Readonly<{
+    onSummon?: (snapshot: SelectionSnapshot) => void;
+    onThinkingExpansion?: (snapshot: SelectionSnapshot) => void;
+    isRequestInFlight?: () => boolean;
+  }> = {},
+) {
+  const options = {
+    dom: ui.dom,
+    getCurrentNotebook: () => ui.main.element.classList.contains("hidden") ? "draft" as const : "main" as const,
+    getCurrentEditor: () => ui.main.element.classList.contains("hidden") ? ui.draft : ui.main,
+    isRequestInFlight: callbacks.isRequestInFlight ?? (() => false),
+    onSummon: callbacks.onSummon ?? (() => {}),
+    onThinkingExpansion: callbacks.onThinkingExpansion ?? (() => {}),
+  };
+  return setupSelectionEntry(options);
+}
+
+function setEditorRect(
+  editor: FakeSelectionEditor,
+  rect: Readonly<{ top: number; bottom: number; left: number; right: number }>,
+): void {
+  editor.element.rect = {
+    ...rect,
+    width: rect.right - rect.left,
+    height: rect.bottom - rect.top,
+  };
+}
+
+function visibleEntry(ui: SelectionEntryFixture): FakeElement {
+  const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
+  assert.ok(entry);
+  return entry;
+}
+
+function entryTrigger(entry: FakeElement): FakeElement {
+  const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
+  assert.ok(trigger);
+  return trigger;
+}
+
+function entryMenu(entry: FakeElement): FakeElement {
+  const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
+  assert.ok(menu);
+  return menu;
+}
+
+function editorCoordinates(
+  left: number,
+  top: number,
+  height = 16,
+): PlainTextEditorCoordinates {
+  return { left, right: left + 1, top, bottom: top + height };
 }
 
 function installAnimationFrameQueue(): { flush: () => void; restore: () => void } {
@@ -254,261 +384,254 @@ test("renders only the actions returned by the selection entry decision", () => 
   );
 });
 
-test("selection entry opens an AI pill-triggered menu and freezes each action selection", () => {
+test("selection entry opens an AI pill-triggered menu and freezes the editor selection", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "开头冻结选区结尾";
-    draft.selectionStart = 2;
-    draft.selectionEnd = 6;
+    ui.draft.text = "开头冻结选区结尾";
+    ui.draft.selection = { from: 3, to: 7, head: 7 };
     const summons: SelectionSnapshot[] = [];
-    const expansions: SelectionSnapshot[] = [];
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: (snap) => { summons.push(snap); },
-      onThinkingExpansion: (snap) => { expansions.push(snap); },
-    });
-    draft.dispatch("select");
+    setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
+    ui.draft.dispatch("select");
 
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
-    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
-    const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
-    assert.ok(trigger);
-    assert.ok(menu);
-    assert.equal(trigger.type, "button");
+    const entry = visibleEntry(ui);
+    const trigger = entryTrigger(entry);
+    const menu = entryMenu(entry);
     assert.equal(trigger.textContent, "AI");
     assert.equal(menu.classList.contains("hidden"), true);
 
     trigger.dispatch("click");
-
-    assert.equal(entry.classList.contains("menu-open"), true);
-    assert.equal(menu.classList.contains("hidden"), false);
     const buttons = menu.children.filter((child) => child.type === "button");
     assert.deepEqual(buttons.map((button) => button.textContent), ["及时召唤", "思维扩展"]);
-
     const summonButton = buttons.find((button) => button.id === "ai-summon-btn");
-    const thinkingButton = buttons.find((button) => button.id === "ai-thinking-expansion-btn");
     assert.ok(summonButton);
-    assert.ok(thinkingButton);
-
     summonButton.dispatch("click");
 
     assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", start: 2, end: 6 }]);
-    assert.deepEqual(expansions, []);
     assert.equal(entry.classList.contains("hidden"), true);
-    assert.equal(menu.classList.contains("hidden"), true);
-    assert.equal(entry.classList.contains("menu-open"), false);
+  } finally {
+    ui.restore();
+  }
+});
 
-    draft.value = "后来扩展选区结尾";
-    draft.selectionStart = 2;
-    draft.selectionEnd = 6;
-    draft.dispatch("select");
-    trigger.dispatch("click");
+test("submitted summon snapshot survives later edits, selection changes, and notebook switches", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.draft.text = "开头冻结选区结尾";
+    ui.draft.selection = { from: 3, to: 7, head: 7 };
+    let submitted: SelectionSnapshot | null = null;
+
+    setupEditorSelectionEntry(ui, { onSummon: (snap) => { submitted = snap; } });
+    ui.draft.dispatch("select");
+
+    const entry = visibleEntry(ui);
+    entryTrigger(entry).dispatch("click");
+    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
+    assert.ok(summonButton);
+    summonButton.dispatch("click");
+
+    ui.draft.text = "草稿本已经被用户改写";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    ui.draft.element.classList.add("hidden");
+    ui.main.element.classList.remove("hidden");
+    ui.main.text = "正文本的新选区";
+    ui.main.selection = { from: 1, to: 5, head: 5 };
+    ui.main.dispatch("select");
+
+    assert.deepEqual(submitted, {
+      notebook: "draft",
+      selectedText: "冻结选区",
+      start: 2,
+      end: 6,
+    });
+  } finally {
+    ui.restore();
+  }
+});
+
+test("thinking expansion submits the click-time snapshot before later editor changes", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.main.element.classList.remove("hidden");
+    ui.draft.element.classList.add("hidden");
+    ui.main.text = "正文本原始片段";
+    ui.main.selection = { from: 4, to: 8, head: 8 };
+    let submitted: SelectionSnapshot | null = null;
+
+    setupEditorSelectionEntry(ui, { onThinkingExpansion: (snap) => { submitted = snap; } });
+    ui.main.dispatch("select");
+
+    const entry = visibleEntry(ui);
+    entryTrigger(entry).dispatch("click");
+    const thinkingButton = entryMenu(entry).children.find(
+      (child) => child.id === "ai-thinking-expansion-btn",
+    );
+    assert.ok(thinkingButton);
     thinkingButton.dispatch("click");
 
-    assert.deepEqual(expansions, [{ notebook: "draft", selectedText: "扩展选区", start: 2, end: 6 }]);
+    ui.main.text = "正文本已改变";
+    ui.main.selection = { from: 1, to: 3, head: 3 };
+    ui.main.element.classList.add("hidden");
+    ui.draft.element.classList.remove("hidden");
+    ui.draft.text = "草稿本新选区";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    ui.draft.dispatch("select");
+
+    assert.deepEqual(submitted, {
+      notebook: "main",
+      selectedText: "原始片段",
+      start: 3,
+      end: 7,
+    });
   } finally {
     ui.restore();
   }
 });
 
-test("selection entry pointer presses preserve textarea focus before opening actions", () => {
+test("selection entry supports forward and backward editor selections", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "点击入口仍保留原生选区高亮";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
+    ui.draft.text = "abcdef";
+    const summons: SelectionSnapshot[] = [];
+    setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-    });
-    draft.dispatch("select");
+    ui.draft.selection = { from: 2, to: 5, head: 5 };
+    ui.draft.dispatch("select");
+    ui.draft.selection = { from: 2, to: 5, head: 2 };
+    ui.draft.dispatch("select");
 
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
-    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
-    const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
-    assert.ok(trigger);
-    assert.ok(menu);
-
-    const triggerMouseDown = trigger.dispatch("mousedown");
-    trigger.dispatch("click");
-    const actionMouseDowns = menu.children
-      .filter((child) => child.type === "button")
-      .map((button) => button.dispatch("mousedown"));
-
-    assert.equal(triggerMouseDown.defaultPrevented, true);
-    assert.deepEqual(actionMouseDowns.map((event) => event.defaultPrevented), [true, true]);
+    const entry = visibleEntry(ui);
+    entryTrigger(entry).dispatch("click");
+    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
+    assert.ok(summonButton);
+    summonButton.dispatch("click");
+    assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
+    assert.deepEqual(summons, [
+      { notebook: "draft", selectedText: "bcd", start: 1, end: 4 },
+    ]);
   } finally {
     ui.restore();
   }
 });
 
-test("selection entry measures the browser focus end for forward and backward selections", () => {
-  const ui = installSelectionEntryDom();
-  try {
-    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
-    draft.value = "abcdef";
-    const measuredOffsets: number[] = [];
-
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-      measureCaret: (_textarea, offset) => {
-        measuredOffsets.push(offset);
-        return { left: 0, top: 0, height: 16 };
-      },
-    });
-
-    draft.selectionStart = 1;
-    draft.selectionEnd = 4;
-    draft.selectionDirection = "forward";
-    draft.dispatch("select");
-
-    draft.selectionStart = 1;
-    draft.selectionEnd = 4;
-    draft.selectionDirection = "backward";
-    draft.dispatch("select");
-
-    assert.deepEqual(measuredOffsets, [4, 1, 1, 4]);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("coalesces repeated textarea updates into one geometry measurement frame", () => {
+test("coalesces repeated editor updates into one geometry measurement frame", () => {
   const ui = installSelectionEntryDom();
   const frame = installAnimationFrameQueue();
   try {
-    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
-    draft.value = "abcdef";
-    draft.selectionStart = 1;
-    draft.selectionEnd = 4;
-    draft.selectionDirection = "forward";
-    const measuredOffsets: number[] = [];
-
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-      measureCaret: (_textarea, offset) => {
-        measuredOffsets.push(offset);
-        return { left: offset * 10, top: 0, height: 16 };
-      },
-    });
-
-    draft.dispatch("select");
-    draft.dispatch("keyup");
-    draft.dispatch("mouseup");
-
-    assert.deepEqual(measuredOffsets, []);
-
+    ui.draft.text = "abcdef";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    ui.draft.dispatch("keyup");
+    ui.draft.dispatch("mouseup");
+    assert.deepEqual(ui.draft.coordinateReads, []);
     frame.flush();
-
-    assert.deepEqual(measuredOffsets, [4, 1]);
+    assert.deepEqual(ui.draft.coordinateReads, [4, 1]);
   } finally {
     frame.restore();
     ui.restore();
   }
 });
 
-test("ignores document selectionchange outside the active writing textarea", () => {
+test("reads the editor head coordinate once for repeated same-position updates", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.draft.text = "abcdef";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    assert.deepEqual(ui.draft.coordinateReads, [4, 1]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("ignores document selectionchange outside the active editor", () => {
   const ui = installSelectionEntryDom();
   const frame = installAnimationFrameQueue();
   try {
-    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
-    draft.value = "abcdef";
-    draft.selectionStart = 1;
-    draft.selectionEnd = 4;
-    const measuredOffsets: number[] = [];
+    ui.draft.text = "abcdef";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.setActiveElement(new FakeElement());
+    ui.dispatchDocument("selectionchange");
+    frame.flush();
+    assert.deepEqual(ui.draft.coordinateReads, []);
+  } finally {
+    frame.restore();
+    ui.restore();
+  }
+});
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-      measureCaret: (_textarea, offset) => {
-        measuredOffsets.push(offset);
-        return { left: offset * 10, top: 0, height: 16 };
-      },
-    });
+test("responds to document selectionchange when focus is inside the editor mount", () => {
+  const ui = installSelectionEntryDom();
+  const frame = installAnimationFrameQueue();
+  try {
+    ui.draft.text = "编辑器内部焦点";
+    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    const contentEditable = new FakeElement();
+    ui.draft.element.appendChild(contentEditable);
+    ui.setActiveElement(contentEditable);
 
     ui.dispatchDocument("selectionchange");
     frame.flush();
 
-    assert.deepEqual(measuredOffsets, []);
+    assert.deepEqual(ui.draft.coordinateReads, [4, 1]);
   } finally {
     frame.restore();
     ui.restore();
   }
 });
 
-test("destroy removes textarea listeners so stale selection events do not update", () => {
+test("destroy removes editor listeners so stale selection events do not update", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "销毁后不应继续响应选区";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
-    let selectionReads = 0;
-
+    let notebookReads = 0;
     const controller = setupSelectionEntry({
       dom: ui.dom,
-      getCurrentNotebook: () => {
-        selectionReads += 1;
-        return "draft";
-      },
+      getCurrentNotebook: () => { notebookReads += 1; return "draft"; },
+      getCurrentEditor: () => ui.draft,
       isRequestInFlight: () => false,
       onSummon: () => {},
       onThinkingExpansion: () => {},
     });
-
     controller.destroy();
-    draft.dispatch("select");
-
-    assert.equal(selectionReads, 0);
+    ui.draft.dispatch("select");
+    assert.equal(notebookReads, 0);
   } finally {
     ui.restore();
   }
 });
 
-test("hides the entry when the active textarea blurs outside the entry and menu", () => {
+test("hides the entry when the active editor blurs outside the entry", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "失焦后入口应消失";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
+    ui.draft.text = "失焦后入口应消失";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    const entry = visibleEntry(ui);
+    ui.draft.element.dispatch("blur", { relatedTarget: null });
+    assert.equal(entry.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-    });
-    draft.dispatch("select");
+test("hides the entry when the internal editor surface scrolls the selection out of view", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.draft.text = "内部编辑节点滚动后入口应消失";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    const editorSurface = new FakeElement(["ProseMirror"]);
+    ui.draft.element.appendChild(editorSurface);
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    const entry = visibleEntry(ui);
+    ui.draft.coordinates.set(4, editorCoordinates(40, 120));
 
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
-    assert.equal(entry.classList.contains("hidden"), false);
-
-    draft.dispatch("blur", { relatedTarget: null });
+    editorSurface.dispatch("scroll");
 
     assert.equal(entry.classList.contains("hidden"), true);
   } finally {
@@ -516,31 +639,64 @@ test("hides the entry when the active textarea blurs outside the entry and menu"
   }
 });
 
-test("keeps the entry visible when textarea blur moves into the controlled entry menu", () => {
+test("hides the entry when the internal editor surface blurs outside the entry", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "点击入口不破坏选区";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
+    ui.draft.text = "内部编辑节点失焦后入口应消失";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    const editorSurface = new FakeElement(["ProseMirror"]);
+    ui.draft.element.appendChild(editorSurface);
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    const entry = visibleEntry(ui);
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
+    editorSurface.dispatch("blur", { relatedTarget: null });
+
+    assert.equal(entry.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("keeps the entry visible when editor blur moves into the controlled menu", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.draft.text = "点击入口不破坏选区";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+    const entry = visibleEntry(ui);
+    const trigger = entryTrigger(entry);
+    ui.draft.element.dispatch("blur", { relatedTarget: trigger });
+    assert.equal(entry.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("keeps an open menu anchored when editor blur moves to the AI panel toggle", () => {
+  const ui = installSelectionEntryDom();
+  try {
+    ui.draft.text = "切换面板时保留已打开的选区菜单";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
+
+    const entry = visibleEntry(ui);
+    const menu = entryMenu(entry);
+    entryTrigger(entry).dispatch("click");
+    const leftBefore = entry.style.left;
+    const topBefore = entry.style.top;
+
+    ui.draft.element.dispatch("blur", {
+      relatedTarget: ui.btnToggleAi,
     });
-    draft.dispatch("select");
-
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
-    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
-    assert.ok(trigger);
-
-    draft.dispatch("blur", { relatedTarget: trigger });
 
     assert.equal(entry.classList.contains("hidden"), false);
+    assert.equal(entry.classList.contains("menu-open"), true);
+    assert.equal(menu.classList.contains("hidden"), false);
+    assert.equal(entry.style.left, leftBefore);
+    assert.equal(entry.style.top, topBefore);
   } finally {
     ui.restore();
   }
@@ -549,34 +705,17 @@ test("keeps the entry visible when textarea blur moves into the controlled entry
 test("reset invalidates an open menu so stale action buttons cannot submit old context", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea;
-    draft.value = "旧菜单不能继续提交";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
+    ui.draft.text = "旧菜单不能继续提交";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
     const summons: SelectionSnapshot[] = [];
-
-    const controller = setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: (snap) => { summons.push(snap); },
-      onThinkingExpansion: () => {},
-    });
-    draft.dispatch("select");
-
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
-    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
-    const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
-    assert.ok(trigger);
-    assert.ok(menu);
-    trigger.dispatch("click");
-    const summonButton = menu.children.find((child) => child.id === "ai-summon-btn");
+    const controller = setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
+    ui.draft.dispatch("select");
+    const entry = visibleEntry(ui);
+    entryTrigger(entry).dispatch("click");
+    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
     assert.ok(summonButton);
-
     controller.reset();
     summonButton.dispatch("click");
-
     assert.deepEqual(summons, []);
   } finally {
     ui.restore();
@@ -833,24 +972,16 @@ test("reserves menu footprint when choosing a trigger placement near the window 
 test("keeps the trigger anchor fixed when the secondary menu opens", () => {
   const ui = installSelectionEntryDom();
   try {
-    const draft = ui.dom.draftTextarea as unknown as FakeTextarea;
-    draft.value = "选区右侧有空间显示入口";
-    draft.selectionStart = 0;
-    draft.selectionEnd = 4;
-    draft.clientWidth = 400;
-    draft.clientHeight = 200;
+    ui.draft.text = "选区右侧有空间显示入口";
+    ui.draft.selection = { from: 0, to: 4, head: 4 };
+    setEditorRect(ui.draft, { top: 0, bottom: 200, left: 0, right: 400 });
+    ui.draft.coordinates.set(4, editorCoordinates(40, 20));
+    ui.draft.coordinates.set(0, editorCoordinates(0, 20));
 
-    setupSelectionEntry({
-      dom: ui.dom,
-      getCurrentNotebook: () => "draft",
-      isRequestInFlight: () => false,
-      onSummon: () => {},
-      onThinkingExpansion: () => {},
-    });
-    draft.dispatch("select");
+    setupEditorSelectionEntry(ui);
+    ui.draft.dispatch("select");
 
-    const entry = ui.editorPage.children.find((child) => child.id === "ai-selection-entry");
-    assert.ok(entry);
+    const entry = visibleEntry(ui);
     assert.equal(entry.classList.contains("hidden"), false);
 
     const leftBefore = entry.style.left;
@@ -867,7 +998,7 @@ test("keeps the trigger anchor fixed when the secondary menu opens", () => {
     assert.equal(entry.style.top, topBefore);
 
     // Re-fire selection update while the menu is open; anchor must stay locked.
-    draft.dispatch("select");
+    ui.draft.dispatch("select");
     assert.equal(entry.classList.contains("menu-open"), true);
     assert.equal(entry.style.left, leftBefore);
     assert.equal(entry.style.top, topBefore);

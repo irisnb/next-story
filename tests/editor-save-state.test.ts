@@ -86,3 +86,23 @@ test("keeps contents unsaved when a standalone backend save is rejected", async 
   assert.equal(state.isSaving, false);
   assert.equal(state.statusText, "保存失败：磁盘写入失败");
 });
+
+test("retries both current notebook strings after a failed save", async () => {
+  const state = new EditorSaveState("old draft", "old main");
+  state.setCurrent("current draft", "current main");
+
+  const failed = await state.save(async () => {
+    throw new Error("磁盘写入失败");
+  });
+  const retriedSnapshots: Array<{ draft: string; main: string }> = [];
+  const retried = await state.save(async (snapshot) => {
+    retriedSnapshots.push(snapshot);
+  });
+
+  assert.equal(failed, false);
+  assert.equal(retried, true);
+  assert.deepEqual(retriedSnapshots, [
+    { draft: "current draft", main: "current main" },
+  ]);
+  assert.equal(state.hasUnsavedChanges, false);
+});

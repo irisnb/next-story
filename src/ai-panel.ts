@@ -12,6 +12,8 @@ export interface AiPanelActions {
   onEditFollowUp: (question: string) => Promise<boolean>;
 }
 
+type AiPanelDom = Pick<AppDom, "aiPanel" | "aiResponse" | "btnToggleAi">;
+
 function requireEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) {
@@ -27,7 +29,7 @@ function requireEl<T extends HTMLElement>(id: string): T {
  * Markdown；面板不持有任何写入草稿本或正文本的回调。状态变化时由 `AiPanelState` 订阅触发重绘。
  */
 export function setupAiPanel(
-  dom: AppDom,
+  dom: AiPanelDom,
   state: AiPanelState,
   actions: AiPanelActions,
 ): void {

@@ -2,8 +2,13 @@ import type { AppDom } from "./dom.ts";
 import { EditorSaveState } from "./editor-save-state.ts";
 import { LeaveCoordinator } from "./leave-guard.ts";
 import type { LeaveDialogController } from "./leave-dialog.ts";
+import {
+  createPlainTextEditor,
+  type PlainTextEditorAdapter,
+} from "./plain-text-editor.ts";
 import { saveProject } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
+import type { SelectionEntryEditor } from "./selection-entry.ts";
 import type { NotebookTab, ProjectState } from "./types.ts";
 import { showPage } from "./views.ts";
 
@@ -14,18 +19,56 @@ export interface EditorController {
   save(): Promise<boolean>;
   guardLeave(): Promise<boolean>;
   unload(): void;
+  destroy(): void;
   getCurrentTab(): NotebookTab;
+  getCurrentEditor(): SelectionEntryEditor | null;
   attachAi(ai: AiFeatureController): void;
 }
 
-export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): EditorController {
+type EditorAdapter = Pick<
+  PlainTextEditorAdapter,
+  "getText" | "onEdit" | "focus" | "getSelection" | "getHeadCoordinates" | "coordinatesAt" | "destroy"
+>;
+
+interface EditorDependencies {
+  createEditor(element: HTMLElement, initialText: string): EditorAdapter;
+}
+
+interface ProjectEditors {
+  draft: EditorAdapter;
+  main: EditorAdapter;
+  unsubscribeDraft: () => void;
+  unsubscribeMain: () => void;
+}
+
+const defaultDependencies: EditorDependencies = {
+  createEditor: createPlainTextEditor,
+};
+
+export function setupEditor(
+  dom: AppDom,
+  leaveDialog: LeaveDialogController,
+  dependencies: EditorDependencies = defaultDependencies,
+): EditorController {
   const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage, dom.llmConfigPage];
   let currentState: ProjectState | null = null;
   let saveState: EditorSaveState | null = null;
+  let projectEditors: ProjectEditors | null = null;
   let currentTab: NotebookTab = "draft";
   let aiFeature: AiFeatureController | null = null;
 
+  function disposeProjectEditors(): void {
+    const editors = projectEditors;
+    projectEditors = null;
+    if (!editors) return;
+    editors.unsubscribeDraft();
+    editors.unsubscribeMain();
+    editors.draft.destroy();
+    editors.main.destroy();
+  }
+
   function unload(): void {
+    disposeProjectEditors();
     currentState = null;
     saveState = null;
     aiFeature?.endProject();
@@ -58,7 +101,9 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
   }
 
   function syncCurrent(): void {
-    saveState?.setCurrent(dom.draftTextarea.value, dom.mainTextarea.value);
+    const editors = projectEditors;
+    if (!editors) return;
+    saveState?.setCurrent(editors.draft.getText(), editors.main.getText());
     renderSaveState();
   }
 
@@ -76,24 +121,38 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
   async function guardCurrentLeave(): Promise<boolean> {
     const dirty = saveState?.hasUnsavedChanges ?? false;
     if (dirty) {
-      dom.draftTextarea.disabled = true;
-      dom.mainTextarea.disabled = true;
+      dom.draftTextarea.inert = true;
+      dom.mainTextarea.inert = true;
     }
     try {
       return await leave.run();
     } finally {
-      dom.draftTextarea.disabled = false;
-      dom.mainTextarea.disabled = false;
+      dom.draftTextarea.inert = false;
+      dom.mainTextarea.inert = false;
     }
   }
 
   function showProject(projectState: ProjectState): void {
+    disposeProjectEditors();
     currentState = projectState;
     saveState = new EditorSaveState(projectState.draftContent, projectState.mainContent);
+    const draft = dependencies.createEditor(dom.draftTextarea, projectState.draftContent);
+    const main = dependencies.createEditor(dom.mainTextarea, projectState.mainContent);
+    const editors: ProjectEditors = {
+      draft,
+      main,
+      unsubscribeDraft: () => {},
+      unsubscribeMain: () => {},
+    };
+    projectEditors = editors;
+    editors.unsubscribeDraft = draft.onEdit(() => {
+      if (projectEditors === editors) syncCurrent();
+    });
+    editors.unsubscribeMain = main.onEdit(() => {
+      if (projectEditors === editors) syncCurrent();
+    });
     aiFeature?.beginProject();
     dom.currentProjectName.textContent = projectState.projectName;
-    dom.draftTextarea.value = projectState.draftContent;
-    dom.mainTextarea.value = projectState.mainContent;
     renderSaveState();
     switchTab("draft");
     showPage(pages, "editor-page");
@@ -101,8 +160,6 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
 
   dom.tabDraft.addEventListener("click", () => switchTab("draft"));
   dom.tabMain.addEventListener("click", () => switchTab("main"));
-  dom.draftTextarea.addEventListener("input", syncCurrent);
-  dom.mainTextarea.addEventListener("input", syncCurrent);
   dom.btnSave.addEventListener("click", () => { void save(); });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -118,7 +175,20 @@ export function setupEditor(dom: AppDom, leaveDialog: LeaveDialogController): Ed
     save,
     guardLeave: guardCurrentLeave,
     unload,
+    destroy: unload,
     getCurrentTab: () => currentTab,
+    getCurrentEditor: () => {
+      const editors = projectEditors;
+      if (editors === null) return null;
+      const editor = editors[currentTab];
+      const element = currentTab === "draft" ? dom.draftTextarea : dom.mainTextarea;
+      return {
+        element,
+        getText: () => editor.getText(),
+        getSelection: () => editor.getSelection(),
+        coordinatesAt: (position) => editor.coordinatesAt(position),
+      };
+    },
     attachAi: (ai: AiFeatureController) => {
       aiFeature = ai;
     },

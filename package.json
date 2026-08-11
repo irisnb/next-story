@@ -18,7 +18,12 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "@tiptap/core": "2.27.2",
+    "@tiptap/extension-document": "2.27.2",
+    "@tiptap/extension-history": "2.27.2",
+    "@tiptap/extension-paragraph": "2.27.2",
+    "@tiptap/extension-text": "2.27.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Next Story 窄窗口工具栏比较</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #171717; background: #f4f1ea; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; }
+    button { font: inherit; }
+    .page { max-width: 1320px; margin: auto; padding: 28px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .lead { max-width: 850px; margin: 0 0 24px; color: #57534e; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+    .choice { border: 3px solid #171717; background: #fff; box-shadow: 7px 7px 0 #171717; cursor: pointer; }
+    .choice.selected { outline: 5px solid #ef4444; outline-offset: 4px; }
+    .title { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 3px solid #171717; background: #a7f3d0; }
+    .choice:nth-child(2) .title { background: #67e8f9; }
+    .choice:nth-child(3) .title { background: #facc15; }
+    .letter { display: grid; width: 28px; height: 28px; place-items: center; border: 2px solid #171717; background: #fff; font-weight: 900; }
+    h2 { margin: 0; font-size: 17px; }
+    .phone { width: 310px; height: 470px; margin: 18px auto; overflow: hidden; border: 3px solid #171717; background: #dedbd3; box-shadow: 4px 4px 0 #9ca3af; }
+    .appbar { height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border-bottom: 2px solid #171717; background: #fff; font-size: 10px; font-weight: 800; }
+    .save { padding: 4px 7px; border: 2px solid #171717; background: #171717; color: #fff; font-size: 10px; }
+    .tabs { display: flex; height: 35px; border-bottom: 2px solid #171717; background: #fff; }
+    .tab { padding: 9px 13px; border-right: 2px solid #171717; font-size: 10px; font-weight: 800; }
+    .tab.active { background: #a7f3d0; }
+    .toolbar { display: flex; align-items: center; gap: 4px; min-height: 42px; padding: 6px 7px; border-bottom: 2px solid #171717; background: #fff; }
+    .scroll { overflow-x: auto; scrollbar-width: thin; }
+    .scroll .tools { display: flex; flex: none; gap: 4px; width: max-content; padding-right: 7px; }
+    .tool { display: grid; min-width: 28px; height: 28px; padding: 0 6px; place-items: center; border: 2px solid #171717; background: #fff; font-size: 10px; font-weight: 900; white-space: nowrap; }
+    .tool.active { background: #facc15; box-shadow: 2px 2px 0 #171717; }
+    .select { min-width: 69px; justify-content: start; }
+    .more { margin-left: auto; background: #fb7185; }
+    .two-lines { flex-wrap: wrap; min-height: 76px; align-content: center; }
+    .paper-wrap { height: calc(100% - 120px); padding: 14px; }
+    .short .paper-wrap { height: calc(100% - 154px); }
+    .paper { height: 100%; padding: 23px 20px; overflow: hidden; border: 2px solid #171717; background: #fff; }
+    .paper h3 { margin: 0 0 16px; font: 700 17px Georgia, "Microsoft YaHei", serif; }
+    .paper p, .paper li { font: 11px/1.8 Georgia, "Microsoft YaHei", serif; }
+    .paper ul { padding-left: 18px; }
+    .menu { position: relative; }
+    .popover { position: absolute; z-index: 2; top: 114px; right: calc(50% - 140px); width: 150px; padding: 7px; border: 2px solid #171717; background: #fff; box-shadow: 4px 4px 0 #171717; }
+    .menu-row { display: flex; justify-content: space-between; padding: 7px; font-size: 10px; font-weight: 800; }
+    .desc { min-height: 150px; padding: 14px; border-top: 3px solid #171717; }
+    .desc strong { display: block; margin-bottom: 7px; }
+    .desc p { margin: 0; color: #57534e; font-size: 13px; line-height: 1.6; }
+    .tag { display: inline-block; margin: 11px 5px 0 0; padding: 3px 6px; border: 1px solid #78716c; color: #57534e; font-size: 11px; font-weight: 700; }
+    @media (max-width: 1050px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 420px) { .page { padding: 15px; } .phone { width: 280px; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>A 方案在窄窗口里怎样收纳？</h1>
+    <p class="lead">桌面宽窗口仍使用完整单行工具栏。下面只比较窗口变窄后的行为，三种方案都不会改变文档内容或格式。</p>
+    <section class="grid">
+      <article class="choice" onclick="pick(this, 'A1')">
+        <header class="title"><span class="letter">A1</span><h2>工具栏横向滚动</h2></header>
+        <div class="phone">
+          <div class="appbar"><span>雾港来信 · 已保存</span><button class="save">保存</button></div>
+          <div class="tabs"><div class="tab active">草稿本</div><div class="tab">正文本</div></div>
+          <div class="toolbar scroll"><div class="tools"><button class="tool select">正文 ▼</button><button class="tool active">B</button><button class="tool"><i>I</i></button><button class="tool">• 列表</button><button class="tool">1. 列表</button><button class="tool">Tx</button><button class="tool">↶</button><button class="tool">↷</button></div></div>
+          <div class="paper-wrap"><div class="paper"><h3>港口没有钟声</h3><p>林在凌晨三点醒来，窗外的雾已经漫过旧码头。</p><ul><li><strong>灯塔熄灭</strong>了十三分钟</li><li>看守人没有留下记录</li></ul></div></div>
+        </div>
+        <div class="desc"><strong>一行高度不变</strong><p>左右滑动寻找被遮住的工具。布局稳定，但用户不容易知道右侧还有按钮，鼠标操作也略别扭。</p><span class="tag">高度稳定</span><span class="tag">入口可能藏住</span></div>
+      </article>
+
+      <article class="choice" onclick="pick(this, 'A2')">
+        <header class="title"><span class="letter">A2</span><h2>常用项 + “更多”菜单</h2></header>
+        <div class="phone menu">
+          <div class="appbar"><span>雾港来信 · 已保存</span><button class="save">保存</button></div>
+          <div class="tabs"><div class="tab active">草稿本</div><div class="tab">正文本</div></div>
+          <div class="toolbar"><button class="tool select">正文 ▼</button><button class="tool active">B</button><button class="tool"><i>I</i></button><button class="tool">•</button><button class="tool">1.</button><button class="tool more">•••</button></div>
+          <div class="popover"><div class="menu-row"><span>清除格式</span><span>Tx</span></div><div class="menu-row"><span>撤销</span><span>Ctrl+Z</span></div><div class="menu-row"><span>重做</span><span>Ctrl+Y</span></div></div>
+          <div class="paper-wrap"><div class="paper"><h3>港口没有钟声</h3><p>林在凌晨三点醒来，窗外的雾已经漫过旧码头。</p><ul><li><strong>灯塔熄灭</strong>了十三分钟</li><li>看守人没有留下记录</li></ul></div></div>
+        </div>
+        <div class="desc"><strong>推荐：常用格式直接可见</strong><p>正文、粗斜体和列表始终显示；清除格式、撤销和重做放进明确的“更多”菜单。节省空间，但少用操作多一次点击。</p><span class="tag">关键项可见</span><span class="tag">窄窗清楚</span></div>
+      </article>
+
+      <article class="choice" onclick="pick(this, 'A3')">
+        <header class="title"><span class="letter">A3</span><h2>自动换成两行</h2></header>
+        <div class="phone short">
+          <div class="appbar"><span>雾港来信 · 已保存</span><button class="save">保存</button></div>
+          <div class="tabs"><div class="tab active">草稿本</div><div class="tab">正文本</div></div>
+          <div class="toolbar two-lines"><button class="tool select">正文 ▼</button><button class="tool active">B</button><button class="tool"><i>I</i></button><button class="tool">• 列表</button><button class="tool">1. 列表</button><button class="tool">Tx</button><button class="tool">↶</button><button class="tool">↷</button></div>
+          <div class="paper-wrap"><div class="paper"><h3>港口没有钟声</h3><p>林在凌晨三点醒来，窗外的雾已经漫过旧码头。</p><ul><li><strong>灯塔熄灭</strong>了十三分钟</li><li>看守人没有留下记录</li></ul></div></div>
+        </div>
+        <div class="desc"><strong>所有功能都直接看见</strong><p>不用找菜单，也不需要横向滑动。但工具栏高度会突然增加，明显压缩窄窗口里的写作空间。</p><span class="tag">零隐藏</span><span class="tag">正文变矮</span></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    function pick(el, choice) {
+      document.querySelectorAll('.choice').forEach(x => x.classList.remove('selected'));
+      el.classList.add('selected');
+      document.title = `已选择 ${choice} · 窄窗口工具栏`;
+    }
+  </script>
+</body>
+</html>

@@ -78,10 +78,6 @@ class FakePlainTextEditor {
     return { from: 1, to: 1, head: 1 };
   }
 
-  getHeadCoordinates(): PlainTextEditorCoordinates {
-    return { left: 0, right: 0, top: 0, bottom: 0 };
-  }
-
   coordinatesAt(_position: number): PlainTextEditorCoordinates {
     return { left: 0, right: 0, top: 0, bottom: 0 };
   }

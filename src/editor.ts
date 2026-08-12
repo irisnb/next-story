@@ -27,7 +27,7 @@ export interface EditorController {
 
 type EditorAdapter = Pick<
   PlainTextEditorAdapter,
-  "getText" | "onEdit" | "focus" | "getSelection" | "getHeadCoordinates" | "coordinatesAt" | "destroy"
+  "getText" | "onEdit" | "focus" | "getSelection" | "coordinatesAt" | "destroy"
 >;
 
 interface EditorDependencies {

@@ -171,8 +171,12 @@ function normalizeList(
     }
     if (tag !== "li") continue;
 
-    // 先输出嵌套列表（按显示顺序），再把 li 自身文字追加到自身项目
+    // 先把 li 自身文字作为列表项输出，再按显示顺序输出嵌套子列表。
+    // collectInlineRuns 内部会跳过 ul/ol/li 子元素，只收取内联文字。
     const runs: TextRun[] = [];
+    collectInlineRuns(item as Element, runs, false, false, state);
+    blocks.push({ type: "paragraph", listType, textRuns: runs });
+
     for (const child of Array.from(item.childNodes)) {
       if (child.nodeType !== 1) continue;
       const childEl = child as Element;
@@ -180,8 +184,6 @@ function normalizeList(
       if (childTag === "ul") normalizeList(childEl, "bullet", blocks, state);
       else if (childTag === "ol") normalizeList(childEl, "ordered", blocks, state);
     }
-    collectInlineRuns(item as Element, runs, false, false, state);
-    blocks.push({ type: "paragraph", listType, textRuns: runs });
   }
 }
 

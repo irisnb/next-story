@@ -33,14 +33,14 @@ export type NotebookTab = "draft" | "main";
 
 /**
  * 与具体编辑器控件解耦的选区快照。
- * 点击“召唤 AI”时冻结；`start/end` 仅用于快照身份校验，不发送给模型。
- * `notebook` 与标签页共用 `draft | main`，不发送给模型。
+ * 点击“召唤 AI”时冻结；`from/to` 为 Tiptap 有序选区位置，仅用于本次来源
+ * 标识与界面锚定，不发送给模型、不持久化。`notebook` 与标签页共用 `draft | main`。
  */
 export interface SelectionSnapshot {
   notebook: NotebookTab;
   selectedText: string;
-  start: number;
-  end: number;
+  from: number;
+  to: number;
 }
 
 export type GenerateAiErrorCode =

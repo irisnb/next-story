@@ -2,20 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import type { JSONContent } from "@tiptap/core";
 
 import type { AiFeatureController } from "../src/ai-feature.ts";
 import type { AppDom } from "../src/dom.ts";
 import { setupEditor } from "../src/editor.ts";
 import type { LeaveDialogController } from "../src/leave-dialog.ts";
 import type {
-  PlainTextEditorCoordinates,
-  PlainTextEditorSelection,
-} from "../src/plain-text-editor.ts";
+  RichTextEditorCoordinates,
+  RichTextEditorSelection,
+} from "../src/rich-text-editor.ts";
 import { openProject } from "../src/project-api.ts";
 import { openProjectAfterAuthorization } from "../src/project-leave-flow.ts";
 import type { ProjectOpenResult } from "../src/types.ts";
 
 type Listener = () => void;
+
+function paragraphDoc(text: string): JSONContent {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+function notebookJson(text: string): string {
+  return JSON.stringify({
+    format: "next-story-tiptap",
+    version: 1,
+    document: paragraphDoc(text),
+  });
+}
 
 class FakeClassList {
   private readonly values = new Set<string>();
@@ -50,23 +66,23 @@ class FakeElement {
   }
 }
 
-class FakePlainTextEditor {
-  private readonly listeners = new Set<(text: string) => void>();
-  private text: string;
+class FakeRichTextEditor {
+  private readonly listeners = new Set<(document: JSONContent) => void>();
+  private document: JSONContent;
   readonly element: HTMLElement;
-  readonly capturedListeners: Array<(text: string) => void> = [];
+  readonly capturedListeners: Array<(document: JSONContent) => void> = [];
   destroyed = false;
 
-  constructor(element: HTMLElement, initialText: string) {
+  constructor(element: HTMLElement, initialDocument: JSONContent) {
     this.element = element;
-    this.text = initialText;
+    this.document = initialDocument;
   }
 
-  getText(): string {
-    return this.text;
+  getDocument(): JSONContent {
+    return this.document;
   }
 
-  onEdit(listener: (text: string) => void): () => void {
+  onEdit(listener: (document: JSONContent) => void): () => void {
     this.listeners.add(listener);
     this.capturedListeners.push(listener);
     return () => { this.listeners.delete(listener); };
@@ -74,11 +90,11 @@ class FakePlainTextEditor {
 
   focus(): void {}
 
-  getSelection(): PlainTextEditorSelection {
+  getSelection(): RichTextEditorSelection {
     return { from: 1, to: 1, head: 1 };
   }
 
-  coordinatesAt(_position: number): PlainTextEditorCoordinates {
+  coordinatesAt(_position: number): RichTextEditorCoordinates {
     return { left: 0, right: 0, top: 0, bottom: 0 };
   }
 
@@ -87,32 +103,28 @@ class FakePlainTextEditor {
     this.listeners.clear();
   }
 
-  edit(text: string): void {
-    this.text = text;
-    for (const listener of this.listeners) listener(text);
+  edit(document: JSONContent): void {
+    this.document = document;
+    for (const listener of this.listeners) listener(document);
   }
 }
 
-function project(
-  projectPath: string,
-  draftContent: string,
-  mainContent: string,
-) {
+function project(projectPath: string, draftText: string, mainText: string) {
   return {
     projectPath,
     projectName: projectPath,
-    draftContent,
-    mainContent,
+    draftContent: notebookJson(draftText),
+    mainContent: notebookJson(mainText),
   };
 }
 
 function editorFixture() {
   const ui = fakeDom();
-  const editors: FakePlainTextEditor[] = [];
+  const editors: FakeRichTextEditor[] = [];
   const leaveDialog: LeaveDialogController = { choose: async () => "cancel" };
   const editor = setupEditor(ui.dom, leaveDialog, {
-    createEditor: (element: HTMLElement, initialText: string) => {
-      const created = new FakePlainTextEditor(element, initialText);
+    createEditor: (element: HTMLElement, initialDocument: JSONContent) => {
+      const created = new FakeRichTextEditor(element, initialDocument);
       editors.push(created);
       return created;
     },
@@ -204,12 +216,7 @@ test("resets only the AI selection entry when switching notebook tabs", () => {
     const editor = fixture.editor;
 
     editor.attachAi(ai);
-    editor.showProject({
-      projectPath: "project-path",
-      projectName: "作品",
-      draftContent: "草稿",
-      mainContent: "正文",
-    });
+    editor.showProject(project("project-path", "草稿", "正文"));
     entryResets = 0;
     projectBegins = 0;
     projectEnds = 0;
@@ -228,28 +235,24 @@ test("resets only the AI selection entry when switching notebook tabs", () => {
 test("creates two persistent independent editors without dirtying initialization", () => {
   const fixture = editorFixture();
   try {
-    // Given
     fixture.editor.showProject(project("作品一", "草稿初稿", "正文初稿"));
 
-    // Then
     assert.equal(fixture.editors.length, 2);
     assert.notEqual(fixture.editors[0], fixture.editors[1]);
     assert.equal(fixture.editors[0]?.element, fixture.dom.draftTextarea);
     assert.equal(fixture.editors[1]?.element, fixture.dom.mainTextarea);
-    assert.equal(fixture.editors[0]?.getText(), "草稿初稿");
-    assert.equal(fixture.editors[1]?.getText(), "正文初稿");
+    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("草稿初稿"));
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("正文初稿"));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
 
-    // When
-    fixture.editors[0]?.edit("未保存草稿");
+    fixture.editors[0]?.edit(paragraphDoc("未保存草稿"));
     fixture.dom.tabMain.click();
-    fixture.editors[1]?.edit("未保存正文");
+    fixture.editors[1]?.edit(paragraphDoc("未保存正文"));
     fixture.dom.tabDraft.click();
 
-    // Then
     assert.equal(fixture.editors.length, 2);
-    assert.equal(fixture.editors[0]?.getText(), "未保存草稿");
-    assert.equal(fixture.editors[1]?.getText(), "未保存正文");
+    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("未保存草稿"));
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("未保存正文"));
     assert.equal(fixture.editor.hasUnsavedChanges(), true);
   } finally {
     fixture.restore();
@@ -259,28 +262,23 @@ test("creates two persistent independent editors without dirtying initialization
 test("replacing a project destroys both old editors and ignores their late edits", () => {
   const fixture = editorFixture();
   try {
-    // Given
     fixture.editor.showProject(project("作品一", "旧草稿", "旧正文"));
     const oldDraft = fixture.editors[0];
     const oldMain = fixture.editors[1];
     const lateDraftEdit = oldDraft?.capturedListeners[0];
 
-    // When
     fixture.editor.showProject(project("作品二", "新草稿", "新正文"));
 
-    // Then
     assert.equal(oldDraft?.destroyed, true);
     assert.equal(oldMain?.destroyed, true);
     assert.equal(fixture.editors.length, 4);
-    assert.equal(fixture.editors[2]?.getText(), "新草稿");
-    assert.equal(fixture.editors[3]?.getText(), "新正文");
+    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
+    assert.deepEqual(fixture.editors[3]?.getDocument(), paragraphDoc("新正文"));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
 
-    // When
-    lateDraftEdit?.("迟到的旧草稿");
+    lateDraftEdit?.(paragraphDoc("迟到的旧草稿"));
 
-    // Then
-    assert.equal(fixture.editors[2]?.getText(), "新草稿");
+    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
     fixture.restore();
@@ -290,25 +288,20 @@ test("replacing a project destroys both old editors and ignores their late edits
 test("unloading destroys both editors and ignores their late edits", () => {
   const fixture = editorFixture();
   try {
-    // Given
     fixture.editor.showProject(project("作品一", "草稿", "正文"));
     const draft = fixture.editors[0];
     const main = fixture.editors[1];
     const lateMainEdit = main?.capturedListeners[0];
 
-    // When
     fixture.editor.unload();
 
-    // Then
     assert.equal(draft?.destroyed, true);
     assert.equal(main?.destroyed, true);
     assert.equal(fixture.editor.hasProject(), false);
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
 
-    // When
-    lateMainEdit?.("迟到的旧正文");
+    lateMainEdit?.(paragraphDoc("迟到的旧正文"));
 
-    // Then
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
     fixture.restore();
@@ -318,15 +311,12 @@ test("unloading destroys both editors and ignores their late edits", () => {
 test("destroying the controller destroys both editors", () => {
   const fixture = editorFixture();
   try {
-    // Given
     fixture.editor.showProject(project("作品一", "草稿", "正文"));
     const draft = fixture.editors[0];
     const main = fixture.editors[1];
 
-    // When
     fixture.editor.destroy();
 
-    // Then
     assert.equal(draft?.destroyed, true);
     assert.equal(main?.destroyed, true);
     assert.equal(fixture.editor.hasProject(), false);
@@ -335,11 +325,11 @@ test("destroying the controller destroys both editors", () => {
   }
 });
 
-test("opens existing text notebooks, saves exact edits, unloads, and reopens the saved snapshot", async () => {
+test("opens existing notebooks, saves exact edits, unloads, and reopens the saved snapshot", async () => {
   const fixture = editorFixture();
-  const projectPath = "D:\\作品\\保留纯文本";
-  let storedDraft = "\n旧草稿第一行\n\n旧草稿末行\n";
-  let storedMain = "旧正文🙂\n第二行\n\n";
+  const projectPath = "D:\\作品\\保留结构化";
+  let storedDraft = notebookJson("旧草稿");
+  let storedMain = notebookJson("旧正文");
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -349,18 +339,19 @@ test("opens existing text notebooks, saves exact edits, unloads, and reopens the
   mockIPC((command, payload) => {
     if (command === "open_project") {
       const result: ProjectOpenResult = {
-        metadata: { name: "保留纯文本" },
+        metadata: { name: "保留结构化" },
         draft_content: storedDraft,
         main_content: storedMain,
       };
       return result;
     }
     if (command === "save_project") {
-      assert.equal(payload?.projectPath, projectPath);
-      assert.equal(typeof payload?.draftContent, "string");
-      assert.equal(typeof payload?.mainContent, "string");
-      storedDraft = payload.draftContent;
-      storedMain = payload.mainContent;
+      const args = payload as { projectPath: string; draftContent: string; mainContent: string };
+      assert.equal(args.projectPath, projectPath);
+      assert.equal(typeof args.draftContent, "string");
+      assert.equal(typeof args.mainContent, "string");
+      storedDraft = args.draftContent;
+      storedMain = args.mainContent;
       return null;
     }
     throw new Error(`Unexpected IPC command: ${command}`);
@@ -377,23 +368,21 @@ test("opens existing text notebooks, saves exact edits, unloads, and reopens the
 
   try {
     await openIntoEditor();
-    assert.equal(fixture.editors[0]?.getText(), storedDraft);
-    assert.equal(fixture.editors[1]?.getText(), storedMain);
+    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("旧草稿"));
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("旧正文"));
 
-    const savedDraft = "\n新草稿：甲🙂\n\n乙在后面\n\n";
-    const savedMain = "新正文第一行\n第二行，标点不变。\n\n\n结尾\n";
-    fixture.editors[0]?.edit(savedDraft);
-    fixture.editors[1]?.edit(savedMain);
+    fixture.editors[0]?.edit(paragraphDoc("新草稿"));
+    fixture.editors[1]?.edit(paragraphDoc("新正文"));
 
     assert.equal(await fixture.editor.save(), true);
-    assert.equal(storedDraft, savedDraft);
-    assert.equal(storedMain, savedMain);
+    assert.equal(storedDraft, notebookJson("新草稿"));
+    assert.equal(storedMain, notebookJson("新正文"));
 
     fixture.editor.unload();
     await openIntoEditor();
 
-    assert.equal(fixture.editors[2]?.getText(), savedDraft);
-    assert.equal(fixture.editors[3]?.getText(), savedMain);
+    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
+    assert.deepEqual(fixture.editors[3]?.getDocument(), paragraphDoc("新正文"));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
     fixture.editor.destroy();

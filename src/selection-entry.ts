@@ -1,9 +1,11 @@
+import type { JSONContent } from "@tiptap/core";
+
 import type { AppDom } from "./dom.ts";
 import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
 import type {
-  PlainTextEditorCoordinates,
-  PlainTextEditorSelection,
-} from "./plain-text-editor.ts";
+  RichTextEditorCoordinates,
+  RichTextEditorSelection,
+} from "./rich-text-editor.ts";
 import type { NotebookTab, SelectionSnapshot } from "./types.ts";
 
 /** Selection entry trigger width (CSS px). */
@@ -82,8 +84,8 @@ export function renderSelectionEntryActions<TNode extends SelectionEntryActionNo
 export function isSameSummonedSelection(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
   return (
     a.notebook === b.notebook &&
-    a.start === b.start &&
-    a.end === b.end &&
+    a.from === b.from &&
+    a.to === b.to &&
     a.selectedText === b.selectedText
   );
 }
@@ -227,9 +229,9 @@ export interface SelectionEntryController {
 
 export interface SelectionEntryEditor {
   readonly element: HTMLElement;
-  getText(): string;
-  getSelection(): PlainTextEditorSelection;
-  coordinatesAt(position: number): PlainTextEditorCoordinates;
+  getDocument(): JSONContent;
+  getSelection(): RichTextEditorSelection;
+  coordinatesAt(position: number): RichTextEditorCoordinates;
 }
 
 export interface SelectionEntryOptions {
@@ -298,7 +300,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
 
   function focusEndVisible(
     editor: SelectionEntryEditor,
-    coordinates: PlainTextEditorCoordinates,
+    coordinates: RichTextEditorCoordinates,
   ): boolean {
     const rect = editor.element.getBoundingClientRect();
     return coordinates.top >= rect.top && coordinates.bottom <= rect.bottom;
@@ -318,14 +320,14 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
 
   function positionEntry(
     editor: SelectionEntryEditor,
-    selection: PlainTextEditorSelection,
-    focusCoordinates: PlainTextEditorCoordinates,
+    selection: RichTextEditorSelection,
+    focusCoordinates: RichTextEditorCoordinates,
   ): void {
     const rect = editor.element.getBoundingClientRect();
-    const coordinates = new Map<number, PlainTextEditorCoordinates>([
+    const coordinates = new Map<number, RichTextEditorCoordinates>([
       [selection.head, focusCoordinates],
     ]);
-    const coordinatesAt = (position: number): PlainTextEditorCoordinates => {
+    const coordinatesAt = (position: number): RichTextEditorCoordinates => {
       const cached = coordinates.get(position);
       if (cached) return cached;
       const measured = editor.coordinatesAt(position);

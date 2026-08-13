@@ -4,8 +4,8 @@ import type { SelectionSnapshot } from "./types.ts";
 function sameSnapshot(left: SelectionSnapshot, right: SelectionSnapshot): boolean {
   return (
     left.notebook === right.notebook &&
-    left.start === right.start &&
-    left.end === right.end &&
+    left.from === right.from &&
+    left.to === right.to &&
     left.selectedText === right.selectedText
   );
 }

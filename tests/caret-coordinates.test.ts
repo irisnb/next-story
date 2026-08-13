@@ -3,11 +3,10 @@ import { existsSync } from "node:fs";
 import test from "node:test";
 
 import {
-  PlainTextEditorAdapter,
-  importPlainText,
-  type PlainTextEditorCoordinates,
-  type PlainTextEditorEngine,
-} from "../src/plain-text-editor.ts";
+  RichTextEditorAdapter,
+  type RichTextEditorCoordinates,
+  type RichTextEditorEngine,
+} from "../src/rich-text-editor.ts";
 
 test("legacy textarea mirror coordinate module is absent from production", () => {
   const legacyModule = new URL("../src/caret-coordinates.ts", import.meta.url);
@@ -15,11 +14,14 @@ test("legacy textarea mirror coordinate module is absent from production", () =>
   assert.equal(existsSync(legacyModule), false);
 });
 
-class CoordinateEngine implements PlainTextEditorEngine {
+class CoordinateEngine implements RichTextEditorEngine {
   readonly coordinateReads: number[] = [];
 
   getDocument() {
-    return importPlainText("坐标测试");
+    return {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "坐标测试" }] }],
+    };
   }
 
   onUpdate(_listener: () => void): void {}
@@ -32,7 +34,7 @@ class CoordinateEngine implements PlainTextEditorEngine {
     return { from: 1, to: 4, head: 4 };
   }
 
-  coordinatesAt(position: number): PlainTextEditorCoordinates {
+  coordinatesAt(position: number): RichTextEditorCoordinates {
     this.coordinateReads.push(position);
     return {
       left: position * 10,
@@ -47,7 +49,7 @@ class CoordinateEngine implements PlainTextEditorEngine {
 
 test("editor coordinates delegate directly to the kernel position API", () => {
   const engine = new CoordinateEngine();
-  const editor = new PlainTextEditorAdapter(engine);
+  const editor = new RichTextEditorAdapter(engine);
 
   const start = editor.coordinatesAt(1);
   const head = editor.coordinatesAt(4);

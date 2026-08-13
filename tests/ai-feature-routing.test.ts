@@ -19,7 +19,7 @@ import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, start: 0, end: text.length };
+  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 test("routes configuration_required to the configuration panel state", () => {
@@ -119,8 +119,8 @@ test("first request keeps the submitted snapshot after the editor selection chan
   currentEditorSelection = {
     notebook: "main",
     selectedText: "后来选中的正文本",
-    start: 20,
-    end: 28,
+    from: 20,
+    to: 28,
   };
   await Promise.resolve();
   await Promise.resolve();
@@ -142,8 +142,8 @@ test("thinking expansion keeps its prestate snapshot after editing and switching
   currentEditorSelection = {
     notebook: "main",
     selectedText: "正文本当前选区",
-    start: 9,
-    end: 16,
+    from: 9,
+    to: 16,
   };
 
   const request = state.view.request;

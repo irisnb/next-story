@@ -476,3 +476,124 @@ export function parseNotebookDocumentJson(json: string): NotebookDocument {
   if (!result.ok) throw new Error(result.error);
   return result.document;
 }
+
+// ---------------------------------------------------------------------------
+// 结构化选区 → 纯文本切片（AI 冻结快照的唯一序列化规则）
+// ---------------------------------------------------------------------------
+
+/** 计算一个节点的 ProseMirror 尺寸（text 为文字长度，其余为 2 + 子内容长度）。 */
+function nodeSize(node: unknown): number {
+  const n = node as { type?: string; text?: string; content?: unknown[] };
+  if (n.type === "text") return (n.text ?? "").length;
+  let size = 2;
+  for (const child of n.content ?? []) {
+    size += nodeSize(child);
+  }
+  return size;
+}
+
+function inlineText(content: TextNode[] | undefined): string {
+  return (content ?? []).map((textNode) => textNode.text).join("");
+}
+
+interface SelectionLine {
+  /** 该块（或列表项）的起止位置。 */
+  start: number;
+  end: number;
+  /** 可见文字的起止位置（marks 不占位置）。 */
+  textStart: number;
+  textEnd: number;
+  /** 完整可见文字。 */
+  text: string;
+  /** 完整列表项时应使用的前缀（`- ` 或 `N. `），否则 null。 */
+  prefix: string | null;
+}
+
+function collectLines(doc: DocNode): SelectionLine[] {
+  const lines: SelectionLine[] = [];
+  let pos = 1;
+  for (const block of doc.content) {
+    const blockStart = pos;
+    const blockEnd = pos + nodeSize(block);
+    if (block.type === "paragraph" || block.type === "heading") {
+      const text = inlineText(block.content);
+      const textStart = blockStart + 1;
+      lines.push({
+        start: blockStart,
+        end: blockEnd,
+        textStart,
+        textEnd: textStart + text.length,
+        text,
+        prefix: null,
+      });
+    } else if (block.type === "bulletList") {
+      let itemPos = blockStart + 1;
+      for (const item of block.content) {
+        const itemEnd = itemPos + nodeSize(item);
+        const text = inlineText(item.content[0].content);
+        const textStart = itemPos + 2;
+        lines.push({
+          start: itemPos,
+          end: itemEnd,
+          textStart,
+          textEnd: textStart + text.length,
+          text,
+          prefix: "- ",
+        });
+        itemPos = itemEnd;
+      }
+    } else {
+      // orderedList
+      let itemPos = blockStart + 1;
+      let index = 0;
+      for (const item of block.content) {
+        const itemEnd = itemPos + nodeSize(item);
+        const text = inlineText(item.content[0].content);
+        const textStart = itemPos + 2;
+        const number = block.attrs.start + index;
+        lines.push({
+          start: itemPos,
+          end: itemEnd,
+          textStart,
+          textEnd: textStart + text.length,
+          text,
+          prefix: `${number}. `,
+        });
+        itemPos = itemEnd;
+        index += 1;
+      }
+    }
+    pos = blockEnd;
+  }
+  return lines;
+}
+
+/**
+ * 把结构化文档中 `[from, to)` 的选区投影为唯一纯文本。
+ *
+ * 规则：单个 LF 表示相邻块边界；空段落/空列表项表示为空行；完整非空列表项
+ * 添加 `- ` 或实际编号加 `. ` 前缀，部分列表项不加前缀；丢弃标题等级、粗体、
+ * 斜体和 JSON 结构；不产生前导或尾随 LF。
+ */
+export function serializeSelectionToPlainText(
+  doc: DocNode,
+  from: number,
+  to: number,
+): string {
+  if (from >= to) return "";
+  const lines = collectLines(doc);
+  const parts: string[] = [];
+  for (const line of lines) {
+    if (line.end <= from || line.start >= to) continue;
+    const selStart = Math.max(line.textStart, from);
+    const selEnd = Math.min(line.textEnd, to);
+    const selectedText = selStart >= selEnd ? "" : line.text.slice(selStart - line.textStart, selEnd - line.textStart);
+    const fullySelected = from <= line.textStart && to >= line.textEnd;
+    if (line.prefix !== null && fullySelected && selectedText.length > 0) {
+      parts.push(line.prefix + selectedText);
+    } else {
+      parts.push(selectedText);
+    }
+  }
+  return parts.join("\n");
+}

@@ -13,10 +13,11 @@ import {
   SELECTION_ENTRY_TRIGGER_WIDTH_PX,
 } from "../src/selection-entry.ts";
 import type { AppDom } from "../src/dom.ts";
+import type { JSONContent } from "@tiptap/core";
 import type {
-  PlainTextEditorCoordinates,
-  PlainTextEditorSelection,
-} from "../src/plain-text-editor.ts";
+  RichTextEditorCoordinates,
+  RichTextEditorSelection,
+} from "../src/rich-text-editor.ts";
 import type { SelectionSnapshot } from "../src/types.ts";
 
 type Listener = (event: FakeEvent) => void;
@@ -163,24 +164,27 @@ class FakeEditorElement extends FakeElement {
 
 class FakeSelectionEditor {
   text = "";
-  selection: PlainTextEditorSelection = { from: 1, to: 1, head: 1 };
+  selection: RichTextEditorSelection = { from: 1, to: 1, head: 1 };
   readonly coordinateReads: number[] = [];
-  readonly coordinates = new Map<number, PlainTextEditorCoordinates>();
+  readonly coordinates = new Map<number, RichTextEditorCoordinates>();
   readonly element: FakeEditorElement;
 
   constructor(element: FakeEditorElement) {
     this.element = element;
   }
 
-  getText(): string {
-    return this.text;
+  getDocument(): JSONContent {
+    return {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: this.text }] }],
+    };
   }
 
-  getSelection(): PlainTextEditorSelection {
+  getSelection(): RichTextEditorSelection {
     return this.selection;
   }
 
-  coordinatesAt(position: number): PlainTextEditorCoordinates {
+  coordinatesAt(position: number): RichTextEditorCoordinates {
     this.coordinateReads.push(position);
     return this.coordinates.get(position) ?? {
       left: position * 10,
@@ -311,7 +315,7 @@ function editorCoordinates(
   left: number,
   top: number,
   height = 16,
-): PlainTextEditorCoordinates {
+): RichTextEditorCoordinates {
   return { left, right: left + 1, top, bottom: top + height };
 }
 
@@ -341,7 +345,7 @@ function installAnimationFrameQueue(): { flush: () => void; restore: () => void 
 }
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, start: 0, end: text.length };
+  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 test("shows the entry for a meaningful selection whose focus end is visible", () => {
@@ -388,7 +392,7 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
-    ui.draft.selection = { from: 3, to: 7, head: 7 };
+    ui.draft.selection = { from: 4, to: 8, head: 8 };
     const summons: SelectionSnapshot[] = [];
 
     setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
@@ -407,7 +411,7 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
     assert.ok(summonButton);
     summonButton.dispatch("click");
 
-    assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", start: 2, end: 6 }]);
+    assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", from: 4, to: 8 }]);
     assert.equal(entry.classList.contains("hidden"), true);
   } finally {
     ui.restore();
@@ -418,7 +422,7 @@ test("submitted summon snapshot survives later edits, selection changes, and not
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
-    ui.draft.selection = { from: 3, to: 7, head: 7 };
+    ui.draft.selection = { from: 4, to: 8, head: 8 };
     let submitted: SelectionSnapshot | null = null;
 
     setupEditorSelectionEntry(ui, { onSummon: (snap) => { submitted = snap; } });
@@ -441,8 +445,8 @@ test("submitted summon snapshot survives later edits, selection changes, and not
     assert.deepEqual(submitted, {
       notebook: "draft",
       selectedText: "冻结选区",
-      start: 2,
-      end: 6,
+      from: 4,
+      to: 8,
     });
   } finally {
     ui.restore();
@@ -455,7 +459,7 @@ test("thinking expansion submits the click-time snapshot before later editor cha
     ui.main.element.classList.remove("hidden");
     ui.draft.element.classList.add("hidden");
     ui.main.text = "正文本原始片段";
-    ui.main.selection = { from: 4, to: 8, head: 8 };
+    ui.main.selection = { from: 5, to: 9, head: 9 };
     let submitted: SelectionSnapshot | null = null;
 
     setupEditorSelectionEntry(ui, { onThinkingExpansion: (snap) => { submitted = snap; } });
@@ -480,8 +484,8 @@ test("thinking expansion submits the click-time snapshot before later editor cha
     assert.deepEqual(submitted, {
       notebook: "main",
       selectedText: "原始片段",
-      start: 3,
-      end: 7,
+      from: 5,
+      to: 9,
     });
   } finally {
     ui.restore();
@@ -495,9 +499,9 @@ test("selection entry supports forward and backward editor selections", () => {
     const summons: SelectionSnapshot[] = [];
     setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
 
-    ui.draft.selection = { from: 2, to: 5, head: 5 };
+    ui.draft.selection = { from: 3, to: 6, head: 6 };
     ui.draft.dispatch("select");
-    ui.draft.selection = { from: 2, to: 5, head: 2 };
+    ui.draft.selection = { from: 3, to: 6, head: 3 };
     ui.draft.dispatch("select");
 
     const entry = visibleEntry(ui);
@@ -505,9 +509,9 @@ test("selection entry supports forward and backward editor selections", () => {
     const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
     assert.ok(summonButton);
     summonButton.dispatch("click");
-    assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
+    assert.deepEqual(ui.draft.coordinateReads, [6, 3, 3, 6]);
     assert.deepEqual(summons, [
-      { notebook: "draft", selectedText: "bcd", start: 1, end: 4 },
+      { notebook: "draft", selectedText: "bcd", from: 3, to: 6 },
     ]);
   } finally {
     ui.restore();

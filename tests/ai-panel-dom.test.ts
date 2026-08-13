@@ -87,7 +87,7 @@ class FakeElement {
 }
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, start: 0, end: text.length };
+  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 function deferredGenerateResult(): {

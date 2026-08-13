@@ -1,6 +1,7 @@
 import type { AppDom } from "./dom";
 import { createProject, openProject, selectDirectory } from "./project-api";
 import { openProjectAfterAuthorization } from "./project-leave-flow";
+import { emptyNotebookDocument } from "./structured-notebook";
 import type { ProjectState } from "./types";
 import { showPage } from "./views";
 
@@ -76,12 +77,13 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
     try {
       dom.btnCreateProject.disabled = true;
       const projectPath = await createProject(name, saveLocation);
+      const blank = JSON.stringify(emptyNotebookDocument());
 
       options.onProjectReady({
         projectPath,
         projectName: name,
-        draftContent: "",
-        mainContent: "",
+        draftContent: blank,
+        mainContent: blank,
       });
     } catch (error) {
       showError(dom.nameError, String(error));

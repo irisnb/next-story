@@ -1,15 +1,18 @@
+import type { JSONContent } from "@tiptap/core";
+
 import type { AppDom } from "./dom.ts";
 import { EditorSaveState } from "./editor-save-state.ts";
 import { LeaveCoordinator } from "./leave-guard.ts";
 import type { LeaveDialogController } from "./leave-dialog.ts";
 import {
-  createPlainTextEditor,
-  type PlainTextEditorAdapter,
-} from "./plain-text-editor.ts";
+  createRichTextEditor,
+  type RichTextEditorAdapter,
+} from "./rich-text-editor.ts";
 import { saveProject } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
 import type { SelectionEntryEditor } from "./selection-entry.ts";
 import type { NotebookTab, ProjectState } from "./types.ts";
+import { canonicalNotebookJson, parseNotebookDocumentJson } from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
 
 export interface EditorController {
@@ -26,12 +29,12 @@ export interface EditorController {
 }
 
 type EditorAdapter = Pick<
-  PlainTextEditorAdapter,
-  "getText" | "onEdit" | "focus" | "getSelection" | "coordinatesAt" | "destroy"
+  RichTextEditorAdapter,
+  "getDocument" | "onEdit" | "focus" | "getSelection" | "coordinatesAt" | "destroy"
 >;
 
 interface EditorDependencies {
-  createEditor(element: HTMLElement, initialText: string): EditorAdapter;
+  createEditor(element: HTMLElement, initialDocument: JSONContent): EditorAdapter;
 }
 
 interface ProjectEditors {
@@ -42,7 +45,7 @@ interface ProjectEditors {
 }
 
 const defaultDependencies: EditorDependencies = {
-  createEditor: createPlainTextEditor,
+  createEditor: createRichTextEditor,
 };
 
 export function setupEditor(
@@ -103,7 +106,10 @@ export function setupEditor(
   function syncCurrent(): void {
     const editors = projectEditors;
     if (!editors) return;
-    saveState?.setCurrent(editors.draft.getText(), editors.main.getText());
+    saveState?.setCurrent(
+      canonicalNotebookJson(editors.draft.getDocument()),
+      canonicalNotebookJson(editors.main.getDocument()),
+    );
     renderSaveState();
   }
 
@@ -135,9 +141,14 @@ export function setupEditor(
   function showProject(projectState: ProjectState): void {
     disposeProjectEditors();
     currentState = projectState;
-    saveState = new EditorSaveState(projectState.draftContent, projectState.mainContent);
-    const draft = dependencies.createEditor(dom.draftTextarea, projectState.draftContent);
-    const main = dependencies.createEditor(dom.mainTextarea, projectState.mainContent);
+    const draftDocument = parseNotebookDocumentJson(projectState.draftContent).document;
+    const mainDocument = parseNotebookDocumentJson(projectState.mainContent).document;
+    saveState = new EditorSaveState(
+      canonicalNotebookJson(draftDocument),
+      canonicalNotebookJson(mainDocument),
+    );
+    const draft = dependencies.createEditor(dom.draftTextarea, draftDocument);
+    const main = dependencies.createEditor(dom.mainTextarea, mainDocument);
     const editors: ProjectEditors = {
       draft,
       main,
@@ -184,7 +195,7 @@ export function setupEditor(
       const element = currentTab === "draft" ? dom.draftTextarea : dom.mainTextarea;
       return {
         element,
-        getText: () => editor.getText(),
+        getDocument: () => editor.getDocument(),
         getSelection: () => editor.getSelection(),
         coordinatesAt: (position) => editor.coordinatesAt(position),
       };

@@ -7,17 +7,25 @@ use next_story_lib::project::{
 };
 use tempfile::TempDir;
 
-/// 生成一段合法格式版本 1 的本子 JSON 字符串（单个正文段落）。
+/// 生成一段合法格式版本 1 的本子 JSON 字符串（每行一个正文段落）。
 fn valid_notebook_json(text: &str) -> String {
+    let content: Vec<serde_json::Value> = text
+        .split('\n')
+        .map(|line| {
+            if line.is_empty() {
+                serde_json::json!({ "type": "paragraph" })
+            } else {
+                serde_json::json!({
+                    "type": "paragraph",
+                    "content": [{ "type": "text", "text": line }]
+                })
+            }
+        })
+        .collect();
     let value = serde_json::json!({
         "format": "next-story-tiptap",
         "version": 1,
-        "document": {
-            "type": "doc",
-            "content": [
-                { "type": "paragraph", "content": [{ "type": "text", "text": text }] }
-            ]
-        }
+        "document": { "type": "doc", "content": content }
     });
     serde_json::to_string_pretty(&value).expect("serialize notebook")
 }
@@ -497,4 +505,185 @@ fn unsupported_version_with_interrupted_transaction_leaves_all_bytes_unchanged()
         let after = fs::read(path).expect("read after snapshot");
         assert_eq!(&after, before_bytes, "文件字节被改动: {}", path.display());
     }
+}
+
+// ---------------------------------------------------------------------------
+// 打开时本子文档校验失败测试（任务 2.1）
+// ---------------------------------------------------------------------------
+
+fn assert_open_rejects_invalid_notebook(notebook_json: &str, file: &str) {
+    let temp = TempDir::new().expect("create temp dir");
+    let root = temp.path().join("坏本子");
+    create_valid_project_folder(&root, "坏本子");
+
+    let target = root.join("作品文本").join(file);
+    fs::write(&target, notebook_json).expect("write invalid notebook");
+    let invalid_bytes = fs::read(&target).expect("read invalid notebook");
+
+    let result = open_existing_project(&root);
+
+    match result {
+        Err(ProjectError::InvalidStructure(message)) => {
+            assert!(
+                message.contains("草稿本") || message.contains("正文本"),
+                "错误应标明具体本子，实际: {message}"
+            );
+        }
+        other => panic!("期望 InvalidStructure 本子校验错误，实际: {other:?}"),
+    }
+
+    // 打开失败后原文件字节不变，不生成空白替代
+    let after = fs::read(&target).expect("read after failed open");
+    assert_eq!(
+        after, invalid_bytes,
+        "打开失败后本子文件被修改: {}",
+        target.display()
+    );
+}
+
+#[test]
+fn open_rejects_corrupted_notebook_json() {
+    assert_open_rejects_invalid_notebook("这不是 JSON", "草稿本.json");
+}
+
+#[test]
+fn open_rejects_unsupported_notebook_document_version() {
+    let doc = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+    });
+    assert_open_rejects_invalid_notebook(
+        &serde_json::to_string(&doc).expect("serialize"),
+        "正文本.json",
+    );
+}
+
+#[test]
+fn open_rejects_unknown_node_type() {
+    let doc = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "image", "attrs": { "src": "x.png" } }] }
+    });
+    assert_open_rejects_invalid_notebook(
+        &serde_json::to_string(&doc).expect("serialize"),
+        "草稿本.json",
+    );
+}
+
+#[test]
+fn open_rejects_nested_list() {
+    let doc = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "bulletList",
+                    "content": [
+                        {
+                            "type": "listItem",
+                            "content": [
+                                { "type": "paragraph" },
+                                { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+    assert_open_rejects_invalid_notebook(
+        &serde_json::to_string(&doc).expect("serialize"),
+        "草稿本.json",
+    );
+}
+
+#[test]
+fn open_rejects_oversized_notebook_before_reading() {
+    let temp = TempDir::new().expect("create temp dir");
+    let root = temp.path().join("超限本子");
+    create_valid_project_folder(&root, "超限本子");
+
+    let target = root.join("作品文本").join("草稿本.json");
+    fs::write(&target, "x".repeat(11 * 1024 * 1024)).expect("write oversized notebook");
+
+    assert!(matches!(
+        open_existing_project(&root),
+        Err(ProjectError::InvalidStructure(_) | ProjectError::ReadError(_))
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// 保存载荷校验与恢复重校验（任务 2.2 / 2.3）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn save_rejects_invalid_notebook_payload_before_staging() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "非法保存".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let draft_path = project_path.join("作品文本").join("草稿本.json");
+    let main_path = project_path.join("作品文本").join("正文本.json");
+    let metadata_path = project_path.join("next-story-system").join("project.json");
+
+    let before_draft = fs::read(&draft_path).expect("read draft before");
+    let before_main = fs::read(&main_path).expect("read main before");
+    let before_metadata = fs::read(&metadata_path).expect("read metadata before");
+
+    // 非法草稿载荷（纯文本，非结构化 JSON）
+    let result = save_existing_project(
+        &project_path,
+        "纯文本草稿".to_string(),
+        valid_notebook_json("正文").to_string(),
+    );
+
+    assert!(matches!(result, Err(ProjectError::InvalidStructure(_))));
+
+    // 三个可见文件保持原有完整世代
+    assert_eq!(fs::read(&draft_path).expect("read draft after"), before_draft);
+    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
+    assert_eq!(
+        fs::read(&metadata_path).expect("read metadata after"),
+        before_metadata
+    );
+
+    // 未创建事务暂存目录
+    let tx_dir = project_path.join("next-story-system").join("save-transaction");
+    assert!(!tx_dir.exists(), "非法保存不应创建事务暂存目录");
+}
+
+#[test]
+fn open_rejects_unrecoverable_transaction_with_invalid_staged_notebook() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "坏恢复".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    // 制造一个提交阶段的中断事务，但暂存草稿是非法内容
+    let tx_dir = project_path.join("next-story-system").join("save-transaction");
+    fs::create_dir_all(&tx_dir).expect("create transaction dir");
+    fs::write(
+        tx_dir.join("manifest.json"),
+        r#"{"manifest_version":1,"phase":"Committing","target_updated_at":"2026-07-25T00:00:00Z"}"#,
+    )
+    .expect("write manifest");
+    fs::write(tx_dir.join("草稿本.json"), "非法暂存草稿").expect("write invalid staged draft");
+    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文")).expect("write staged main");
+    fs::write(
+        tx_dir.join("project.json"),
+        r#"{"name":"坏恢复","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":2}"#,
+    )
+    .expect("write staged metadata");
+
+    let result = open_existing_project(&project_path);
+    assert!(matches!(result, Err(ProjectError::ReadError(_))));
 }

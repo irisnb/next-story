@@ -113,6 +113,22 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
     Ok(())
 }
 
+/// 解析并校验一段本子 JSON 字符串，失败返回中文错误。
+fn validate_notebook_content(content: &str, label: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|_| format!("{label}不是合法 JSON"))?;
+    super::validate_notebook_document(&value).map_err(|e| format!("{label}{e}"))
+}
+
+/// 读取并校验一个结构化本子文件，返回通过校验的原始 JSON 字符串。
+/// 校验失败时返回中文可读的 InvalidStructure 错误，绝不产生空白替代。
+fn read_and_validate_notebook(path: &Path, label: &str) -> Result<String, ProjectError> {
+    let content = read_bounded_string(path, MAX_NOTEBOOK_BYTES)
+        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    validate_notebook_content(&content, label).map_err(ProjectError::InvalidStructure)?;
+    Ok(content)
+}
+
 /// 打开作品
 pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
@@ -125,11 +141,9 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
     let metadata: ProjectMetadata =
         serde_json::from_str(&metadata_json).map_err(|e| ProjectError::ReadError(e.to_string()))?;
 
-    // 读取文本内容
-    let draft_content = read_bounded_string(&paths.draft_file, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
-    let main_content = read_bounded_string(&paths.main_file, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    // 读取并在进入编辑器前校验两份结构化本子
+    let draft_content = read_and_validate_notebook(&paths.draft_file, "草稿本")?;
+    let main_content = read_and_validate_notebook(&paths.main_file, "正文本")?;
 
     Ok(ProjectOpenResult {
         metadata,
@@ -222,6 +236,12 @@ fn run_save_transaction(
     main_content: String,
     mut checkpoint: impl FnMut(SavePhase) -> Result<(), ProjectError>,
 ) -> Result<(), ProjectError> {
+    // 在创建事务暂存文件前校验两份结构化载荷，非法载荷不得触碰任何文件。
+    validate_notebook_content(&draft_content, "草稿本")
+        .map_err(ProjectError::InvalidStructure)?;
+    validate_notebook_content(&main_content, "正文本")
+        .map_err(ProjectError::InvalidStructure)?;
+
     let paths = ProjectPaths::new(project_root.to_path_buf());
     let layout = TransactionLayout::new(&paths);
 
@@ -333,9 +353,15 @@ fn ensure_staged_generation_is_complete(
     layout: &TransactionLayout,
     manifest: &SaveManifest,
 ) -> Result<(), ProjectError> {
-    read_bounded_string(&layout.staged_draft, MAX_NOTEBOOK_BYTES)
+    let staged_draft = read_bounded_string(&layout.staged_draft, MAX_NOTEBOOK_BYTES)
         .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
-    read_bounded_string(&layout.staged_main, MAX_NOTEBOOK_BYTES)
+    let staged_main = read_bounded_string(&layout.staged_main, MAX_NOTEBOOK_BYTES)
+        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
+
+    // 恢复流程在提交暂存世代前校验两份结构化文档。
+    validate_notebook_content(&staged_draft, "草稿本")
+        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
+    validate_notebook_content(&staged_main, "正文本")
         .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
 
     let metadata_json = read_bounded_string(&layout.staged_metadata, MAX_METADATA_BYTES)
@@ -550,11 +576,11 @@ mod tests {
         assert!(project_root.join("keep.txt").is_file());
     }
 
-    const OLD_DRAFT: &str = "旧草稿内容";
-    const OLD_MAIN: &str = "旧正文内容";
+    const OLD_DRAFT: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"旧草稿内容"}]}]}}"#;
+    const OLD_MAIN: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"旧正文内容"}]}]}}"#;
     const OLD_UPDATED_AT: &str = "2000-01-01T00:00:00+00:00";
-    const NEW_DRAFT: &str = "新草稿内容";
-    const NEW_MAIN: &str = "新正文内容";
+    const NEW_DRAFT: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"新草稿内容"}]}]}}"#;
+    const NEW_MAIN: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"新正文内容"}]}]}}"#;
 
     /// 建立一个有效作品，并把三份可见文件写成彼此不同、可辨认的“旧世代”值。
     fn seed_project_with_old_generation(temp: &tempfile::TempDir, name: &str) -> PathBuf {
@@ -836,8 +862,8 @@ mod tests {
 
         let result = save_project(
             &project_root,
-            "再次保存草稿".to_string(),
-            "再次保存正文".to_string(),
+            NEW_DRAFT.to_string(),
+            NEW_MAIN.to_string(),
         );
 
         assert!(matches!(result, Err(ProjectError::ReadError(_))));

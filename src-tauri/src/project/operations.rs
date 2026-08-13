@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::{ProjectError, ProjectMetadata, ProjectOpenResult, ProjectPaths};
+use super::{empty_notebook_value, ProjectError, ProjectMetadata, ProjectOpenResult, ProjectPaths};
 
 const MAX_METADATA_BYTES: u64 = 64 * 1024;
 const MAX_NOTEBOOK_BYTES: u64 = 10 * 1024 * 1024;
@@ -30,18 +30,12 @@ pub fn create_project(name: String, save_location: PathBuf) -> Result<PathBuf, P
         fs::create_dir(&paths.system_dir).map_err(|e| ProjectError::WriteError(e.to_string()))?;
         created_paths.push(paths.system_dir.clone());
 
-        // 创建空的文本文件
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&paths.draft_file)
+        // 创建包含有效空白格式版本 1 文档的结构化本子文件
+        let empty_notebook_json = serde_json::to_string_pretty(&empty_notebook_value())
             .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+        write_file_atomically(&paths.draft_file, &empty_notebook_json)?;
         created_paths.push(paths.draft_file.clone());
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&paths.main_file)
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+        write_file_atomically(&paths.main_file, &empty_notebook_json)?;
         created_paths.push(paths.main_file.clone());
 
         // 创建项目元信息
@@ -96,15 +90,14 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
         return Err(ProjectError::InvalidStructure("缺少系统文件夹".to_string()));
     }
 
-    // 检查必要文件是否存在
-    validate_required_file(&project_root, &paths.draft_file, "草稿本.txt")?;
-    validate_required_file(&project_root, &paths.main_file, "正文本.txt")?;
+    // 先校验元信息与结构版本，再检查本子文件存在性：这样旧版本作品（含旧
+    // `.txt` 本子）会得到「不支持的项目结构版本」而不是「缺少草稿本.json」。
     validate_required_file(&project_root, &paths.metadata_file, "project.json")?;
 
     let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
     let metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
+        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {}", e)))?;
 
     if metadata.version != ProjectMetadata::CURRENT_VERSION {
         return Err(ProjectError::InvalidStructure(format!(
@@ -112,6 +105,10 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
             metadata.version
         )));
     }
+
+    // 检查必要本子文件是否存在
+    validate_required_file(&project_root, &paths.draft_file, "草稿本.json")?;
+    validate_required_file(&project_root, &paths.main_file, "正文本.json")?;
 
     Ok(())
 }
@@ -197,8 +194,8 @@ impl TransactionLayout {
         let dir = paths.system_dir.join(SAVE_TRANSACTION_DIR);
 
         Self {
-            staged_draft: dir.join("草稿本.txt"),
-            staged_main: dir.join("正文本.txt"),
+            staged_draft: dir.join("草稿本.json"),
+            staged_main: dir.join("正文本.json"),
             staged_metadata: dir.join("project.json"),
             manifest: dir.join(SAVE_MANIFEST_FILE),
             dir,
@@ -631,11 +628,11 @@ mod tests {
         // 新世代已暂存在事务目录中
         let tx_dir = paths.system_dir.join("save-transaction");
         assert_eq!(
-            fs::read_to_string(tx_dir.join("草稿本.txt")).expect("read staged draft"),
+            fs::read_to_string(tx_dir.join("草稿本.json")).expect("read staged draft"),
             NEW_DRAFT
         );
         assert_eq!(
-            fs::read_to_string(tx_dir.join("正文本.txt")).expect("read staged main"),
+            fs::read_to_string(tx_dir.join("正文本.json")).expect("read staged main"),
             NEW_MAIN
         );
         assert!(tx_dir.join("manifest.json").is_file());

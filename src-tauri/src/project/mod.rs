@@ -1,6 +1,8 @@
+mod notebook;
 mod operations;
 mod validation;
 
+pub use notebook::*;
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +22,7 @@ pub struct ProjectMetadata {
 }
 
 impl ProjectMetadata {
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 }
 
 /// 项目打开结果
@@ -94,8 +96,8 @@ impl ProjectPaths {
 
         Self {
             user_text_dir: user_text_dir.clone(),
-            draft_file: user_text_dir.join("草稿本.txt"),
-            main_file: user_text_dir.join("正文本.txt"),
+            draft_file: user_text_dir.join("草稿本.json"),
+            main_file: user_text_dir.join("正文本.json"),
             system_dir: system_dir.clone(),
             metadata_file: system_dir.join("project.json"),
         }

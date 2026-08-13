@@ -1,0 +1,626 @@
+{
+  "samples": [
+    {
+      "name": "blank minimal document",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "heading level 1 and 2",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "heading", "attrs": { "level": 1 }, "content": [{ "type": "text", "text": "一级" }] },
+            { "type": "heading", "attrs": { "level": 2 }, "content": [{ "type": "text", "text": "二级" }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "bold and italic marks",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "粗", "marks": [{ "type": "bold" }] },
+                { "type": "text", "text": "斜", "marks": [{ "type": "italic" }] },
+                { "type": "text", "text": "粗斜", "marks": [{ "type": "bold" }, { "type": "italic" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "adjacent text with different marks stays separate",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "a", "marks": [{ "type": "bold" }] },
+                { "type": "text", "text": "b" },
+                { "type": "text", "text": "c", "marks": [{ "type": "italic" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "bullet list",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "bulletList",
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "甲" }] }] },
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "乙" }] }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ordered list with start 3",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "orderedList",
+              "attrs": { "start": 3 },
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "三" }] }] },
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "四" }] }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "leading trailing and consecutive empty paragraphs",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "paragraph" },
+            { "type": "paragraph", "content": [{ "type": "text", "text": "甲" }] },
+            { "type": "paragraph" },
+            { "type": "paragraph" },
+            { "type": "paragraph", "content": [{ "type": "text", "text": "乙" }] },
+            { "type": "paragraph" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "chinese and emoji text",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "她推开门，看见雨落在旧站台上。镜头推进 🎬" }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "empty heading omits content",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [{ "type": "heading", "attrs": { "level": 1 } }]
+        }
+      }
+    },
+    {
+      "name": "extra outer field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] },
+        "extra": true
+      }
+    },
+    {
+      "name": "missing version",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "missing format",
+      "valid": false,
+      "value": {
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "missing document",
+      "valid": false,
+      "value": { "format": "next-story-tiptap", "version": 1 }
+    },
+    {
+      "name": "wrong format value",
+      "valid": false,
+      "value": {
+        "format": "tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version as string",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": "1",
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version as null",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": null,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version as fraction",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1.5,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version as negative",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": -1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "unsupported future version",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "doc with empty content array",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [] }
+      }
+    },
+    {
+      "name": "doc missing content",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc" }
+      }
+    },
+    {
+      "name": "doc with extra field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }], "extra": 1 }
+      }
+    },
+    {
+      "name": "paragraph with extra field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "extra": 1 }] }
+      }
+    },
+    {
+      "name": "paragraph with empty content array",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [] }] }
+      }
+    },
+    {
+      "name": "heading level 3",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "三级" }] }] }
+      }
+    },
+    {
+      "name": "heading missing attrs",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "heading", "content": [{ "type": "text", "text": "无属性" }] }] }
+      }
+    },
+    {
+      "name": "heading with extra attr field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 1, "extra": 1 }, "content": [{ "type": "text", "text": "多余" }] }] }
+      }
+    },
+    {
+      "name": "text empty string",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "" }] }] }
+      }
+    },
+    {
+      "name": "text containing CR",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a\rb" }] }] }
+      }
+    },
+    {
+      "name": "text containing LF",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a\nb" }] }] }
+      }
+    },
+    {
+      "name": "text with extra field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "extra": 1 }] }] }
+      }
+    },
+    {
+      "name": "text with empty marks array",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [] }] }] }
+      }
+    },
+    {
+      "name": "marks out of order",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "italic" }, { "type": "bold" }] }] }] }
+      }
+    },
+    {
+      "name": "duplicate marks",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "bold" }, { "type": "bold" }] }] }] }
+      }
+    },
+    {
+      "name": "mark with extra field",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "bold", "extra": 1 }] }] }] }
+      }
+    },
+    {
+      "name": "unknown mark underline",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "underline" }] }] }] }
+      }
+    },
+    {
+      "name": "unmerged adjacent identical-mark text",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "a", "marks": [{ "type": "bold" }] },
+                { "type": "text", "text": "b", "marks": [{ "type": "bold" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "bulletList with empty content",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [] }] }
+      }
+    },
+    {
+      "name": "bulletList containing paragraph directly",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [{ "type": "paragraph" }] }] }
+      }
+    },
+    {
+      "name": "listItem with two paragraphs",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "bulletList",
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph" }, { "type": "paragraph" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "listItem with empty content",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [{ "type": "listItem", "content": [] }] }] }
+      }
+    },
+    {
+      "name": "listItem containing heading",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "heading", "attrs": { "level": 1 } }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "nested bullet list",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "bulletList",
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph" },
+                    { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList missing attrs",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList start zero",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 0 }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList start fractional",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 1.5 }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList start above safe integer",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 9007199254740992 }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList numbering overflow",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "orderedList",
+              "attrs": { "start": 9007199254740991 },
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph" }] },
+                { "type": "listItem", "content": [{ "type": "paragraph" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "orderedList start as string",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": "3" }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image node",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "image", "attrs": { "src": "x.png" } }] }
+      }
+    },
+    {
+      "name": "table node",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "table", "content": [] }] }
+      }
+    },
+    {
+      "name": "link mark",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "link", "attrs": { "href": "x" } }] }] }] }
+      }
+    },
+    {
+      "name": "hard break node",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a" }, { "type": "hardBreak" }] }] }
+      }
+    }
+  ]
+}

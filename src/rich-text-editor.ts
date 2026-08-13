@@ -12,6 +12,8 @@ import Text from "@tiptap/extension-text";
 
 import type { FormatCommand } from "./format-commands.ts";
 import { fixSplitOrderedListStart } from "./list-numbering.ts";
+import { decidePasteAction, parseHtmlToBlocks } from "./controlled-paste.ts";
+import { canonicalDoc, serializeSelectionToPlainText } from "./structured-notebook.ts";
 
 export type RichTextEditorSelection = Readonly<{
   from: number;
@@ -66,6 +68,10 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
       element,
       extensions: buildRichTextExtensions(),
       content: initialDocument,
+      editorProps: {
+        clipboardTextSerializer: (slice) => sliceToPlainText(slice),
+        handlePaste: (_view, event) => this.handlePaste(event),
+      },
     });
   }
 
@@ -171,9 +177,36 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
     return this.editor.can().redo();
   }
 
+  private handlePaste(event: ClipboardEvent): boolean {
+    const data = event.clipboardData;
+    if (!data) return false;
+    const plain = data.getData("text/plain");
+    const html = data.getData("text/html");
+    const parsed = html
+      ? parseHtmlToBlocks(html)
+      : { blocks: [], hasImage: false, hasUnknownVisibleEmbed: false };
+    const action = decidePasteAction(plain, html !== "", parsed);
+
+    if (action.kind === "insert") {
+      this.editor.commands.insertContent(action.document.content);
+      if (parsed.hasImage) alert("图片未被加入");
+    } else if (action.kind === "reject") {
+      alert(action.reason);
+    } else {
+      alert("无法将图片加入本子");
+    }
+    return true;
+  }
+
   destroy(): void {
     this.editor.destroy();
   }
+}
+
+/** 把复制的选区切片序列化为带列表符号的纯文本。 */
+function sliceToPlainText(slice: { content: { toJSON(): unknown[] } }): string {
+  const doc = { type: "doc", content: slice.content.toJSON() };
+  return serializeSelectionToPlainText(canonicalDoc(doc), 0, Number.MAX_SAFE_INTEGER);
 }
 
 export class RichTextEditorAdapter {

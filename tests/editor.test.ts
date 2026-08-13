@@ -325,6 +325,48 @@ test("destroying the controller destroys both editors", () => {
   }
 });
 
+test("detects a format-only change as unsaved", () => {
+  const fixture = editorFixture();
+  try {
+    fixture.editor.showProject(project("作品", "正文", "正文"));
+
+    // 只加粗，可见文字不变
+    const boldDoc: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "正文", marks: [{ type: "bold" }] }] },
+      ],
+    };
+    fixture.editors[0]?.edit(boldDoc);
+
+    assert.equal(fixture.editor.hasUnsavedChanges(), true);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("reverting format to the saved baseline clears unsaved", () => {
+  const fixture = editorFixture();
+  try {
+    fixture.editor.showProject(project("作品", "正文", "正文"));
+
+    const boldDoc: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "正文", marks: [{ type: "bold" }] }] },
+      ],
+    };
+    fixture.editors[0]?.edit(boldDoc);
+    assert.equal(fixture.editor.hasUnsavedChanges(), true);
+
+    fixture.editors[0]?.edit(paragraphDoc("正文"));
+
+    assert.equal(fixture.editor.hasUnsavedChanges(), false);
+  } finally {
+    fixture.restore();
+  }
+});
+
 test("opens existing notebooks, saves exact edits, unloads, and reopens the saved snapshot", async () => {
   const fixture = editorFixture();
   const projectPath = "D:\\作品\\保留结构化";

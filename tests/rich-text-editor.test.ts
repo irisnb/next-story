@@ -9,6 +9,7 @@ import {
   type RichTextEditorEngine,
 } from "../src/rich-text-editor.ts";
 import { canonicalDoc } from "../src/structured-notebook.ts";
+import type { FormatCommand } from "../src/format-commands.ts";
 
 // ---------------------------------------------------------------------------
 // 3.1 schema 只允许本轮支持的节点与标记
@@ -176,6 +177,18 @@ class FakeRichTextEditorEngine implements RichTextEditorEngine {
   coordinatesAt(position: number) {
     this.lastCoordinatePosition = position;
     return this.coordinates;
+  }
+
+  runCommand(_command: FormatCommand): boolean {
+    return false;
+  }
+
+  canUndo(): boolean {
+    return false;
+  }
+
+  canRedo(): boolean {
+    return false;
   }
 
   destroy(): void {

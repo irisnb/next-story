@@ -7,6 +7,7 @@ import {
   type RichTextEditorCoordinates,
   type RichTextEditorEngine,
 } from "../src/rich-text-editor.ts";
+import type { FormatCommand } from "../src/format-commands.ts";
 
 test("legacy textarea mirror coordinate module is absent from production", () => {
   const legacyModule = new URL("../src/caret-coordinates.ts", import.meta.url);
@@ -42,6 +43,18 @@ class CoordinateEngine implements RichTextEditorEngine {
       top: 20,
       bottom: 36,
     };
+  }
+
+  runCommand(_command: FormatCommand): boolean {
+    return false;
+  }
+
+  canUndo(): boolean {
+    return false;
+  }
+
+  canRedo(): boolean {
+    return false;
   }
 
   destroy(): void {}

@@ -72,6 +72,30 @@
         <button id="tab-main" class="tab-btn">正文本</button>
       </nav>
       
+      <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="文本格式">
+        <select id="paragraph-style" class="toolbar-select" aria-label="段落样式">
+          <option value="" disabled>多种格式</option>
+          <option value="paragraph">正文</option>
+          <option value="heading1">一级标题</option>
+          <option value="heading2">二级标题</option>
+        </select>
+        <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
+        <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
+        <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
+        <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
+        <button id="btn-clear-format" class="toolbar-btn toolbar-collapsible" type="button" aria-label="清除格式">清除格式</button>
+        <button id="btn-undo" class="toolbar-btn toolbar-collapsible" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
+        <button id="btn-redo" class="toolbar-btn toolbar-collapsible" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
+        <div class="toolbar-more">
+          <button id="btn-more" class="toolbar-btn" type="button" aria-label="更多" aria-haspopup="true">更多</button>
+          <div id="more-menu" class="more-menu hidden" role="menu" aria-label="更多格式命令">
+            <button id="btn-more-clear-format" class="more-menu-btn" type="button" role="menuitem">清除格式</button>
+            <button id="btn-more-undo" class="more-menu-btn" type="button" role="menuitem">撤销</button>
+            <button id="btn-more-redo" class="more-menu-btn" type="button" role="menuitem">重做</button>
+          </div>
+        </div>
+      </div>
+      
       <div class="editor-body">
         <div class="editor-notebooks">
           <div id="draft-textarea" class="notebook-textarea" data-placeholder="在这里写草稿..."></div>

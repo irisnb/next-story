@@ -7,6 +7,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { AiFeatureController } from "../src/ai-feature.ts";
 import type { AppDom } from "../src/dom.ts";
 import { setupEditor } from "../src/editor.ts";
+import type { FormatCommand } from "../src/format-commands.ts";
 import type { LeaveDialogController } from "../src/leave-dialog.ts";
 import type {
   RichTextEditorCoordinates,
@@ -50,6 +51,7 @@ class FakeClassList {
 class FakeElement {
   readonly classList = new FakeClassList();
   private readonly listeners = new Map<string, Listener[]>();
+  private readonly attributes = new Map<string, string>();
   textContent = "";
   className = "";
   value = "";
@@ -59,6 +61,14 @@ class FakeElement {
     const listeners = this.listeners.get(type) ?? [];
     listeners.push(listener);
     this.listeners.set(type, listeners);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
   }
 
   click(): void {
@@ -96,6 +106,18 @@ class FakeRichTextEditor {
 
   coordinatesAt(_position: number): RichTextEditorCoordinates {
     return { left: 0, right: 0, top: 0, bottom: 0 };
+  }
+
+  runCommand(_command: FormatCommand): boolean {
+    return false;
+  }
+
+  canUndo(): boolean {
+    return false;
+  }
+
+  canRedo(): boolean {
+    return false;
   }
 
   destroy(): void {
@@ -170,6 +192,19 @@ function fakeDom(): { readonly dom: AppDom; restore(): void } {
       tabMain: element("tab-main"),
       draftTextarea: element("draft-textarea"),
       mainTextarea: element("main-textarea"),
+      paragraphStyle: element("paragraph-style"),
+      btnBold: element("btn-bold"),
+      btnItalic: element("btn-italic"),
+      btnBulletList: element("btn-bullet-list"),
+      btnOrderedList: element("btn-ordered-list"),
+      btnClearFormat: element("btn-clear-format"),
+      btnUndo: element("btn-undo"),
+      btnRedo: element("btn-redo"),
+      btnMore: element("btn-more"),
+      moreMenu: element("more-menu"),
+      btnMoreClearFormat: element("btn-more-clear-format"),
+      btnMoreUndo: element("btn-more-undo"),
+      btnMoreRedo: element("btn-more-redo"),
       llmConfigPage: element("llm-config-page"),
       btnLlmConfig: element("btn-llm-config"),
       btnSettings: element("btn-settings"),

@@ -1,4 +1,4 @@
-import { Editor, type JSONContent } from "@tiptap/core";
+import { Editor, findParentNode, type JSONContent } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import Heading from "@tiptap/extension-heading";
 import Bold from "@tiptap/extension-bold";
@@ -9,6 +9,9 @@ import ListItem from "@tiptap/extension-list-item";
 import History from "@tiptap/extension-history";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
+
+import type { FormatCommand } from "./format-commands.ts";
+import { fixSplitOrderedListStart } from "./list-numbering.ts";
 
 export type RichTextEditorSelection = Readonly<{
   from: number;
@@ -49,6 +52,9 @@ export interface RichTextEditorEngine {
   focus(): void;
   getSelection(): RichTextEditorSelection;
   coordinatesAt(position: number): RichTextEditorCoordinates;
+  runCommand(command: FormatCommand): boolean;
+  canUndo(): boolean;
+  canRedo(): boolean;
   destroy(): void;
 }
 
@@ -88,6 +94,83 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
     return this.editor.view.coordsAtPos(position);
   }
 
+  runCommand(command: FormatCommand): boolean {
+    const chain = this.editor.chain().focus();
+    switch (command.kind) {
+      case "paragraph":
+        return chain.setParagraph().run();
+      case "heading":
+        return chain.toggleHeading({ level: command.level }).run();
+      case "bold":
+        return chain.toggleBold().run();
+      case "italic":
+        return chain.toggleItalic().run();
+      case "bulletList":
+        return chain.toggleBulletList().run();
+      case "orderedList":
+        return this.toggleOrderedList();
+
+      case "clearFormatting":
+        return chain.clearNodes().unsetAllMarks().run();
+      case "undo":
+        return this.editor.commands.undo();
+      case "redo":
+        return this.editor.commands.redo();
+    }
+  }
+
+  /** 切换有序列表，并在部分抬出时保留未触及片段的实际编号。 */
+  private toggleOrderedList(): boolean {
+    const { editor } = this;
+    const { state } = editor;
+    const { selection } = state;
+    const parent = findParentNode((node) => node.type.name === "orderedList")(selection);
+
+    let originalStart = 1;
+    let trailingStart: number | null = null;
+    if (parent) {
+      const listNode = parent.node;
+      originalStart = listNode.attrs.start as number;
+      const listPos = parent.pos;
+      const listEnd = listPos + listNode.nodeSize;
+      const inside = selection.from >= listPos && selection.to <= listEnd;
+      if (inside) {
+        let itemsBefore = 0;
+        let itemsLifted = 0;
+        listNode.forEach((child, offset) => {
+          const itemPos = listPos + 1 + offset;
+          const itemEnd = itemPos + child.nodeSize;
+          if (itemEnd <= selection.from) itemsBefore += 1;
+          else if (itemPos < selection.to) itemsLifted += 1;
+        });
+        const hasTrailing = itemsBefore + itemsLifted < listNode.childCount;
+        if (hasTrailing && itemsLifted > 0) {
+          trailingStart = originalStart + itemsBefore + itemsLifted;
+        }
+      }
+    }
+
+    return editor
+      .chain()
+      .focus()
+      .toggleOrderedList()
+      .command(({ tr }) => {
+        if (trailingStart !== null) {
+          fixSplitOrderedListStart(tr.doc, tr, originalStart, trailingStart);
+        }
+        return true;
+      })
+      .run();
+  }
+
+  canUndo(): boolean {
+    return this.editor.can().undo();
+  }
+
+  canRedo(): boolean {
+    return this.editor.can().redo();
+  }
+
   destroy(): void {
     this.editor.destroy();
   }
@@ -121,6 +204,18 @@ export class RichTextEditorAdapter {
 
   coordinatesAt(position: number): RichTextEditorCoordinates {
     return this.engine.coordinatesAt(position);
+  }
+
+  runCommand(command: FormatCommand): boolean {
+    return this.engine.runCommand(command);
+  }
+
+  canUndo(): boolean {
+    return this.engine.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.engine.canRedo();
   }
 
   destroy(): void {

@@ -19,6 +19,19 @@ export interface AppDom {
   tabMain: HTMLButtonElement;
   draftTextarea: HTMLElement;
   mainTextarea: HTMLElement;
+  paragraphStyle: HTMLSelectElement;
+  btnBold: HTMLButtonElement;
+  btnItalic: HTMLButtonElement;
+  btnBulletList: HTMLButtonElement;
+  btnOrderedList: HTMLButtonElement;
+  btnClearFormat: HTMLButtonElement;
+  btnUndo: HTMLButtonElement;
+  btnRedo: HTMLButtonElement;
+  btnMore: HTMLButtonElement;
+  moreMenu: HTMLElement;
+  btnMoreClearFormat: HTMLButtonElement;
+  btnMoreUndo: HTMLButtonElement;
+  btnMoreRedo: HTMLButtonElement;
   llmConfigPage: HTMLElement;
   btnLlmConfig: HTMLButtonElement;
   btnSettings: HTMLButtonElement;
@@ -77,6 +90,19 @@ export function getAppDom(): AppDom {
     tabMain: requireElement("tab-main"),
     draftTextarea: requireElement("draft-textarea"),
     mainTextarea: requireElement("main-textarea"),
+    paragraphStyle: requireElement("paragraph-style"),
+    btnBold: requireElement("btn-bold"),
+    btnItalic: requireElement("btn-italic"),
+    btnBulletList: requireElement("btn-bullet-list"),
+    btnOrderedList: requireElement("btn-ordered-list"),
+    btnClearFormat: requireElement("btn-clear-format"),
+    btnUndo: requireElement("btn-undo"),
+    btnRedo: requireElement("btn-redo"),
+    btnMore: requireElement("btn-more"),
+    moreMenu: requireElement("more-menu"),
+    btnMoreClearFormat: requireElement("btn-more-clear-format"),
+    btnMoreUndo: requireElement("btn-more-undo"),
+    btnMoreRedo: requireElement("btn-more-redo"),
     llmConfigPage: requireElement("llm-config-page"),
     btnLlmConfig: requireElement("btn-llm-config"),
     btnSettings: requireElement("btn-settings"),

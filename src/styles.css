@@ -762,3 +762,100 @@
     z-index: 30;
   }
 }
+/* ========== Format toolbar ========== */
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.toolbar-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  background: #edf2f7;
+}
+
+.toolbar-btn[aria-pressed="true"],
+.toolbar-btn[aria-pressed="mixed"] {
+  background: #e2e8f0;
+  border-color: #cbd5e0;
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
+
+.toolbar-select {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+}
+
+.toolbar-more {
+  position: relative;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 0.25rem;
+  z-index: 20;
+}
+
+.more-menu-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.more-menu-btn:hover {
+  background: #edf2f7;
+}
+
+.more-menu-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 宽窗口：更多按钮隐藏 */
+#btn-more {
+  display: none;
+}
+
+/* A2 窄窗口：收纳清除格式、撤销、重做 */
+@media (max-width: 760px) {
+  .toolbar-collapsible {
+    display: none;
+  }
+  #btn-more {
+    display: inline-block;
+  }
+}

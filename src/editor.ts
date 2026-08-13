@@ -12,7 +12,12 @@ import { saveProject } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
 import type { SelectionEntryEditor } from "./selection-entry.ts";
 import type { NotebookTab, ProjectState } from "./types.ts";
-import { canonicalNotebookJson, parseNotebookDocumentJson } from "./structured-notebook.ts";
+import { analyzeSelection, type FormatCommand, type TriState } from "./format-commands.ts";
+import {
+  canonicalDoc,
+  canonicalNotebookJson,
+  parseNotebookDocumentJson,
+} from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
 
 export interface EditorController {
@@ -30,7 +35,15 @@ export interface EditorController {
 
 type EditorAdapter = Pick<
   RichTextEditorAdapter,
-  "getDocument" | "onEdit" | "focus" | "getSelection" | "coordinatesAt" | "destroy"
+  | "getDocument"
+  | "onEdit"
+  | "focus"
+  | "getSelection"
+  | "coordinatesAt"
+  | "runCommand"
+  | "canUndo"
+  | "canRedo"
+  | "destroy"
 >;
 
 interface EditorDependencies {
@@ -91,6 +104,7 @@ export function setupEditor(
     dom.draftTextarea.classList.toggle("hidden", tab !== "draft");
     dom.mainTextarea.classList.toggle("hidden", tab !== "main");
     if (changedTab) aiFeature?.resetSelectionEntry();
+    renderToolbar();
   }
 
   function renderSaveState(): void {
@@ -111,6 +125,70 @@ export function setupEditor(
       canonicalNotebookJson(editors.main.getDocument()),
     );
     renderSaveState();
+    renderToolbar();
+  }
+
+  // ---- 工具栏 ----
+
+  function runFormatCommand(command: FormatCommand): boolean {
+    const editors = projectEditors;
+    if (!editors) return false;
+    const result = editors[currentTab].runCommand(command);
+    renderToolbar();
+    return result;
+  }
+
+  function currentHasSelection(): boolean {
+    const editors = projectEditors;
+    if (!editors) return false;
+    const selection = editors[currentTab].getSelection();
+    return selection.from < selection.to;
+  }
+
+  function pressedValue(state: TriState): string {
+    return state === "on" ? "true" : state === "off" ? "false" : "mixed";
+  }
+
+  function renderToolbar(): void {
+    const editors = projectEditors;
+    if (!editors) return;
+    const editor = editors[currentTab];
+    const selection = editor.getSelection();
+    const hasSelection = selection.from < selection.to;
+    const format = analyzeSelection(
+      canonicalDoc(editor.getDocument()),
+      selection.from,
+      selection.to,
+    );
+    const canUndo = editor.canUndo();
+    const canRedo = editor.canRedo();
+
+    dom.paragraphStyle.value =
+      format.paragraphStyle === "mixed" ? "" : format.paragraphStyle;
+    dom.btnBold.setAttribute("aria-pressed", pressedValue(format.bold));
+    dom.btnItalic.setAttribute("aria-pressed", pressedValue(format.italic));
+    dom.btnBulletList.setAttribute("aria-pressed", format.list === "bullet" ? "true" : "false");
+    dom.btnOrderedList.setAttribute("aria-pressed", format.list === "ordered" ? "true" : "false");
+
+    dom.paragraphStyle.disabled = !hasSelection;
+    dom.btnBold.disabled = !hasSelection;
+    dom.btnItalic.disabled = !hasSelection;
+    dom.btnBulletList.disabled = !hasSelection;
+    dom.btnOrderedList.disabled = !hasSelection;
+    dom.btnClearFormat.disabled = !hasSelection;
+    dom.btnMoreClearFormat.disabled = !hasSelection;
+    dom.btnUndo.disabled = !canUndo;
+    dom.btnRedo.disabled = !canRedo;
+    dom.btnMoreUndo.disabled = !canUndo;
+    dom.btnMoreRedo.disabled = !canRedo;
+  }
+
+  function toggleMoreMenu(): void {
+    dom.moreMenu.classList.toggle("hidden");
+  }
+
+  function runSelectionCommand(command: FormatCommand): void {
+    if (currentHasSelection()) runFormatCommand(command);
   }
 
   async function save(): Promise<boolean> {
@@ -172,10 +250,61 @@ export function setupEditor(
   dom.tabDraft.addEventListener("click", () => switchTab("draft"));
   dom.tabMain.addEventListener("click", () => switchTab("main"));
   dom.btnSave.addEventListener("click", () => { void save(); });
+
+  // 工具栏命令
+  dom.btnBold.addEventListener("click", () => runSelectionCommand({ kind: "bold" }));
+  dom.btnItalic.addEventListener("click", () => runSelectionCommand({ kind: "italic" }));
+  dom.btnBulletList.addEventListener("click", () => runSelectionCommand({ kind: "bulletList" }));
+  dom.btnOrderedList.addEventListener("click", () => runSelectionCommand({ kind: "orderedList" }));
+  dom.btnClearFormat.addEventListener("click", () => runSelectionCommand({ kind: "clearFormatting" }));
+  dom.btnMoreClearFormat.addEventListener("click", () => runSelectionCommand({ kind: "clearFormatting" }));
+  dom.btnUndo.addEventListener("click", () => runFormatCommand({ kind: "undo" }));
+  dom.btnRedo.addEventListener("click", () => runFormatCommand({ kind: "redo" }));
+  dom.btnMoreUndo.addEventListener("click", () => runFormatCommand({ kind: "undo" }));
+  dom.btnMoreRedo.addEventListener("click", () => runFormatCommand({ kind: "redo" }));
+  dom.btnMore.addEventListener("click", toggleMoreMenu);
+  dom.paragraphStyle.addEventListener("change", () => {
+    if (!currentHasSelection()) return;
+    const value = dom.paragraphStyle.value;
+    if (value === "heading1") runFormatCommand({ kind: "heading", level: 1 });
+    else if (value === "heading2") runFormatCommand({ kind: "heading", level: 2 });
+    else runFormatCommand({ kind: "paragraph" });
+  });
+
+  // 选区变化时更新工具栏状态
+  for (const element of [dom.draftTextarea, dom.mainTextarea]) {
+    for (const eventType of ["mouseup", "keyup", "select", "focus", "input"]) {
+      element.addEventListener(eventType, renderToolbar);
+    }
+  }
+
   document.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    const mod = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    if (mod && key === "s") {
       event.preventDefault();
       if (saveState?.hasUnsavedChanges) void save();
+      return;
+    }
+    if (mod && key === "b") {
+      event.preventDefault();
+      runSelectionCommand({ kind: "bold" });
+      return;
+    }
+    if (mod && key === "i") {
+      event.preventDefault();
+      runSelectionCommand({ kind: "italic" });
+      return;
+    }
+    if (mod && key === "z") {
+      event.preventDefault();
+      runFormatCommand(event.shiftKey ? { kind: "redo" } : { kind: "undo" });
+      return;
+    }
+    if (mod && key === "y") {
+      event.preventDefault();
+      runFormatCommand({ kind: "redo" });
+      return;
     }
   });
 

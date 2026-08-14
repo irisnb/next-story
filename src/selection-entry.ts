@@ -303,7 +303,17 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     coordinates: RichTextEditorCoordinates,
   ): boolean {
     const rect = editor.element.getBoundingClientRect();
-    return coordinates.top >= rect.top && coordinates.bottom <= rect.bottom;
+    // 坐标异常（NaN/Infinity）时兜底视为可见，避免误隐藏。
+    if (!Number.isFinite(coordinates.top) || !Number.isFinite(coordinates.bottom)) {
+      return true;
+    }
+    // 容差：文档第一个/最后一个字符的坐标可能因亚像素或边界计算略超出容器，
+    // 严格比较会误判为「不可见」，导致选中首字符时入口不出现。
+    const tolerance = 4;
+    return (
+      coordinates.top >= rect.top - tolerance &&
+      coordinates.bottom <= rect.bottom + tolerance
+    );
   }
 
   function selectionRectFromCarets(
@@ -403,6 +413,18 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       actionSnapshot = snapshot;
       entry.classList.remove("hidden");
     } else {
+      // 临时诊断：有选区但入口被隐藏时，打印关键数据（问题定位用）。
+      if (snapshot !== null) {
+        console.log("[AI入口诊断]", JSON.stringify({
+          selectedText: snapshot.selectedText,
+          from: snapshot.from,
+          to: snapshot.to,
+          head: selection.head,
+          hasMeaningful: isMeaningfulSelection(snapshot),
+          focusCoordinates,
+          rect: editor.element.getBoundingClientRect(),
+        }));
+      }
       hideEntry();
     }
   }

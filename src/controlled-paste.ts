@@ -3,8 +3,8 @@
 
 /** 把纯文本规范化为比较用行数组：CRLF/CR→LF、NBSP→空格、去行尾空白、去至多一个末尾 LF。 */
 export function normalizePlainLines(raw: string): string[] {
-  let s = raw.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
-  let lines = s.split("\n").map((line) => line.replace(/[ \t]+$/, ""));
+  const s = raw.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
+  const lines = s.split("\n").map((line) => line.replace(/[ \t]+$/, ""));
   if (lines.length > 0 && lines[lines.length - 1] === "") {
     lines.pop();
   }

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -6,10 +8,11 @@ use std::time::{Duration, Instant};
 
 use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
-    generate_ai_thinking_with_timeout, load_llm_config, save_llm_config, test_llm_connection,
-    validate_llm_config, GenerateAiError, GenerateAiErrorCode, GenerateAiMessage,
-    GenerateAiMessageRole, GenerateAiRequest, LlmConfig, LlmConfigError,
-    CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+    generate_ai_thinking_with_timeout, load_llm_config_with_store, save_llm_config_with_store,
+    test_llm_connection, validate_llm_config, GenerateAiError, GenerateAiErrorCode,
+    GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, LlmConfig, LlmConfigError,
+    SecretStore, CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, KEYRING_ACCOUNT,
+    KEYRING_SERVICE, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
 };
 use tempfile::TempDir;
 
@@ -26,6 +29,44 @@ fn sample_config(api_base_url: String) -> LlmConfig {
         api_base_url,
         api_key: "test-key".to_string(),
         model: "test-model".to_string(),
+    }
+}
+
+/// 内存版密钥存储：测试专用，绝不触碰真实操作系统钥匙串。
+#[derive(Default)]
+struct MockStore {
+    secrets: RefCell<HashMap<(String, String), String>>,
+}
+
+impl MockStore {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl SecretStore for MockStore {
+    fn get(&self, service: &str, account: &str) -> Result<Option<String>, LlmConfigError> {
+        Ok(self
+            .secrets
+            .borrow()
+            .get(&(service.to_string(), account.to_string()))
+            .cloned())
+    }
+
+    fn set(&self, service: &str, account: &str, secret: &str) -> Result<(), LlmConfigError> {
+        let _ = self.secrets.borrow_mut().insert(
+            (service.to_string(), account.to_string()),
+            secret.to_string(),
+        );
+        Ok(())
+    }
+
+    fn delete(&self, service: &str, account: &str) -> Result<(), LlmConfigError> {
+        let _ = self
+            .secrets
+            .borrow_mut()
+            .remove(&(service.to_string(), account.to_string()));
+        Ok(())
     }
 }
 
@@ -182,13 +223,14 @@ fn save_and_reload_preserves_config_and_touches_no_notebooks() {
     let temp = TempDir::new().expect("create temp dir");
     let base = temp.path().to_path_buf();
     let config = sample_config("https://api.example.com/v1".to_string());
+    let store = MockStore::new();
 
-    save_llm_config(&base, &config).expect("save config");
+    save_llm_config_with_store(&base, &config, &store).expect("save config");
 
     // 配置是应用级，不应触碰用户笔记本文件夹
     assert!(!base.join("作品文本").exists());
 
-    let loaded = load_llm_config(&base)
+    let loaded = load_llm_config_with_store(&base, &store)
         .expect("load config")
         .expect("config should exist");
     assert_eq!(loaded.api_base_url, config.api_base_url);
@@ -199,7 +241,8 @@ fn save_and_reload_preserves_config_and_touches_no_notebooks() {
 #[test]
 fn load_returns_none_when_config_absent() {
     let temp = TempDir::new().expect("create temp dir");
-    let loaded = load_llm_config(temp.path()).expect("load config");
+    let store = MockStore::new();
+    let loaded = load_llm_config_with_store(temp.path(), &store).expect("load config");
     assert!(loaded.is_none());
 }
 
@@ -209,8 +252,116 @@ fn load_rejects_oversized_config_file() {
     std::fs::write(temp.path().join("llm-config.json"), "x".repeat(65 * 1024))
         .expect("write oversized config");
 
-    let result = load_llm_config(temp.path());
+    let store = MockStore::new();
+    let result = load_llm_config_with_store(temp.path(), &store);
     assert!(matches!(result, Err(LlmConfigError::ReadError(_))));
+}
+
+#[test]
+fn saved_config_file_never_contains_api_key() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let config = sample_config("https://api.example.com/v1".to_string());
+    let store = MockStore::new();
+
+    save_llm_config_with_store(&base, &config, &store).expect("save config");
+
+    // API Key 不得落盘：文件只含非敏感字段
+    let json = std::fs::read_to_string(base.join("llm-config.json")).expect("read config file");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    assert!(
+        value.get("api_key").is_none(),
+        "磁盘文件不得含 api_key: {json}"
+    );
+    assert_eq!(value["api_base_url"], config.api_base_url);
+    assert_eq!(value["model"], config.model);
+
+    // Key 进入密钥存储，且使用约定的 service / account
+    assert_eq!(
+        store
+            .get(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .expect("store get"),
+        Some(config.api_key)
+    );
+}
+
+#[test]
+fn api_key_round_trips_through_secret_store() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let config = sample_config("https://api.example.com/v1".to_string());
+    let store = MockStore::new();
+
+    save_llm_config_with_store(&base, &config, &store).expect("save config");
+    let loaded = load_llm_config_with_store(&base, &store)
+        .expect("load config")
+        .expect("config should exist");
+    assert_eq!(loaded.api_base_url, config.api_base_url);
+    assert_eq!(loaded.api_key, config.api_key);
+    assert_eq!(loaded.model, config.model);
+}
+
+#[test]
+fn load_fails_clearly_when_file_exists_but_secret_store_is_empty() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let config = sample_config("https://api.example.com/v1".to_string());
+
+    save_llm_config_with_store(&base, &config, &MockStore::new()).expect("save config");
+
+    // 另一个空 store 模拟钥匙串丢失 key 的情况
+    let result = load_llm_config_with_store(&base, &MockStore::new());
+    assert!(matches!(result, Err(LlmConfigError::SecretStoreError(_))));
+    let message = result.expect_err("应失败").to_string();
+    assert!(
+        message.contains("API Key"),
+        "错误信息应提示 API Key，实际: {message}"
+    );
+}
+
+#[test]
+fn legacy_plaintext_config_is_migrated_into_store_and_rewritten_without_key() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let legacy_json = serde_json::json!({
+        "api_base_url": "https://api.example.com/v1",
+        "api_key": "legacy-secret-key",
+        "model": "legacy-model",
+    });
+    std::fs::write(base.join("llm-config.json"), legacy_json.to_string())
+        .expect("write legacy config");
+
+    let store = MockStore::new();
+    let loaded = load_llm_config_with_store(&base, &store)
+        .expect("load config")
+        .expect("config should exist");
+    assert_eq!(loaded.api_base_url, "https://api.example.com/v1");
+    assert_eq!(loaded.api_key, "legacy-secret-key");
+    assert_eq!(loaded.model, "legacy-model");
+
+    // 明文 key 已迁进密钥存储
+    assert_eq!(
+        store
+            .get(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .expect("store get"),
+        Some("legacy-secret-key".to_string())
+    );
+
+    // 磁盘文件已被改写为不含 key 的新格式
+    let json = std::fs::read_to_string(base.join("llm-config.json")).expect("read rewritten file");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    assert!(
+        value.get("api_key").is_none(),
+        "迁移后文件不得再含 api_key: {json}"
+    );
+    assert_eq!(value["api_base_url"], "https://api.example.com/v1");
+    assert_eq!(value["model"], "legacy-model");
+
+    // 再次加载（新格式 + 存储里有 key）仍能取回完整配置
+    let reloaded = load_llm_config_with_store(&base, &store)
+        .expect("reload config")
+        .expect("config should exist");
+    assert_eq!(reloaded.api_key, "legacy-secret-key");
 }
 
 #[test]

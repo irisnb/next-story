@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{empty_notebook_value, ProjectError, ProjectMetadata, ProjectOpenResult, ProjectPaths};
 
-const MAX_METADATA_BYTES: u64 = 64 * 1024;
+pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
 const MAX_NOTEBOOK_BYTES: u64 = 10 * 1024 * 1024;
 
 /// 手动保存事务目录名（位于 `next-story-system/` 下，系统所有，不放进用户本子）。
@@ -558,7 +558,7 @@ fn validate_path_stays_under_root(
     Ok(())
 }
 
-fn read_bounded_string(path: &Path, max_bytes: u64) -> Result<String, ProjectError> {
+pub(crate) fn read_bounded_string(path: &Path, max_bytes: u64) -> Result<String, ProjectError> {
     let metadata = fs::metadata(path).map_err(|e| ProjectError::ReadError(e.to_string()))?;
 
     if metadata.len() > max_bytes {

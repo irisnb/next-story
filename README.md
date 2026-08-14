@@ -96,7 +96,7 @@ Next Story 把用户文本、项目元数据和 LLM 配置分开保存，避免�
 
 系统和 Tauri 会决定应用本地数据目录的实际位置，因此这里不虚构一个适用于所有电脑的绝对路径。
 
-**开发期安全提醒：** `llm-config.json` 会在本地以明文保存 API Key。点击“测试连接”时，API Key 会发送给配置的 API 服务用于身份验证；HTTPS 可以保护传输过程，但目标服务仍会收到 API Key。只在可信设备上使用，只填写可信的 API 地址，不要分享这个配置文件，也绝不要把真实 API Key 写进 README、源码或版本记录。
+**安全提醒：** API Key 保存在操作系统的凭据存储（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）中，不会以明文写进 `llm-config.json`。点击“测试连接”时，API Key 会发送给配置的 API 服务用于身份验证；HTTPS 可以保护传输过程，但目标服务仍会收到 API Key。只在可信设备上使用，只填写可信的 API 地址，也绝不要把真实 API Key 写进 README、源码或版本记录。
 
 ## 架构与数据流
 

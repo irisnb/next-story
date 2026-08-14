@@ -1,3 +1,4 @@
+mod migration;
 mod notebook;
 mod operations;
 mod validation;
@@ -118,8 +119,14 @@ pub fn create_new_project(params: CreateProjectParams) -> Result<PathBuf, Projec
     operations::create_project(params.name, save_path)
 }
 
-/// 打开已有作品：先严格校验结构，再读取内容。
+/// 打开已有作品：版本不符先走迁移框架（空注册表 → 旧版本拒绝），
+/// 再严格校验结构，最后读取内容。
 pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectError> {
+    migration::migrate_project(
+        project_root,
+        migration::PRODUCTION_MIGRATIONS,
+        ProjectMetadata::CURRENT_VERSION,
+    )?;
     operations::validate_project_structure(project_root)?;
     operations::open_project(project_root)
 }

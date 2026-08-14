@@ -5,19 +5,51 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub mod secret_store;
+pub use secret_store::{KeyringStore, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE};
+
 const CONFIG_FILE_NAME: &str = "llm-config.json";
 /// LLM 配置文件读取大小上限，防止损坏或被替换为巨型文件时无界分配内存。
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
 
-/// 应用级 LLM 配置（包含 API Key 明文，开发期）
+/// 应用级 LLM 配置（API Key 存操作系统钥匙串，磁盘文件不落明文）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     /// OpenAI-compatible API base URL
     pub api_base_url: String,
-    /// API Key（开发期明文保存）
+    /// API Key（保存在操作系统钥匙串中）
     pub api_key: String,
     /// 模型名
     pub model: String,
+}
+
+/// 磁盘持久化的 LLM 配置：只含非敏感字段，API Key 单独存操作系统钥匙串。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfigStored {
+    /// OpenAI-compatible API base URL
+    pub api_base_url: String,
+    /// 模型名
+    pub model: String,
+}
+
+impl LlmConfigStored {
+    /// 与从钥匙串读出的 API Key 拼回完整配置
+    fn with_api_key(self, api_key: String) -> LlmConfig {
+        LlmConfig {
+            api_base_url: self.api_base_url,
+            api_key,
+            model: self.model,
+        }
+    }
+}
+
+impl From<&LlmConfig> for LlmConfigStored {
+    fn from(config: &LlmConfig) -> Self {
+        LlmConfigStored {
+            api_base_url: config.api_base_url.clone(),
+            model: config.model.clone(),
+        }
+    }
 }
 
 /// LLM 配置错误
@@ -37,6 +69,8 @@ pub enum LlmConfigError {
     ReadError(String),
     /// 写入失败
     WriteError(String),
+    /// 系统钥匙串访问失败
+    SecretStoreError(String),
     /// 连接测试失败
     TestConnectionFailed(String),
 }
@@ -53,6 +87,7 @@ impl std::fmt::Display for LlmConfigError {
             }
             LlmConfigError::ReadError(msg) => write!(f, "读取配置失败: {}", msg),
             LlmConfigError::WriteError(msg) => write!(f, "保存配置失败: {}", msg),
+            LlmConfigError::SecretStoreError(msg) => write!(f, "访问系统钥匙串失败: {}", msg),
             LlmConfigError::TestConnectionFailed(msg) => write!(f, "连接测试失败: {}", msg),
         }
     }
@@ -259,19 +294,41 @@ pub fn validate_llm_config(config: &LlmConfig) -> Result<(), LlmConfigError> {
     Ok(())
 }
 
-/// 保存配置（原子写）
+/// 保存配置：API Key 写入系统钥匙串，非敏感字段原子写入磁盘文件
 pub fn save_llm_config(base_dir: &Path, config: &LlmConfig) -> Result<(), LlmConfigError> {
+    save_llm_config_with_store(base_dir, config, &KeyringStore)
+}
+
+/// 保存配置（可注入密钥存储，测试走内存实现，生产走系统钥匙串）
+pub fn save_llm_config_with_store(
+    base_dir: &Path,
+    config: &LlmConfig,
+    store: &dyn SecretStore,
+) -> Result<(), LlmConfigError> {
     validate_llm_config(config)?;
+
+    store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &config.api_key)?;
 
     fs::create_dir_all(base_dir).map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
     let path = config_path_in(base_dir);
-    let json = serde_json::to_string_pretty(config)
+    let stored = LlmConfigStored::from(config);
+    let json = serde_json::to_string_pretty(&stored)
         .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
     write_file_atomically(&path, &json)
 }
 
 /// 加载配置；文件不存在返回 None
 pub fn load_llm_config(base_dir: &Path) -> Result<Option<LlmConfig>, LlmConfigError> {
+    load_llm_config_with_store(base_dir, &KeyringStore)
+}
+
+/// 加载配置（可注入密钥存储，测试走内存实现，生产走系统钥匙串）。
+/// 兼容旧格式：若磁盘文件仍含明文 `api_key`，会把它迁移进钥匙串，
+/// 并把文件改写为不含 key 的新格式。
+pub fn load_llm_config_with_store(
+    base_dir: &Path,
+    store: &dyn SecretStore,
+) -> Result<Option<LlmConfig>, LlmConfigError> {
     let path = config_path_in(base_dir);
     if !path.exists() {
         return Ok(None);
@@ -286,9 +343,41 @@ pub fn load_llm_config(base_dir: &Path) -> Result<Option<LlmConfig>, LlmConfigEr
     }
 
     let json = fs::read_to_string(&path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
-    let config: LlmConfig =
+    let value: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
-    Ok(Some(config))
+
+    if value.get("api_key").is_some() {
+        return load_legacy_config_with_store(&path, value, store).map(Some);
+    }
+
+    let stored: LlmConfigStored =
+        serde_json::from_value(value).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+    let api_key = store
+        .get(KEYRING_SERVICE, KEYRING_ACCOUNT)?
+        .ok_or_else(|| {
+            LlmConfigError::SecretStoreError(
+                "配置已保存，但系统钥匙串中缺少 API Key，请重新保存配置".to_string(),
+            )
+        })?;
+    Ok(Some(stored.with_api_key(api_key)))
+}
+
+/// 旧格式明文配置迁移：把明文 `api_key` 写入钥匙串，并把文件改写为不含 key 的新格式。
+fn load_legacy_config_with_store(
+    path: &Path,
+    value: serde_json::Value,
+    store: &dyn SecretStore,
+) -> Result<LlmConfig, LlmConfigError> {
+    let legacy: LlmConfig =
+        serde_json::from_value(value).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+    store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &legacy.api_key)?;
+
+    let stored = LlmConfigStored::from(&legacy);
+    let json = serde_json::to_string_pretty(&stored)
+        .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
+    write_file_atomically(path, &json)?;
+
+    Ok(legacy)
 }
 
 /// 测试连接

@@ -35,60 +35,292 @@ export function frozenSnapshot(snapshot: SelectionSnapshot): SelectionSnapshot {
 }
 
 /**
- * 当前临时对话的内部状态。
+ * 临时对话子系统的全部可变数据，是纯函数迁移的载体。
  *
- * 只维护一个内存中的线性对话：冻结选区锚点、首轮回应、成功追问轮次，
- * 以及最多一个待回答或失败的用户轮次。不负责面板可见性或订阅通知。
+ * `TemporaryConversationState`（命令式外观）与 AI 面板 reducer 共用下面的纯函数，
+ * 保证两处迁移逻辑是单一事实源，行为永远一致。
+ */
+export interface TemporaryConversationContext {
+  readonly conversation: TemporaryConversation | null;
+  readonly nextConversationId: number;
+  readonly nextTurnId: number;
+}
+
+export function emptyConversationContext(): TemporaryConversationContext {
+  return { conversation: null, nextConversationId: 1, nextTurnId: 1 };
+}
+
+/** 清空当前对话；保留 id 计数器（与旧 `clear()` 语义一致）。 */
+export function clearConversationContext(
+  context: TemporaryConversationContext,
+): TemporaryConversationContext {
+  if (context.conversation === null) return context;
+  return { ...context, conversation: null };
+}
+
+export function allocateConversationId(
+  context: TemporaryConversationContext,
+): { context: TemporaryConversationContext; conversationId: number } {
+  return {
+    context: { ...context, nextConversationId: context.nextConversationId + 1 },
+    conversationId: context.nextConversationId,
+  };
+}
+
+export function createConversationFromFirstSuccess(
+  context: TemporaryConversationContext,
+  conversationId: number,
+  snapshot: SelectionSnapshot,
+  firstRequest: Extract<GenerateAiRequest, { kind: "first" }>,
+  response: string,
+): { context: TemporaryConversationContext; conversation: TemporaryConversation } {
+  const anchor = frozenSnapshot(snapshot);
+  const conversation: TemporaryConversation = {
+    id: conversationId,
+    anchor,
+    initialUserMaterial: Object.freeze({ ...firstRequest }),
+    firstResponse: response,
+    turns: [],
+    pending: null,
+  };
+  return { context: { ...context, conversation }, conversation };
+}
+
+export function beginConversationFollowUp(
+  context: TemporaryConversationContext,
+  question: string,
+): { context: TemporaryConversationContext; turnId: number | null } {
+  const conversation = context.conversation;
+  if (!conversation || conversation.pending || !question.trim()) {
+    return { context, turnId: null };
+  }
+  const id = context.nextTurnId;
+  return {
+    context: {
+      ...context,
+      conversation: { ...conversation, pending: { id, question } },
+      nextTurnId: context.nextTurnId + 1,
+    },
+    turnId: id,
+  };
+}
+
+export function succeedConversationFollowUp(
+  context: TemporaryConversationContext,
+  turnId: number,
+  response: string,
+): { context: TemporaryConversationContext; turn: SuccessfulFollowUpTurn | null } {
+  const conversation = context.conversation;
+  const pending = conversation?.pending;
+  if (!conversation || pending?.id !== turnId) {
+    return { context, turn: null };
+  }
+  const turn: SuccessfulFollowUpTurn = {
+    id: pending.id,
+    question: pending.question,
+    response,
+  };
+  return {
+    context: {
+      ...context,
+      conversation: {
+        ...conversation,
+        turns: [...conversation.turns, turn],
+        pending: null,
+      },
+    },
+    turn,
+  };
+}
+
+export function failConversationFollowUp(
+  context: TemporaryConversationContext,
+  turnId: number,
+  error: GenerateAiError,
+): { context: TemporaryConversationContext; ok: boolean } {
+  const conversation = context.conversation;
+  const pending = conversation?.pending;
+  if (!conversation || pending?.id !== turnId) {
+    return { context, ok: false };
+  }
+  return {
+    context: {
+      ...context,
+      conversation: { ...conversation, pending: { ...pending, error } },
+    },
+    ok: true,
+  };
+}
+
+export function acceptEditedConversationFollowUp(
+  context: TemporaryConversationContext,
+  question: string,
+): { context: TemporaryConversationContext; turnId: number | null } {
+  const conversation = context.conversation;
+  const pending = conversation?.pending;
+  if (!conversation || !pending?.error || !question.trim()) {
+    return { context, turnId: null };
+  }
+  return {
+    context: {
+      ...context,
+      conversation: { ...conversation, pending: { id: pending.id, question } },
+    },
+    turnId: pending.id,
+  };
+}
+
+export function cancelConversationFollowUp(
+  context: TemporaryConversationContext,
+  turnId: number,
+): { context: TemporaryConversationContext; response: string | null } {
+  const conversation = context.conversation;
+  const pending = conversation?.pending;
+  if (!conversation || pending?.id !== turnId) {
+    return { context, response: null };
+  }
+  const response =
+    conversation.turns.length > 0
+      ? conversation.turns[conversation.turns.length - 1].response
+      : conversation.firstResponse;
+  return {
+    context: { ...context, conversation: { ...conversation, pending: null } },
+    response,
+  };
+}
+
+export function acceptConversationFollowUpRetry(
+  context: TemporaryConversationContext,
+): { context: TemporaryConversationContext; turnId: number | null } {
+  const conversation = context.conversation;
+  const pending = conversation?.pending;
+  if (!conversation || !pending?.error) {
+    return { context, turnId: null };
+  }
+  return {
+    context: {
+      ...context,
+      conversation: {
+        ...conversation,
+        pending: { id: pending.id, question: pending.question },
+      },
+    },
+    turnId: pending.id,
+  };
+}
+
+/** 只有成功轮次进入追问 payload；待回答轮次只取 question 本身。 */
+export function buildFollowUpRequest(
+  conversation: TemporaryConversation,
+  question: string,
+): GenerateAiRequest {
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+    { role: "assistant", content: conversation.firstResponse },
+  ];
+  for (const turn of conversation.turns) {
+    messages.push({ role: "user" as const, content: turn.question });
+    messages.push({ role: "assistant" as const, content: turn.response });
+  }
+  messages.push({ role: "user", content: question });
+  return {
+    kind: "follow_up",
+    selected_text: conversation.initialUserMaterial.selected_text,
+    ...(conversation.initialUserMaterial.thinking_direction
+      ? { thinking_direction: conversation.initialUserMaterial.thinking_direction }
+      : {}),
+    messages,
+  };
+}
+
+export function followUpRequestOf(
+  conversation: TemporaryConversation | null,
+): GenerateAiRequest | null {
+  if (!conversation?.pending) return null;
+  return buildFollowUpRequest(conversation, conversation.pending.question);
+}
+
+export function followUpRequestForQuestionOf(
+  conversation: TemporaryConversation | null,
+  question: string,
+): GenerateAiRequest | null {
+  if (!conversation?.pending || !conversation.pending.error || !question.trim()) return null;
+  return buildFollowUpRequest(conversation, question);
+}
+
+export function followUpAvailableOf(conversation: TemporaryConversation | null): boolean {
+  return conversation !== null && conversation.pending === null;
+}
+
+export function conversationIdentityOf(
+  conversation: TemporaryConversation | null,
+): { conversationId: number; turnId?: number } | null {
+  if (!conversation) return null;
+  return conversation.pending
+    ? { conversationId: conversation.id, turnId: conversation.pending.id }
+    : { conversationId: conversation.id };
+}
+
+export function retryFollowUpQuestionOf(conversation: TemporaryConversation | null): string | null {
+  return conversation?.pending?.error ? conversation.pending.question : null;
+}
+
+/** 深冻结的防御性只读视图；外部拿到后无法反向改写内部状态。 */
+export function readonlyConversationView(
+  conversation: TemporaryConversation | null,
+): ReadonlyTemporaryConversation | null {
+  if (!conversation) return null;
+  const turns = conversation.turns.map((turn) => Object.freeze({ ...turn }));
+  const pending = conversation.pending
+    ? Object.freeze({
+        ...conversation.pending,
+        error: conversation.pending.error
+          ? Object.freeze({ ...conversation.pending.error })
+          : undefined,
+      })
+    : null;
+  return Object.freeze({
+    id: conversation.id,
+    anchor: Object.freeze({ ...conversation.anchor }),
+    initialUserMaterial: Object.freeze({ ...conversation.initialUserMaterial }),
+    firstResponse: conversation.firstResponse,
+    turns: Object.freeze(turns),
+    pending,
+  });
+}
+
+/**
+ * 当前临时对话的命令式外观（公开 API 与旧实现完全一致）。
+ *
+ * 内部不再原地 mutate：每次操作把 `TemporaryConversationContext` 交给同模块的纯函数
+ * 迁移，用返回的新上下文整体替换内部状态。它不负责面板可见性或订阅通知。
  */
 export class TemporaryConversationState {
-  private currentConversation: TemporaryConversation | null = null;
-  private nextConversationId = 1;
-  private nextTurnId = 1;
+  private context: TemporaryConversationContext = emptyConversationContext();
 
   get current(): TemporaryConversation | null {
-    return this.currentConversation;
+    return this.context.conversation;
   }
 
   get followUpAvailable(): boolean {
-    return this.currentConversation !== null && this.currentConversation.pending === null;
+    return followUpAvailableOf(this.context.conversation);
   }
 
   get conversationIdentity(): { conversationId: number; turnId?: number } | null {
-    const conversation = this.currentConversation;
-    if (!conversation) return null;
-    return conversation.pending
-      ? { conversationId: conversation.id, turnId: conversation.pending.id }
-      : { conversationId: conversation.id };
+    return conversationIdentityOf(this.context.conversation);
   }
 
   allocateConversationId(): number {
-    return this.nextConversationId++;
+    const allocation = allocateConversationId(this.context);
+    this.context = allocation.context;
+    return allocation.conversationId;
   }
 
   clear(): void {
-    this.currentConversation = null;
+    this.context = clearConversationContext(this.context);
   }
 
   readonlyView(): ReadonlyTemporaryConversation | null {
-    const conversation = this.currentConversation;
-    if (!conversation) return null;
-    const turns = conversation.turns.map((turn) => Object.freeze({ ...turn }));
-    const pending = conversation.pending
-      ? Object.freeze({
-          ...conversation.pending,
-          error: conversation.pending.error
-            ? Object.freeze({ ...conversation.pending.error })
-            : undefined,
-        })
-      : null;
-    return Object.freeze({
-      id: conversation.id,
-      anchor: Object.freeze({ ...conversation.anchor }),
-      initialUserMaterial: Object.freeze({ ...conversation.initialUserMaterial }),
-      firstResponse: conversation.firstResponse,
-      turns: Object.freeze(turns),
-      pending,
-    });
+    return readonlyConversationView(this.context.conversation);
   }
 
   createFromFirstSuccess(
@@ -97,42 +329,33 @@ export class TemporaryConversationState {
     firstRequest: Extract<GenerateAiRequest, { kind: "first" }>,
     response: string,
   ): TemporaryConversation {
-    const anchor = frozenSnapshot(snapshot);
-    this.currentConversation = {
-      id: conversationId,
-      anchor,
-      initialUserMaterial: Object.freeze({ ...firstRequest }),
-      firstResponse: response,
-      turns: [],
-      pending: null,
-    };
-    return this.currentConversation;
+    const created = createConversationFromFirstSuccess(
+      this.context,
+      conversationId,
+      snapshot,
+      firstRequest,
+      response,
+    );
+    this.context = created.context;
+    return created.conversation;
   }
 
   beginFollowUp(question: string): number | null {
-    if (!this.currentConversation || this.currentConversation.pending || !question.trim()) {
-      return null;
-    }
-    const id = this.nextTurnId++;
-    this.currentConversation.pending = { id, question };
-    return id;
+    const outcome = beginConversationFollowUp(this.context, question);
+    this.context = outcome.context;
+    return outcome.turnId;
   }
 
   succeedFollowUp(turnId: number, response: string): SuccessfulFollowUpTurn | null {
-    const conversation = this.currentConversation;
-    if (!conversation || conversation.pending?.id !== turnId) return null;
-    const pending = conversation.pending;
-    const turn = { id: pending.id, question: pending.question, response };
-    conversation.turns.push(turn);
-    conversation.pending = null;
-    return turn;
+    const outcome = succeedConversationFollowUp(this.context, turnId, response);
+    this.context = outcome.context;
+    return outcome.turn;
   }
 
   failFollowUp(turnId: number, error: GenerateAiError): boolean {
-    const conversation = this.currentConversation;
-    if (!conversation || conversation.pending?.id !== turnId) return false;
-    conversation.pending.error = error;
-    return true;
+    const outcome = failConversationFollowUp(this.context, turnId, error);
+    this.context = outcome.context;
+    return outcome.ok;
   }
 
   requireFollowUpConfiguration(turnId: number): boolean {
@@ -143,70 +366,32 @@ export class TemporaryConversationState {
   }
 
   retryFollowUpQuestion(): string | null {
-    return this.currentConversation?.pending?.error
-      ? this.currentConversation.pending.question
-      : null;
+    return retryFollowUpQuestionOf(this.context.conversation);
   }
 
   acceptEditedFollowUp(question: string): number | null {
-    const conversation = this.currentConversation;
-    const pending = conversation?.pending;
-    if (!conversation || !pending?.error || !question.trim()) return null;
-    pending.question = question;
-    delete pending.error;
-    return pending.id;
+    const outcome = acceptEditedConversationFollowUp(this.context, question);
+    this.context = outcome.context;
+    return outcome.turnId;
   }
 
   cancelFollowUp(turnId: number): string | null {
-    const conversation = this.currentConversation;
-    if (!conversation || conversation.pending?.id !== turnId) return null;
-    conversation.pending = null;
-    return conversation.turns.length > 0
-      ? conversation.turns[conversation.turns.length - 1].response
-      : conversation.firstResponse;
+    const outcome = cancelConversationFollowUp(this.context, turnId);
+    this.context = outcome.context;
+    return outcome.response;
   }
 
   acceptFollowUpRetry(): number | null {
-    const conversation = this.currentConversation;
-    const pending = conversation?.pending;
-    if (!conversation || !pending?.error) return null;
-    delete pending.error;
-    return pending.id;
+    const outcome = acceptConversationFollowUpRetry(this.context);
+    this.context = outcome.context;
+    return outcome.turnId;
   }
 
   followUpRequest(): GenerateAiRequest | null {
-    const conversation = this.currentConversation;
-    if (!conversation?.pending) return null;
-    return this.buildFollowUpRequest(conversation, conversation.pending.question);
+    return followUpRequestOf(this.context.conversation);
   }
 
   followUpRequestForQuestion(question: string): GenerateAiRequest | null {
-    const conversation = this.currentConversation;
-    if (!conversation?.pending || !conversation.pending.error || !question.trim()) {
-      return null;
-    }
-    return this.buildFollowUpRequest(conversation, question);
-  }
-
-  private buildFollowUpRequest(
-    conversation: TemporaryConversation,
-    question: string,
-  ): GenerateAiRequest {
-    const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-      { role: "assistant", content: conversation.firstResponse },
-    ];
-    for (const turn of conversation.turns) {
-      messages.push({ role: "user" as const, content: turn.question });
-      messages.push({ role: "assistant" as const, content: turn.response });
-    }
-    messages.push({ role: "user", content: question });
-    return {
-      kind: "follow_up",
-      selected_text: conversation.initialUserMaterial.selected_text,
-      ...(conversation.initialUserMaterial.thinking_direction
-        ? { thinking_direction: conversation.initialUserMaterial.thinking_direction }
-        : {}),
-      messages,
-    };
+    return followUpRequestForQuestionOf(this.context.conversation, question);
   }
 }

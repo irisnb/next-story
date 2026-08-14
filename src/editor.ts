@@ -37,6 +37,7 @@ type EditorAdapter = Pick<
   RichTextEditorAdapter,
   | "getDocument"
   | "onEdit"
+  | "onSelectionChange"
   | "focus"
   | "getSelection"
   | "coordinatesAt"
@@ -240,6 +241,13 @@ export function setupEditor(
     editors.unsubscribeMain = main.onEdit(() => {
       if (projectEditors === editors) syncCurrent();
     });
+    // 用 Tiptap 自己的选区事件驱动工具栏状态，比 DOM 事件可靠、稳定。
+    draft.onSelectionChange(() => {
+      if (projectEditors === editors) renderToolbar();
+    });
+    main.onSelectionChange(() => {
+      if (projectEditors === editors) renderToolbar();
+    });
     aiFeature?.beginProject();
     dom.currentProjectName.textContent = projectState.projectName;
     renderSaveState();
@@ -290,12 +298,8 @@ export function setupEditor(
     else runFormatCommand({ kind: "paragraph" });
   });
 
-  // 选区变化时更新工具栏状态
-  for (const element of [dom.draftTextarea, dom.mainTextarea]) {
-    for (const eventType of ["mouseup", "keyup", "select", "focus", "input"]) {
-      element.addEventListener(eventType, renderToolbar);
-    }
-  }
+  // 选区变化已由编辑器 adapter 的 selectionUpdate 事件驱动（见 showProject），
+  // 这里不再监听 DOM 事件，避免 mouseup 等时机不可靠导致工具栏状态乱跳。
 
   document.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;

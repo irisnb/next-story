@@ -51,6 +51,8 @@ export interface RichTextEditorEngine {
   getDocument(): JSONContent;
   onUpdate(listener: () => void): void;
   offUpdate(listener: () => void): void;
+  onSelectionUpdate(listener: () => void): void;
+  offSelectionUpdate(listener: () => void): void;
   focus(): void;
   getSelection(): RichTextEditorSelection;
   coordinatesAt(position: number): RichTextEditorCoordinates;
@@ -86,6 +88,14 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
 
   offUpdate(listener: () => void): void {
     this.editor.off("update", listener);
+  }
+
+  onSelectionUpdate(listener: () => void): void {
+    this.editor.on("selectionUpdate", listener);
+  }
+
+  offSelectionUpdate(listener: () => void): void {
+    this.editor.off("selectionUpdate", listener);
   }
 
   focus(): void {
@@ -243,6 +253,12 @@ export class RichTextEditorAdapter {
     const handleUpdate = (): void => listener(this.getDocument());
     this.engine.onUpdate(handleUpdate);
     return () => this.engine.offUpdate(handleUpdate);
+  }
+
+  /** 订阅选区变化（Tiptap selectionUpdate 事件，比 DOM 事件可靠）。 */
+  onSelectionChange(listener: () => void): () => void {
+    this.engine.onSelectionUpdate(listener);
+    return () => this.engine.offSelectionUpdate(listener);
   }
 
   focus(): void {

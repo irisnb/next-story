@@ -29,6 +29,10 @@ class CoordinateEngine implements RichTextEditorEngine {
 
   offUpdate(_listener: () => void): void {}
 
+  onSelectionUpdate(_listener: () => void): void {}
+
+  offSelectionUpdate(_listener: () => void): void {}
+
   focus(): void {}
 
   getSelection() {

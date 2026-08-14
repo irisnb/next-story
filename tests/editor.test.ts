@@ -98,6 +98,10 @@ class FakeRichTextEditor {
     return () => { this.listeners.delete(listener); };
   }
 
+  onSelectionChange(_listener: () => void): () => void {
+    return () => {};
+  }
+
   focus(): void {}
 
   getSelection(): RichTextEditorSelection {

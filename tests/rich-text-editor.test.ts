@@ -166,6 +166,10 @@ class FakeRichTextEditorEngine implements RichTextEditorEngine {
     this.updateListeners.delete(listener);
   }
 
+  onSelectionUpdate(_listener: () => void): void {}
+
+  offSelectionUpdate(_listener: () => void): void {}
+
   focus(): void {
     this.focused = true;
   }

@@ -18,7 +18,7 @@ function paragraph(text: string, marks?: { type: "bold" | "italic" }[]): DocNode
 
 test("reports a plain paragraph selection", () => {
   const doc = paragraph("正文");
-  assert.deepEqual(analyzeSelection(doc, 2, 4), {
+  assert.deepEqual(analyzeSelection(doc, 1, 3), {
     paragraphStyle: "paragraph",
     bold: "off",
     italic: "off",
@@ -31,7 +31,7 @@ test("reports heading level 1", () => {
     type: "doc",
     content: [{ type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "标题" }] }],
   };
-  assert.equal(analyzeSelection(doc, 2, 4).paragraphStyle, "heading1");
+  assert.equal(analyzeSelection(doc, 1, 3).paragraphStyle, "heading1");
 });
 
 test("reports mixed paragraph style across touched blocks", () => {
@@ -42,8 +42,8 @@ test("reports mixed paragraph style across touched blocks", () => {
       { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "标题" }] },
     ],
   };
-  // 正文文字 [2,4]，标题文字 [7,9]
-  assert.equal(analyzeSelection(doc, 2, 9).paragraphStyle, "mixed");
+  // 正文文字 [1,3]，标题文字 [5,7]
+  assert.equal(analyzeSelection(doc, 1, 7).paragraphStyle, "mixed");
 });
 
 test("reports bold and italic tri-state over mixed marks", () => {
@@ -59,16 +59,16 @@ test("reports bold and italic tri-state over mixed marks", () => {
       },
     ],
   };
-  // "粗" [2,3]，"斜" [3,4]
-  assert.equal(analyzeSelection(doc, 2, 3).bold, "on");
-  assert.equal(analyzeSelection(doc, 2, 3).italic, "off");
-  assert.equal(analyzeSelection(doc, 2, 4).bold, "mixed");
-  assert.equal(analyzeSelection(doc, 2, 4).italic, "mixed");
+  // "粗" [1,2]，"斜" [2,3]
+  assert.equal(analyzeSelection(doc, 1, 2).bold, "on");
+  assert.equal(analyzeSelection(doc, 1, 2).italic, "off");
+  assert.equal(analyzeSelection(doc, 1, 3).bold, "mixed");
+  assert.equal(analyzeSelection(doc, 1, 3).italic, "mixed");
 });
 
 test("reports a fully bold selection", () => {
   const doc = paragraph("粗体", [{ type: "bold" }]);
-  assert.equal(analyzeSelection(doc, 2, 4).bold, "on");
+  assert.equal(analyzeSelection(doc, 1, 3).bold, "on");
 });
 
 test("reports bullet list selection", () => {
@@ -84,8 +84,8 @@ test("reports bullet list selection", () => {
       },
     ],
   };
-  // 甲文字 [4,5]，乙文字 [9,10]
-  assert.equal(analyzeSelection(doc, 4, 10).list, "bullet");
+  // 甲文字 [3,4]，乙文字 [8,9]
+  assert.equal(analyzeSelection(doc, 3, 9).list, "bullet");
 });
 
 test("reports ordered list selection", () => {
@@ -101,7 +101,8 @@ test("reports ordered list selection", () => {
       },
     ],
   };
-  assert.equal(analyzeSelection(doc, 4, 5).list, "ordered");
+  // "三" [3,4]
+  assert.equal(analyzeSelection(doc, 3, 4).list, "ordered");
 });
 
 test("reports mixed list state when a paragraph and a list item are touched", () => {
@@ -117,6 +118,6 @@ test("reports mixed list state when a paragraph and a list item are touched", ()
       },
     ],
   };
-  // 正文文字 [2,4]；列表项文字 [8,9]
-  assert.equal(analyzeSelection(doc, 2, 9).list, "mixed");
+  // 正文文字 [1,3]；列表项文字 [7,8]
+  assert.equal(analyzeSelection(doc, 1, 8).list, "mixed");
 });

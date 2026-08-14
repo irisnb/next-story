@@ -52,7 +52,8 @@ function textNodes(content: unknown): { text: string; marks?: { type: string }[]
 /** 展开文档为扁平的块信息（列表项按各自列表类型展开）。 */
 function collectBlocks(doc: DocNode): BlockInfo[] {
   const blocks: BlockInfo[] = [];
-  let pos = 1;
+  // ProseMirror 位置模型：doc 节点的开/闭 token 不计入位置，第一个 block 从 0 开始。
+  let pos = 0;
   for (const block of doc.content) {
     const blockStart = pos;
     const blockEnd = pos + nodeSize(block);

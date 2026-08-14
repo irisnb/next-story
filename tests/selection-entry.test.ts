@@ -392,7 +392,7 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
-    ui.draft.selection = { from: 4, to: 8, head: 8 };
+    ui.draft.selection = { from: 3, to: 7, head: 7 };
     const summons: SelectionSnapshot[] = [];
 
     setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
@@ -411,7 +411,7 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
     assert.ok(summonButton);
     summonButton.dispatch("click");
 
-    assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", from: 4, to: 8 }]);
+    assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", from: 3, to: 7 }]);
     assert.equal(entry.classList.contains("hidden"), true);
   } finally {
     ui.restore();
@@ -422,7 +422,7 @@ test("submitted summon snapshot survives later edits, selection changes, and not
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
-    ui.draft.selection = { from: 4, to: 8, head: 8 };
+    ui.draft.selection = { from: 3, to: 7, head: 7 };
     let submitted: SelectionSnapshot | null = null;
 
     setupEditorSelectionEntry(ui, { onSummon: (snap) => { submitted = snap; } });
@@ -445,8 +445,8 @@ test("submitted summon snapshot survives later edits, selection changes, and not
     assert.deepEqual(submitted, {
       notebook: "draft",
       selectedText: "冻结选区",
-      from: 4,
-      to: 8,
+      from: 3,
+      to: 7,
     });
   } finally {
     ui.restore();
@@ -459,7 +459,7 @@ test("thinking expansion submits the click-time snapshot before later editor cha
     ui.main.element.classList.remove("hidden");
     ui.draft.element.classList.add("hidden");
     ui.main.text = "正文本原始片段";
-    ui.main.selection = { from: 5, to: 9, head: 9 };
+    ui.main.selection = { from: 4, to: 8, head: 8 };
     let submitted: SelectionSnapshot | null = null;
 
     setupEditorSelectionEntry(ui, { onThinkingExpansion: (snap) => { submitted = snap; } });
@@ -484,8 +484,8 @@ test("thinking expansion submits the click-time snapshot before later editor cha
     assert.deepEqual(submitted, {
       notebook: "main",
       selectedText: "原始片段",
-      from: 5,
-      to: 9,
+      from: 4,
+      to: 8,
     });
   } finally {
     ui.restore();
@@ -499,9 +499,9 @@ test("selection entry supports forward and backward editor selections", () => {
     const summons: SelectionSnapshot[] = [];
     setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
 
-    ui.draft.selection = { from: 3, to: 6, head: 6 };
+    ui.draft.selection = { from: 2, to: 5, head: 5 };
     ui.draft.dispatch("select");
-    ui.draft.selection = { from: 3, to: 6, head: 3 };
+    ui.draft.selection = { from: 2, to: 5, head: 2 };
     ui.draft.dispatch("select");
 
     const entry = visibleEntry(ui);
@@ -509,9 +509,9 @@ test("selection entry supports forward and backward editor selections", () => {
     const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
     assert.ok(summonButton);
     summonButton.dispatch("click");
-    assert.deepEqual(ui.draft.coordinateReads, [6, 3, 3, 6]);
+    assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
     assert.deepEqual(summons, [
-      { notebook: "draft", selectedText: "bcd", from: 3, to: 6 },
+      { notebook: "draft", selectedText: "bcd", from: 2, to: 5 },
     ]);
   } finally {
     ui.restore();

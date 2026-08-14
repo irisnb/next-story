@@ -8,6 +8,10 @@ import {
 
 // ---------------------------------------------------------------------------
 // 6.1 结构化选区 → 纯文本切片
+//
+// 位置模型（ProseMirror 官方）：doc 节点自身的开/闭 token 不计入位置，
+// 第一个 block 从 0 开始。doc > paragraph("你好") 的位置是：
+//   0 = 段落前（"你"前）、1 = "你"后、2 = "好"后、3 = 段落后
 // ---------------------------------------------------------------------------
 
 test("projects a plain paragraph selection", () => {
@@ -15,8 +19,8 @@ test("projects a plain paragraph selection", () => {
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text: "背叛" }] }],
   };
-  // 段落 [1,5]，文字 [2,4]
-  assert.equal(serializeSelectionToPlainText(doc, 2, 4), "背叛");
+  // 段落 [0,4]，文字 [1,3]
+  assert.equal(serializeSelectionToPlainText(doc, 1, 3), "背叛");
 });
 
 test("drops heading level and inline marks", () => {
@@ -30,8 +34,8 @@ test("drops heading level and inline marks", () => {
       },
     ],
   };
-  // heading [1,6]，文字 [2,4]
-  assert.equal(serializeSelectionToPlainText(doc, 2, 4), "标题");
+  // heading [0,4]，文字 [1,3]
+  assert.equal(serializeSelectionToPlainText(doc, 1, 3), "标题");
 });
 
 test("projects full bullet list items with markers", () => {
@@ -47,8 +51,8 @@ test("projects full bullet list items with markers", () => {
       },
     ],
   };
-  // 第一项文字 [4,7]，第二项文字 [11,14]
-  assert.equal(serializeSelectionToPlainText(doc, 4, 14), "- 第一项\n- 第二项");
+  // 第一项文字 [3,6]，第二项文字 [10,13]
+  assert.equal(serializeSelectionToPlainText(doc, 3, 13), "- 第一项\n- 第二项");
 });
 
 test("projects full ordered list items with actual numbers", () => {
@@ -65,8 +69,8 @@ test("projects full ordered list items with actual numbers", () => {
       },
     ],
   };
-  // 第三项文字 [4,7]，第四项文字 [11,14]
-  assert.equal(serializeSelectionToPlainText(doc, 4, 14), "3. 第三项\n4. 第四项");
+  // 第三项文字 [3,6]，第四项文字 [10,13]
+  assert.equal(serializeSelectionToPlainText(doc, 3, 13), "3. 第三项\n4. 第四项");
 });
 
 test("projects a partial list item without marker", () => {
@@ -82,8 +86,8 @@ test("projects a partial list item without marker", () => {
       },
     ],
   };
-  // "三项" 位于 [5,7]
-  assert.equal(serializeSelectionToPlainText(doc, 5, 7), "三项");
+  // "第三项" 文字 [3,6]："第"[3,4] "三"[4,5] "项"[5,6]；"三项" = [4,6]
+  assert.equal(serializeSelectionToPlainText(doc, 4, 6), "三项");
 });
 
 test("joins a full list item and a following paragraph with a single LF", () => {
@@ -100,8 +104,8 @@ test("joins a full list item and a following paragraph with a single LF", () => 
       { type: "paragraph", content: [{ type: "text", text: "代价" }] },
     ],
   };
-  // 选择文字 [4,6]；段落 [9,13]，代价文字 [10,12]
-  assert.equal(serializeSelectionToPlainText(doc, 4, 12), "3. 选择\n代价");
+  // 选择文字 [3,5]；段落 [8,12]，代价文字 [9,11]
+  assert.equal(serializeSelectionToPlainText(doc, 3, 11), "3. 选择\n代价");
 });
 
 test("projects a partial list item crossing into a paragraph without marker", () => {
@@ -118,8 +122,8 @@ test("projects a partial list item crossing into a paragraph without marker", ()
       { type: "paragraph", content: [{ type: "text", text: "代价" }] },
     ],
   };
-  // "择" 位于 [5,6]，"代" 位于 [10,11]
-  assert.equal(serializeSelectionToPlainText(doc, 5, 11), "择\n代");
+  // "选择"[3,5] "择"=[4,5]；"代价"[9,11] "代"=[9,10]
+  assert.equal(serializeSelectionToPlainText(doc, 4, 10), "择\n代");
 });
 
 test("preserves an empty paragraph as an empty line", () => {
@@ -131,8 +135,8 @@ test("preserves an empty paragraph as an empty line", () => {
       { type: "paragraph", content: [{ type: "text", text: "乙" }] },
     ],
   };
-  // 甲 [1,4] 文字 [2,3]；空段落 [4,6]；乙 [6,9] 文字 [7,8]
-  assert.equal(serializeSelectionToPlainText(doc, 2, 8), "甲\n\n乙");
+  // 甲 [0,3] 文字 [1,2]；空段落 [3,5]；乙 [5,8] 文字 [6,7]
+  assert.equal(serializeSelectionToPlainText(doc, 1, 7), "甲\n\n乙");
 });
 
 test("produces no leading or trailing LF for boundary-aligned selection", () => {
@@ -143,8 +147,8 @@ test("produces no leading or trailing LF for boundary-aligned selection", () => 
       { type: "paragraph", content: [{ type: "text", text: "乙" }] },
     ],
   };
-  // 甲文字 [2,3]，乙文字 [5,6]
-  assert.equal(serializeSelectionToPlainText(doc, 2, 6), "甲\n乙");
+  // 甲文字 [1,2]，乙文字 [4,5]
+  assert.equal(serializeSelectionToPlainText(doc, 1, 5), "甲\n乙");
 });
 
 test("preserves leading and trailing spaces and emoji", () => {
@@ -154,10 +158,9 @@ test("preserves leading and trailing spaces and emoji", () => {
       { type: "paragraph", content: [{ type: "text", text: "  前 后  🎬" }] },
     ],
   };
-  // 段落 [1,?]，文字长度 = "  前 后  🎬" 的 UTF-16 长度
   const text = "  前 后  🎬";
-  // 段落 [1, 3+text.length]，文字 [2, 2+text.length]
-  assert.equal(serializeSelectionToPlainText(doc, 2, 2 + text.length), text);
+  // 段落 [0, 2+text.length]，文字 [1, 1+text.length]
+  assert.equal(serializeSelectionToPlainText(doc, 1, 1 + text.length), text);
 });
 
 test("returns empty string for an empty range", () => {
@@ -165,5 +168,5 @@ test("returns empty string for an empty range", () => {
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text: "甲" }] }],
   };
-  assert.equal(serializeSelectionToPlainText(doc, 2, 2), "");
+  assert.equal(serializeSelectionToPlainText(doc, 1, 1), "");
 });

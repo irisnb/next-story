@@ -23,28 +23,28 @@ function paragraphDoc(text: string): JSONContent {
 test("captures a structured selection as a plain-text slice with Tiptap positions", () => {
   const snapshot = captureSelection(
     "draft",
-    editor(paragraphDoc("你好世界"), { from: 2, to: 4, head: 4 }),
+    editor(paragraphDoc("你好世界"), { from: 1, to: 3, head: 3 }),
   );
 
   assert.deepEqual(snapshot, {
     notebook: "draft",
     selectedText: "你好",
-    from: 2,
-    to: 4,
+    from: 1,
+    to: 3,
   });
 });
 
 test("normalizes forward and backward selections to the same ordered range", () => {
   const doc = paragraphDoc("你好世界");
-  const forward = captureSelection("main", editor(doc, { from: 2, to: 4, head: 4 }));
-  const backward = captureSelection("main", editor(doc, { from: 4, to: 2, head: 2 }));
+  const forward = captureSelection("main", editor(doc, { from: 1, to: 3, head: 3 }));
+  const backward = captureSelection("main", editor(doc, { from: 3, to: 1, head: 1 }));
 
   assert.deepEqual(backward, forward);
 });
 
 test("returns null for a collapsed selection", () => {
   assert.equal(
-    captureSelection("draft", editor(paragraphDoc("abc"), { from: 2, to: 2, head: 2 })),
+    captureSelection("draft", editor(paragraphDoc("abc"), { from: 1, to: 1, head: 1 })),
     null,
   );
 });
@@ -52,11 +52,11 @@ test("returns null for a collapsed selection", () => {
 test("meaningful selection requires at least one non-whitespace character", () => {
   const whitespace = captureSelection(
     "draft",
-    editor(paragraphDoc("   "), { from: 2, to: 5, head: 5 }),
+    editor(paragraphDoc("   "), { from: 1, to: 4, head: 4 }),
   );
   const single = captureSelection(
     "draft",
-    editor(paragraphDoc("ab"), { from: 2, to: 3, head: 3 }),
+    editor(paragraphDoc("ab"), { from: 1, to: 2, head: 2 }),
   );
 
   assert.equal(isMeaningfulSelection(whitespace), false);
@@ -66,7 +66,7 @@ test("meaningful selection requires at least one non-whitespace character", () =
 
 test("freezes the snapshot when the editor later changes", () => {
   let document: JSONContent = paragraphDoc("原始文字");
-  let selection: RichTextEditorSelection = { from: 2, to: 6, head: 6 };
+  let selection: RichTextEditorSelection = { from: 1, to: 5, head: 5 };
   const source = {
     getDocument: () => document,
     getSelection: () => selection,
@@ -80,7 +80,7 @@ test("freezes the snapshot when the editor later changes", () => {
   assert.deepEqual(snapshot, {
     notebook: "draft",
     selectedText: "原始文字",
-    from: 2,
-    to: 6,
+    from: 1,
+    to: 5,
   });
 });

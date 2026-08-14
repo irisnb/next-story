@@ -16,7 +16,8 @@
         "title": "Next Story",
         "width": 1024,
         "height": 768,
-        "center": true
+        "center": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {

@@ -278,6 +278,11 @@ export function setupEditor(
     button.addEventListener("mousedown", (event) => event.preventDefault());
   }
 
+  // 编辑器区域 dragover 阻止默认，否则从文件管理器拖文件进来时 drop 事件不会触发。
+  for (const element of [dom.draftTextarea, dom.mainTextarea]) {
+    element.addEventListener("dragover", (event) => event.preventDefault());
+  }
+
   // 工具栏命令
   dom.btnBold.addEventListener("click", () => runSelectionCommand({ kind: "bold" }));
   dom.btnItalic.addEventListener("click", () => runSelectionCommand({ kind: "italic" }));

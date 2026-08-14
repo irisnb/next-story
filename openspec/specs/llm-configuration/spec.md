@@ -257,3 +257,12 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **WHEN** 系统使用唯一 LLM 配置生成首次或追问 AI 思考材料
 - **THEN** 系统不修改草稿本、正文本或作品元数据
 - **AND** 系统不存在将 AI 输出插入、追加、替换、改写、移动、删除或整理草稿本或正文本的入口
+
+### Requirement: LLM 配置文件读取有大小上限
+系统 MUST 在读取 `llm-config.json` 前检查其大小，超过上限（64 KiB）时 MUST 返回读取失败，而不是把文件无界读入内存。
+
+#### Scenario: 超大配置文件被拒绝
+- **WHEN** 本地 LLM 配置文件超过大小上限
+- **THEN** 系统返回中文可读的读取失败
+- **AND** 系统不把该文件无界读入内存
+

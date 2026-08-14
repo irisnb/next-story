@@ -1,8 +1,6 @@
 ## Purpose
 定义 Tauri 桌面壳的安全基线：关闭全局 Tauri API 暴露，并强制使用明确且收紧的 Content Security Policy，避免后续界面或 AI 表面扩大 webview 风险范围。
-
 ## Requirements
-
 ### Requirement: 桌面壳不得暴露全局 Tauri API
 系统 MUST NOT 在桌面 webview 中通过全局 `window.__TAURI__` 对象暴露 Tauri API。需要桌面能力的前端代码 SHALL 使用明确的 Tauri API import。
 
@@ -28,3 +26,18 @@
 - **THEN** 作品生命周期、写作本、LLM 配置、选区 AI 召唤和继续追问行为保持不变
 - **AND** 现有完整项目检查通过
 - **AND** Tauri 桌面构建接受该配置
+
+### Requirement: 桌面壳只授予当前功能实际需要的权限
+系统 MUST 只授予前端当前实际使用的 Tauri 插件权限。当前功能不使用的插件能力 MUST NOT 在 capabilities 中授予，且 MUST NOT 注册对应插件或保留对应依赖。
+
+#### Scenario: 未使用的 opener 能力不被授予
+- **WHEN** 前端代码不使用打开外部链接或外部文件的能力
+- **THEN** capabilities 不包含 opener 权限
+- **AND** 应用不注册 opener 插件
+- **AND** 应用不依赖 opener 插件包
+
+#### Scenario: 实际使用的 dialog 能力保持
+- **WHEN** 前端使用目录选择能力
+- **THEN** dialog 权限保持授予
+- **AND** 新建作品目录选择等现有工作流保持不变
+

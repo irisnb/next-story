@@ -17,9 +17,9 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 #### Scenario: Create valid project
 - **WHEN** 用户输入非空作品名并选择可访问的保存位置
 - **THEN** 系统创建对应作品文件夹
-- **AND** 系统创建 `作品文本/草稿本.txt`
-- **AND** 系统创建 `作品文本/正文本.txt`
-- **AND** 系统创建 `next-story-system/project.json`
+- **AND** 系统创建包含有效空白格式版本 1 文档的 `作品文本/草稿本.json`
+- **AND** 系统创建包含有效空白格式版本 1 文档的 `作品文本/正文本.json`
+- **AND** 系统创建项目结构版本为整数 `2` 的 `next-story-system/project.json`
 
 #### Scenario: Empty project name
 - **WHEN** 用户尝试使用空作品名创建作品
@@ -48,12 +48,13 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 系统 MAY remove only files or directories that the current create attempt created
 
 ### Requirement: User can open a valid project folder
-系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading notebook contents.
+系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构和两份结构化本子。系统 MUST 先以只读方式校验 `project.json` 的项目结构版本为整数 2，只有版本受支持后才可运行可能写盘的事务恢复。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading notebook contents.
 
 #### Scenario: Open valid project folder
-- **WHEN** 用户选择包含 `作品文本/草稿本.txt`、`作品文本/正文本.txt` 和 `next-story-system/project.json` 的文件夹
+- **WHEN** 用户选择包含 `作品文本/草稿本.json`、`作品文本/正文本.json` 和 `next-story-system/project.json` 的文件夹
 - **AND** all required project directories and files are normal filesystem entries inside the selected project folder
-- **AND** required project files are within supported read-size limits
+- **AND** `project.json` 的项目结构版本为整数 `2`
+- **AND** required project files are within supported read-size limits and contain supported valid structures
 - **AND** no interrupted manual-save transaction is present or recovery completes successfully
 - **THEN** 系统打开该作品
 - **AND** 系统进入编辑器
@@ -70,13 +71,35 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 系统提示这不是有效的 Next Story 作品文件夹
 
 #### Scenario: Required project file is too large
-- **WHEN** 用户选择的文件夹 contains `project.json`, `草稿本.txt`, or `正文本.txt` above the supported read-size limit
+- **WHEN** 用户选择的文件夹 contains `project.json`, `草稿本.json`, or `正文本.json` above the supported read-size limit
 - **THEN** 系统拒绝打开该文件夹 before reading that file into memory
 - **AND** 系统提示这不是有效的 Next Story 作品文件夹 or that the file cannot be read safely
 
+#### Scenario: Notebook document is invalid
+- **WHEN** 任一本子 JSON 损坏、格式版本不支持或文档 schema 非法
+- **THEN** 系统拒绝打开该文件夹 before entering the editor
+- **AND** 系统显示中文可读错误
+- **AND** 系统不把失败文档替换为空白内容
+
+#### Scenario: Reject old project structure version
+- **WHEN** 用户选择的作品使用项目结构版本 1 和旧 `.txt` 本子文件
+- **THEN** 系统拒绝打开该作品
+- **AND** 系统显示该项目结构版本不受支持的中文错误
+- **AND** 系统不迁移、重命名、删除或改写任何原文件
+
+#### Scenario: Reject unknown future project structure version
+- **WHEN** `project.json` 的项目结构版本不是整数 2
+- **THEN** 系统拒绝打开该作品 before reading notebook contents into the editor
+- **AND** 系统不把未知版本按版本 2 解释或写回
+
+#### Scenario: Unsupported version with interrupted transaction remains untouched
+- **WHEN** 项目结构版本不是整数 2 且作品目录同时包含中断事务文件
+- **THEN** 系统在运行任何事务恢复前拒绝打开
+- **AND** 原项目文件和事务文件的字节保持不变
+
 #### Scenario: Open project with unrecoverable interrupted save
 - **WHEN** 用户选择的文件夹 contains an interrupted manual-save transaction
-- **AND** 系统 cannot recover the project to one coherent generation
+- **AND** 系统 cannot recover the project to one coherent valid generation
 - **THEN** 系统拒绝打开该文件夹 before entering the editor
 - **AND** 系统提示作品无法安全恢复或读取
 
@@ -90,30 +113,37 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** `project.json` 不包含正文本正文内容
 
 ### Requirement: User can save both notebooks manually
-系统 SHALL 允许用户手动保存当前作品，并 SHALL treat one manual save as a single coherent generation across `草稿本.txt`, `正文本.txt`, and `next-story-system/project.json`. 系统 MUST NOT load or present a mixed-generation project state after a failed or interrupted save.
+系统 SHALL 允许用户手动保存当前作品，并 SHALL treat one manual save as a single coherent generation across `草稿本.json`, `正文本.json`, and `next-story-system/project.json`. 系统 MUST 在创建事务暂存文件前校验两份完整结构化文档，并 MUST NOT load or present a mixed-generation project state after a failed or interrupted save.
 
 #### Scenario: Save both notebooks successfully
-- **WHEN** 用户在任一本子中修改文本
+- **WHEN** 用户在任一本子中修改文字或支持格式
 - **AND** 用户触发手动保存
-- **THEN** 系统保存 `草稿本.txt`
-- **AND** 系统保存 `正文本.txt`
+- **THEN** 系统保存 `草稿本.json`
+- **AND** 系统保存 `正文本.json`
 - **AND** 系统更新 `next-story-system/project.json` 中的 `updated_at`
 - **AND** the saved draft, main, and metadata belong to the same completed save generation
+
+#### Scenario: Reject invalid notebook before staging
+- **WHEN** 用户触发手动保存
+- **AND** 草稿本或正文本的完整文档未通过后端格式版本 1 校验
+- **THEN** 系统在创建事务暂存文件前拒绝保存
+- **AND** 三个可见项目文件保持原有完整世代
 
 #### Scenario: Save is interrupted before completion
 - **WHEN** 用户触发手动保存
 - **AND** the save fails or the process stops before the save generation is committed
 - **THEN** 系统 MUST NOT treat the partially written visible files as a completed save generation
-- **AND** a later project open or save MUST recover to one coherent generation or fail with a clear project error before entering the editor
+- **AND** a later project open or save MUST recover to one coherent valid generation or fail with a clear project error before entering the editor
 
 #### Scenario: Reopen after interrupted save recovery
 - **WHEN** 用户打开 a project that contains an interrupted manual-save transaction
-- **THEN** 系统 runs recovery before reading notebook contents into the editor
-- **AND** 系统 opens the project only if `草稿本.txt`, `正文本.txt`, and `project.json` are recovered to one coherent generation
-- **AND** 系统 refuses to open the project with a clear error if recovery cannot determine a coherent generation
+- **THEN** 系统 runs recovery and validates the recovered files before loading notebook documents into the editor
+- **AND** 系统 opens the project only if `草稿本.json`, `正文本.json`, and `project.json` are recovered to one coherent valid generation
+- **AND** 系统 refuses to open the project with a clear error if recovery cannot determine a coherent valid generation
 
 #### Scenario: Failed save does not mark editor baseline as saved
 - **WHEN** 用户触发手动保存
 - **AND** the backend reports that save failed or recovery failed
-- **THEN** 前端 MUST keep the current editor contents marked as unsaved
+- **THEN** 前端 MUST keep the current editor documents marked as unsaved
 - **AND** 前端 MUST NOT report the failed save as saved
+

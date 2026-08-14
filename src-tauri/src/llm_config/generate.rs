@@ -139,7 +139,11 @@ fn build_messages(request: &GenerateAiRequest) -> Result<Value, GenerateAiError>
             selected_text,
             thinking_direction,
             messages,
-        } => (selected_text.as_str(), thinking_direction.as_deref(), Some(messages)),
+        } => (
+            selected_text.as_str(),
+            thinking_direction.as_deref(),
+            Some(messages),
+        ),
     };
 
     let mut provider_messages = vec![

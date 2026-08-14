@@ -23,7 +23,11 @@ fn mark_rank(mark_type: &str) -> Option<u32> {
 }
 
 /// 校验对象键：不得含 allowed 之外的键，且 required 键必须全部存在。
-fn check_keys(obj: &Map<String, Value>, required: &[&str], optional: &[&str]) -> Result<(), String> {
+fn check_keys(
+    obj: &Map<String, Value>,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), String> {
     for key in obj.keys() {
         if !required.contains(&key.as_str()) && !optional.contains(&key.as_str()) {
             return Err(format!("含额外字段: {key}"));
@@ -228,7 +232,7 @@ fn validate_ordered_list(value: &Value, loc: &str) -> Result<(), String> {
         .get("start")
         .and_then(|v| v.as_u64())
         .ok_or_else(|| format!("{loc}: start 必须为整数"))?;
-    if start < 1 || start > MAX_SAFE_INTEGER {
+    if !(1..=MAX_SAFE_INTEGER).contains(&start) {
         return Err(format!("{loc}: start 必须在 1 到 2^53-1 之间"));
     }
     let content = obj
@@ -342,10 +346,7 @@ mod tests {
     fn rejects_lone_surrogate_escape_at_parse_time() {
         let raw = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a\ud800b"}]}]}}"#;
         let parsed: Result<Value, _> = serde_json::from_str(raw);
-        assert!(
-            parsed.is_err(),
-            "未配对代理项转义应在 JSON 解析阶段被拒绝"
-        );
+        assert!(parsed.is_err(), "未配对代理项转义应在 JSON 解析阶段被拒绝");
     }
 
     #[test]

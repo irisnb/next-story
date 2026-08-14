@@ -204,6 +204,16 @@ fn load_returns_none_when_config_absent() {
 }
 
 #[test]
+fn load_rejects_oversized_config_file() {
+    let temp = TempDir::new().expect("create temp dir");
+    std::fs::write(temp.path().join("llm-config.json"), "x".repeat(65 * 1024))
+        .expect("write oversized config");
+
+    let result = load_llm_config(temp.path());
+    assert!(matches!(result, Err(LlmConfigError::ReadError(_))));
+}
+
+#[test]
 fn validation_rejects_missing_fields_and_bad_url() {
     let missing_url = LlmConfig {
         api_base_url: "".to_string(),

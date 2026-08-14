@@ -60,9 +60,15 @@ export class AiPanelState {
     this.onChange = onChange;
   }
 
-  /** 注册状态变化监听器（面板渲染订阅用）。 */
-  subscribe(listener: () => void): void {
+  /** 注册状态变化监听器（面板渲染订阅用），返回退订函数供销毁时释放。 */
+  subscribe(listener: () => void): () => void {
     this.listeners.push(listener);
+    return () => {
+      const index = this.listeners.indexOf(listener);
+      if (index !== -1) {
+        this.listeners.splice(index, 1);
+      }
+    };
   }
 
   private emit(): void {

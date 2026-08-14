@@ -62,6 +62,8 @@ pub enum ProjectError {
     ReadError(String),
     /// 写入失败
     WriteError(String),
+    /// 本子内容超过大小上限
+    ContentTooLarge(String),
 }
 
 impl std::fmt::Display for ProjectError {
@@ -74,6 +76,7 @@ impl std::fmt::Display for ProjectError {
             ProjectError::InvalidStructure(msg) => write!(f, "项目结构无效: {}", msg),
             ProjectError::ReadError(msg) => write!(f, "读取失败: {}", msg),
             ProjectError::WriteError(msg) => write!(f, "写入失败: {}", msg),
+            ProjectError::ContentTooLarge(msg) => write!(f, "{msg}"),
         }
     }
 }

@@ -167,6 +167,18 @@ test("notifies listeners on every state change", () => {
   assert.equal(calls, 3);
 });
 
+test("subscribe returns an unsubscribe function that removes the listener", () => {
+  const calls: string[] = [];
+  const state = new AiPanelState();
+  const unsubscribe = state.subscribe(() => calls.push("tick"));
+  state.open();
+  assert.deepEqual(calls, ["tick"]);
+
+  unsubscribe();
+  state.close();
+  assert.deepEqual(calls, ["tick"], "退订后不应再收到通知");
+});
+
 test("forms one anchored linear conversation after the first success", () => {
   const state = new AiPanelState();
   const anchor = snapshot("冻结选区");

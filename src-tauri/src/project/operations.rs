@@ -113,10 +113,22 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
     Ok(())
 }
 
+/// 校验一份本子的字节数不超过保存上限，超限返回专用 ContentTooLarge。
+/// 与读取/恢复端共享同一常量，杜绝保存端允许超限内容进入事务。
+fn validate_notebook_size(content: &str, label: &str) -> Result<(), ProjectError> {
+    let len = content.len() as u64;
+    if len > MAX_NOTEBOOK_BYTES {
+        return Err(ProjectError::ContentTooLarge(format!(
+            "{label}内容过大：{len} 字节超过 {MAX_NOTEBOOK_BYTES} 字节上限，无法保存",
+        )));
+    }
+    Ok(())
+}
+
 /// 解析并校验一段本子 JSON 字符串，失败返回中文错误。
 fn validate_notebook_content(content: &str, label: &str) -> Result<(), String> {
-    let value: serde_json::Value = serde_json::from_str(content)
-        .map_err(|_| format!("{label}不是合法 JSON"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(content).map_err(|_| format!("{label}不是合法 JSON"))?;
     super::validate_notebook_document(&value).map_err(|e| format!("{label}{e}"))
 }
 
@@ -155,6 +167,7 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
 /// 保存事务的阶段边界。无故障路径会经过每个边界但不做任何事；
 /// 测试通过故障钩子在指定边界中断。此类型是项目领域内部私有，不暴露给 Tauri 或前端。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)] // After* 前缀是故障注入阶段边界的语义，非冗余
 enum SavePhase {
     /// 三份内容与清单已暂存，尚未替换任何可见文件。
     AfterStaging,
@@ -237,10 +250,11 @@ fn run_save_transaction(
     mut checkpoint: impl FnMut(SavePhase) -> Result<(), ProjectError>,
 ) -> Result<(), ProjectError> {
     // 在创建事务暂存文件前校验两份结构化载荷，非法载荷不得触碰任何文件。
-    validate_notebook_content(&draft_content, "草稿本")
-        .map_err(ProjectError::InvalidStructure)?;
-    validate_notebook_content(&main_content, "正文本")
-        .map_err(ProjectError::InvalidStructure)?;
+    // 先做廉价的大小上限校验，再做结构解析；超限内容不得进入事务目录。
+    validate_notebook_size(&draft_content, "草稿本")?;
+    validate_notebook_size(&main_content, "正文本")?;
+    validate_notebook_content(&draft_content, "草稿本").map_err(ProjectError::InvalidStructure)?;
+    validate_notebook_content(&main_content, "正文本").map_err(ProjectError::InvalidStructure)?;
 
     let paths = ProjectPaths::new(project_root.to_path_buf());
     let layout = TransactionLayout::new(&paths);
@@ -316,13 +330,15 @@ fn recover_interrupted_save(paths: &ProjectPaths) -> Result<(), ProjectError> {
     }
 
     let manifest = read_transaction_manifest(&layout)?;
-    ensure_staged_generation_is_complete(&layout, &manifest)?;
 
     match manifest.phase {
         TransactionPhase::Staged => {
+            // 暂存阶段尚未触碰任何可见文件，直接丢弃即可，无需读取或校验暂存内容；
+            // 这也避免了超限暂存内容把作品卡死。
             cleanup_transaction(&layout);
         }
         TransactionPhase::Committing => {
+            ensure_staged_generation_is_complete(&layout, &manifest)?;
             replace_from_staged(&paths.draft_file, &layout.staged_draft)?;
             replace_from_staged(&paths.main_file, &layout.staged_main)?;
             replace_from_staged(&paths.metadata_file, &layout.staged_metadata)?;
@@ -349,14 +365,27 @@ fn read_transaction_manifest(layout: &TransactionLayout) -> Result<SaveManifest,
     Ok(manifest)
 }
 
+/// 读取事务暂存本子。超限时返回带人工恢复路径的专用 ContentTooLarge，
+/// 而不是混入 ReadError，避免作品被超限暂存内容永久卡死。
+fn read_staged_notebook(path: &Path, label: &str) -> Result<String, ProjectError> {
+    let metadata = fs::metadata(path)
+        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
+
+    if metadata.len() > MAX_NOTEBOOK_BYTES {
+        return Err(ProjectError::ContentTooLarge(format!(
+            "无法恢复保存事务：暂存{label}超过 {MAX_NOTEBOOK_BYTES} 字节上限。请手动处理 next-story-system/save-transaction 事务目录（备份后删除或联系支持）"
+        )));
+    }
+
+    fs::read_to_string(path).map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))
+}
+
 fn ensure_staged_generation_is_complete(
     layout: &TransactionLayout,
     manifest: &SaveManifest,
 ) -> Result<(), ProjectError> {
-    let staged_draft = read_bounded_string(&layout.staged_draft, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
-    let staged_main = read_bounded_string(&layout.staged_main, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
+    let staged_draft = read_staged_notebook(&layout.staged_draft, "草稿本")?;
+    let staged_main = read_staged_notebook(&layout.staged_main, "正文本")?;
 
     // 恢复流程在提交暂存世代前校验两份结构化文档。
     validate_notebook_content(&staged_draft, "草稿本")
@@ -424,12 +453,44 @@ fn write_file_atomically(path: &Path, content: &str) -> Result<(), ProjectError>
     temp_file
         .flush()
         .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+    // 关键文件在返回成功前把内容刷到持久介质，缩小进程中断与断电之间的持久性差距。
+    temp_file
+        .as_file()
+        .sync_all()
+        .map_err(|e| ProjectError::WriteError(e.to_string()))?;
 
     temp_file
         .persist(path)
         .map_err(|e| ProjectError::WriteError(e.error.to_string()))?;
 
+    // 重命名后尽力同步父目录，使重命名本身尽量可持久；失败不影响已完成的保存语义。
+    sync_parent_dir(parent);
+
     Ok(())
+}
+
+/// 尽力同步父目录，使原子重命名尽量可持久。目录同步失败不视为保存失败。
+fn sync_parent_dir(parent: &Path) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        // 打开目录句柄需要 FILE_FLAG_BACKUP_SEMANTICS。
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        if let Ok(dir) = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(parent)
+        {
+            let _ = dir.sync_all();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
 }
 
 fn validate_required_dir(root: &Path, path: &Path, label: &str) -> Result<(), ProjectError> {
@@ -528,6 +589,7 @@ mod tests {
 
     /// 测试专用故障注入点。仅存在于测试模块，绝不进入生产或 Tauri 命令路径。
     #[derive(Debug, Clone, Copy)]
+    #[allow(clippy::enum_variant_names)] // 与 SavePhase 对应的故障注入边界
     enum SaveFault {
         AfterStaging,
         AfterDraftReplace,
@@ -860,11 +922,7 @@ mod tests {
         .expect_err("injected draft replace fault");
         fs::write(&layout.manifest, "不是 JSON").expect("corrupt manifest");
 
-        let result = save_project(
-            &project_root,
-            NEW_DRAFT.to_string(),
-            NEW_MAIN.to_string(),
-        );
+        let result = save_project(&project_root, NEW_DRAFT.to_string(), NEW_MAIN.to_string());
 
         assert!(matches!(result, Err(ProjectError::ReadError(_))));
         assert!(layout.dir.exists());

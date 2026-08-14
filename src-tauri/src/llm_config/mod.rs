@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE_NAME: &str = "llm-config.json";
+/// LLM 配置文件读取大小上限，防止损坏或被替换为巨型文件时无界分配内存。
+const MAX_CONFIG_BYTES: u64 = 64 * 1024;
 
 /// 应用级 LLM 配置（包含 API Key 明文，开发期）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,6 +275,14 @@ pub fn load_llm_config(base_dir: &Path) -> Result<Option<LlmConfig>, LlmConfigEr
     let path = config_path_in(base_dir);
     if !path.exists() {
         return Ok(None);
+    }
+
+    let metadata = fs::metadata(&path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+    if metadata.len() > MAX_CONFIG_BYTES {
+        return Err(LlmConfigError::ReadError(format!(
+            "配置文件过大，无法读取: {}",
+            path.display()
+        )));
     }
 
     let json = fs::read_to_string(&path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;

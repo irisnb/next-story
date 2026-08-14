@@ -46,8 +46,11 @@ fn write_valid_project_metadata(project_root: &Path, name: &str) {
 }
 
 fn write_raw_metadata(project_root: &Path, json: &str) {
-    fs::write(project_root.join("next-story-system").join("project.json"), json)
-        .expect("write raw metadata");
+    fs::write(
+        project_root.join("next-story-system").join("project.json"),
+        json,
+    )
+    .expect("write raw metadata");
 }
 
 fn create_valid_project_folder(root: &Path, name: &str) {
@@ -116,20 +119,17 @@ fn create_new_project_writes_valid_blank_structured_notebooks() {
     })
     .expect("create project");
 
-    let draft = fs::read_to_string(project_path.join("作品文本").join("草稿本.json"))
-        .expect("read draft");
-    let main = fs::read_to_string(project_path.join("作品文本").join("正文本.json"))
-        .expect("read main");
+    let draft =
+        fs::read_to_string(project_path.join("作品文本").join("草稿本.json")).expect("read draft");
+    let main =
+        fs::read_to_string(project_path.join("作品文本").join("正文本.json")).expect("read main");
 
     for content in [draft, main] {
         let value: serde_json::Value = serde_json::from_str(&content).expect("parse notebook");
         assert_eq!(value["format"], "next-story-tiptap");
         assert_eq!(value["version"], 1);
         assert_eq!(value["document"]["type"], "doc");
-        assert_eq!(
-            value["document"]["content"][0]["type"],
-            "paragraph"
-        );
+        assert_eq!(value["document"]["content"][0]["type"], "paragraph");
     }
 }
 
@@ -203,7 +203,8 @@ fn open_existing_project_rejects_required_file_symlink_when_it_escapes_root() {
 
     let outside_draft = temp.path().join("outside-draft.json");
     fs::write(&outside_draft, valid_notebook_json("外部草稿")).expect("write outside draft");
-    fs::remove_file(project_root.join("作品文本").join("草稿本.json")).expect("remove normal draft");
+    fs::remove_file(project_root.join("作品文本").join("草稿本.json"))
+        .expect("remove normal draft");
     if let Err(error) = symlink_file(
         &outside_draft,
         &project_root.join("作品文本").join("草稿本.json"),
@@ -319,7 +320,9 @@ fn save_and_reopen_preserves_both_notebooks_through_production_api() {
 // 项目结构版本失败测试（任务 1.3）
 // ---------------------------------------------------------------------------
 
-fn reject_with_version_error(result: Result<next_story_lib::project::ProjectOpenResult, ProjectError>) {
+fn reject_with_version_error(
+    result: Result<next_story_lib::project::ProjectOpenResult, ProjectError>,
+) {
     match result {
         Err(ProjectError::InvalidStructure(message)) => {
             assert!(
@@ -468,10 +471,15 @@ fn unsupported_version_with_interrupted_transaction_leaves_all_bytes_unchanged()
     // 制造一个中断保存事务目录
     let tx_dir = root.join("next-story-system").join("save-transaction");
     fs::create_dir_all(&tx_dir).expect("create transaction dir");
-    fs::write(tx_dir.join("manifest.json"), r#"{"manifest_version":1,"phase":"Committing","target_updated_at":"2026-07-25T00:00:00Z"}"#)
-        .expect("write manifest");
-    fs::write(tx_dir.join("草稿本.json"), valid_notebook_json("暂存草稿")).expect("write staged draft");
-    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文")).expect("write staged main");
+    fs::write(
+        tx_dir.join("manifest.json"),
+        r#"{"manifest_version":1,"phase":"Committing","target_updated_at":"2026-07-25T00:00:00Z"}"#,
+    )
+    .expect("write manifest");
+    fs::write(tx_dir.join("草稿本.json"), valid_notebook_json("暂存草稿"))
+        .expect("write staged draft");
+    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文"))
+        .expect("write staged main");
     fs::write(tx_dir.join("project.json"), "{}").expect("write staged metadata");
 
     // 把版本改为不受支持的 1
@@ -535,7 +543,8 @@ fn assert_open_rejects_invalid_notebook(notebook_json: &str, file: &str) {
     // 打开失败后原文件字节不变，不生成空白替代
     let after = fs::read(&target).expect("read after failed open");
     assert_eq!(
-        after, invalid_bytes,
+        after,
+        invalid_bytes,
         "打开失败后本子文件被修改: {}",
         target.display()
     );
@@ -647,7 +656,10 @@ fn save_rejects_invalid_notebook_payload_before_staging() {
     assert!(matches!(result, Err(ProjectError::InvalidStructure(_))));
 
     // 三个可见文件保持原有完整世代
-    assert_eq!(fs::read(&draft_path).expect("read draft after"), before_draft);
+    assert_eq!(
+        fs::read(&draft_path).expect("read draft after"),
+        before_draft
+    );
     assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
     assert_eq!(
         fs::read(&metadata_path).expect("read metadata after"),
@@ -655,7 +667,9 @@ fn save_rejects_invalid_notebook_payload_before_staging() {
     );
 
     // 未创建事务暂存目录
-    let tx_dir = project_path.join("next-story-system").join("save-transaction");
+    let tx_dir = project_path
+        .join("next-story-system")
+        .join("save-transaction");
     assert!(!tx_dir.exists(), "非法保存不应创建事务暂存目录");
 }
 
@@ -669,7 +683,9 @@ fn open_rejects_unrecoverable_transaction_with_invalid_staged_notebook() {
     .expect("create project");
 
     // 制造一个提交阶段的中断事务，但暂存草稿是非法内容
-    let tx_dir = project_path.join("next-story-system").join("save-transaction");
+    let tx_dir = project_path
+        .join("next-story-system")
+        .join("save-transaction");
     fs::create_dir_all(&tx_dir).expect("create transaction dir");
     fs::write(
         tx_dir.join("manifest.json"),
@@ -677,7 +693,8 @@ fn open_rejects_unrecoverable_transaction_with_invalid_staged_notebook() {
     )
     .expect("write manifest");
     fs::write(tx_dir.join("草稿本.json"), "非法暂存草稿").expect("write invalid staged draft");
-    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文")).expect("write staged main");
+    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文"))
+        .expect("write staged main");
     fs::write(
         tx_dir.join("project.json"),
         r#"{"name":"坏恢复","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":2}"#,
@@ -686,4 +703,136 @@ fn open_rejects_unrecoverable_transaction_with_invalid_staged_notebook() {
 
     let result = open_existing_project(&project_path);
     assert!(matches!(result, Err(ProjectError::ReadError(_))));
+}
+
+// ---------------------------------------------------------------------------
+// 保存大小上限与超限事务恢复（工程审查 P1-01）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn save_rejects_oversized_draft_before_staging() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "超限草稿".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let draft_path = project_path.join("作品文本").join("草稿本.json");
+    let main_path = project_path.join("作品文本").join("正文本.json");
+    let metadata_path = project_path.join("next-story-system").join("project.json");
+
+    let before_draft = fs::read(&draft_path).expect("read draft before");
+    let before_main = fs::read(&main_path).expect("read main before");
+    let before_metadata = fs::read(&metadata_path).expect("read metadata before");
+
+    // 草稿为超过上限但仍是合法结构化 JSON 的本子
+    let oversized_draft = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));
+
+    let result = save_existing_project(&project_path, oversized_draft, valid_notebook_json("正文"));
+
+    assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
+
+    // 三个可见文件保持原有完整世代
+    assert_eq!(
+        fs::read(&draft_path).expect("read draft after"),
+        before_draft
+    );
+    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
+    assert_eq!(
+        fs::read(&metadata_path).expect("read metadata after"),
+        before_metadata
+    );
+
+    // 未创建事务暂存目录
+    let tx_dir = project_path
+        .join("next-story-system")
+        .join("save-transaction");
+    assert!(!tx_dir.exists(), "超限保存不应创建事务暂存目录");
+}
+
+#[test]
+fn save_rejects_oversized_main_before_staging() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "超限正文".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let main_path = project_path.join("作品文本").join("正文本.json");
+    let before_main = fs::read(&main_path).expect("read main before");
+
+    let oversized_main = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));
+
+    let result = save_existing_project(&project_path, valid_notebook_json("草稿"), oversized_main);
+
+    assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
+    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
+
+    let tx_dir = project_path
+        .join("next-story-system")
+        .join("save-transaction");
+    assert!(!tx_dir.exists(), "超限保存不应创建事务暂存目录");
+}
+
+#[test]
+fn open_discards_staged_oversized_transaction() {
+    let temp = TempDir::new().expect("create temp dir");
+    let root = temp.path().join("暂存超限");
+    create_valid_project_folder(&root, "暂存超限");
+
+    // 制造一个 Staged 阶段的中断事务，暂存草稿超限
+    let tx_dir = root.join("next-story-system").join("save-transaction");
+    fs::create_dir_all(&tx_dir).expect("create transaction dir");
+    fs::write(
+        tx_dir.join("manifest.json"),
+        r#"{"manifest_version":1,"phase":"Staged","target_updated_at":"2026-07-25T00:00:00Z"}"#,
+    )
+    .expect("write manifest");
+    fs::write(tx_dir.join("草稿本.json"), "x".repeat(11 * 1024 * 1024))
+        .expect("write oversized staged draft");
+    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文"))
+        .expect("write staged main");
+    fs::write(
+        tx_dir.join("project.json"),
+        r#"{"name":"暂存超限","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":2}"#,
+    )
+    .expect("write staged metadata");
+
+    // 打开应成功：丢弃超限 Staged 事务并加载旧世代
+    let opened = open_existing_project(&root).expect("open discards staged oversized transaction");
+
+    assert!(!tx_dir.exists(), "Staged 超限事务目录应被丢弃");
+    assert!(opened.draft_content.contains("草稿"));
+    assert!(opened.main_content.contains("正文"));
+}
+
+#[test]
+fn open_rejects_committing_oversized_transaction() {
+    let temp = TempDir::new().expect("create temp dir");
+    let root = temp.path().join("提交超限");
+    create_valid_project_folder(&root, "提交超限");
+
+    // 制造一个 Committing 阶段的中断事务，暂存草稿超限
+    let tx_dir = root.join("next-story-system").join("save-transaction");
+    fs::create_dir_all(&tx_dir).expect("create transaction dir");
+    fs::write(
+        tx_dir.join("manifest.json"),
+        r#"{"manifest_version":1,"phase":"Committing","target_updated_at":"2026-07-25T00:00:00Z"}"#,
+    )
+    .expect("write manifest");
+    fs::write(tx_dir.join("草稿本.json"), "x".repeat(11 * 1024 * 1024))
+        .expect("write oversized staged draft");
+    fs::write(tx_dir.join("正文本.json"), valid_notebook_json("暂存正文"))
+        .expect("write staged main");
+    fs::write(
+        tx_dir.join("project.json"),
+        r#"{"name":"提交超限","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":2}"#,
+    )
+    .expect("write staged metadata");
+
+    // 打开应返回专用 ContentTooLarge，而不是把作品永久卡死
+    let result = open_existing_project(&root);
+    assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
 }

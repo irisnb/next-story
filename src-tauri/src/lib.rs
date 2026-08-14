@@ -56,7 +56,7 @@ mod tests {
 
         for request in cases {
             let result = super::generate_ai_result_for_request(Path::new("unused"), request).await;
-            assert_eq!(result.ok, false);
+            assert!(!result.ok);
             let error = result.error.expect("malformed request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
             assert_eq!(error.message, "AI 请求内容无效，请重试");
@@ -85,7 +85,7 @@ mod tests {
 
         for request in cases {
             let result = super::generate_ai_result_for_request(temp.path(), request).await;
-            assert_eq!(result.ok, false);
+            assert!(!result.ok);
             let error = result.error.expect("invalid request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
             assert_eq!(error.message, "AI 请求内容无效，请重试");
@@ -184,7 +184,6 @@ async fn generate_ai_result_for_request(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             create_project,

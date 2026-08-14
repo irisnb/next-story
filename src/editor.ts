@@ -251,6 +251,25 @@ export function setupEditor(
   dom.tabMain.addEventListener("click", () => switchTab("main"));
   dom.btnSave.addEventListener("click", () => { void save(); });
 
+  // 工具栏按钮：mousedown 时阻止抢焦点，否则点击按钮会让编辑器失焦、选区丢失，
+  // 加粗/斜体等命令就会作用在空选区上（手感稀碎）。
+  const toolbarButtons = [
+    dom.btnBold,
+    dom.btnItalic,
+    dom.btnBulletList,
+    dom.btnOrderedList,
+    dom.btnClearFormat,
+    dom.btnUndo,
+    dom.btnRedo,
+    dom.btnMore,
+    dom.btnMoreClearFormat,
+    dom.btnMoreUndo,
+    dom.btnMoreRedo,
+  ];
+  for (const button of toolbarButtons) {
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+  }
+
   // 工具栏命令
   dom.btnBold.addEventListener("click", () => runSelectionCommand({ kind: "bold" }));
   dom.btnItalic.addEventListener("click", () => runSelectionCommand({ kind: "italic" }));

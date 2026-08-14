@@ -71,6 +71,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
       editorProps: {
         clipboardTextSerializer: (slice) => sliceToPlainText(slice),
         handlePaste: (_view, event) => this.handlePaste(event),
+        handleDrop: (_view, event) => this.handleDrop(event),
       },
     });
   }
@@ -182,6 +183,15 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
     if (!data) return false;
     const plain = data.getData("text/plain");
     const html = data.getData("text/html");
+    const files = Array.from(data.files ?? []);
+    const hasImageFile = files.some((file) => file.type.startsWith("image/"));
+
+    // 纯图片粘贴（截图后 Ctrl+V）：既无文字也无 HTML，只有图片文件
+    if (hasImageFile && plain.trim() === "" && html.trim() === "") {
+      alert("无法将图片加入本子");
+      return true;
+    }
+
     const parsed = html
       ? parseHtmlToBlocks(html)
       : { blocks: [], hasImage: false, hasUnknownVisibleEmbed: false };
@@ -189,13 +199,22 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
 
     if (action.kind === "insert") {
       this.editor.commands.insertContent(action.document.content);
-      if (parsed.hasImage) alert("图片未被加入");
+      if (parsed.hasImage || hasImageFile) alert("图片未被加入");
     } else if (action.kind === "reject") {
       alert(action.reason);
     } else {
       alert("无法将图片加入本子");
     }
     return true;
+  }
+
+  private handleDrop(event: DragEvent): boolean {
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.some((file) => file.type.startsWith("image/"))) {
+      alert("无法将图片加入本子");
+      return true;
+    }
+    return false;
   }
 
   destroy(): void {

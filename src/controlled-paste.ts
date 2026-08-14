@@ -107,8 +107,10 @@ function collectInlineRuns(
       if ((el.textContent ?? "").trim().length > 0) state.hasUnknownVisibleEmbed = true;
       continue;
     }
-    // 块级或列表元素由外层处理，这里只透传内联元素
-    if (tag === "p" || tag === "div" || tag === "ul" || tag === "ol" || tag === "table" || tag === "li") {
+    // 块级或列表元素由外层处理，这里只透传内联元素。
+    // 注意：p/div 不能跳过——Tiptap 序列化的列表项是 <li><p>文字</p></li>，
+    // 网页里列表项也可能是 <li><div>文字</div></li>，跳过会导致文字丢失。
+    if (tag === "ul" || tag === "ol" || tag === "table" || tag === "li") {
       continue;
     }
     if (tag === "br") continue;

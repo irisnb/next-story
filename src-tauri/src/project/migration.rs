@@ -6,6 +6,14 @@
 //! - 小于当前版本：按注册的迁移步骤 `from_version`→`to_version` 逐级升级，
 //!   执行前先备份，任一步骤失败即回滚备份并返回错误。
 //!
+//! 回滚复用项目保存的事务式暂存/恢复机制（`operations::transactional_restore`）：
+//! 先整体暂存到 `next-story-system/save-transaction/` 并写入 `MigrationRollback`
+//! 用途的 `Committing` 清单，再按 草稿 → 正文 → 元信息 顺序替换可见文件；
+//! 迁移中途崩溃留下的暂存会在下次打开时由框架优先恢复（见
+//! [`recover_pending_migration_rollback`]）。
+//!
+//! 迁移步骤必须是幂等的：允许在失败或崩溃后再次打开时被重新执行。
+//!
 //! 生产环境当前注册零个迁移步骤：版本 2 就是最新版，团队有意不迁移旧 v1
 //! `.txt` 项目，因此旧版本依然会被拒绝，与迁移框架出现前的行为一致。
 
@@ -14,7 +22,10 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 
-use super::operations::{read_bounded_string, MAX_METADATA_BYTES};
+use super::operations::{
+    read_bounded_string, recover_migration_rollback_transaction, transactional_restore,
+    MAX_METADATA_BYTES, MAX_NOTEBOOK_BYTES,
+};
 use super::{ProjectError, ProjectMetadata, ProjectPaths};
 
 /// 备份目录所在的父目录（位于 `next-story-system/` 下，系统所有）。
@@ -40,6 +51,11 @@ pub(crate) fn migrate_project(
     migrations: &[MigrationStep],
     target_version: u32,
 ) -> Result<u32, ProjectError> {
+    // 先恢复上次迁移回滚中断留下的事务（复用保存事务的暂存/恢复机制），
+    // 再读取版本：保证「迁移中途崩溃后再次打开」从一致有效世代继续。
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+    recover_pending_migration_rollback(&paths)?;
+
     let current_version = read_project_version(project_root)?;
 
     if current_version == target_version {
@@ -82,27 +98,49 @@ pub(crate) fn migrate_project(
     // 逐级执行迁移，每一步后校验版本；任一步骤失败即回滚备份。
     for step in chain {
         if let Err(error) = (step.migrate)(project_root) {
-            rollback_backup(&backup_dir, project_root);
-            return Err(error);
+            return Err(rollback_with_report(&backup_dir, project_root, error));
         }
 
         let after_version = match read_project_version(project_root) {
             Ok(after) => after,
             Err(error) => {
-                rollback_backup(&backup_dir, project_root);
-                return Err(error);
+                return Err(rollback_with_report(&backup_dir, project_root, error));
             }
         };
         if after_version != step.to_version {
-            rollback_backup(&backup_dir, project_root);
-            return Err(ProjectError::InvalidStructure(format!(
-                "迁移步骤校验失败: 从 {} 迁移后版本为 {}，期望 {}",
-                step.from_version, after_version, step.to_version
-            )));
+            return Err(rollback_with_report(
+                &backup_dir,
+                project_root,
+                ProjectError::InvalidStructure(format!(
+                    "迁移步骤校验失败: 从 {} 迁移后版本为 {}，期望 {}",
+                    step.from_version, after_version, step.to_version
+                )),
+            ));
         }
     }
 
     Ok(target_version)
+}
+
+/// 迁移开始前恢复上次中断的迁移回滚事务；非迁移回滚用途的事务原样跳过。
+fn recover_pending_migration_rollback(paths: &ProjectPaths) -> Result<(), ProjectError> {
+    recover_migration_rollback_transaction(paths)
+}
+
+/// 迁移失败后回滚备份，并把原始迁移错误与回滚错误合并返回：
+/// 回滚成功返回原错误；回滚失败时同时保留两者，并给出备份目录的人工恢复路径。
+fn rollback_with_report(
+    backup_dir: &Path,
+    project_root: &Path,
+    migration_error: ProjectError,
+) -> ProjectError {
+    match rollback_backup(backup_dir, project_root) {
+        Ok(()) => migration_error,
+        Err(rollback_error) => ProjectError::WriteError(format!(
+            "迁移失败: {migration_error}；回滚失败: {rollback_error}。备份保留在 {} 目录，请按备份人工恢复。",
+            backup_dir.display()
+        )),
+    }
 }
 
 /// 读取项目当前结构版本；读取或解析失败返回结构错误。
@@ -165,17 +203,26 @@ fn copy_file_into_backup(
     Ok(())
 }
 
-/// 用备份恢复被改动的文件；恢复成功才删除备份目录，恢复失败则保留目录便于人工处理。
-fn rollback_backup(backup_dir: &Path, project_root: &Path) {
+/// 用备份事务式恢复被改动的文件：整体暂存进 `save-transaction/` 后按
+/// 草稿 → 正文 → 元信息 顺序原子替换，不再用三次裸 `fs::copy`（裸复制
+/// 中途失败会留下部分回滚状态，且没有恢复标记）。恢复成功才删除备份目录，
+/// 恢复失败返回错误并保留备份目录便于人工处理。
+fn rollback_backup(backup_dir: &Path, project_root: &Path) -> Result<(), ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
 
-    let restored = fs::copy(backup_dir.join("project.json"), &paths.metadata_file).is_ok()
-        && fs::copy(backup_dir.join("草稿本.json"), &paths.draft_file).is_ok()
-        && fs::copy(backup_dir.join("正文本.json"), &paths.main_file).is_ok();
+    let metadata_json =
+        read_bounded_string(&backup_dir.join("project.json"), MAX_METADATA_BYTES)
+            .map_err(|e| ProjectError::WriteError(format!("回滚失败：无法读取备份 project.json: {e}")))?;
+    let draft_json = read_bounded_string(&backup_dir.join("草稿本.json"), MAX_NOTEBOOK_BYTES)
+        .map_err(|e| ProjectError::WriteError(format!("回滚失败：无法读取备份 草稿本.json: {e}")))?;
+    let main_json = read_bounded_string(&backup_dir.join("正文本.json"), MAX_NOTEBOOK_BYTES)
+        .map_err(|e| ProjectError::WriteError(format!("回滚失败：无法读取备份 正文本.json: {e}")))?;
 
-    if restored {
-        let _ = fs::remove_dir_all(backup_dir);
-    }
+    transactional_restore(&paths, &metadata_json, &draft_json, &main_json)?;
+
+    // 恢复成功才删除备份目录；失败则保留备份便于人工处理。
+    let _ = fs::remove_dir_all(backup_dir);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -448,5 +495,114 @@ mod tests {
             other => panic!("期望步骤定义拒绝，实际: {other:?}"),
         }
         assert!(backup_dirs(&root).is_empty(), "定义不合法不应产生备份");
+    }
+
+    /// 回滚失败必须显式上报：错误同时包含原始迁移错误、回滚失败说明与人工恢复路径，
+    /// 且备份目录被保留（内容完整可供人工恢复）。
+    #[test]
+    fn migrate_reports_rollback_failure_and_keeps_backup() {
+        let temp = TempDir::new().expect("创建临时目录");
+        let root = temp.path().join("回滚失败");
+        seed_project(&root, 1);
+
+        // 让回滚的事务式暂存失败：`save-transaction` 路径被一个文件占住。
+        fs::write(
+            root.join("next-story-system").join("save-transaction"),
+            "占位文件",
+        )
+        .expect("占用事务目录路径");
+        let steps = [MigrationStep {
+            from_version: 1,
+            to_version: 2,
+            migrate: synthetic_step_fails_after_writing,
+        }];
+
+        let result = migrate_project(&root, &steps, ProjectMetadata::CURRENT_VERSION);
+
+        match result {
+            Err(ProjectError::WriteError(message)) => {
+                assert!(message.contains("迁移失败"), "应含原始迁移错误，实际: {message}");
+                assert!(message.contains("回滚失败"), "应含回滚失败说明，实际: {message}");
+                assert!(
+                    message.contains("备份") && message.contains("人工恢复"),
+                    "应给出人工恢复路径，实际: {message}"
+                );
+            }
+            other => panic!("期望合并回滚失败错误，实际: {other:?}"),
+        }
+
+        // 备份被保留且三份文件完整。
+        let backups = backup_dirs(&root);
+        assert_eq!(backups.len(), 1, "回滚失败应保留备份: {backups:?}");
+        assert!(backups[0].join("project.json").is_file());
+        assert!(backups[0].join("草稿本.json").is_file());
+        assert!(backups[0].join("正文本.json").is_file());
+    }
+
+    /// 「迁移中途崩溃后再次打开」：回滚进行到一半进程退出（可见元信息已被破坏，
+    /// 事务目录留有 `MigrationRollback` 暂存），再次打开应先把回滚事务恢复完成，
+    /// 使作品回到一致有效世代，再继续迁移流程。
+    #[test]
+    fn reopen_after_crash_during_migration_rollback_recovers_consistent_generation() {
+        let temp = TempDir::new().expect("创建临时目录");
+        let root = temp.path().join("崩溃恢复");
+        seed_project(&root, 1);
+        let paths = ProjectPaths::new(root.clone());
+
+        // 用合法结构化本子替换测试骨架里的占位 `{}`，保证恢复校验可通过对暂存内容。
+        let valid_draft = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"原草稿"}]}]}}"#;
+        let valid_main = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"原正文"}]}]}}"#;
+        fs::write(&paths.draft_file, valid_draft).expect("写入有效草稿本");
+        fs::write(&paths.main_file, valid_main).expect("写入有效正文本");
+        let original_metadata = fs::read(&paths.metadata_file).expect("读取原元信息");
+        let original_draft = fs::read(&paths.draft_file).expect("读取原草稿");
+        let original_main = fs::read(&paths.main_file).expect("读取原正文");
+
+        // 模拟崩溃现场：可见元信息已被迁移步骤破坏，事务目录留有
+        // `MigrationRollback` 用途的 `Committing` 暂存（完整备份内容）。
+        fs::write(&paths.metadata_file, "被迁移破坏的内容").expect("破坏可见元信息");
+        let tx_dir = paths.system_dir.join("save-transaction");
+        fs::create_dir_all(&tx_dir).expect("创建事务目录");
+        fs::write(tx_dir.join("草稿本.json"), &original_draft).expect("暂存草稿");
+        fs::write(tx_dir.join("正文本.json"), &original_main).expect("暂存正文");
+        fs::write(tx_dir.join("project.json"), &original_metadata).expect("暂存元信息");
+        fs::write(
+            tx_dir.join("manifest.json"),
+            serde_json::json!({
+                "manifest_version": 1,
+                "phase": "Committing",
+                "target_updated_at": "2026-01-01T00:00:00Z",
+                "purpose": "migration_rollback",
+            })
+            .to_string(),
+        )
+        .expect("写入回滚清单");
+
+        // 再次打开：先完成回滚恢复，再走迁移（v1 无生产步骤 → 拒绝）。
+        let result = crate::project::open_existing_project(&root);
+        match result {
+            Err(ProjectError::InvalidStructure(message)) => {
+                assert!(message.contains("不支持的项目结构版本"), "实际: {message}");
+            }
+            other => panic!("期望版本拒绝，实际: {other:?}"),
+        }
+
+        // 作品已恢复到一致有效的 v1 世代，回滚事务目录被清理。
+        assert_eq!(
+            fs::read(&paths.metadata_file).expect("读取元信息"),
+            original_metadata,
+            "元信息应恢复为迁移前内容"
+        );
+        assert_eq!(
+            fs::read(&paths.draft_file).expect("读取草稿"),
+            original_draft,
+            "草稿应恢复为迁移前内容"
+        );
+        assert_eq!(
+            fs::read(&paths.main_file).expect("读取正文"),
+            original_main,
+            "正文应恢复为迁移前内容"
+        );
+        assert!(!tx_dir.exists(), "回滚事务目录应已被清理");
     }
 }

@@ -7,7 +7,9 @@ pub use notebook::*;
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 /// 项目元信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +107,47 @@ impl ProjectPaths {
             system_dir: system_dir.clone(),
             metadata_file: system_dir.join("project.json"),
         }
+    }
+}
+
+/// 进程内作品锁注册表：同一作品（键为规范化后的作品根路径）的打开、保存、迁移
+/// 在进程内串行化，不同作品仍可并行。锁在 Tauri 应用状态中维护，
+/// 由命令层在阻塞线程内「取锁 → 操作 → 释放」（见 `lib.rs` 各命令处理器）。
+///
+/// 每个作品路径对应一个进程生命周期内不复用的 `&'static Mutex<()>`（`Box::leak`），
+/// 与「`HashMap` 持 `Arc<Mutex<()>>` 且条目从不删除」等价：锁对象与注册表同寿，
+/// 因此返回的 guard 只需持 `'static` 的 `MutexGuard`，无需自引用结构。
+#[derive(Clone, Default)]
+pub struct ProjectLocks {
+    inner: Arc<Mutex<HashMap<PathBuf, &'static Mutex<()>>>>,
+}
+
+/// 持有中的作品锁；析构时自动释放，保证「取锁 → 执行 → 释放」不会漏放。
+pub struct ProjectLockGuard {
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl ProjectLocks {
+    /// 取得指定作品根的锁。路径先规范化，确保同一作品的不同写法（相对/绝对、
+    /// 大小写变体等）落到同一把锁；规范化失败视为结构错误拒绝操作。
+    pub fn acquire(&self, project_root: &Path) -> Result<ProjectLockGuard, ProjectError> {
+        let canonical = project_root.canonicalize().map_err(|e| {
+            ProjectError::InvalidStructure(format!("作品路径无法解析: {e}"))
+        })?;
+
+        // 把 `&'static` 引用复制出来，避免锁守卫借用注册表自身的互斥。
+        let lock: &'static Mutex<()> = {
+            let mut locks = self
+                .inner
+                .lock()
+                .map_err(|_| ProjectError::WriteError("作品锁注册表不可用".to_string()))?;
+            *locks
+                .entry(canonical)
+                .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
+        };
+
+        let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Ok(ProjectLockGuard { _guard: guard })
     }
 }
 

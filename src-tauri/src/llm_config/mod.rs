@@ -1,7 +1,8 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +18,9 @@ const MAX_CONFIG_BYTES: u64 = 64 * 1024;
 pub struct LlmConfig {
     /// OpenAI-compatible API base URL
     pub api_base_url: String,
-    /// API Key（保存在操作系统钥匙串中）
+    /// API Key（保存在操作系统钥匙串中）。
+    /// 前端掩码模式下未输入新密钥时省略该字段；缺省视为「沿用钥匙串旧密钥」。
+    #[serde(default)]
     pub api_key: String,
     /// 模型名
     pub model: String,
@@ -50,6 +53,18 @@ impl From<&LlmConfig> for LlmConfigStored {
             model: config.model.clone(),
         }
     }
+}
+
+/// 加载配置的前端契约：不含明文 API Key，只含非敏感字段与
+/// `has_api_key` 布尔值（钥匙串是否已有已保存密钥，前端据此显示固定掩码）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfigSummary {
+    /// OpenAI-compatible API base URL
+    pub api_base_url: String,
+    /// 模型名
+    pub model: String,
+    /// 钥匙串中是否已保存 API Key。
+    pub has_api_key: bool,
 }
 
 /// LLM 配置错误
@@ -133,13 +148,14 @@ pub enum GenerateAiMessageRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenerateAiMessage {
     pub role: GenerateAiMessageRole,
     pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GenerateAiRequest {
     First {
         selected_text: String,
@@ -250,18 +266,28 @@ pub async fn generate_ai_result_in(
         return GenerateAiResult::failure(error);
     }
 
-    let config = match load_llm_config(base_dir) {
-        Ok(Some(config)) => config,
-        Ok(None) => {
+    // 同步目录/文件/钥匙串读取放入阻塞线程，避免占住异步执行线程。
+    let base_dir = base_dir.to_path_buf();
+    let loaded = tauri::async_runtime::spawn_blocking(move || load_llm_config(&base_dir)).await;
+
+    let config = match loaded {
+        Ok(Ok(Some(config))) => config,
+        Ok(Ok(None)) => {
             return GenerateAiResult::failure(GenerateAiError::new(
                 GenerateAiErrorCode::ConfigurationRequired,
                 "缺少 LLM 配置，请先到设置中填写并保存 API 地址、Key 与模型名",
             ));
         }
-        Err(_) => {
+        Ok(Err(_)) => {
             return GenerateAiResult::failure(GenerateAiError::new(
                 GenerateAiErrorCode::ConfigurationRequired,
                 "LLM 配置无法读取，请重新保存配置",
+            ));
+        }
+        Err(_) => {
+            return GenerateAiResult::failure(GenerateAiError::new(
+                GenerateAiErrorCode::ConfigurationRequired,
+                "LLM 配置目录读取任务执行失败，请重启应用后重试",
             ));
         }
     };
@@ -294,27 +320,161 @@ pub fn validate_llm_config(config: &LlmConfig) -> Result<(), LlmConfigError> {
     Ok(())
 }
 
-/// 保存配置：API Key 写入系统钥匙串，非敏感字段原子写入磁盘文件
+/// 配置保存互斥：串行化并发保存，避免两个保存交错写钥匙串与磁盘文件。
+static CONFIG_SAVE_LOCK: Mutex<()> = Mutex::new(());
+
+/// 保存阶段边界（测试故障注入用；生产路径恒传恒成功闭包）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)] // After* 前缀是故障注入边界的语义，非冗余
+pub enum ConfigSavePhase {
+    /// 钥匙串已更新，磁盘文件尚未原子替换。
+    AfterKeyringUpdate,
+}
+
+/// 保存配置：API Key 写入系统钥匙串，非敏感字段原子写入磁盘文件。
+///
+/// 事务顺序为「读旧密钥+旧磁盘配置 → 写磁盘临时文件 → 更新钥匙串 →
+/// 原子替换磁盘文件」，任一步失败按相反顺序回滚（临时文件直接丢弃，
+/// 钥匙串恢复为旧值），杜绝「旧地址 + 新密钥」的分裂状态。
+/// 并发保存被进程内互斥串行化。
 pub fn save_llm_config(base_dir: &Path, config: &LlmConfig) -> Result<(), LlmConfigError> {
     save_llm_config_with_store(base_dir, config, &KeyringStore)
 }
 
-/// 保存配置（可注入密钥存储，测试走内存实现，生产走系统钥匙串）
+/// 保存配置（可注入密钥存储，测试走内存实现，生产走系统钥匙串）。
 pub fn save_llm_config_with_store(
     base_dir: &Path,
     config: &LlmConfig,
     store: &dyn SecretStore,
 ) -> Result<(), LlmConfigError> {
-    validate_llm_config(config)?;
+    save_llm_config_transaction(base_dir, config, store, |_| Ok(()))
+}
 
-    store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &config.api_key)?;
+/// 带阶段检查点的保存入口：测试注入「钥匙串成功后、磁盘替换前」故障用；
+/// 生产路径请使用 [`save_llm_config_with_store`]。
+pub fn save_llm_config_with_store_checked(
+    base_dir: &Path,
+    config: &LlmConfig,
+    store: &dyn SecretStore,
+    checkpoint: impl FnMut(ConfigSavePhase) -> Result<(), LlmConfigError>,
+) -> Result<(), LlmConfigError> {
+    save_llm_config_transaction(base_dir, config, store, checkpoint)
+}
 
+/// 掩码模式兼容：api_key 为空表示沿用钥匙串中的旧密钥，不覆盖。
+fn resolve_effective_key(
+    config: &LlmConfig,
+    store: &dyn SecretStore,
+) -> Result<String, LlmConfigError> {
+    if config.api_key.trim().is_empty() {
+        store
+            .get(KEYRING_SERVICE, KEYRING_ACCOUNT)?
+            .ok_or(LlmConfigError::MissingApiKey)
+    } else {
+        Ok(config.api_key.clone())
+    }
+}
+
+/// 解析前端传入配置的有效形态：api_key 为空时复用钥匙串中的旧密钥。
+/// 供 `test_llm_connection` 等命令在调用底层用例前补齐密钥。
+pub fn resolve_effective_config(config: &LlmConfig) -> Result<LlmConfig, LlmConfigError> {
+    let api_key = resolve_effective_key(config, &KeyringStore)?;
+    Ok(LlmConfig {
+        api_base_url: config.api_base_url.clone(),
+        api_key,
+        model: config.model.clone(),
+    })
+}
+
+fn save_llm_config_transaction(
+    base_dir: &Path,
+    config: &LlmConfig,
+    store: &dyn SecretStore,
+    mut checkpoint: impl FnMut(ConfigSavePhase) -> Result<(), LlmConfigError>,
+) -> Result<(), LlmConfigError> {
+    // 并发保存串行化：整个事务（读旧值 → 临时文件 → 钥匙串 → 原子替换）持锁。
+    let _serialize = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let effective_key = resolve_effective_key(config, store)?;
+
+    let effective_config = LlmConfig {
+        api_base_url: config.api_base_url.clone(),
+        api_key: effective_key.clone(),
+        model: config.model.clone(),
+    };
+    validate_llm_config(&effective_config)?;
+
+    // 1. 读旧密钥（回滚用）与旧磁盘配置（回滚失败时上报用）。
+    let old_key = store.get(KEYRING_SERVICE, KEYRING_ACCOUNT)?;
+    let old_disk = read_disk_config_or_none(base_dir);
+
+    // 2. 写磁盘临时文件（不触碰任何可见文件；失败直接丢弃临时文件）。
     fs::create_dir_all(base_dir).map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
     let path = config_path_in(base_dir);
     let stored = LlmConfigStored::from(config);
     let json = serde_json::to_string_pretty(&stored)
         .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
-    write_file_atomically(&path, &json)
+    let mut temp_file = tempfile::NamedTempFile::new_in(base_dir)
+        .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
+    temp_file
+        .write_all(json.as_bytes())
+        .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
+    temp_file
+        .flush()
+        .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
+
+    // 3. 更新钥匙串；失败时钥匙串未变，无需回滚。
+    if let Err(error) = store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &effective_key) {
+        return Err(error);
+    }
+
+    // 故障注入点：钥匙串已更新、磁盘尚未替换。
+    if let Err(error) = checkpoint(ConfigSavePhase::AfterKeyringUpdate) {
+        return finish_save_with_keyring_rollback(store, old_key, old_disk, error);
+    }
+
+    // 4. 原子替换磁盘文件（提交点）；失败则回滚钥匙串为旧值。
+    if let Err(error) = temp_file.persist(&path) {
+        return finish_save_with_keyring_rollback(
+            store,
+            old_key,
+            old_disk,
+            LlmConfigError::WriteError(error.error.to_string()),
+        );
+    }
+
+    Ok(())
+}
+
+/// 钥匙串已更新但磁盘替换失败时，按相反顺序回滚钥匙串为旧值；
+/// 回滚本身失败时显式上报（配置以磁盘为准，下次加载自愈），不静默。
+fn finish_save_with_keyring_rollback(
+    store: &dyn SecretStore,
+    old_key: Option<String>,
+    old_disk: Option<String>,
+    primary: LlmConfigError,
+) -> Result<(), LlmConfigError> {
+    let rollback = match old_key {
+        Some(key) => store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &key),
+        None => store.delete(KEYRING_SERVICE, KEYRING_ACCOUNT),
+    };
+
+    match rollback {
+        Ok(()) => Err(primary),
+        Err(rollback_error) => Err(LlmConfigError::SecretStoreError(format!(
+            "保存配置失败: {primary}；恢复旧密钥也失败: {rollback_error}。当前磁盘配置为 {}，请重新保存配置",
+            old_disk.unwrap_or_else(|| "（无磁盘配置）".to_string()),
+        ))),
+    }
+}
+
+/// 读取旧磁盘配置的原文（仅用于回滚失败时的错误上报；读取失败视为无旧配置）。
+fn read_disk_config_or_none(base_dir: &Path) -> Option<String> {
+    let path = config_path_in(base_dir);
+    if !path.is_file() {
+        return None;
+    }
+    read_config_bounded(&path).ok()
 }
 
 /// 加载配置；文件不存在返回 None
@@ -334,15 +494,7 @@ pub fn load_llm_config_with_store(
         return Ok(None);
     }
 
-    let metadata = fs::metadata(&path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
-    if metadata.len() > MAX_CONFIG_BYTES {
-        return Err(LlmConfigError::ReadError(format!(
-            "配置文件过大，无法读取: {}",
-            path.display()
-        )));
-    }
-
-    let json = fs::read_to_string(&path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+    let json = read_config_bounded(&path)?;
     let value: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
 
@@ -360,6 +512,69 @@ pub fn load_llm_config_with_store(
             )
         })?;
     Ok(Some(stored.with_api_key(api_key)))
+}
+
+/// 加载配置的脱敏摘要：不含明文 API Key，只含非敏感字段与
+/// `has_api_key`（钥匙串是否取到密钥）。前端据此显示固定掩码，不回填明文。
+pub fn load_llm_config_summary(
+    base_dir: &Path,
+) -> Result<Option<LlmConfigSummary>, LlmConfigError> {
+    load_llm_config_summary_with_store(base_dir, &KeyringStore)
+}
+
+/// 加载配置摘要（可注入密钥存储，测试走内存实现，生产走系统钥匙串）。
+/// 兼容旧格式：若磁盘文件仍含明文 `api_key`，会把它迁移进钥匙串并改写文件。
+pub fn load_llm_config_summary_with_store(
+    base_dir: &Path,
+    store: &dyn SecretStore,
+) -> Result<Option<LlmConfigSummary>, LlmConfigError> {
+    let path = config_path_in(base_dir);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let json = read_config_bounded(&path)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&json).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+
+    if value.get("api_key").is_some() {
+        let legacy = load_legacy_config_with_store(&path, value, store)?;
+        return Ok(Some(LlmConfigSummary {
+            api_base_url: legacy.api_base_url,
+            model: legacy.model,
+            has_api_key: true,
+        }));
+    }
+
+    let stored: LlmConfigStored =
+        serde_json::from_value(value).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+    let has_api_key = store.get(KEYRING_SERVICE, KEYRING_ACCOUNT)?.is_some();
+    Ok(Some(LlmConfigSummary {
+        api_base_url: stored.api_base_url,
+        model: stored.model,
+        has_api_key,
+    }))
+}
+
+/// 有界读取配置文件：打开一次句柄后 `take(max+1)` 限量读取，超限拒绝；
+/// 不依赖读取前的元数据长度（消除 TOCTOU 竞态），超限内容不会被无界读入内存。
+fn read_config_bounded(path: &Path) -> Result<String, LlmConfigError> {
+    let file = fs::File::open(path).map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+
+    let mut limited = file.take(MAX_CONFIG_BYTES + 1);
+    let mut content = String::new();
+    limited
+        .read_to_string(&mut content)
+        .map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
+
+    if content.len() as u64 > MAX_CONFIG_BYTES {
+        return Err(LlmConfigError::ReadError(format!(
+            "配置文件过大，无法读取: {}",
+            path.display()
+        )));
+    }
+
+    Ok(content)
 }
 
 /// 旧格式明文配置迁移：把明文 `api_key` 写入钥匙串，并把文件改写为不含 key 的新格式。

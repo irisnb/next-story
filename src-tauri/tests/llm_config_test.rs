@@ -8,11 +8,15 @@ use std::time::{Duration, Instant};
 
 use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
-    generate_ai_thinking_with_timeout, load_llm_config_with_store, save_llm_config_with_store,
-    test_llm_connection, validate_llm_config, GenerateAiError, GenerateAiErrorCode,
-    GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, LlmConfig, LlmConfigError,
-    SecretStore, CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, KEYRING_ACCOUNT,
-    KEYRING_SERVICE, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+    generate_ai_thinking_with_timeout, load_llm_config_summary_with_store,
+    load_llm_config_with_store, save_llm_config_with_store, save_llm_config_with_store_checked,
+    test_llm_connection, validate_llm_config, ConfigSavePhase, GenerateAiError,
+    GenerateAiErrorCode, GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
+    LlmConfigError, SecretStore, CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS,
+    KEYRING_ACCOUNT, KEYRING_SERVICE, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+};
+use next_story_lib::project::{
+    create_new_project, save_existing_project, CreateProjectParams, ProjectPaths,
 };
 use tempfile::TempDir;
 
@@ -115,6 +119,29 @@ fn follow_up_request_with_direction(
         thinking_direction: Some(direction.into()),
         messages,
     }
+}
+
+/// 生成一段合法格式版本 1 的本子 JSON 字符串（每行一个正文段落）。
+fn notebook_json(text: &str) -> String {
+    let content: Vec<serde_json::Value> = text
+        .split('\n')
+        .map(|line| {
+            if line.is_empty() {
+                serde_json::json!({ "type": "paragraph" })
+            } else {
+                serde_json::json!({
+                    "type": "paragraph",
+                    "content": [{ "type": "text", "text": line }]
+                })
+            }
+        })
+        .collect();
+    let value = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 1,
+        "document": { "type": "doc", "content": content }
+    });
+    serde_json::to_string_pretty(&value).expect("serialize notebook")
 }
 
 /// 启动一个最小 mock HTTP 服务，处理一次请求后返回给定状态码与响应体。
@@ -299,6 +326,113 @@ fn api_key_round_trips_through_secret_store() {
     assert_eq!(loaded.api_base_url, config.api_base_url);
     assert_eq!(loaded.api_key, config.api_key);
     assert_eq!(loaded.model, config.model);
+}
+
+#[test]
+fn load_summary_never_returns_plaintext_key_and_reports_has_api_key() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let config = sample_config("https://api.example.com/v1".to_string());
+    let store = MockStore::new();
+
+    // 未保存时返回 None
+    assert!(load_llm_config_summary_with_store(&base, &store)
+        .expect("load summary")
+        .is_none());
+
+    save_llm_config_with_store(&base, &config, &store).expect("save config");
+
+    let summary = load_llm_config_summary_with_store(&base, &store)
+        .expect("load summary")
+        .expect("summary should exist");
+    // 非敏感字段与 has_api_key，绝不回传明文密钥
+    assert_eq!(summary.api_base_url, config.api_base_url);
+    assert_eq!(summary.model, config.model);
+    assert!(summary.has_api_key);
+    let json = serde_json::to_value(&summary).expect("serialize summary");
+    assert!(json.get("api_key").is_none(), "summary 不得含 api_key 字段");
+
+    // 钥匙串丢失密钥 → has_api_key: false（而非报错）
+    let summary_without_key = load_llm_config_summary_with_store(&base, &MockStore::new())
+        .expect("load summary without key")
+        .expect("summary should still exist");
+    assert!(!summary_without_key.has_api_key);
+    assert_eq!(summary_without_key.api_base_url, config.api_base_url);
+}
+
+#[test]
+fn save_with_empty_api_key_reuses_existing_keyring_secret() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let store = MockStore::new();
+
+    let original = sample_config("https://api.example.com/v1".to_string());
+    save_llm_config_with_store(&base, &original, &store).expect("save original config");
+
+    // 掩码模式：只改服务地址，api_key 传空 → 后端复用钥匙串旧密钥，不覆盖。
+    let url_only = LlmConfig {
+        api_base_url: "https://new.example.com/v1".to_string(),
+        api_key: "".to_string(),
+        model: "test-model".to_string(),
+    };
+    save_llm_config_with_store(&base, &url_only, &store).expect("save url-only config");
+
+    assert_eq!(
+        store
+            .get(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .expect("store get"),
+        Some(original.api_key.clone()),
+        "空密钥保存不得覆盖钥匙串中的旧密钥"
+    );
+
+    let loaded = load_llm_config_with_store(&base, &store)
+        .expect("load config")
+        .expect("config exists");
+    assert_eq!(loaded.api_base_url, "https://new.example.com/v1");
+    assert_eq!(loaded.api_key, original.api_key, "密钥应仍是旧的");
+}
+
+/// 2.6 钥匙串成功 + 磁盘写失败：必须回滚钥匙串为旧密钥，
+/// 不得留下「旧地址 A + 新密钥 B」的分裂状态。
+#[test]
+fn save_rolls_back_keyring_when_disk_replace_fails_after_keyring_update() {
+    let temp = TempDir::new().expect("create temp dir");
+    let base = temp.path().to_path_buf();
+    let store = MockStore::new();
+
+    // 先保存旧配置（服务 A + Key A）
+    let old = sample_config("https://api-a.example.com/v1".to_string());
+    save_llm_config_with_store(&base, &old, &store).expect("save old config");
+
+    // 注入「钥匙串更新成功后、磁盘替换前」失败
+    let new = sample_config("https://api-b.example.com/v1".to_string());
+    let result = save_llm_config_with_store_checked(&base, &new, &store, |phase| {
+        if phase == ConfigSavePhase::AfterKeyringUpdate {
+            Err(LlmConfigError::WriteError("测试注入的磁盘写入失败".to_string()))
+        } else {
+            Ok(())
+        }
+    });
+    assert!(matches!(result, Err(LlmConfigError::WriteError(_))));
+
+    // 钥匙串已回滚为旧 Key A —— 不存在「旧地址 A + 新密钥 B」分裂
+    let stored_key = store
+        .get(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .expect("store get")
+        .expect("旧密钥应存在");
+    assert_eq!(stored_key, old.api_key, "钥匙串必须回滚为旧密钥");
+
+    // 磁盘仍是旧配置（服务 A）
+    let disk = std::fs::read_to_string(base.join("llm-config.json")).expect("read config file");
+    let value: serde_json::Value = serde_json::from_str(&disk).expect("valid json");
+    assert_eq!(value["api_base_url"], "https://api-a.example.com/v1");
+
+    // 再次加载得到完整旧配置（A + Key A）
+    let loaded = load_llm_config_with_store(&base, &store)
+        .expect("load config")
+        .expect("config exists");
+    assert_eq!(loaded.api_base_url, old.api_base_url);
+    assert_eq!(loaded.api_key, old.api_key);
 }
 
 #[test]
@@ -1175,4 +1309,147 @@ async fn truncated_response_body_maps_to_distinct_interruption_error() {
 
     assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
     assert_eq!(error.message, "服务响应传输中断，请稍后重试");
+}
+
+// ========== AI 零写回端到端（tasks 9.1） ==========
+
+const MOCK_SUCCESS_BODY: &str =
+    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"换个视角会不会更好？\"}}]}";
+
+/// 9.1 后端命令级端到端：AI 生成（合法首次、合法追问、失败）绝不写回
+/// 草稿本/正文本。每一步之后两份本子与 project.json 的字节都必须与快照
+/// **完全一致**；「用户保存」作为正对照必须真实改变草稿本字节；
+/// 生成流程不得在作品目录留下任何事务/临时文件。
+#[tokio::test]
+async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
+    let temp = TempDir::new().expect("create temp dir");
+
+    // 1. 用公开 API 创建真实作品；create 只建空文档，因此先用用户保存
+    //    写入已知内容，再记录三份文件的字节快照。
+    let project_root = create_new_project(CreateProjectParams {
+        name: "零写回作品".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let draft_doc = notebook_json("草稿第一行\n草稿第二行");
+    let main_doc = notebook_json("正文第一行\n正文第二行");
+    save_existing_project(&project_root, draft_doc.clone(), main_doc.clone())
+        .expect("user save writes known notebook content");
+
+    let paths = ProjectPaths::new(project_root.clone());
+    let snapshot = || -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        (
+            std::fs::read(&paths.draft_file).expect("read draft"),
+            std::fs::read(&paths.main_file).expect("read main"),
+            std::fs::read(&paths.metadata_file).expect("read metadata"),
+        )
+    };
+    let before = snapshot();
+    assert!(!before.0.is_empty() && !before.1.is_empty(), "本子内容不能为空");
+
+    let assert_snapshot_unchanged = |label: &str| {
+        let now = snapshot();
+        assert_eq!(now.0, before.0, "{label} 后草稿本字节必须完全不变");
+        assert_eq!(now.1, before.1, "{label} 后正文本字节必须完全不变");
+        assert_eq!(now.2, before.2, "{label} 后 project.json 字节必须完全不变");
+    };
+
+    // 2. 配置保存到独立的应用数据目录（与作品目录隔离），指向本机 mock server。
+    let app_data = temp.path().join("app-data");
+    let store = MockStore::new();
+    let config = sample_config(start_mock(200, MOCK_SUCCESS_BODY));
+    save_llm_config_with_store(&app_data, &config, &store).expect("save llm config");
+
+    // 3a. 合法首次请求（冻结选区）→ 成功，本子字节不变。
+    let content = generate_ai_thinking(&config, first_request("冻结选区"))
+        .await
+        .expect("first generation succeeds against mock");
+    assert_eq!(content, "换个视角会不会更好？");
+    assert_snapshot_unchanged("首次生成");
+
+    // 3b. 合法追问请求 → 成功，本子字节不变（每次生成用独立的 mock 连接）。
+    let follow_up = follow_up_request(
+        "冻结选区",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首次回应"),
+            message(GenerateAiMessageRole::User, "再往深处想"),
+        ],
+    );
+    let follow_up_config = sample_config(start_mock(200, MOCK_SUCCESS_BODY));
+    let content = generate_ai_thinking(&follow_up_config, &follow_up)
+        .await
+        .expect("follow-up generation succeeds against mock");
+    assert_eq!(content, "换个视角会不会更好？");
+    assert_snapshot_unchanged("追问生成");
+
+    // 3c. 失败生成（认证失败 401）→ 稳定失败，本子字节不变。
+    let failing_config = sample_config(start_mock(401, "{\"error\":\"unauthorized\"}"));
+    let error = generate_ai_thinking(&failing_config, first_request("冻结选区"))
+        .await
+        .expect_err("401 generation must fail");
+    assert_eq!(error.code, GenerateAiErrorCode::Authentication);
+    assert_snapshot_unchanged("认证失败生成");
+
+    // 3d. 失败生成（无有效 choices）→ 稳定失败，本子字节不变。
+    let empty_config = sample_config(start_mock(200, "{\"choices\":[]}"));
+    let error = generate_ai_thinking(&empty_config, first_request("冻结选区"))
+        .await
+        .expect_err("empty choices generation must fail");
+    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+    assert_snapshot_unchanged("空回复失败生成");
+
+    // 4. 生成流程后：作品目录不得多出任何事务/临时文件（AI 链路零写盘）。
+    let system_dir = project_root.join("next-story-system");
+    assert!(
+        !system_dir.join("save-transaction").exists(),
+        "AI 链路不得创建保存事务目录"
+    );
+    let mut system_entries: Vec<String> = std::fs::read_dir(&system_dir)
+        .expect("read system dir")
+        .map(|entry| {
+            entry
+                .expect("system entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    system_entries.sort();
+    assert_eq!(
+        system_entries,
+        vec!["project.json".to_string()],
+        "AI 链路不得在系统目录留下任何事务/临时文件: {system_entries:?}"
+    );
+    let mut text_entries: Vec<String> = std::fs::read_dir(&paths.user_text_dir)
+        .expect("read user text dir")
+        .map(|entry| {
+            entry
+                .expect("text entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    text_entries.sort();
+    assert_eq!(
+        text_entries,
+        vec!["正文本.json".to_string(), "草稿本.json".to_string()],
+        "作品文本文件夹不应多出任何文件: {text_entries:?}"
+    );
+
+    // 5. 正对照：用户保存确实改变草稿本字节（证明本测试能检测到写入，
+    //    不是「永远相等的空断言」）。
+    let new_draft = notebook_json("用户改写的草稿内容");
+    save_existing_project(&project_root, new_draft.clone(), main_doc.clone())
+        .expect("user save changes draft");
+    let after_save = snapshot();
+    assert_ne!(after_save.0, before.0, "用户保存必须真实改变草稿本字节（正对照）");
+    assert_eq!(after_save.1, before.1, "只保存草稿，正文本字节应保持");
+    assert_ne!(after_save.2, before.2, "用户保存会更新元信息 updated_at");
+    assert_eq!(
+        std::fs::read_to_string(&paths.draft_file).expect("read draft after save"),
+        new_draft,
+        "保存后的草稿本内容应等于新内容"
+    );
 }

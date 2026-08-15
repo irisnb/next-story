@@ -1,6 +1,7 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::{empty_notebook_value, ProjectError, ProjectMetadata, ProjectOpenResult, ProjectPaths};
 
 pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
-const MAX_NOTEBOOK_BYTES: u64 = 10 * 1024 * 1024;
+pub(crate) const MAX_NOTEBOOK_BYTES: u64 = 10 * 1024 * 1024;
 
 /// 手动保存事务目录名（位于 `next-story-system/` 下，系统所有，不放进用户本子）。
 const SAVE_TRANSACTION_DIR: &str = "save-transaction";
@@ -178,24 +179,58 @@ enum SavePhase {
 }
 
 /// 事务恢复阶段：`Staged` 表示尚未触碰可见文件，`Committing` 表示已经进入可见提交。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum TransactionPhase {
     Staged,
     Committing,
 }
 
+/// 事务用途：手动保存与迁移回滚共用同一事务目录与恢复机制，
+/// 迁移模块据此在读取版本前优先恢复自己中断的回滚。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ManifestPurpose {
+    Save,
+    MigrationRollback,
+}
+
+impl Default for ManifestPurpose {
+    fn default() -> Self {
+        ManifestPurpose::Save
+    }
+}
+
+/// 进程内唯一递增的事务计数器，配合纳秒时间戳生成事务标识。
+static TRANSACTION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// 生成一次保存/回滚事务的唯一标识。
+fn new_transaction_id() -> String {
+    let nanos = Utc::now()
+        .timestamp_nanos_opt()
+        .unwrap_or_default() as u128;
+    let counter = TRANSACTION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{nanos:x}-{counter:x}")
+}
+
 /// 手动保存事务清单：记录这次保存所属的世代信息。
 ///
 /// 清单是恢复代码判断“一次保存是否完成”的唯一依据，因此使用带类型的 serde
-/// 结构，而不是裸字符串，避免手写字段名漂移。
+/// 结构，而不是裸字符串，避免手写字段名漂移。`transaction_id` 与 `purpose`
+/// 带默认值，兼容本改动之前写下的旧清单。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SaveManifest {
+pub(crate) struct SaveManifest {
     /// 清单结构版本，便于未来演进。
     manifest_version: u32,
     /// 当前事务所处恢复阶段。
     phase: TransactionPhase,
     /// 这次保存要写入元信息的更新时间（下一世代的 `updated_at`）。
     target_updated_at: String,
+    /// 本次事务唯一标识：提交前用于校验事务目录未被其它操作替换。
+    #[serde(default)]
+    transaction_id: String,
+    /// 事务用途（迁移回滚与手动保存区分）。
+    #[serde(default)]
+    purpose: ManifestPurpose,
 }
 
 impl SaveManifest {
@@ -203,7 +238,7 @@ impl SaveManifest {
 }
 
 /// 手动保存事务目录内的固定布局。
-struct TransactionLayout {
+pub(crate) struct TransactionLayout {
     /// 事务根目录 `next-story-system/save-transaction/`。
     dir: PathBuf,
     /// 暂存的草稿本。
@@ -217,7 +252,7 @@ struct TransactionLayout {
 }
 
 impl TransactionLayout {
-    fn new(paths: &ProjectPaths) -> Self {
+    pub(crate) fn new(paths: &ProjectPaths) -> Self {
         let dir = paths.system_dir.join(SAVE_TRANSACTION_DIR);
 
         Self {
@@ -270,6 +305,9 @@ fn run_save_transaction(
     let staged_metadata_json = serde_json::to_string_pretty(&metadata)
         .map_err(|e| ProjectError::WriteError(e.to_string()))?;
 
+    // 本次事务的唯一标识，写入清单；提交前据此校验事务目录未被其它操作替换。
+    let transaction_id = new_transaction_id();
+
     // 阶段一：把下一世代整体暂存到事务目录，此时不碰任何可见文件。
     stage_transaction(
         &layout,
@@ -277,10 +315,19 @@ fn run_save_transaction(
         &main_content,
         &staged_metadata_json,
         &metadata.updated_at,
+        &transaction_id,
     )?;
     checkpoint(SavePhase::AfterStaging)?;
 
-    write_manifest_phase(&layout, &metadata.updated_at, TransactionPhase::Committing)?;
+    // 提交前校验：事务目录仍是本次保存的暂存（防锁遗漏导致的世代替换）。
+    ensure_transaction_unchanged(&layout, &transaction_id)?;
+
+    write_manifest_phase(
+        &layout,
+        &metadata.updated_at,
+        &transaction_id,
+        TransactionPhase::Committing,
+    )?;
 
     // 阶段二：从暂存文件替换可见文件，元信息最后提交。
     replace_from_staged(&paths.draft_file, &layout.staged_draft)?;
@@ -302,6 +349,7 @@ fn stage_transaction(
     main_content: &str,
     metadata_json: &str,
     target_updated_at: &str,
+    transaction_id: &str,
 ) -> Result<(), ProjectError> {
     // 清掉可能残留的旧事务目录，确保暂存的是干净的新世代。
     cleanup_transaction(layout);
@@ -315,14 +363,32 @@ fn stage_transaction(
         manifest_version: SaveManifest::CURRENT_VERSION,
         phase: TransactionPhase::Staged,
         target_updated_at: target_updated_at.to_string(),
+        transaction_id: transaction_id.to_string(),
+        purpose: ManifestPurpose::Save,
     };
     write_manifest(layout, &manifest)?;
 
     Ok(())
 }
 
+/// 提交前确认事务目录仍是本次保存写入的暂存：重读清单比较事务标识，
+/// 标识不一致说明事务目录被其它操作替换（锁遗漏的并发保护第二道防线）。
+fn ensure_transaction_unchanged(
+    layout: &TransactionLayout,
+    transaction_id: &str,
+) -> Result<(), ProjectError> {
+    let manifest = read_transaction_manifest(layout)?;
+    if manifest.transaction_id != transaction_id {
+        return Err(ProjectError::WriteError(
+            "保存事务已被其它操作替换，已中止保存".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// 打开或保存前恢复上一次中断的手动保存事务。
-fn recover_interrupted_save(paths: &ProjectPaths) -> Result<(), ProjectError> {
+/// 迁移回滚事务（`purpose == MigrationRollback`）与手动保存走同一恢复逻辑。
+pub(crate) fn recover_interrupted_save(paths: &ProjectPaths) -> Result<(), ProjectError> {
     let layout = TransactionLayout::new(paths);
 
     if !layout.dir.exists() {
@@ -349,7 +415,74 @@ fn recover_interrupted_save(paths: &ProjectPaths) -> Result<(), ProjectError> {
     Ok(())
 }
 
-fn read_transaction_manifest(layout: &TransactionLayout) -> Result<SaveManifest, ProjectError> {
+/// 迁移回滚的事务式暂存/恢复：把三份备份内容整体暂存到事务目录，写入
+/// `MigrationRollback` 用途的 `Committing` 清单，再按 草稿 → 正文 → 元信息
+/// 的顺序替换可见文件。中途崩溃留下的暂存会在下次打开/保存时由
+/// [`recover_interrupted_save`] 完成恢复；元信息仍是最后替换的完成标记。
+pub(crate) fn transactional_restore(
+    paths: &ProjectPaths,
+    metadata_json: &str,
+    draft_json: &str,
+    main_json: &str,
+) -> Result<(), ProjectError> {
+    let layout = TransactionLayout::new(paths);
+    let metadata: ProjectMetadata = serde_json::from_str(metadata_json)
+        .map_err(|e| ProjectError::WriteError(format!("回滚内容无效: {e}")))?;
+
+    cleanup_transaction(&layout);
+    fs::create_dir_all(&layout.dir).map_err(|e| ProjectError::WriteError(e.to_string()))?;
+    write_file_atomically(&layout.staged_metadata, metadata_json)?;
+    write_file_atomically(&layout.staged_draft, draft_json)?;
+    write_file_atomically(&layout.staged_main, main_json)?;
+
+    let manifest = SaveManifest {
+        manifest_version: SaveManifest::CURRENT_VERSION,
+        phase: TransactionPhase::Committing,
+        target_updated_at: metadata.updated_at.clone(),
+        transaction_id: new_transaction_id(),
+        purpose: ManifestPurpose::MigrationRollback,
+    };
+    write_manifest(&layout, &manifest)?;
+
+    replace_from_staged(&paths.draft_file, &layout.staged_draft)?;
+    replace_from_staged(&paths.main_file, &layout.staged_main)?;
+    replace_from_staged(&paths.metadata_file, &layout.staged_metadata)?;
+    cleanup_transaction(&layout);
+
+    Ok(())
+}
+
+/// 恢复上次迁移回滚中断留下的事务（供迁移模块在读取版本前调用）。
+/// 只处理 `MigrationRollback` 用途的清单；清单缺失/损坏或属于手动保存时
+/// 原样跳过，交给打开流程的常规事务恢复处理，避免改变既有错误语义。
+pub(crate) fn recover_migration_rollback_transaction(
+    paths: &ProjectPaths,
+) -> Result<(), ProjectError> {
+    let layout = TransactionLayout::new(paths);
+    if !layout.dir.exists() {
+        return Ok(());
+    }
+
+    let manifest = match read_transaction_manifest(&layout) {
+        Ok(manifest) => manifest,
+        Err(_) => return Ok(()),
+    };
+    if manifest.purpose != ManifestPurpose::MigrationRollback {
+        return Ok(());
+    }
+
+    ensure_staged_generation_is_complete(&layout, &manifest)?;
+    replace_from_staged(&paths.draft_file, &layout.staged_draft)?;
+    replace_from_staged(&paths.main_file, &layout.staged_main)?;
+    replace_from_staged(&paths.metadata_file, &layout.staged_metadata)?;
+    cleanup_transaction(&layout);
+
+    Ok(())
+}
+
+pub(crate) fn read_transaction_manifest(
+    layout: &TransactionLayout,
+) -> Result<SaveManifest, ProjectError> {
     let manifest_json = read_bounded_string(&layout.manifest, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
     let manifest: SaveManifest = serde_json::from_str(&manifest_json)
@@ -368,16 +501,13 @@ fn read_transaction_manifest(layout: &TransactionLayout) -> Result<SaveManifest,
 /// 读取事务暂存本子。超限时返回带人工恢复路径的专用 ContentTooLarge，
 /// 而不是混入 ReadError，避免作品被超限暂存内容永久卡死。
 fn read_staged_notebook(path: &Path, label: &str) -> Result<String, ProjectError> {
-    let metadata = fs::metadata(path)
-        .map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))?;
-
-    if metadata.len() > MAX_NOTEBOOK_BYTES {
-        return Err(ProjectError::ContentTooLarge(format!(
+    match read_bounded_string(path, MAX_NOTEBOOK_BYTES) {
+        Ok(content) => Ok(content),
+        Err(ProjectError::ContentTooLarge(_)) => Err(ProjectError::ContentTooLarge(format!(
             "无法恢复保存事务：暂存{label}超过 {MAX_NOTEBOOK_BYTES} 字节上限。请手动处理 next-story-system/save-transaction 事务目录（备份后删除或联系支持）"
-        )));
+        ))),
+        Err(other) => Err(ProjectError::ReadError(format!("无法恢复保存事务: {other}"))),
     }
-
-    fs::read_to_string(path).map_err(|e| ProjectError::ReadError(format!("无法恢复保存事务: {e}")))
 }
 
 fn ensure_staged_generation_is_complete(
@@ -410,12 +540,15 @@ fn ensure_staged_generation_is_complete(
 fn write_manifest_phase(
     layout: &TransactionLayout,
     target_updated_at: &str,
+    transaction_id: &str,
     phase: TransactionPhase,
 ) -> Result<(), ProjectError> {
     let manifest = SaveManifest {
         manifest_version: SaveManifest::CURRENT_VERSION,
         phase,
         target_updated_at: target_updated_at.to_string(),
+        transaction_id: transaction_id.to_string(),
+        purpose: ManifestPurpose::Save,
     };
 
     write_manifest(layout, &manifest)
@@ -558,17 +691,26 @@ fn validate_path_stays_under_root(
     Ok(())
 }
 
+/// 有界读取：打开一次文件句柄后用 `take(max + 1)` 限量读取，超限拒绝。
+/// 不依赖读取前的元数据长度（消除「先看长度再读」之间的 TOCTOU 竞态），
+/// 也保证超限内容不会被无界读入内存。
 pub(crate) fn read_bounded_string(path: &Path, max_bytes: u64) -> Result<String, ProjectError> {
-    let metadata = fs::metadata(path).map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    let file = fs::File::open(path).map_err(|e| ProjectError::ReadError(e.to_string()))?;
 
-    if metadata.len() > max_bytes {
-        return Err(ProjectError::ReadError(format!(
+    let mut limited = file.take(max_bytes + 1);
+    let mut content = String::new();
+    limited
+        .read_to_string(&mut content)
+        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+
+    if content.len() as u64 > max_bytes {
+        return Err(ProjectError::ContentTooLarge(format!(
             "文件过大，无法读取: {}",
             path.display()
         )));
     }
 
-    fs::read_to_string(path).map_err(|e| ProjectError::ReadError(e.to_string()))
+    Ok(content)
 }
 
 fn cleanup_created_paths(created_paths: &[PathBuf]) {
@@ -586,6 +728,11 @@ fn cleanup_created_paths(created_paths: &[PathBuf]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{mpsc, Arc, Barrier};
+    use std::thread;
+    use std::time::Duration;
+
+    use super::super::ProjectLocks;
 
     /// 测试专用故障注入点。仅存在于测试模块，绝不进入生产或 Tauri 命令路径。
     #[derive(Debug, Clone, Copy)]
@@ -926,5 +1073,171 @@ mod tests {
 
         assert!(matches!(result, Err(ProjectError::ReadError(_))));
         assert!(layout.dir.exists());
+    }
+
+    // ========== 作品级串行化（P0：并发保存） ==========
+
+    const GEN_A_DRAFT: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"世代A草稿"}]}]}}"#;
+    const GEN_A_MAIN: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"世代A正文"}]}]}}"#;
+    const GEN_B_DRAFT: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"世代B草稿"}]}]}}"#;
+    const GEN_B_MAIN: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"世代B正文"}]}]}}"#;
+
+    /// 1.5 同一作品并发保存：屏障制造确定性重叠（A 完成暂存并持锁时 B 才开始
+    /// 取锁，必然阻塞），断言两次保存串行完成、最终是 B 的完整世代，且无
+    /// 暂存文件丢失/损坏、无残留事务目录。
+    #[test]
+    fn concurrent_saves_of_same_project_serialize_without_mixing_generations() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = seed_project_with_old_generation(&temp, "并发保存");
+        let paths = ProjectPaths::new(project_root.clone());
+        let locks = ProjectLocks::default();
+        let barrier = Arc::new(Barrier::new(2));
+
+        let locks_a = locks.clone();
+        let root_a = project_root.clone();
+        let barrier_a = Arc::clone(&barrier);
+        let handle_a = thread::spawn(move || {
+            let _guard = locks_a.acquire(&root_a).expect("A 取得作品锁");
+            // A 持锁保存；完成暂存后在屏障处等 B 进入（B 此刻阻塞在取锁）。
+            run_save_transaction(
+                &root_a,
+                GEN_A_DRAFT.to_string(),
+                GEN_A_MAIN.to_string(),
+                |phase| {
+                    if phase == SavePhase::AfterStaging {
+                        barrier_a.wait();
+                    }
+                    Ok(())
+                },
+            )
+            .expect("A 保存成功");
+        });
+
+        let locks_b = locks.clone();
+        let root_b = project_root.clone();
+        let barrier_b = Arc::clone(&barrier);
+        let handle_b = thread::spawn(move || {
+            // 与 A 的暂存完成同步后开始取锁：必然被 A 持有的锁挡住，直到 A 释放。
+            barrier_b.wait();
+            let _guard = locks_b.acquire(&root_b).expect("B 在 A 释放后取得作品锁");
+            run_save_transaction(&root_b, GEN_B_DRAFT.to_string(), GEN_B_MAIN.to_string(), |_| {
+                Ok(())
+            })
+            .expect("B 保存成功");
+        });
+
+        handle_a.join().expect("A 线程正常结束");
+        handle_b.join().expect("B 线程正常结束");
+
+        // 最终可见文件必须是 B 的完整世代（B 最后执行），无混合世代。
+        assert_eq!(
+            fs::read_to_string(&paths.draft_file).expect("read draft"),
+            GEN_B_DRAFT
+        );
+        assert_eq!(
+            fs::read_to_string(&paths.main_file).expect("read main"),
+            GEN_B_MAIN
+        );
+        assert_ne!(read_visible_updated_at(&paths), OLD_UPDATED_AT);
+
+        // 无暂存文件丢失/损坏、无残留事务目录。
+        let layout = TransactionLayout::new(&paths);
+        assert!(!layout.dir.exists(), "保存完成后不应残留事务目录");
+    }
+
+    /// 1.6 两个不同作品并发保存可并行：A 持锁期间 B 必须能立即取得自己作品的锁
+    /// （主线程在放行 A 之前先收到 B 已取锁的信号），且各自世代一致。
+    #[test]
+    fn concurrent_saves_of_different_projects_run_in_parallel() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root_a = seed_project_with_old_generation(&temp, "作品甲");
+        let root_b = seed_project_with_old_generation(&temp, "作品乙");
+        let locks = ProjectLocks::default();
+
+        let (a_holding_tx, a_holding_rx) = mpsc::channel();
+        let (release_a_tx, release_a_rx) = mpsc::channel();
+        let (b_acquired_tx, b_acquired_rx) = mpsc::channel();
+
+        let locks_a = locks.clone();
+        let root_a2 = root_a.clone();
+        let handle_a = thread::spawn(move || {
+            let _guard = locks_a.acquire(&root_a2).expect("A 取得作品甲锁");
+            let _ = a_holding_tx.send(());
+            // 等主线程确认 B 已取到锁后再放行，保证 A 持锁时间足够长。
+            let _ = release_a_rx.recv();
+            run_save_transaction(&root_a2, GEN_A_DRAFT.to_string(), GEN_A_MAIN.to_string(), |_| {
+                Ok(())
+            })
+            .expect("甲保存成功");
+        });
+
+        let locks_b = locks.clone();
+        let root_b2 = root_b.clone();
+        let handle_b = thread::spawn(move || {
+            let _guard = locks_b.acquire(&root_b2).expect("B 取得作品乙锁，不应被甲阻塞");
+            let _ = b_acquired_tx.send(());
+            run_save_transaction(&root_b2, GEN_B_DRAFT.to_string(), GEN_B_MAIN.to_string(), |_| {
+                Ok(())
+            })
+            .expect("乙保存成功");
+        });
+
+        // A 已持锁；B 应能在 A 仍持锁时立即取得自己的锁（分路径并行）。
+        a_holding_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("A 已持锁");
+        b_acquired_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("B 在 A 持锁期间取得自己的锁");
+
+        release_a_tx.send(()).expect("放行 A");
+        handle_a.join().expect("A 线程正常结束");
+        handle_b.join().expect("B 线程正常结束");
+
+        // 各自世代一致，互不干扰。
+        let paths_a = ProjectPaths::new(root_a);
+        let paths_b = ProjectPaths::new(root_b);
+        assert_eq!(
+            fs::read_to_string(&paths_a.draft_file).expect("read 甲草稿"),
+            GEN_A_DRAFT
+        );
+        assert_eq!(
+            fs::read_to_string(&paths_a.main_file).expect("read 甲正文"),
+            GEN_A_MAIN
+        );
+        assert_eq!(
+            fs::read_to_string(&paths_b.draft_file).expect("read 乙草稿"),
+            GEN_B_DRAFT
+        );
+        assert_eq!(
+            fs::read_to_string(&paths_b.main_file).expect("read 乙正文"),
+            GEN_B_MAIN
+        );
+        assert!(!TransactionLayout::new(&paths_a).dir.exists());
+        assert!(!TransactionLayout::new(&paths_b).dir.exists());
+    }
+
+    /// 4.3 有界读取：文件在（旧实现的）长度检查之后、读取之前被增大时，
+    /// 有界读取必须拒绝，且不会把超限内容无界读入内存。
+    #[test]
+    fn bounded_read_rejects_file_that_grew_past_limit_after_size_check() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let path = temp.path().join("growing.json");
+
+        // 先写一份恰好不超限的文件（旧实现会在这一步通过长度检查）。
+        fs::write(&path, "x".repeat(MAX_METADATA_BYTES as usize)).expect("write at limit");
+        assert!(read_bounded_string(&path, MAX_METADATA_BYTES).is_ok());
+
+        // 读取前把文件增大到超过上限：有界读取必须拒绝而非整读。
+        fs::write(
+            &path,
+            "x".repeat(MAX_METADATA_BYTES as usize + 128 * 1024),
+        )
+        .expect("grow file past limit");
+        let result = read_bounded_string(&path, MAX_METADATA_BYTES);
+        assert!(
+            matches!(result, Err(ProjectError::ContentTooLarge(_))),
+            "有界读取应拒绝超限文件，实际: {result:?}"
+        );
     }
 }

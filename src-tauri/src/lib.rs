@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use tauri::Manager;
 
-use llm_config::{GenerateAiResult, LlmConfig};
-use project::{CreateProjectParams, ProjectOpenResult};
+use llm_config::{GenerateAiResult, LlmConfig, LlmConfigSummary};
+use project::{CreateProjectParams, ProjectLocks, ProjectOpenResult};
 
 #[cfg(test)]
 mod tests {
@@ -92,62 +92,151 @@ mod tests {
         }
     }
 
+    /// 2.7 生成命令协议白名单：注入 `draft_content`/`main_content`/`project_path`
+    /// 等未声明字段（含嵌套消息内），必须稳定拒绝，且作品文件字节不变。
+    #[tokio::test]
+    async fn generate_command_rejects_unknown_fields_without_touching_project_files() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = super::project::create_new_project(super::project::CreateProjectParams {
+            name: "白名单作品".to_string(),
+            save_location: temp.path().to_string_lossy().to_string(),
+        })
+        .expect("create project");
+
+        let paths = super::project::ProjectPaths::new(project_root);
+        let files = [
+            paths.draft_file.clone(),
+            paths.main_file.clone(),
+            paths.metadata_file.clone(),
+        ];
+        let before: Vec<Vec<u8>> = files
+            .iter()
+            .map(|path| std::fs::read(path).expect("read project file before"))
+            .collect();
+
+        let cases = [
+            serde_json::json!({
+                "kind": "first",
+                "selected_text": "选区",
+                "draft_content": "注入草稿",
+            }),
+            serde_json::json!({
+                "kind": "first",
+                "selected_text": "选区",
+                "main_content": "注入正文",
+            }),
+            serde_json::json!({
+                "kind": "first",
+                "selected_text": "选区",
+                "project_path": "注入路径",
+            }),
+            serde_json::json!({
+                "kind": "follow_up",
+                "selected_text": "选区",
+                "messages": [
+                    {"role": "assistant", "content": "首次回应", "draft_content": "嵌套注入"}
+                ],
+            }),
+        ];
+
+        for request in cases {
+            let result = super::generate_ai_result_for_request(temp.path(), request).await;
+            assert!(!result.ok, "未知字段请求必须被拒绝");
+            let error = result.error.expect("rejected request error");
+            assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
+            assert_eq!(error.message, "AI 请求内容无效，请重试");
+        }
+
+        for (path, before_bytes) in files.iter().zip(before.iter()) {
+            let after = std::fs::read(path).expect("read project file after");
+            assert_eq!(
+                &after, before_bytes,
+                "生成命令拒绝未知字段时不得改动作品文件: {}",
+                path.display()
+            );
+        }
+    }
+
     fn _assert_result_type_is_stable(_: GenerateAiResult) {}
 }
 
 // ========== Tauri Commands ==========
 
-/// 创建新作品
+/// 创建新作品。同步目录创建放在阻塞线程；新目录创建本身互斥（同名已存在即拒绝），
+/// 无需作品锁（作品根尚不存在，无法规范化取锁）。
 #[tauri::command]
 async fn create_project(params: CreateProjectParams) -> Result<String, String> {
-    let project_root = project::create_new_project(params).map_err(|e| e.to_string())?;
-
-    Ok(project_root.to_string_lossy().to_string())
+    tauri::async_runtime::spawn_blocking(move || project::create_new_project(params))
+        .await
+        .map_err(|e| format!("创建作品任务执行失败: {e}"))?
+        .map_err(|e| e.to_string())
+        .map(|root| root.to_string_lossy().to_string())
 }
 
-/// 打开作品
+/// 打开作品：在阻塞线程内取作品锁并覆盖整个「迁移 + 校验 + 读取」流程，
+/// 同一作品的打开/保存/迁移在进程内串行化。
 #[tauri::command]
-async fn open_project(project_path: String) -> Result<ProjectOpenResult, String> {
+async fn open_project(app: tauri::AppHandle, project_path: String) -> Result<ProjectOpenResult, String> {
     let project_root = PathBuf::from(&project_path);
-    let result = project::open_existing_project(&project_root).map_err(|e| e.to_string())?;
+    let locks = app.state::<ProjectLocks>().inner().clone();
 
-    Ok(result)
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::open_existing_project(&project_root)
+    })
+    .await
+    .map_err(|e| format!("打开作品任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
 }
 
-/// 保存作品
+/// 保存作品：在阻塞线程内取作品锁并覆盖整个保存事务，
+/// 同一作品的并发保存被串行化，杜绝混合世代。
 #[tauri::command]
 async fn save_project(
+    app: tauri::AppHandle,
     project_path: String,
     draft_content: String,
     main_content: String,
 ) -> Result<(), String> {
     let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
 
-    project::save_existing_project(&project_root, draft_content, main_content)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::save_existing_project(&project_root, draft_content, main_content)
+    })
+    .await
+    .map_err(|e| format!("保存作品任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
 }
 
 // ========== LLM 配置命令 ==========
 
-/// 保存 LLM 配置
+/// 保存 LLM 配置：同步目录/文件/钥匙串操作放在阻塞线程，事务化保存由
+/// `llm_config::save_llm_config` 内部的进程内互斥串行化。
 #[tauri::command]
 async fn save_llm_config(app: tauri::AppHandle, config: LlmConfig) -> Result<(), String> {
     let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    llm_config::save_llm_config(&dir, &config).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || llm_config::save_llm_config(&dir, &config))
+        .await
+        .map_err(|e| format!("保存配置任务执行失败: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
-/// 加载已保存的 LLM 配置
+/// 加载已保存的 LLM 配置摘要：不含明文 API Key，只含非敏感字段与 `has_api_key`。
 #[tauri::command]
-async fn load_llm_config(app: tauri::AppHandle) -> Result<Option<LlmConfig>, String> {
+async fn load_llm_config(app: tauri::AppHandle) -> Result<Option<LlmConfigSummary>, String> {
     let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    llm_config::load_llm_config(&dir).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || llm_config::load_llm_config_summary(&dir))
+        .await
+        .map_err(|e| format!("读取配置任务执行失败: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
-/// 测试 LLM 配置连接
+/// 测试 LLM 配置连接：未输入新密钥时由后端复用钥匙串中的旧密钥。
 #[tauri::command]
 async fn test_llm_connection(config: LlmConfig) -> Result<(), String> {
+    let config = llm_config::resolve_effective_config(&config).map_err(|e| e.to_string())?;
     llm_config::test_llm_connection(&config)
         .await
         .map_err(|e| e.to_string())
@@ -185,6 +274,8 @@ async fn generate_ai_result_for_request(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 进程内作品锁注册表：同一作品的操作串行化。
+        .manage(ProjectLocks::default())
         .invoke_handler(tauri::generate_handler![
             create_project,
             open_project,

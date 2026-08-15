@@ -6,7 +6,12 @@ import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiPanel } from "../src/ai-panel.ts";
 import type { AppDom } from "../src/dom.ts";
-import type { GenerateAiRequest, GenerateAiResult, LlmConfig, SelectionSnapshot } from "../src/types.ts";
+import type {
+  GenerateAiRequest,
+  GenerateAiResult,
+  LlmConfigSummary,
+  SelectionSnapshot,
+} from "../src/types.ts";
 
 type Listener = (event: FakeEvent) => void;
 type GenerateAiResultSource = GenerateAiResult | Promise<GenerateAiResult>;
@@ -116,10 +121,12 @@ function fixtureElement(elements: Map<string, FakeElement>, id: string): FakeEle
 }
 
 async function flushAiFeatureFlow(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  // 固定次数（原来 4 次）的微任务刷洗，一旦流程内部多加一层 await 就会失效。
+  // 改为有界循环刷洗，让链式 Promise 充分落定，同时仍不会「完成」一个由测试手动
+  // 控制的挂起 Promise（那些断言中间态的测试因此不受影响）。
+  for (let i = 0; i < 64; i += 1) {
+    await Promise.resolve();
+  }
 }
 
 function harness(): {
@@ -172,15 +179,15 @@ function harness(): {
   let retried = 0;
   let firstRetries = 0;
   setupAiPanel({
-    aiPanel: panel,
-    aiResponse: response,
-    btnToggleAi: toggle,
+    aiPanel: panel as unknown as HTMLElement,
+    aiResponse: response as unknown as HTMLPreElement,
+    btnToggleAi: toggle as unknown as HTMLButtonElement,
   }, state, {
     onRetry: () => { firstRetries += 1; },
     onGoToConfig: () => {},
-	    onSubmitFollowUp: (question) => { submitted.push(question); return true; },
-	    onRetryFollowUp: () => { retried += 1; return true; },
-	    onEditFollowUp: (question) => { edited.push(question); return true; },
+	    onSubmitFollowUp: (question) => { submitted.push(question); return Promise.resolve(true); },
+	    onRetryFollowUp: () => { retried += 1; return Promise.resolve(true); },
+	    onEditFollowUp: (question) => { edited.push(question); return Promise.resolve(true); },
 	    onStartThinkingExpansion: (direction) => { startedThinkingExpansions.push(direction); return true; },
 	  });
 
@@ -200,13 +207,12 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   readonly apiBaseUrl?: string;
   readonly apiBaseUrls?: readonly string[];
   readonly loadConfigError?: unknown;
-  readonly loadConfigResult?: LlmConfig | null;
-  readonly loadConfigPromise?: Promise<LlmConfig | null>;
+  readonly loadConfigResult?: LlmConfigSummary | null;
+  readonly loadConfigPromise?: Promise<LlmConfigSummary | null>;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
   requests: GenerateAiRequest[];
-  confirmations: string[];
   summon(snap: SelectionSnapshot): void;
   thinkingExpansion(snap: SelectionSnapshot): void;
   setCurrentNotebook(notebook: "draft" | "main"): void;
@@ -264,6 +270,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     mainTextarea: main,
   } as unknown as AppDom, {
     getCurrentNotebook: () => currentNotebook,
+    getCurrentEditor: () => null,
     openConfigPage: (returnPage) => { openedConfig.push(returnPage); },
   }, {
     generate: async (request) => {
@@ -278,8 +285,8 @@ function featureHarness(results: GenerateAiResultSource[], options: {
       if (loadConfigResult !== undefined) return loadConfigResult;
       return {
         api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
-        api_key: "saved-key",
         model: "saved-model",
+        has_api_key: true,
       };
     },
     setupEntry: (options) => {
@@ -656,14 +663,26 @@ test("project lifecycle reset clears conversation and unsent follow-up draft", (
   }
 });
 
-test("editor lifecycle composition resets AI on project ready and unload", () => {
-  const editorSource = readFileSync(new URL("../src/editor.ts", import.meta.url), "utf8");
-  const aiFeatureSource = readFileSync(new URL("../src/ai-feature.ts", import.meta.url), "utf8");
-  assert.match(editorSource, /function unload\(\): void \{[\s\S]*aiFeature\?\.endProject\(\)/);
-  assert.match(editorSource, /function showProject\([\s\S]*aiFeature\?\.beginProject\(\)/);
-  assert.match(aiFeatureSource, /const selectionEntry = setupSelectionEntryCallbacks\(/);
-  assert.match(aiFeatureSource, /beginProject\(\): void \{[\s\S]*selectionEntry\.reset\(\)/);
-  assert.match(aiFeatureSource, /endProject\(\): void \{[\s\S]*selectionEntry\.reset\(\)/);
+test("editor lifecycle composition resets AI on project ready and unload", async () => {
+  const ui = featureHarness([{ ok: true, content: "旧作品首答" }, { ok: true, content: "新作品首答" }]);
+  try {
+    ui.summon(snapshot("旧作品选区"));
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["旧作品首答"]);
+
+    // endProject（作品卸载）：清空旧对话，AI 面板回到初始状态。
+    ui.controller.endProject();
+    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), []);
+
+    // beginProject（新作品就绪）：可以立刻在新作品里召唤，旧内容不残留。
+    ui.controller.beginProject();
+    ui.summon(snapshot("新作品选区"));
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["新作品首答"]);
+  } finally {
+    ui.restore();
+  }
 });
 
 test("editor shell keeps the AI panel viewport-stable and scrolls its body", () => {
@@ -711,9 +730,11 @@ test("real AI feature flow never writes notebooks across success, failure, retry
 });
 
 test("first request, retry, and follow-up keep the clicked snapshot after editor context changes", async () => {
-  let resolveConfig: ((config: LlmConfig | null) => void) | null = null;
-  const configPromise = new Promise<LlmConfig | null>((resolve) => {
-    resolveConfig = resolve;
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
   });
   const ui = featureHarness([
     { ok: false, error: { code: "network", message: "网络失败" } },
@@ -729,11 +750,10 @@ test("first request, retry, and follow-up keep the clicked snapshot after editor
     draft.value = "点击后改写的草稿与新选区";
     main.value = "点击后切换到的正文与新选区";
     ui.setCurrentNotebook("main");
-    if (!resolveConfig) throw new Error("config resolver missing");
-    resolveConfig({
+    configDeferred.resolve?.({
       api_base_url: "https://api.example.com/v1",
-      api_key: "saved-key",
       model: "saved-model",
+      has_api_key: true,
     });
     await flushAiFeatureFlow();
 

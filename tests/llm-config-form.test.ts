@@ -115,11 +115,15 @@ function makeHarness(options: {
     btnSaveConfig: elements.get("btn-save-config"),
     btnTestConfig: elements.get("btn-test-config"),
     btnBackConfig: elements.get("btn-back-config"),
-  } as AppDom;
+  } as unknown as AppDom;
 
-  const controller = setupLlmConfigForm(dom, pages as HTMLElement[], {
+  const controller = setupLlmConfigForm(dom, pages as unknown as HTMLElement[], {
     chooseLeave: async () => choices.shift() ?? "cancel",
-    loadConfig: async () => cloneConfig(savedConfig),
+    loadConfig: async () => ({
+      api_base_url: savedConfig.api_base_url,
+      model: savedConfig.model,
+      has_api_key: true,
+    }),
     saveConfig: async (config) => {
       if (options.saveFails) throw new Error("save failed");
       saved.push(cloneConfig(config));
@@ -147,9 +151,9 @@ test("LLM config back cancel keeps dirty input on the configuration page", async
     ui.controller.open("editor-page");
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
-    ui.dom.apiKeyInput.dispatch("input");
+    ui.elements.get("api-key")!.dispatch("input");
 
-    ui.dom.btnBackConfig.dispatch("click");
+    ui.elements.get("btn-back-config")!.dispatch("click");
     await ui.flush();
 
     assert.equal(ui.dom.apiKeyInput.value, "edited-key");
@@ -166,9 +170,9 @@ test("LLM config back save failure keeps dirty input on the configuration page",
     ui.controller.open("editor-page");
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
-    ui.dom.apiKeyInput.dispatch("input");
+    ui.elements.get("api-key")!.dispatch("input");
 
-    ui.dom.btnBackConfig.dispatch("click");
+    ui.elements.get("btn-back-config")!.dispatch("click");
     await ui.flush();
 
     assert.equal(ui.dom.apiKeyInput.value, "edited-key");
@@ -186,9 +190,9 @@ test("LLM config back save success leaves and records the new clean baseline", a
     ui.controller.open("editor-page");
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
-    ui.dom.apiKeyInput.dispatch("input");
+    ui.elements.get("api-key")!.dispatch("input");
 
-    ui.dom.btnBackConfig.dispatch("click");
+    ui.elements.get("btn-back-config")!.dispatch("click");
     await ui.flush();
 
     assert.deepEqual(ui.saved, [{ ...savedConfig, api_key: "edited-key" }]);
@@ -206,9 +210,9 @@ test("LLM config back discard leaves without saving current input", async () => 
     ui.controller.open("editor-page");
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
-    ui.dom.apiKeyInput.dispatch("input");
+    ui.elements.get("api-key")!.dispatch("input");
 
-    ui.dom.btnBackConfig.dispatch("click");
+    ui.elements.get("btn-back-config")!.dispatch("click");
     await ui.flush();
 
     assert.deepEqual(ui.saved, []);

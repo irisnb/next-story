@@ -213,7 +213,7 @@ export function acceptConversationFollowUpRetry(
 export function buildFollowUpRequest(
   conversation: TemporaryConversation,
   question: string,
-): GenerateAiRequest {
+): Extract<GenerateAiRequest, { kind: "follow_up" }> {
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
     { role: "assistant", content: conversation.firstResponse },
   ];
@@ -234,7 +234,7 @@ export function buildFollowUpRequest(
 
 export function followUpRequestOf(
   conversation: TemporaryConversation | null,
-): GenerateAiRequest | null {
+): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
   if (!conversation?.pending) return null;
   return buildFollowUpRequest(conversation, conversation.pending.question);
 }
@@ -242,7 +242,7 @@ export function followUpRequestOf(
 export function followUpRequestForQuestionOf(
   conversation: TemporaryConversation | null,
   question: string,
-): GenerateAiRequest | null {
+): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
   if (!conversation?.pending || !conversation.pending.error || !question.trim()) return null;
   return buildFollowUpRequest(conversation, question);
 }
@@ -387,11 +387,11 @@ export class TemporaryConversationState {
     return outcome.turnId;
   }
 
-  followUpRequest(): GenerateAiRequest | null {
+  followUpRequest(): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
     return followUpRequestOf(this.context.conversation);
   }
 
-  followUpRequestForQuestion(question: string): GenerateAiRequest | null {
+  followUpRequestForQuestion(question: string): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
     return followUpRequestForQuestionOf(this.context.conversation, question);
   }
 }

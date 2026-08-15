@@ -2,7 +2,7 @@ import type { AppDom } from "./dom.ts";
 import { LeaveCoordinator, type LeaveChoice } from "./leave-guard.ts";
 import { LlmConfigUiState, type LlmConfigReturnPage } from "./llm-config-state.ts";
 import { loadLlmConfig, saveLlmConfig, testLlmConnection } from "./project-api.ts";
-import type { LlmConfig } from "./types.ts";
+import type { LlmConfig, LlmConfigSummary } from "./types.ts";
 import { showPage } from "./views.ts";
 
 export interface LlmConfigController {
@@ -14,10 +14,16 @@ export interface LlmConfigController {
 
 export interface LlmConfigFormServices {
   chooseLeave(): Promise<LeaveChoice>;
-  loadConfig(): Promise<LlmConfig | null>;
+  loadConfig(): Promise<LlmConfigSummary | null>;
   saveConfig(config: LlmConfig): Promise<void>;
   testConnection(config: LlmConfig): Promise<void>;
 }
+
+/**
+ * 密钥输入区显示的固定掩码：后端绝不回读明文密钥，加载后只以掩码表示「已保存」。
+ * 用户点击该输入框时会自动清空掩码，允许输入新密钥；空输入则复用钥匙串旧密钥。
+ */
+export const KEY_MASK = "••••••••";
 
 export function setupLlmConfigForm(
   dom: AppDom,
@@ -54,9 +60,14 @@ export function setupLlmConfigForm(
       "save-status" + (kind === "error" ? " error" : kind === "saving" ? " saving" : "");
   }
 
+  /** 掩码视为「未输入新密钥」，返回空串；其余原样返回（不 trim，保留用户输入）。 */
+  function enteredKey(): string {
+    return dom.apiKeyInput.value === KEY_MASK ? "" : dom.apiKeyInput.value;
+  }
+
   function validateForm(): boolean {
     const url = dom.apiBaseUrlInput.value.trim();
-    const key = dom.apiKeyInput.value.trim();
+    const key = dom.apiKeyInput.value;
     const model = dom.modelNameInput.value.trim();
     let valid = true;
 
@@ -67,7 +78,9 @@ export function setupLlmConfigForm(
       hideError(dom.apiBaseUrlError);
     }
 
-    if (!key) {
+    // 密钥合法条件：用户输入了新密钥，或已有已保存密钥可被后端复用（空输入/掩码均可）。
+    const hasEnteredKey = key !== KEY_MASK && key.trim() !== "";
+    if (!hasEnteredKey && !uiState.hasSavedKey()) {
       showError(dom.apiKeyError, "请填写 API Key");
       valid = false;
     } else {
@@ -91,12 +104,15 @@ export function setupLlmConfigForm(
     return valid;
   }
 
+  /** 只有用户主动输入新密钥时才在保存/测试载荷里携带 `api_key`。 */
   function currentConfig(): LlmConfig {
-    return {
+    const key = enteredKey();
+    const config: LlmConfig = {
       api_base_url: dom.apiBaseUrlInput.value.trim(),
-      api_key: dom.apiKeyInput.value,
       model: dom.modelNameInput.value.trim(),
     };
+    if (key !== "") config.api_key = key;
+    return config;
   }
 
   function hasUnsavedChanges(): boolean {
@@ -111,6 +127,13 @@ export function setupLlmConfigForm(
     return choice;
   }
 
+  /** 加载后只回填非敏感字段；密钥区显示掩码而非真实密钥。 */
+  function applyLoadedConfig(saved: LlmConfigSummary | null): void {
+    dom.apiBaseUrlInput.value = saved?.api_base_url ?? "";
+    dom.modelNameInput.value = saved?.model ?? "";
+    dom.apiKeyInput.value = saved?.has_api_key ? KEY_MASK : "";
+  }
+
   async function loadSaved(generation: number): Promise<void> {
     try {
       const saved = await services.loadConfig();
@@ -120,10 +143,8 @@ export function setupLlmConfigForm(
       }
 
       if (completion.shouldApply) {
-        dom.apiBaseUrlInput.value = saved?.api_base_url ?? "";
-        dom.apiKeyInput.value = saved?.api_key ?? "";
-        dom.modelNameInput.value = saved?.model ?? "";
-        uiState.commitBaseline(currentConfig());
+        applyLoadedConfig(saved);
+        uiState.commitBaseline(currentConfig(), saved?.has_api_key ?? false);
         setStatus(saved ? "已加载已保存配置" : "未保存");
       } else {
         setStatus("已保留当前输入");
@@ -151,6 +172,10 @@ export function setupLlmConfigForm(
       const config = currentConfig();
       await services.saveConfig(config);
       uiState.commitBaseline(config);
+      // 保存成功后把密钥输入还原为掩码：后端不会把明文密钥回读给前端。
+      if (dom.apiKeyInput.value !== KEY_MASK) {
+        dom.apiKeyInput.value = uiState.hasSavedKey() ? KEY_MASK : "";
+      }
       setStatus("已保存");
       return true;
     } catch (error) {
@@ -211,6 +236,12 @@ export function setupLlmConfigForm(
   dom.apiBaseUrlInput.addEventListener("input", handleInput);
   dom.apiKeyInput.addEventListener("input", handleInput);
   dom.modelNameInput.addEventListener("input", handleInput);
+  // 聚焦掩码输入框时清空掩码，让用户直接输入新密钥，而不是把新密钥追加到掩码后面。
+  dom.apiKeyInput.addEventListener("focus", () => {
+    if (dom.apiKeyInput.value === KEY_MASK) {
+      dom.apiKeyInput.value = "";
+    }
+  });
 
   return {
     open,

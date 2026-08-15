@@ -18,10 +18,10 @@ type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
   (<Value>() => Value extends Right ? 1 : 2) ? true : false;
 type Assert<Condition extends true> = Condition;
-type _ConversationAnchorIsReadonly = Assert<
+export type _ConversationAnchorIsReadonly = Assert<
   Equal<ReadonlyTemporaryConversation["anchor"], Readonly<SelectionSnapshot>>
 >;
-type _ConversationTurnsAreReadonly = Assert<
+export type _ConversationTurnsAreReadonly = Assert<
   Equal<ReadonlyTemporaryConversation["turns"], ReadonlyArray<Readonly<import("../src/ai-panel-state.ts").SuccessfulFollowUpTurn>>>
 >;
 
@@ -186,6 +186,8 @@ test("forms one anchored linear conversation after the first success", () => {
   state.succeed(anchor, "首次回应");
 
   assert.equal(state.followUpAvailable, true);
+  // 断言签名会把 conversation 收窄为字面量（此时 pending 为 null），
+  // 因此这里显式以 ReadonlyTemporaryConversation 作为期望类型，避免污染后续 pending 访问。
   assert.deepEqual(state.conversation, {
     id: 1,
     anchor,
@@ -193,7 +195,7 @@ test("forms one anchored linear conversation after the first success", () => {
     firstResponse: "首次回应",
     turns: [],
     pending: null,
-  });
+  } as ReadonlyTemporaryConversation);
 
   const turn = state.beginFollowUp("第一个问题");
   assert.equal(turn, 1);

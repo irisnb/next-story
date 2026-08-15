@@ -14,9 +14,15 @@ import {
 import {
   buildThinkingExpansionRequest,
   startFirstRequest,
+  type FirstRequestPreflightState,
 } from "../src/ai-feature-first-request.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
-import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
+import type {
+  GenerateAiError,
+  GenerateAiRequest,
+  LlmConfigSummary,
+  SelectionSnapshot,
+} from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
   return { notebook: "draft", selectedText: text, from: 0, to: text.length };
@@ -79,6 +85,7 @@ test("first request preflight previews selection before requiring configuration"
     request: () => {
       throw new Error("request should not run without config");
     },
+    getProjectToken: () => 1,
   }), true);
   await Promise.resolve();
 
@@ -89,6 +96,76 @@ test("first request preflight previews selection before requiring configuration"
     conversationId: 1,
   });
   assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("discards the preflight result when the project changes during config loading", async () => {
+  const state = new AiPanelState();
+  const snap = snapshot("旧作品冻结选区");
+  let projectToken = 1;
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
+  });
+  const preflight: FirstRequestPreflightState = { pending: false };
+  let requestedSnapshot: SelectionSnapshot | null = null;
+
+  assert.equal(startFirstRequest({
+    state,
+    snapshot: snap,
+    loadConfig: () => configPromise,
+    request: (requestSnapshot) => {
+      requestedSnapshot = requestSnapshot;
+      return Promise.resolve();
+    },
+    preflight,
+    getProjectToken: () => projectToken,
+  }), true);
+  assert.equal(preflight.pending, true, "预检进行中应锁定单飞");
+
+  // 预检期间切换到作品 B：令牌变化后，迟到的配置结果必须被丢弃。
+  projectToken = 2;
+  configDeferred.resolve?.({ api_base_url: "https://api.example.com", model: "m", has_api_key: true });
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(requestedSnapshot, null, "不得把旧作品的冻结选区作为请求发出");
+  assert.equal(preflight.pending, false);
+  // 预检结果被丢弃：面板停留在预览态（作品切换后由应用层 reset），不进入 loading/error。
+  assert.deepEqual(state.view.request, { kind: "first_preview", snapshot: snap });
+});
+
+test("preflight failure after a project switch is discarded too", async () => {
+  const state = new AiPanelState();
+  const snap = snapshot("旧作品冻结选区");
+  let projectToken = 1;
+  const configDeferred: { reject: ((error: Error) => void) | null } = {
+    reject: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((_resolve, reject) => {
+    configDeferred.reject = reject;
+  });
+
+  assert.equal(startFirstRequest({
+    state,
+    snapshot: snap,
+    loadConfig: () => configPromise,
+    request: () => {
+      throw new Error("request should not run");
+    },
+    getProjectToken: () => projectToken,
+  }), true);
+
+  // 预检失败返回前作品已切换：失败结果同样丢弃，避免污染新作品的 AI 面板。
+  projectToken = 2;
+  configDeferred.reject?.(new Error("配置读取失败"));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(state.view.request, { kind: "first_preview", snapshot: snap });
 });
 
 test("first request keeps the submitted snapshot after the editor selection changes", async () => {
@@ -103,8 +180,8 @@ test("first request keeps the submitted snapshot after the editor selection chan
     snapshot: currentEditorSelection,
     loadConfig: () => Promise.resolve({
       api_base_url: "https://api.example.com",
-      api_key: "test-key",
       model: "test-model",
+      has_api_key: true,
     }),
     request: (requestSnapshot, requestPayload) => {
       requestedSnapshot = requestSnapshot;
@@ -114,6 +191,7 @@ test("first request keeps the submitted snapshot after the editor selection chan
       };
       return Promise.resolve();
     },
+    getProjectToken: () => 1,
   }), true);
 
   currentEditorSelection = {
@@ -206,8 +284,8 @@ test("first retry uses the failed request snapshot instead of the current editor
   currentEditorSelection = {
     notebook: "main",
     selectedText: "重试时的新选区",
-    start: 30,
-    end: 38,
+    from: 30,
+    to: 38,
   };
   assert.equal(retryAcceptedRequest(state, (requestSnapshot) => {
     retriedSnapshot = requestSnapshot;
@@ -250,8 +328,8 @@ test("follow-up and its retry keep the conversation anchor after later editor ch
   currentEditorSelection = {
     notebook: "main",
     selectedText: "追问时的新选区",
-    start: 40,
-    end: 48,
+    from: 40,
+    to: 48,
   };
   assert.equal(followUpAcceptedRequest(state, "继续追问", (payload) => {
     payloads.push(payload);

@@ -1,9 +1,9 @@
-import type { AppDom } from "./dom";
-import { createProject, openProject, selectDirectory } from "./project-api";
-import { openProjectAfterAuthorization } from "./project-leave-flow";
-import { emptyNotebookDocument } from "./structured-notebook";
-import type { ProjectState } from "./types";
-import { showPage } from "./views";
+import type { AppDom } from "./dom.ts";
+import { createProject, openProject, selectDirectory } from "./project-api.ts";
+import { openProjectAfterAuthorization } from "./project-leave-flow.ts";
+import { emptyNotebookDocument } from "./structured-notebook.ts";
+import type { ProjectState } from "./types.ts";
+import { showPage } from "./views.ts";
 
 interface ProjectFlowOptions {
   onProjectReady(projectState: ProjectState): void;
@@ -12,6 +12,21 @@ interface ProjectFlowOptions {
 
 export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void {
   const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage];
+
+  // 操作序号：新建/打开共用一条序列，只允许最新一次操作提交结果，
+  // 防止迟到的异步结果（如慢速目录读取）覆盖更新操作产生的作品。
+  let projectOperation = 0;
+  // 打开作品忙碌锁：一次只允许一个打开流程，防止双击或并发点击交错。
+  let openBusy = false;
+
+  function beginOperation(): number {
+    projectOperation += 1;
+    return projectOperation;
+  }
+
+  function isLatest(operation: number): boolean {
+    return operation === projectOperation;
+  }
 
   function hideError(element: HTMLElement): void {
     element.classList.add("hidden");
@@ -73,10 +88,12 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
 
     const name = dom.projectNameInput.value.trim();
     const saveLocation = dom.saveLocationInput.value.trim();
+    const operation = beginOperation();
 
     try {
       dom.btnCreateProject.disabled = true;
       const projectPath = await createProject(name, saveLocation);
+      if (!isLatest(operation)) return;
       const blank = JSON.stringify(emptyNotebookDocument());
 
       options.onProjectReady({
@@ -86,22 +103,35 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
         mainContent: blank,
       });
     } catch (error) {
+      if (!isLatest(operation)) return;
       showError(dom.nameError, String(error));
       dom.btnCreateProject.disabled = false;
     }
   }
 
   async function handleOpenProject(): Promise<void> {
-    await openProjectAfterAuthorization({
-      authorize: options.guardLeave,
-      selectDirectory: () => selectDirectory("选择作品文件夹"),
-      openProject,
-      replaceProject: options.onProjectReady,
-      reportError: (error) => {
-        console.error("打开作品失败:", error);
-        alert(`打开作品失败: ${String(error)}`);
-      },
-    });
+    if (openBusy) return;
+    openBusy = true;
+    const operation = beginOperation();
+    try {
+      await openProjectAfterAuthorization({
+        authorize: options.guardLeave,
+        selectDirectory: () => selectDirectory("选择作品文件夹"),
+        openProject,
+        replaceProject: (projectState) => {
+          // 只允许最新一次打开操作提交，避免迟到的旧结果覆盖更新的作品。
+          if (!isLatest(operation)) return;
+          options.onProjectReady(projectState);
+        },
+        reportError: (error) => {
+          if (!isLatest(operation)) return;
+          console.error("打开作品失败:", error);
+          alert(`打开作品失败: ${String(error)}`);
+        },
+      });
+    } finally {
+      openBusy = false;
+    }
   }
 
   dom.btnNewProject.addEventListener("click", () => {

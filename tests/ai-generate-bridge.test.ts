@@ -14,7 +14,7 @@ type Equal<Left, Right> =
     ? true
     : false;
 type Assert<Condition extends true> = Condition;
-type _FrontendCannotSubmitSystemRole = Assert<
+export type _FrontendCannotSubmitSystemRole = Assert<
   Equal<GenerateAiMessage["role"], "user" | "assistant">
 >;
 
@@ -89,7 +89,7 @@ test("sends all successful turns and the current follow-up exactly once", async 
 
 test("propagates a structured failure without leaking notebooks or save calls", async () => {
   let saveProjectSeen = false;
-  const invoke: InvokeFn = (cmd, args) => {
+  const invoke: InvokeFn = (cmd, _args) => {
     if (cmd === "save_project") saveProjectSeen = true;
     const failure: GenerateAiResult = {
       ok: false,

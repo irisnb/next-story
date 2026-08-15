@@ -248,9 +248,9 @@ test("resets only the AI selection entry when switching notebook tabs", () => {
       beginProject: () => { projectBegins += 1; },
       endProject: () => { projectEnds += 1; },
       resetSelectionEntry: () => { entryResets += 1; },
-      submitFollowUp: () => false,
-      retryFollowUp: () => false,
-      editFollowUp: () => false,
+      submitFollowUp: () => Promise.resolve(false),
+      retryFollowUp: () => Promise.resolve(false),
+      editFollowUp: () => Promise.resolve(false),
     };
     const editor = fixture.editor;
 
@@ -266,6 +266,38 @@ test("resets only the AI selection entry when switching notebook tabs", () => {
     assert.equal(entryResets, 1);
     assert.equal(projectBegins, 0);
     assert.equal(projectEnds, 0);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("showProject begins the AI project and unload ends it", () => {
+  const fixture = editorFixture();
+  try {
+    let begins = 0;
+    let ends = 0;
+    const ai: AiFeatureController = {
+      beginProject: () => { begins += 1; },
+      endProject: () => { ends += 1; },
+      resetSelectionEntry: () => {},
+      submitFollowUp: () => Promise.resolve(false),
+      retryFollowUp: () => Promise.resolve(false),
+      editFollowUp: () => Promise.resolve(false),
+    };
+    const editor = fixture.editor;
+    editor.attachAi(ai);
+
+    editor.showProject(project("作品一", "草稿", "正文"));
+    assert.equal(begins, 1);
+    assert.equal(ends, 0);
+
+    editor.unload();
+    assert.equal(ends, 1);
+
+    // 新作品就绪会再次 beginProject，旧作品结束不重复触发。
+    editor.showProject(project("作品二", "草稿二", "正文二"));
+    assert.equal(begins, 2);
+    assert.equal(ends, 1);
   } finally {
     fixture.restore();
   }

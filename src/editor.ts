@@ -8,7 +8,7 @@ import {
   createRichTextEditor,
   type RichTextEditorAdapter,
 } from "./rich-text-editor.ts";
-import { saveProject } from "./project-api.ts";
+import { saveProject, notebookSizeError } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
 import type { SelectionEntryEditor } from "./selection-entry.ts";
 import type { NotebookTab, ProjectState } from "./types.ts";
@@ -16,7 +16,10 @@ import { analyzeSelection, type FormatCommand, type TriState } from "./format-co
 import {
   canonicalDoc,
   canonicalNotebookJson,
+  NOTEBOOK_FORMAT,
+  NOTEBOOK_VERSION,
   parseNotebookDocumentJson,
+  validateNotebookDocument,
 } from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
 
@@ -194,9 +197,51 @@ export function setupEditor(
 
   async function save(): Promise<boolean> {
     if (!currentState || !saveState) return true;
+    const editors = projectEditors;
+    if (!editors) return true;
     const state = saveState;
     const path = currentState.projectPath;
+
+    // 先严格校验两份完整文档（原始编辑器输出，不做静默清洗）：未通过则拒绝保存。
+    const draftDocument = editors.draft.getDocument();
+    const mainDocument = editors.main.getDocument();
+    const draftValidation = validateNotebookDocument({
+      format: NOTEBOOK_FORMAT,
+      version: NOTEBOOK_VERSION,
+      document: draftDocument,
+    });
+    if (!draftValidation.ok) {
+      return rejectSave(`草稿本无法保存：${draftValidation.error}`);
+    }
+    const mainValidation = validateNotebookDocument({
+      format: NOTEBOOK_FORMAT,
+      version: NOTEBOOK_VERSION,
+      document: mainDocument,
+    });
+    if (!mainValidation.ok) {
+      return rejectSave(`正文本无法保存：${mainValidation.error}`);
+    }
+
+    // 与后端一致的字节上限检查：超限不调用写盘。
+    const draftSizeError = notebookSizeError(canonicalNotebookJson(draftDocument));
+    if (draftSizeError) return rejectSave(`草稿本内容过大：${draftSizeError}`);
+    const mainSizeError = notebookSizeError(canonicalNotebookJson(mainDocument));
+    if (mainSizeError) return rejectSave(`正文本内容过大：${mainSizeError}`);
+
     const result = state.save((snapshot) => saveProject(path, snapshot.draft, snapshot.main));
+    renderSaveState();
+    const succeeded = await result;
+    renderSaveState();
+    return succeeded;
+  }
+
+  /** 校验/上限未通过：以保存失败路径记录错误，基线不变，内容保持未保存，不调用写盘。 */
+  async function rejectSave(message: string): Promise<boolean> {
+    const state = saveState;
+    if (!state) return true;
+    const result = state.save(async () => {
+      throw new Error(message);
+    });
     renderSaveState();
     const succeeded = await result;
     renderSaveState();
@@ -218,23 +263,29 @@ export function setupEditor(
   }
 
   function showProject(projectState: ProjectState): void {
-    disposeProjectEditors();
-    currentState = projectState;
+    // 事务式替换：先解析两份文档并构造完整新编辑器组合，全部成功后一次性交换再销毁旧组合。
+    // 任一步失败（如本子内容非法）都不会破坏当前正在编辑的作品。
     const draftDocument = parseNotebookDocumentJson(projectState.draftContent).document;
     const mainDocument = parseNotebookDocumentJson(projectState.mainContent).document;
-    saveState = new EditorSaveState(
+    const nextSaveState = new EditorSaveState(
       canonicalNotebookJson(draftDocument),
       canonicalNotebookJson(mainDocument),
     );
     const draft = dependencies.createEditor(dom.draftTextarea, draftDocument);
-    const main = dependencies.createEditor(dom.mainTextarea, mainDocument);
+    let main: EditorAdapter;
+    try {
+      main = dependencies.createEditor(dom.mainTextarea, mainDocument);
+    } catch (error) {
+      // 构造新组合中途失败：销毁已创建的一半，保持旧组合完整可用。
+      draft.destroy();
+      throw error;
+    }
     const editors: ProjectEditors = {
       draft,
       main,
       unsubscribeDraft: () => {},
       unsubscribeMain: () => {},
     };
-    projectEditors = editors;
     editors.unsubscribeDraft = draft.onEdit(() => {
       if (projectEditors === editors) syncCurrent();
     });
@@ -248,6 +299,11 @@ export function setupEditor(
     main.onSelectionChange(() => {
       if (projectEditors === editors) renderToolbar();
     });
+    // 全部成功后一次性交换：旧组合销毁，新组合接管。
+    disposeProjectEditors();
+    currentState = projectState;
+    saveState = nextSaveState;
+    projectEditors = editors;
     aiFeature?.beginProject();
     dom.currentProjectName.textContent = projectState.projectName;
     renderSaveState();

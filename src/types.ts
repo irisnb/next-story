@@ -10,8 +10,22 @@ export interface ProjectOpenResult {
 
 export interface LlmConfig {
   api_base_url: string;
-  api_key: string;
+  /**
+   * 仅当用户主动输入新密钥时携带；省略时后端复用钥匙串中的旧密钥。
+   * 前端从不回填明文密钥。
+   */
+  api_key?: string;
   model: string;
+}
+
+/**
+ * `load_llm_config` 的非敏感返回契约：不含明文 `api_key`，
+ * 只回传服务地址、模型名与「是否已有已保存密钥」布尔值。
+ */
+export interface LlmConfigSummary {
+  api_base_url: string;
+  model: string;
+  has_api_key: boolean;
 }
 
 export interface ProjectState {

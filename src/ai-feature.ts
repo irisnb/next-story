@@ -248,6 +248,8 @@ export function setupAiFeature(
       request: (requestSnapshot, requestPayload) =>
         coordinator.request(requestSnapshot, requestPayload),
       preflight: firstRequestPreflight,
+      // 预检开始时冻结作品令牌；预检期间切换作品会丢弃本次预检。
+      getProjectToken: () => projectToken,
     });
   }
 

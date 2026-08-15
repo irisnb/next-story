@@ -358,5 +358,6 @@ test("follow-up configuration failure keeps the thread and exposes retry and edi
   assert.equal(view.followUpError.editAvailable, true);
   assert.equal(view.configBlock, true);
   assert.equal(view.errorBlock, null);
+  assert.ok(view.followUpForm);
   assert.equal(view.followUpForm.inputEnabled, false);
 });

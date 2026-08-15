@@ -5,6 +5,7 @@ import type {
   GenerateAiRequest,
   GenerateAiResult,
   LlmConfig,
+  LlmConfigSummary,
   ProjectOpenResult,
 } from "./types";
 
@@ -12,6 +13,24 @@ import type {
 export type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 const defaultInvoke: InvokeFn = tauriInvoke as InvokeFn;
+
+/**
+ * 单个本子 JSON 字符串的字节上限（与后端 `MAX_NOTEBOOK_BYTES` 一致，UTF-8 字节数）。
+ * 前端在调用保存前先做同一上限检查，作为纵深防御。
+ */
+export const MAX_NOTEBOOK_BYTES = 10 * 1024 * 1024;
+
+/** 与 Rust `str::len()` 一致的 UTF-8 字节长度。 */
+export function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** 校验本子 JSON 是否超过保存字节上限，超限返回中文说明；未超限返回 null。 */
+export function notebookSizeError(content: string): string | null {
+  const bytes = utf8ByteLength(content);
+  if (bytes <= MAX_NOTEBOOK_BYTES) return null;
+  return `${bytes} 字节超过 ${MAX_NOTEBOOK_BYTES} 字节上限，无法保存`;
+}
 
 export async function selectDirectory(title: string): Promise<string | null> {
   const selected = await open({
@@ -43,6 +62,15 @@ export async function saveProject(
   draftContent: string,
   mainContent: string,
 ): Promise<void> {
+  // 与后端一致的字节上限检查：超限不调用写盘（纵深防御，正常路径在编辑器已检查）。
+  const draftError = notebookSizeError(draftContent);
+  if (draftError) {
+    throw new Error(`草稿本内容过大：${draftError}`);
+  }
+  const mainError = notebookSizeError(mainContent);
+  if (mainError) {
+    throw new Error(`正文本内容过大：${mainError}`);
+  }
   await tauriInvoke("save_project", {
     projectPath,
     draftContent,
@@ -50,8 +78,9 @@ export async function saveProject(
   });
 }
 
-export async function loadLlmConfig(): Promise<LlmConfig | null> {
-  return tauriInvoke<LlmConfig | null>("load_llm_config");
+/** 加载已保存配置：后端不回传明文密钥，只给非敏感字段与 `has_api_key`。 */
+export async function loadLlmConfig(): Promise<LlmConfigSummary | null> {
+  return tauriInvoke<LlmConfigSummary | null>("load_llm_config");
 }
 
 export async function saveLlmConfig(config: LlmConfig): Promise<void> {

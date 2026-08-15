@@ -11,6 +11,7 @@ import {
   SELECTION_ENTRY_GAP_PX,
   SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
   SELECTION_ENTRY_TRIGGER_WIDTH_PX,
+  type SelectionEntryEditor,
 } from "../src/selection-entry.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { JSONContent } from "@tiptap/core";
@@ -274,12 +275,17 @@ function setupEditorSelectionEntry(
   const options = {
     dom: ui.dom,
     getCurrentNotebook: () => ui.main.element.classList.contains("hidden") ? "draft" as const : "main" as const,
-    getCurrentEditor: () => ui.main.element.classList.contains("hidden") ? ui.draft : ui.main,
+    getCurrentEditor: () => ui.main.element.classList.contains("hidden") ? asEditor(ui.draft) : asEditor(ui.main),
     isRequestInFlight: callbacks.isRequestInFlight ?? (() => false),
     onSummon: callbacks.onSummon ?? (() => {}),
     onThinkingExpansion: callbacks.onThinkingExpansion ?? (() => {}),
   };
   return setupSelectionEntry(options);
+}
+
+/** 夹具编辑器与真实 `SelectionEntryEditor` 结构一致，仅 element 是假元素，这里显式对齐类型。 */
+function asEditor(editor: FakeSelectionEditor): SelectionEntryEditor {
+  return editor as unknown as SelectionEntryEditor;
 }
 
 function setEditorRect(
@@ -595,7 +601,7 @@ test("destroy removes editor listeners so stale selection events do not update",
     const controller = setupSelectionEntry({
       dom: ui.dom,
       getCurrentNotebook: () => { notebookReads += 1; return "draft"; },
-      getCurrentEditor: () => ui.draft,
+      getCurrentEditor: () => asEditor(ui.draft),
       isRequestInFlight: () => false,
       onSummon: () => {},
       onThinkingExpansion: () => {},

@@ -7,6 +7,16 @@ export interface RefreshCompletion {
   shouldApply: boolean;
 }
 
+/**
+ * 干净基线只记录非敏感字段与「是否已有已保存密钥」，绝不记录明文密钥。
+ * 密钥输入区在加载后只显示掩码；用户主动输入的新密钥视为未保存修改。
+ */
+export interface LlmConfigBaseline {
+  api_base_url: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
 export class LlmConfigUiState {
   returnPage: LlmConfigReturnPage = "welcome-page";
 
@@ -15,7 +25,7 @@ export class LlmConfigUiState {
   private busy = false;
   private dirty = false;
   private discardAuthorized = false;
-  private baseline: LlmConfig | null = null;
+  private baseline: LlmConfigBaseline | null = null;
 
   beginOpen(returnPage: LlmConfigReturnPage): number {
     this.returnPage = returnPage;
@@ -40,10 +50,25 @@ export class LlmConfigUiState {
     this.discardAuthorized = false;
   }
 
-  commitBaseline(config: LlmConfig): void {
-    this.baseline = { ...config };
+  /**
+   * 提交干净基线。`hasApiKey` 未显式给出时：本次提交携带了新密钥 → 有密钥；
+   * 否则沿用旧基线（保存/测试省略密钥时后端复用钥匙串旧密钥）。
+   */
+  commitBaseline(config: LlmConfig, hasApiKey?: boolean): void {
+    const keySaved =
+      hasApiKey ?? (config.api_key !== undefined || (this.baseline?.hasApiKey ?? false));
+    this.baseline = {
+      api_base_url: config.api_base_url,
+      model: config.model,
+      hasApiKey: keySaved,
+    };
     this.dirty = false;
     this.discardAuthorized = false;
+  }
+
+  /** 是否已存在可被后端复用的已保存密钥（决定空输入是否合法）。 */
+  hasSavedKey(): boolean {
+    return this.baseline?.hasApiKey ?? false;
   }
 
   discardChanges(): void {
@@ -51,8 +76,21 @@ export class LlmConfigUiState {
     this.discardAuthorized = true;
   }
 
+  /**
+   * 是否有未保存修改。密钥部分：`config` 携带 `api_key` 说明用户主动输入了新密钥，
+   * 相对任何基线都是修改；省略 `api_key` 说明复用已保存密钥，不构成修改。
+   */
   hasUnsavedChanges(config: LlmConfig): boolean {
-    return !this.discardAuthorized && !sameConfig(config, this.baseline);
+    if (this.discardAuthorized) return false;
+    if (!this.baseline) {
+      return config.api_base_url !== "" || config.model !== "" || config.api_key !== undefined;
+    }
+    const typedNewKey = config.api_key !== undefined;
+    return (
+      config.api_base_url !== this.baseline.api_base_url ||
+      config.model !== this.baseline.model ||
+      typedNewKey
+    );
   }
 
   beginOperation(isValid: boolean): boolean {
@@ -75,14 +113,4 @@ export class LlmConfigUiState {
   fieldsDisabled(): boolean {
     return this.loading || this.busy;
   }
-}
-
-function sameConfig(left: LlmConfig, right: LlmConfig | null): boolean {
-  if (!right) {
-    return left.api_base_url === "" && left.api_key === "" && left.model === "";
-  }
-
-  return left.api_base_url === right.api_base_url
-    && left.api_key === right.api_key
-    && left.model === right.model;
 }

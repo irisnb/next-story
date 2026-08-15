@@ -163,7 +163,7 @@ export class AiPanelState {
     return retryFollowUpQuestionOf(this.state.conversationContext.conversation);
   }
 
-  followUpRequestForQuestion(question: string): GenerateAiRequest | null {
+  followUpRequestForQuestion(question: string): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
     return followUpRequestForQuestionOf(this.state.conversationContext.conversation, question);
   }
 
@@ -189,7 +189,7 @@ export class AiPanelState {
     return this.dispatch({ type: "accept_first_retry" });
   }
 
-  followUpRequest(): GenerateAiRequest | null {
+  followUpRequest(): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
     return followUpRequestOf(this.state.conversationContext.conversation);
   }
 

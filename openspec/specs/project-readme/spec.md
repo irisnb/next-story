@@ -44,7 +44,7 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 
 #### Scenario: Reader locates user text and project metadata
 - **WHEN** 读者查看作品文件的数据说明
-- **THEN** README 将用户文本定位到作品文件夹内的 `作品文本/草稿本.txt` 与 `作品文本/正文本.txt`
+- **THEN** README 将用户文本定位到作品文件夹内的 `作品文本/草稿本.json` 与 `作品文本/正文本.json`
 - **AND** README 将项目系统元数据定位到同一作品文件夹内的 `next-story-system/project.json`
 - **AND** README 说明项目元数据不包含两个本子的正文内容
 
@@ -148,3 +148,4 @@ README SHALL 使用“帮助用户重新看见故事”等面向创作者的语�
 - **WHEN** README 简述 AI 与作品的关系
 - **THEN** README 说明 AI 输出是临时材料且永远不直接改动草稿本和正文本
 - **AND** README 不复制核心方向宪章中的完整四项权力论证
+

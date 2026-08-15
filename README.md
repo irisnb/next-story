@@ -199,7 +199,7 @@ npm install
 | 页面元素和切换 | `src/dom.ts`、`src/views.ts` |
 | 新建和打开作品界面逻辑 | `src/new-project-form.ts` |
 | 草稿本、正文本与手动保存界面逻辑 | `src/editor.ts` |
-| 纯文本编辑器内核与坐标适配 | `src/plain-text-editor.ts` |
+| 富文本编辑器内核与坐标适配 | `src/rich-text-editor.ts` |
 | LLM 配置界面与异步状态 | `src/llm-config-form.ts`、`src/llm-config-state.ts` |
 | AI 选区快照与浮动入口 | `src/selection-adapter.ts`、`src/selection-entry.ts` |
 | AI 请求协调与面板状态 | `src/ai-request.ts`、`src/ai-panel-state.ts`、`src/ai-panel.ts`、`src/ai-feature.ts` |

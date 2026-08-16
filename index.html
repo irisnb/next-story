@@ -72,35 +72,6 @@
         <button id="tab-main" class="tab-btn">正文本</button>
       </nav>
       
-      <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="文本格式">
-        <select id="paragraph-style" class="toolbar-select" aria-label="段落样式">
-          <option value="" disabled>多种格式</option>
-          <option value="paragraph">正文</option>
-          <option value="heading1">一级标题</option>
-          <option value="heading2">二级标题</option>
-          <option value="heading3">三级标题</option>
-          <option value="heading4">四级标题</option>
-          <option value="heading5">五级标题</option>
-          <option value="heading6">六级标题</option>
-        </select>
-        <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
-        <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
-        <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
-        <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
-        <button id="btn-clear-format" class="toolbar-btn toolbar-collapsible" type="button" aria-label="清除格式">清除格式</button>
-        <button id="btn-undo" class="toolbar-btn toolbar-collapsible" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
-        <button id="btn-redo" class="toolbar-btn toolbar-collapsible" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
-        <div class="toolbar-more">
-          <button id="btn-more" class="toolbar-btn" type="button" aria-label="更多" aria-haspopup="true">更多</button>
-          <div id="more-menu" class="more-menu hidden" role="menu" aria-label="更多格式命令">
-            <button id="btn-more-clear-format" class="more-menu-btn" type="button" role="menuitem">清除格式</button>
-            <button id="btn-more-undo" class="more-menu-btn" type="button" role="menuitem">撤销</button>
-            <button id="btn-more-redo" class="more-menu-btn" type="button" role="menuitem">重做</button>
-          </div>
-        </div>
-        <button id="btn-format-drawer" class="toolbar-btn format-drawer-toggle" type="button" aria-expanded="false" aria-controls="format-drawer">格式</button>
-      </div>
-
       <div id="find-bar" class="find-bar hidden" role="search" aria-label="查找替换">
         <input type="text" id="find-input" class="find-input" placeholder="查找" aria-label="查找" />
         <label class="find-case"><input type="checkbox" id="find-case-sensitive" />区分大小写</label>
@@ -113,7 +84,32 @@
         <button id="btn-find-close" class="toolbar-btn find-close" type="button" aria-label="关闭查找替换">关闭</button>
       </div>
 
-      <div class="editor-body">
+      <div class="editor-main">
+        <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="文本格式">
+          <select id="paragraph-style" class="toolbar-select" aria-label="段落样式">
+            <option value="" disabled>多种格式</option>
+            <option value="paragraph">正文</option>
+            <option value="heading1">一级标题</option>
+            <option value="heading2">二级标题</option>
+            <option value="heading3">三级标题</option>
+            <option value="heading4">四级标题</option>
+            <option value="heading5">五级标题</option>
+            <option value="heading6">六级标题</option>
+          </select>
+          <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
+          <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
+          <button id="btn-toolbar-underline" class="toolbar-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">U</span></button>
+          <button id="btn-toolbar-strike" class="toolbar-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">S</span></button>
+          <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
+          <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
+          <button id="btn-undo" class="toolbar-btn" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
+          <button id="btn-redo" class="toolbar-btn" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
+          <button id="btn-find" class="toolbar-btn" type="button" aria-label="查找" title="查找 (Ctrl+F)">查找</button>
+          <button id="btn-margin" class="toolbar-btn" type="button" aria-label="留白" title="留白调节">标准</button>
+          <button id="btn-format-drawer" class="toolbar-btn format-drawer-toggle" type="button" aria-expanded="false" aria-controls="format-drawer">格式</button>
+        </div>
+
+        <div class="editor-body">
         <div class="editor-notebooks">
           <div id="draft-textarea" class="notebook-textarea" data-placeholder="在这里写草稿..."></div>
           <div id="main-textarea" class="notebook-textarea hidden" data-placeholder="在这里写正文..."></div>
@@ -172,7 +168,11 @@
           </div>
           <div class="format-drawer-body">
             <section class="drawer-group" aria-label="字符格式">
-              <h2 class="drawer-group-title">字符</h2>
+              <button id="btn-toggle-character-section" class="drawer-group-toggle" type="button" aria-expanded="true">
+                <span class="drawer-group-title">字符</span>
+                <span class="drawer-group-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="drawer-group-content">
               <div class="drawer-inline">
                 <button id="btn-underline" class="drawer-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">下划线</span></button>
                 <button id="btn-strike" class="drawer-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">删除线</span></button>
@@ -221,10 +221,15 @@
                 </div>
               </div>
               <button id="btn-clear-character-format" class="drawer-btn drawer-clear-btn" type="button">清除字符格式</button>
+              </div>
             </section>
 
             <section class="drawer-group" aria-label="段落格式">
-              <h2 class="drawer-group-title">段落</h2>
+              <button id="btn-toggle-paragraph-section" class="drawer-group-toggle" type="button" aria-expanded="true">
+                <span class="drawer-group-title">段落</span>
+                <span class="drawer-group-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="drawer-group-content">
               <div class="drawer-field">
                 <span class="drawer-label">对齐</span>
                 <div class="drawer-inline">
@@ -301,9 +306,11 @@
                 </select>
               </div>
               <button id="btn-clear-paragraph-format" class="drawer-btn drawer-clear-btn" type="button">清除段落格式</button>
+              </div>
             </section>
           </div>
         </aside>
+        </div>
       </div>
 
       <div id="context-menu" class="context-menu hidden" role="menu" aria-label="编辑菜单">
@@ -311,14 +318,8 @@
         <button id="ctx-copy" class="more-menu-btn" type="button" role="menuitem">复制</button>
         <button id="ctx-paste" class="more-menu-btn" type="button" role="menuitem">粘贴</button>
         <button id="ctx-paste-plain" class="more-menu-btn" type="button" role="menuitem">粘贴为纯文本</button>
-        <div id="ctx-selection-group" class="hidden">
-          <div class="context-menu-separator" role="separator"></div>
-          <button id="ctx-underline" class="more-menu-btn" type="button" role="menuitem">下划线</button>
-          <button id="ctx-strike" class="more-menu-btn" type="button" role="menuitem">删除线</button>
-          <button id="ctx-clear-character" class="more-menu-btn" type="button" role="menuitem">清除字符格式</button>
-          <button id="ctx-clear-paragraph" class="more-menu-btn" type="button" role="menuitem">清除段落格式</button>
-          <button id="ctx-link-create" class="more-menu-btn" type="button" role="menuitem">创建链接</button>
-        </div>
+        <div class="context-menu-separator" role="separator"></div>
+        <button id="ctx-link-create" class="more-menu-btn" type="button" role="menuitem">创建链接</button>
         <div id="ctx-link-group" class="hidden">
           <div class="context-menu-separator" role="separator"></div>
           <button id="ctx-link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>

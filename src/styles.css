@@ -397,10 +397,21 @@
 }
 
 /* ========== Editor body + AI panel ========== */
+/* 工具栏列 + 正文区：真实左列布局，工具栏占一列、正文从右侧开始，绝不覆盖正文 */
+.editor-main {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+  min-width: 0;
+}
+
 .editor-body {
   flex: 1;
   display: flex;
   min-height: 0;
+  min-width: 0;
 }
 
 .editor-notebooks {
@@ -408,9 +419,14 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  padding: 1rem;
+  padding: 2rem;
   position: relative;
 }
+
+/* 留白：正文四周显示留白档位（作用于 .editor-notebooks 的 padding），纯显示层 */
+.editor-page[data-margin="compact"] .editor-notebooks { padding: 1rem; }
+.editor-page[data-margin="standard"] .editor-notebooks { padding: 2rem; }
+.editor-page[data-margin="loose"] .editor-notebooks { padding: 3rem; }
 
 .editor-notebooks .notebook-textarea {
   flex: 1;
@@ -762,16 +778,26 @@
     z-index: 30;
   }
 }
-/* ========== Format toolbar ========== */
+/* ========== Format toolbar (vertical) ========== */
 .format-toolbar {
+  flex: none;
+  width: 5.5rem;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.25rem;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem;
   background: white;
-  border-bottom: 1px solid #e2e8f0;
-  flex-wrap: nowrap;
-  overflow: hidden;
+  border-right: 1px solid var(--color-border);
+}
+
+.format-toolbar .toolbar-btn {
+  width: 100%;
+  text-align: center;
+}
+
+.format-toolbar .toolbar-select {
+  width: 100%;
 }
 
 .toolbar-btn {
@@ -808,23 +834,6 @@
   background: white;
 }
 
-.toolbar-more {
-  position: relative;
-}
-
-.more-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  min-width: 160px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  padding: 0.25rem;
-  z-index: 20;
-}
-
 .more-menu-btn {
   display: block;
   width: 100%;
@@ -845,25 +854,13 @@
   cursor: default;
 }
 
-/* 宽窗口：更多按钮隐藏 */
-#btn-more {
-  display: none;
-}
-
-/* A2 窄窗口：收纳清除格式、撤销、重做 */
-@media (max-width: 760px) {
-  .toolbar-collapsible {
-    display: none;
-  }
-  #btn-more {
-    display: inline-block;
-  }
-}
-
 /* ========== Format drawer ========== */
-/* 开关按钮：在工具栏内尽量靠右 */
+/* 开关按钮：竖排工具栏里作为「格式」抽屉入口，用上边框与格式命令区隔 */
 .format-drawer-toggle {
-  margin-left: auto;
+  margin-top: 0.35rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
 }
 
 .toolbar-btn[aria-expanded="true"] {
@@ -871,28 +868,28 @@
   border-color: #cbd5e0;
 }
 
-/* 覆盖式抽屉：从右侧滑出，不挤压编辑区（与窄窗口 AI 面板同一形态） */
+/* 覆盖式抽屉：从左侧滑出，不挤压编辑区（与窄窗口 AI 面板同一形态，方向镜像） */
 .format-drawer {
   position: fixed;
   top: 0;
-  right: 0;
+  left: 0;
   bottom: 0;
   width: min(320px, 92vw);
   display: flex;
   flex-direction: column;
   background: white;
-  border-left: 1px solid var(--color-border);
-  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.18);
+  border-right: 1px solid var(--color-border);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);
   z-index: 25;
-  transform: translateX(100%);
+  transform: translateX(-100%);
   visibility: hidden;
-  transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  transition: transform 0.3s ease, visibility 0s linear 0.3s;
 }
 
 .format-drawer.open {
   transform: translateX(0);
   visibility: visible;
-  transition: transform 0.2s ease, visibility 0s;
+  transition: transform 0.3s ease, visibility 0s;
 }
 
 .format-drawer-header {
@@ -926,6 +923,44 @@
 .drawer-group + .drawer-group {
   border-top: 1px solid var(--color-border);
   padding-top: 1rem;
+}
+
+.drawer-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.drawer-group.collapsed .drawer-group-content {
+  display: none;
+}
+
+.drawer-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.drawer-group-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--color-muted);
+  border-bottom: 2px solid var(--color-muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex: none;
+  margin: 0 4px 2px 0;
+}
+
+.drawer-group.collapsed .drawer-group-chevron {
+  transform: rotate(-45deg);
 }
 
 .drawer-group-title {
@@ -1104,6 +1139,11 @@
 .context-menu-separator {
   border-top: 1px solid var(--color-border);
   margin: 0.25rem 0;
+}
+
+/* 创建链接隐藏时，收起它前面的分隔线，避免出现孤立/双分隔线 */
+.context-menu-separator:has(+ .hidden) {
+  display: none;
 }
 
 .link-popover {

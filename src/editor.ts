@@ -21,6 +21,20 @@ import {
   validateNotebookDocument,
 } from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
+import {
+  DEFAULT_MARGIN_PRESET,
+  nextMarginPreset,
+  readMarginPreset,
+  writeMarginPreset,
+  type MarginPreset,
+  type StorageLike,
+} from "./editor-margin.ts";
+
+const MARGIN_LABELS: Record<MarginPreset, string> = {
+  compact: "紧凑",
+  standard: "标准",
+  loose: "宽松",
+};
 
 export interface EditorController {
   showProject(projectState: ProjectState): void;
@@ -132,6 +146,10 @@ export function setupEditor(
   let findIndex = -1;
   let popoverHref: string | null = null;
   let contextMenuHref: string | null = null;
+  let marginPreset: MarginPreset = DEFAULT_MARGIN_PRESET;
+
+  const DRAWER_CLOSE_DELAY_MS = 350;
+  let drawerCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   function disposeProjectEditors(): void {
     const editors = projectEditors;
@@ -147,6 +165,10 @@ export function setupEditor(
     disposeProjectEditors();
     hideLinkPopover();
     closeContextMenu();
+    if (drawerCloseTimer !== null) {
+      clearTimeout(drawerCloseTimer);
+      drawerCloseTimer = null;
+    }
     currentState = null;
     saveState = null;
     aiFeature?.endProject();
@@ -267,6 +289,8 @@ export function setupEditor(
       format.paragraphStyle === "mixed" ? "" : format.paragraphStyle;
     dom.btnBold.setAttribute("aria-pressed", pressedValue(format.bold));
     dom.btnItalic.setAttribute("aria-pressed", pressedValue(format.italic));
+    dom.btnToolbarUnderline.setAttribute("aria-pressed", pressedValue(format.underline));
+    dom.btnToolbarStrike.setAttribute("aria-pressed", pressedValue(format.strike));
     dom.btnBulletList.setAttribute("aria-pressed", format.list === "bullet" ? "true" : "false");
     dom.btnOrderedList.setAttribute("aria-pressed", format.list === "ordered" ? "true" : "false");
 
@@ -296,19 +320,13 @@ export function setupEditor(
     dom.paragraphStyle.disabled = !hasSelection;
     dom.btnBold.disabled = !hasSelection;
     dom.btnItalic.disabled = !hasSelection;
+    dom.btnToolbarUnderline.disabled = !hasSelection;
+    dom.btnToolbarStrike.disabled = !hasSelection;
     dom.btnBulletList.disabled = !hasSelection;
     dom.btnOrderedList.disabled = !hasSelection;
-    dom.btnClearFormat.disabled = !hasSelection;
-    dom.btnMoreClearFormat.disabled = !hasSelection;
     dom.btnUndo.disabled = !canUndo;
     dom.btnRedo.disabled = !canRedo;
-    dom.btnMoreUndo.disabled = !canUndo;
-    dom.btnMoreRedo.disabled = !canRedo;
     for (const control of drawerControls) control.disabled = !hasSelection;
-  }
-
-  function toggleMoreMenu(): void {
-    dom.moreMenu.classList.toggle("hidden");
   }
 
   function runSelectionCommand(command: FormatCommand): void {
@@ -439,15 +457,14 @@ export function setupEditor(
   const toolbarButtons = [
     dom.btnBold,
     dom.btnItalic,
+    dom.btnToolbarUnderline,
+    dom.btnToolbarStrike,
     dom.btnBulletList,
     dom.btnOrderedList,
-    dom.btnClearFormat,
     dom.btnUndo,
     dom.btnRedo,
-    dom.btnMore,
-    dom.btnMoreClearFormat,
-    dom.btnMoreUndo,
-    dom.btnMoreRedo,
+    dom.btnFind,
+    dom.btnMargin,
     dom.btnFormatDrawer,
     dom.btnFormatDrawerClose,
     dom.btnUnderline,
@@ -469,10 +486,7 @@ export function setupEditor(
     dom.btnCtxCopy,
     dom.btnCtxPaste,
     dom.btnCtxPastePlain,
-    dom.btnCtxUnderline,
-    dom.btnCtxStrike,
-    dom.btnCtxClearCharacter,
-    dom.btnCtxClearParagraph,
+    dom.btnCtxLinkCreate,
     dom.btnCtxLinkOpen,
     dom.btnCtxLinkEdit,
     dom.btnCtxLinkRemove,
@@ -492,15 +506,13 @@ export function setupEditor(
   // 工具栏命令
   dom.btnBold.addEventListener("click", () => runSelectionCommand({ kind: "bold" }));
   dom.btnItalic.addEventListener("click", () => runSelectionCommand({ kind: "italic" }));
+  dom.btnToolbarUnderline.addEventListener("click", () => runSelectionCommand({ kind: "underline" }));
+  dom.btnToolbarStrike.addEventListener("click", () => runSelectionCommand({ kind: "strike" }));
   dom.btnBulletList.addEventListener("click", () => runSelectionCommand({ kind: "bulletList" }));
   dom.btnOrderedList.addEventListener("click", () => runSelectionCommand({ kind: "orderedList" }));
-  dom.btnClearFormat.addEventListener("click", () => runSelectionCommand({ kind: "clearFormatting" }));
-  dom.btnMoreClearFormat.addEventListener("click", () => runSelectionCommand({ kind: "clearFormatting" }));
   dom.btnUndo.addEventListener("click", () => runFormatCommand({ kind: "undo" }));
   dom.btnRedo.addEventListener("click", () => runFormatCommand({ kind: "redo" }));
-  dom.btnMoreUndo.addEventListener("click", () => runFormatCommand({ kind: "undo" }));
-  dom.btnMoreRedo.addEventListener("click", () => runFormatCommand({ kind: "redo" }));
-  dom.btnMore.addEventListener("click", toggleMoreMenu);
+  dom.btnFind.addEventListener("click", () => openFindBar("find"));
   dom.paragraphStyle.addEventListener("change", () => {
     if (!currentHasSelection()) return;
     const value = dom.paragraphStyle.value;
@@ -526,6 +538,60 @@ export function setupEditor(
     setFormatDrawerOpen(!dom.formatDrawer.classList.contains("open"));
   });
   dom.btnFormatDrawerClose.addEventListener("click", () => setFormatDrawerOpen(false));
+
+  // ---- 抽屉折叠（disclosure） ----
+  function setupDrawerToggle(button: HTMLButtonElement): void {
+    button.addEventListener("click", () => {
+      const group = button.closest(".drawer-group");
+      if (!group) return;
+      const collapsed = group.classList.toggle("collapsed");
+      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+  }
+  setupDrawerToggle(dom.btnToggleCharacterSection);
+  setupDrawerToggle(dom.btnToggleParagraphSection);
+
+  // ---- 抽屉自动隐藏：鼠标移出缓缓收起；有原生 select 下拉时防误关，用延迟收起 + 重新进入取消 ----
+  dom.formatDrawer.addEventListener("mouseleave", () => {
+    if (typeof window === "undefined") return;
+    if (drawerCloseTimer !== null) clearTimeout(drawerCloseTimer);
+    drawerCloseTimer = setTimeout(() => {
+      drawerCloseTimer = null;
+      setFormatDrawerOpen(false);
+    }, DRAWER_CLOSE_DELAY_MS);
+  });
+  dom.formatDrawer.addEventListener("mouseenter", () => {
+    if (drawerCloseTimer !== null) {
+      clearTimeout(drawerCloseTimer);
+      drawerCloseTimer = null;
+    }
+  });
+
+  // ---- 留白（显示偏好，持久化到 localStorage，缺失回退默认档） ----
+  function getLocalStorage(): StorageLike | null {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  function applyMarginPreset(preset: MarginPreset): void {
+    marginPreset = preset;
+    dom.editorPage.setAttribute("data-margin", preset);
+    dom.btnMargin.textContent = MARGIN_LABELS[preset];
+  }
+
+  const savedStorage = getLocalStorage();
+  applyMarginPreset(savedStorage ? readMarginPreset(savedStorage) : DEFAULT_MARGIN_PRESET);
+
+  dom.btnMargin.addEventListener("click", () => {
+    const next = nextMarginPreset(marginPreset);
+    applyMarginPreset(next);
+    const storage = getLocalStorage();
+    if (storage) writeMarginPreset(storage, next);
+  });
 
   // 抽屉：字符格式。命令只作用于当前选区，无选区时控件已被禁用，这里再经 runSelectionCommand 兜底。
   dom.btnUnderline.addEventListener("click", () => runSelectionCommand({ kind: "underline" }));
@@ -751,8 +817,7 @@ export function setupEditor(
 
     dom.btnCtxCut.disabled = !hasSelection;
     dom.btnCtxCopy.disabled = !hasSelection;
-    dom.ctxSelectionGroup.classList.toggle("hidden", !hasSelection);
-    dom.btnCtxLinkCreate.classList.toggle("hidden", contextMenuHref !== null);
+    dom.btnCtxLinkCreate.classList.toggle("hidden", !hasSelection || contextMenuHref !== null);
     dom.ctxLinkGroup.classList.toggle("hidden", contextMenuHref === null);
 
     dom.contextMenu.classList.remove("hidden");
@@ -800,22 +865,6 @@ export function setupEditor(
     if (!editor) return;
     editor.focus();
     void editor.pastePlainText();
-  });
-  dom.btnCtxUnderline.addEventListener("click", () => {
-    closeContextMenu();
-    runSelectionCommand({ kind: "underline" });
-  });
-  dom.btnCtxStrike.addEventListener("click", () => {
-    closeContextMenu();
-    runSelectionCommand({ kind: "strike" });
-  });
-  dom.btnCtxClearCharacter.addEventListener("click", () => {
-    closeContextMenu();
-    runSelectionCommand({ kind: "clearCharacterFormat" });
-  });
-  dom.btnCtxClearParagraph.addEventListener("click", () => {
-    closeContextMenu();
-    runSelectionCommand({ kind: "clearParagraphFormat" });
   });
   dom.btnCtxLinkCreate.addEventListener("click", () => {
     closeContextMenu();

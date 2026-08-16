@@ -24,19 +24,20 @@ export interface AppDom {
   btnItalic: HTMLButtonElement;
   btnBulletList: HTMLButtonElement;
   btnOrderedList: HTMLButtonElement;
-  btnClearFormat: HTMLButtonElement;
+  btnToolbarUnderline: HTMLButtonElement;
+  btnToolbarStrike: HTMLButtonElement;
   btnUndo: HTMLButtonElement;
   btnRedo: HTMLButtonElement;
-  btnMore: HTMLButtonElement;
-  moreMenu: HTMLElement;
-  btnMoreClearFormat: HTMLButtonElement;
-  btnMoreUndo: HTMLButtonElement;
-  btnMoreRedo: HTMLButtonElement;
+  btnFind: HTMLButtonElement;
+  btnMargin: HTMLButtonElement;
   btnFormatDrawer: HTMLButtonElement;
+  formatToolbar: HTMLElement;
   formatDrawer: HTMLElement;
   btnFormatDrawerClose: HTMLButtonElement;
   btnUnderline: HTMLButtonElement;
   btnStrike: HTMLButtonElement;
+  btnToggleCharacterSection: HTMLButtonElement;
+  btnToggleParagraphSection: HTMLButtonElement;
   selectFontFamily: HTMLSelectElement;
   selectFontSize: HTMLSelectElement;
   inputTextColor: HTMLInputElement;
@@ -70,11 +71,6 @@ export interface AppDom {
   btnCtxCopy: HTMLButtonElement;
   btnCtxPaste: HTMLButtonElement;
   btnCtxPastePlain: HTMLButtonElement;
-  ctxSelectionGroup: HTMLElement;
-  btnCtxUnderline: HTMLButtonElement;
-  btnCtxStrike: HTMLButtonElement;
-  btnCtxClearCharacter: HTMLButtonElement;
-  btnCtxClearParagraph: HTMLButtonElement;
   btnCtxLinkCreate: HTMLButtonElement;
   ctxLinkGroup: HTMLElement;
   btnCtxLinkOpen: HTMLButtonElement;
@@ -147,19 +143,20 @@ export function getAppDom(): AppDom {
     btnItalic: requireElement("btn-italic"),
     btnBulletList: requireElement("btn-bullet-list"),
     btnOrderedList: requireElement("btn-ordered-list"),
-    btnClearFormat: requireElement("btn-clear-format"),
+    btnToolbarUnderline: requireElement("btn-toolbar-underline"),
+    btnToolbarStrike: requireElement("btn-toolbar-strike"),
     btnUndo: requireElement("btn-undo"),
     btnRedo: requireElement("btn-redo"),
-    btnMore: requireElement("btn-more"),
-    moreMenu: requireElement("more-menu"),
-    btnMoreClearFormat: requireElement("btn-more-clear-format"),
-    btnMoreUndo: requireElement("btn-more-undo"),
-    btnMoreRedo: requireElement("btn-more-redo"),
+    btnFind: requireElement("btn-find"),
+    btnMargin: requireElement("btn-margin"),
     btnFormatDrawer: requireElement("btn-format-drawer"),
+    formatToolbar: requireElement("format-toolbar"),
     formatDrawer: requireElement("format-drawer"),
     btnFormatDrawerClose: requireElement("btn-format-drawer-close"),
     btnUnderline: requireElement("btn-underline"),
     btnStrike: requireElement("btn-strike"),
+    btnToggleCharacterSection: requireElement("btn-toggle-character-section"),
+    btnToggleParagraphSection: requireElement("btn-toggle-paragraph-section"),
     selectFontFamily: requireElement("select-font-family"),
     selectFontSize: requireElement("select-font-size"),
     inputTextColor: requireElement("input-text-color"),
@@ -193,11 +190,6 @@ export function getAppDom(): AppDom {
     btnCtxCopy: requireElement("ctx-copy"),
     btnCtxPaste: requireElement("ctx-paste"),
     btnCtxPastePlain: requireElement("ctx-paste-plain"),
-    ctxSelectionGroup: requireElement("ctx-selection-group"),
-    btnCtxUnderline: requireElement("ctx-underline"),
-    btnCtxStrike: requireElement("ctx-strike"),
-    btnCtxClearCharacter: requireElement("ctx-clear-character"),
-    btnCtxClearParagraph: requireElement("ctx-clear-paragraph"),
     btnCtxLinkCreate: requireElement("ctx-link-create"),
     ctxLinkGroup: requireElement("ctx-link-group"),
     btnCtxLinkOpen: requireElement("ctx-link-open"),

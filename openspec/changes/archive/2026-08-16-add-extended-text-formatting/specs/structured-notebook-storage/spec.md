@@ -1,8 +1,7 @@
-# structured-notebook-storage Specification
+# structured-notebook-storage Specification Delta
 
-## Purpose
-TBD - created by archiving change add-basic-rich-text-storage. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: 每个本子使用带版本外层的 Tiptap JSON
 系统 SHALL 将每个本子的磁盘事实源保存为一个 JSON 对象，其 `format` MUST 为 `next-story-tiptap`，`version` MUST 为整数 `2`，`document` MUST 为符合格式版本 2 grammar 的 Tiptap 文档。外层对象 MUST 恰好包含这三个字段且不得包含额外字段。打开时系统 MUST 接受 `version` 为 `1` 或 `2` 的文档：`version` 为 `1` 的文档 MUST 按格式版本 2 grammar 校验（版本 1 是版本 2 的严格子集），正文与格式一字不改，用户下次保存时 MUST 以 `version` 为 `2` 写回。该版本只描述单篇文档格式，不得用于表示两个本子的项目结构版本。
 
@@ -74,38 +73,3 @@ TBD - created by archiving change add-basic-rich-text-storage. Update Purpose af
 - **WHEN** 文档包含图片节点、表格节点或未知标记类型
 - **THEN** 系统拒绝该文档
 - **AND** 系统不静默删除未知结构后继续打开或保存
-
-### Requirement: 前后端在读写边界校验完整文档
-前端 MUST 在提交保存前校验草稿本和正文本的完整外层与文档结构，后端 MUST 在开始事务写入前独立校验两份文档。打开作品时，后端 MUST 在把内容返回编辑器前完成 JSON 解析、格式版本和 schema 校验。
-
-#### Scenario: 前端拒绝提交非法当前文档
-- **WHEN** 任一本子的当前结构化文档未通过前端校验
-- **THEN** 前端不调用保存写盘
-- **AND** 当前内容继续被视为未保存
-
-#### Scenario: 后端拒绝非法保存载荷
-- **WHEN** 后端收到包含非法节点或错误格式版本的保存请求
-- **THEN** 后端在创建事务暂存文件前拒绝请求
-- **AND** 现有可见项目文件保持不变
-
-### Requirement: 非法或不支持的本子不得被当作空白打开
-系统 MUST 在本子 JSON 损坏、外层字段错误、格式版本不支持或文档 schema 非法时停止打开作品并显示中文可读错误。系统 MUST NOT 用空白文档替代失败内容，也 MUST NOT 因打开失败覆盖任何原文件。
-
-#### Scenario: 打开损坏的 JSON
-- **WHEN** 草稿本或正文本文件不是合法 JSON
-- **THEN** 系统拒绝进入编辑器并显示文件无法安全读取的中文错误
-- **AND** 两个本子原文件保持不变
-
-#### Scenario: 打开未来格式版本
-- **WHEN** 任一本子的 `version` 高于当前支持版本
-- **THEN** 系统拒绝打开并提示文档版本不受支持
-- **AND** 系统不尝试降级或清空该文档
-
-### Requirement: 本轮不读取开发期纯文本本子
-系统 MUST 将 `作品文本/草稿本.json` 和 `作品文本/正文本.json` 作为本轮项目的唯一用户文本文件，且 MUST NOT 自动读取、转换或回写开发期 `草稿本.txt` 和 `正文本.txt`。
-
-#### Scenario: 只含旧纯文本文件的作品
-- **WHEN** 用户选择只包含旧 `.txt` 本子而不包含必需 `.json` 本子的开发期作品
-- **THEN** 系统拒绝把该文件夹作为当前版本有效作品打开
-- **AND** 系统不创建自动迁移文件
-

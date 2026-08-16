@@ -1,8 +1,7 @@
-# basic-rich-text-editing Specification
+# basic-rich-text-editing Specification Delta
 
-## Purpose
-TBD - created by archiving change add-basic-rich-text-storage. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: 当前本子提供基础富文本工具栏
 系统 SHALL 在草稿本与正文本标签下方提供工具栏与侧边抽屉，并 SHALL 让工具栏与抽屉只操作当前本子。工具栏 MUST 提供段落样式、粗体、斜体、无序列表、有序列表、清除格式、撤销和重做；段落样式 MUST 包含正文与一到六级标题。抽屉 MUST 收纳扩展的字符格式与段落格式控件。
 
@@ -15,18 +14,6 @@ TBD - created by archiving change add-basic-rich-text-storage. Update Purpose af
 - **WHEN** 用户从草稿本切换到正文本
 - **THEN** 工具栏与抽屉显示正文本当前选区和历史对应的状态
 - **AND** 后续命令不改变草稿本
-
-### Requirement: 文字格式命令要求非空文字选区
-系统 MUST 只在当前本子存在至少一个字符的非空选区时启用段落样式、粗体、斜体、无序列表、有序列表和清除格式。没有文字选区时，相关按钮和 `Ctrl+B`、`Ctrl+I` MUST NOT 改变当前内容或后续输入格式；撤销和重做不受该选区要求限制。
-
-#### Scenario: 只有光标时格式命令禁用
-- **WHEN** 当前本子只有插入光标而没有文字选区
-- **THEN** 段落样式、粗体、斜体、两种列表和清除格式均显示为禁用
-- **AND** 用户按 `Ctrl+B` 或 `Ctrl+I` 不启动后续输入格式
-
-#### Scenario: 非空选区启用格式命令
-- **WHEN** 用户在当前本子选中至少一个字符
-- **THEN** 系统启用段落样式、粗体、斜体、两种列表和清除格式
 
 ### Requirement: 段落样式作用于选区触及的完整段落
 系统 SHALL 将正文或一到六级标题应用到选区触及的每个完整段落，即使选区只覆盖段落中的部分文字。段落样式下拉框 SHALL 在全部相关段落样式相同时显示该样式，否则显示“多种格式”。
@@ -44,19 +31,6 @@ TBD - created by archiving change add-basic-rich-text-storage. Update Purpose af
 #### Scenario: 跨样式选区显示多种格式
 - **WHEN** 选区触及正文段落和不同级别标题
 - **THEN** 段落样式下拉框显示“多种格式”
-
-### Requirement: 粗体和斜体显示并统一处理混合状态
-系统 SHALL 分别将粗体与斜体显示为未启用、混合或完全启用三种状态。未启用或混合状态下点击命令 MUST 向整个选区应用相应标记；完全启用状态下点击命令 MUST 从整个选区移除相应标记。
-
-#### Scenario: 混合粗体选区统一加粗
-- **WHEN** 选区中的一部分文字为粗体且另一部分不是粗体
-- **THEN** 粗体按钮显示半选状态
-- **AND** 用户点击后选区全部文字成为粗体
-
-#### Scenario: 完全斜体选区统一取消斜体
-- **WHEN** 选区全部文字均为斜体
-- **AND** 用户点击斜体按钮
-- **THEN** 系统从选区全部文字移除斜体
 
 ### Requirement: 列表命令作用于完整段落并可切换
 系统 SHALL 将无序列表或有序列表应用到选区触及的完整段落。标题 MUST 先降为正文再成为列表项；正文、另一类列表项及混合选区 MUST 按原有段落顺序统一成为目标列表。选区涉及的段落全部已经属于所选同类列表时，再次点击该列表命令 MUST 将这些项目恢复为普通正文。只触及现有列表的一部分项目时，系统 MUST 拆分该列表并只转换触及的完整项目；有序列表未触及的前后片段 MUST 保持操作前的实际显示编号，因此后片段的 `start` MUST 等于其首项操作前的编号。由正文、标题、无序列表或多种块合成的新有序列表 MUST 从 1 开始；有序列表转换为其它结构后再次新建有序列表也 MUST 从 1 开始。多级嵌套列表由 `Tab` 与 `Shift+Tab` 升降级形成，其结构由 `nested-lists` 能力定义。
@@ -131,4 +105,3 @@ TBD - created by archiving change add-basic-rich-text-storage. Update Purpose af
 - **WHEN** 当前没有非空文字选区且没有可撤销或重做操作
 - **AND** 用户打开“更多”菜单
 - **THEN** 清除格式、撤销和重做均显示各自正确的禁用状态
-

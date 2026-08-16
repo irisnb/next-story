@@ -22,7 +22,20 @@ test("reports a plain paragraph selection", () => {
     paragraphStyle: "paragraph",
     bold: "off",
     italic: "off",
+    underline: "off",
+    strike: "off",
     list: "none",
+    textAlign: "left",
+    textColor: null,
+    highlight: null,
+    fontFamily: null,
+    fontSize: null,
+    lineHeight: null,
+    spacingBefore: null,
+    spacingAfter: null,
+    textIndent: null,
+    indentLeft: null,
+    indentRight: null,
   });
 });
 

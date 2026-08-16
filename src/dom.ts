@@ -32,6 +32,58 @@ export interface AppDom {
   btnMoreClearFormat: HTMLButtonElement;
   btnMoreUndo: HTMLButtonElement;
   btnMoreRedo: HTMLButtonElement;
+  btnFormatDrawer: HTMLButtonElement;
+  formatDrawer: HTMLElement;
+  btnFormatDrawerClose: HTMLButtonElement;
+  btnUnderline: HTMLButtonElement;
+  btnStrike: HTMLButtonElement;
+  selectFontFamily: HTMLSelectElement;
+  selectFontSize: HTMLSelectElement;
+  inputTextColor: HTMLInputElement;
+  btnClearTextColor: HTMLButtonElement;
+  inputHighlight: HTMLInputElement;
+  btnClearHighlight: HTMLButtonElement;
+  btnClearCharacterFormat: HTMLButtonElement;
+  btnAlignLeft: HTMLButtonElement;
+  btnAlignCenter: HTMLButtonElement;
+  btnAlignRight: HTMLButtonElement;
+  btnAlignJustify: HTMLButtonElement;
+  selectLineHeight: HTMLSelectElement;
+  selectSpacingBefore: HTMLSelectElement;
+  selectSpacingAfter: HTMLSelectElement;
+  selectTextIndent: HTMLSelectElement;
+  selectIndentLeft: HTMLSelectElement;
+  selectIndentRight: HTMLSelectElement;
+  btnClearParagraphFormat: HTMLButtonElement;
+  findBar: HTMLElement;
+  findInput: HTMLInputElement;
+  findCaseSensitive: HTMLInputElement;
+  btnFindPrev: HTMLButtonElement;
+  btnFindNext: HTMLButtonElement;
+  findCount: HTMLElement;
+  replaceInput: HTMLInputElement;
+  btnReplace: HTMLButtonElement;
+  btnReplaceAll: HTMLButtonElement;
+  btnFindClose: HTMLButtonElement;
+  contextMenu: HTMLElement;
+  btnCtxCut: HTMLButtonElement;
+  btnCtxCopy: HTMLButtonElement;
+  btnCtxPaste: HTMLButtonElement;
+  btnCtxPastePlain: HTMLButtonElement;
+  ctxSelectionGroup: HTMLElement;
+  btnCtxUnderline: HTMLButtonElement;
+  btnCtxStrike: HTMLButtonElement;
+  btnCtxClearCharacter: HTMLButtonElement;
+  btnCtxClearParagraph: HTMLButtonElement;
+  btnCtxLinkCreate: HTMLButtonElement;
+  ctxLinkGroup: HTMLElement;
+  btnCtxLinkOpen: HTMLButtonElement;
+  btnCtxLinkEdit: HTMLButtonElement;
+  btnCtxLinkRemove: HTMLButtonElement;
+  linkPopover: HTMLElement;
+  btnLinkOpen: HTMLButtonElement;
+  btnLinkEdit: HTMLButtonElement;
+  btnLinkRemove: HTMLButtonElement;
   llmConfigPage: HTMLElement;
   btnLlmConfig: HTMLButtonElement;
   btnSettings: HTMLButtonElement;
@@ -103,6 +155,58 @@ export function getAppDom(): AppDom {
     btnMoreClearFormat: requireElement("btn-more-clear-format"),
     btnMoreUndo: requireElement("btn-more-undo"),
     btnMoreRedo: requireElement("btn-more-redo"),
+    btnFormatDrawer: requireElement("btn-format-drawer"),
+    formatDrawer: requireElement("format-drawer"),
+    btnFormatDrawerClose: requireElement("btn-format-drawer-close"),
+    btnUnderline: requireElement("btn-underline"),
+    btnStrike: requireElement("btn-strike"),
+    selectFontFamily: requireElement("select-font-family"),
+    selectFontSize: requireElement("select-font-size"),
+    inputTextColor: requireElement("input-text-color"),
+    btnClearTextColor: requireElement("btn-clear-text-color"),
+    inputHighlight: requireElement("input-highlight"),
+    btnClearHighlight: requireElement("btn-clear-highlight"),
+    btnClearCharacterFormat: requireElement("btn-clear-character-format"),
+    btnAlignLeft: requireElement("btn-align-left"),
+    btnAlignCenter: requireElement("btn-align-center"),
+    btnAlignRight: requireElement("btn-align-right"),
+    btnAlignJustify: requireElement("btn-align-justify"),
+    selectLineHeight: requireElement("select-line-height"),
+    selectSpacingBefore: requireElement("select-spacing-before"),
+    selectSpacingAfter: requireElement("select-spacing-after"),
+    selectTextIndent: requireElement("select-text-indent"),
+    selectIndentLeft: requireElement("select-indent-left"),
+    selectIndentRight: requireElement("select-indent-right"),
+    btnClearParagraphFormat: requireElement("btn-clear-paragraph-format"),
+    findBar: requireElement("find-bar"),
+    findInput: requireElement("find-input"),
+    findCaseSensitive: requireElement("find-case-sensitive"),
+    btnFindPrev: requireElement("btn-find-prev"),
+    btnFindNext: requireElement("btn-find-next"),
+    findCount: requireElement("find-count"),
+    replaceInput: requireElement("replace-input"),
+    btnReplace: requireElement("btn-replace"),
+    btnReplaceAll: requireElement("btn-replace-all"),
+    btnFindClose: requireElement("btn-find-close"),
+    contextMenu: requireElement("context-menu"),
+    btnCtxCut: requireElement("ctx-cut"),
+    btnCtxCopy: requireElement("ctx-copy"),
+    btnCtxPaste: requireElement("ctx-paste"),
+    btnCtxPastePlain: requireElement("ctx-paste-plain"),
+    ctxSelectionGroup: requireElement("ctx-selection-group"),
+    btnCtxUnderline: requireElement("ctx-underline"),
+    btnCtxStrike: requireElement("ctx-strike"),
+    btnCtxClearCharacter: requireElement("ctx-clear-character"),
+    btnCtxClearParagraph: requireElement("ctx-clear-paragraph"),
+    btnCtxLinkCreate: requireElement("ctx-link-create"),
+    ctxLinkGroup: requireElement("ctx-link-group"),
+    btnCtxLinkOpen: requireElement("ctx-link-open"),
+    btnCtxLinkEdit: requireElement("ctx-link-edit"),
+    btnCtxLinkRemove: requireElement("ctx-link-remove"),
+    linkPopover: requireElement("link-popover"),
+    btnLinkOpen: requireElement("link-open"),
+    btnLinkEdit: requireElement("link-edit"),
+    btnLinkRemove: requireElement("link-remove"),
     llmConfigPage: requireElement("llm-config-page"),
     btnLlmConfig: requireElement("btn-llm-config"),
     btnSettings: requireElement("btn-settings"),

@@ -34,6 +34,15 @@ function notebookJson(text: string): string {
   });
 }
 
+/** 当前格式版本 2 的本子 JSON（保存后的期望形态）。 */
+function notebookJsonCurrent(text: string): string {
+  return JSON.stringify({
+    format: "next-story-tiptap",
+    version: 2,
+    document: paragraphDoc(text),
+  });
+}
+
 class FakeClassList {
   private readonly values = new Set<string>();
 
@@ -115,6 +124,30 @@ class FakeRichTextEditor {
   runCommand(_command: FormatCommand): boolean {
     return false;
   }
+
+  setFind(_query: string, _caseSensitive: boolean): number {
+    return 0;
+  }
+
+  activateMatch(_index: number): void {}
+
+  replaceCurrent(_replacement: string): boolean {
+    return false;
+  }
+
+  replaceAll(_replacement: string): number {
+    return 0;
+  }
+
+  async pastePlainText(): Promise<boolean> {
+    return false;
+  }
+
+  async copySelection(): Promise<boolean> {
+    return false;
+  }
+
+  async cutSelection(): Promise<void> {}
 
   canUndo(): boolean {
     return false;
@@ -209,6 +242,58 @@ function fakeDom(): { readonly dom: AppDom; restore(): void } {
       btnMoreClearFormat: element("btn-more-clear-format"),
       btnMoreUndo: element("btn-more-undo"),
       btnMoreRedo: element("btn-more-redo"),
+      btnFormatDrawer: element("btn-format-drawer"),
+      formatDrawer: element("format-drawer"),
+      btnFormatDrawerClose: element("btn-format-drawer-close"),
+      btnUnderline: element("btn-underline"),
+      btnStrike: element("btn-strike"),
+      selectFontFamily: element("select-font-family"),
+      selectFontSize: element("select-font-size"),
+      inputTextColor: element("input-text-color"),
+      btnClearTextColor: element("btn-clear-text-color"),
+      inputHighlight: element("input-highlight"),
+      btnClearHighlight: element("btn-clear-highlight"),
+      btnClearCharacterFormat: element("btn-clear-character-format"),
+      btnAlignLeft: element("btn-align-left"),
+      btnAlignCenter: element("btn-align-center"),
+      btnAlignRight: element("btn-align-right"),
+      btnAlignJustify: element("btn-align-justify"),
+      selectLineHeight: element("select-line-height"),
+      selectSpacingBefore: element("select-spacing-before"),
+      selectSpacingAfter: element("select-spacing-after"),
+      selectTextIndent: element("select-text-indent"),
+      selectIndentLeft: element("select-indent-left"),
+      selectIndentRight: element("select-indent-right"),
+      btnClearParagraphFormat: element("btn-clear-paragraph-format"),
+      findBar: element("find-bar"),
+      findInput: element("find-input"),
+      findCaseSensitive: element("find-case-sensitive"),
+      btnFindPrev: element("btn-find-prev"),
+      btnFindNext: element("btn-find-next"),
+      findCount: element("find-count"),
+      replaceInput: element("replace-input"),
+      btnReplace: element("btn-replace"),
+      btnReplaceAll: element("btn-replace-all"),
+      btnFindClose: element("btn-find-close"),
+      contextMenu: element("context-menu"),
+      btnCtxCut: element("ctx-cut"),
+      btnCtxCopy: element("ctx-copy"),
+      btnCtxPaste: element("ctx-paste"),
+      btnCtxPastePlain: element("ctx-paste-plain"),
+      ctxSelectionGroup: element("ctx-selection-group"),
+      btnCtxUnderline: element("ctx-underline"),
+      btnCtxStrike: element("ctx-strike"),
+      btnCtxClearCharacter: element("ctx-clear-character"),
+      btnCtxClearParagraph: element("ctx-clear-paragraph"),
+      btnCtxLinkCreate: element("ctx-link-create"),
+      ctxLinkGroup: element("ctx-link-group"),
+      btnCtxLinkOpen: element("ctx-link-open"),
+      btnCtxLinkEdit: element("ctx-link-edit"),
+      btnCtxLinkRemove: element("ctx-link-remove"),
+      linkPopover: element("link-popover"),
+      btnLinkOpen: element("link-open"),
+      btnLinkEdit: element("link-edit"),
+      btnLinkRemove: element("link-remove"),
       llmConfigPage: element("llm-config-page"),
       btnLlmConfig: element("btn-llm-config"),
       btnSettings: element("btn-settings"),
@@ -488,8 +573,8 @@ test("opens existing notebooks, saves exact edits, unloads, and reopens the save
     fixture.editors[1]?.edit(paragraphDoc("新正文"));
 
     assert.equal(await fixture.editor.save(), true);
-    assert.equal(storedDraft, notebookJson("新草稿"));
-    assert.equal(storedMain, notebookJson("新正文"));
+    assert.equal(storedDraft, notebookJsonCurrent("新草稿"));
+    assert.equal(storedMain, notebookJsonCurrent("新正文"));
 
     fixture.editor.unload();
     await openIntoEditor();

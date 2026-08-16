@@ -170,3 +170,62 @@ test("returns empty string for an empty range", () => {
   };
   assert.equal(serializeSelectionToPlainText(doc, 1, 1), "");
 });
+
+test("projects nested list items with indentation", () => {
+  const doc: DocNode = {
+    type: "doc",
+    content: [
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "父项" }] },
+              {
+                type: "bulletList",
+                content: [
+                  { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "子项一" }] }] },
+                  { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "子项二" }] }] },
+                ],
+              },
+            ],
+          },
+          { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "父项二" }] }] },
+        ],
+      },
+    ],
+  };
+  // 父项文字 [3,5]，子项一 [9,12]，子项二 [16,19]，父项二 [25,28]
+  assert.equal(
+    serializeSelectionToPlainText(doc, 3, 28),
+    "- 父项\n  - 子项一\n  - 子项二\n- 父项二",
+  );
+});
+
+test("partial nested list item gets no prefix or indent", () => {
+  const doc: DocNode = {
+    type: "doc",
+    content: [
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "父项" }] },
+              {
+                type: "bulletList",
+                content: [
+                  { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "子项一" }] }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  // 只选子项一中间的 "项" 字（[10,11]），不补前缀不补缩进
+  assert.equal(serializeSelectionToPlainText(doc, 10, 11), "项");
+});

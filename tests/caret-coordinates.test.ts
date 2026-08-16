@@ -53,6 +53,30 @@ class CoordinateEngine implements RichTextEditorEngine {
     return false;
   }
 
+  setFind(_query: string, _caseSensitive: boolean): number {
+    return 0;
+  }
+
+  activateMatch(_index: number): void {}
+
+  replaceCurrent(_replacement: string): boolean {
+    return false;
+  }
+
+  replaceAll(_replacement: string): number {
+    return 0;
+  }
+
+  async pastePlainText(): Promise<boolean> {
+    return false;
+  }
+
+  async copySelection(): Promise<boolean> {
+    return false;
+  }
+
+  async cutSelection(): Promise<void> {}
+
   canUndo(): boolean {
     return false;
   }

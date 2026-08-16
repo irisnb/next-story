@@ -27,21 +27,24 @@ test("schema exposes only the supported nodes and marks", () => {
   assert.ok(schema.nodes.listItem);
   assert.ok(schema.marks.bold);
   assert.ok(schema.marks.italic);
+  assert.ok(schema.marks.underline);
+  assert.ok(schema.marks.strike);
+  assert.ok(schema.marks.textStyle);
+  assert.ok(schema.marks.highlight);
+  assert.ok(schema.marks.link);
 
   // 不接受的节点与标记
   assert.equal(schema.nodes.image, undefined);
   assert.equal(schema.nodes.table, undefined);
   assert.equal(schema.nodes.hardBreak, undefined);
   assert.equal(schema.nodes.blockquote, undefined);
-  assert.equal(schema.marks.link, undefined);
-  assert.equal(schema.marks.underline, undefined);
-  assert.equal(schema.marks.strike, undefined);
+  assert.equal(schema.marks.code, undefined);
 });
 
-test("heading only supports levels 1 and 2", () => {
+test("heading supports levels 1 through 6", () => {
   const heading = buildRichTextExtensions().find((ext) => ext.name === "heading");
   assert.ok(heading);
-  assert.deepEqual((heading.options as { levels?: number[] }).levels, [1, 2]);
+  assert.deepEqual((heading.options as { levels?: number[] }).levels, [1, 2, 3, 4, 5, 6]);
 });
 
 // ---------------------------------------------------------------------------
@@ -186,6 +189,30 @@ class FakeRichTextEditorEngine implements RichTextEditorEngine {
   runCommand(_command: FormatCommand): boolean {
     return false;
   }
+
+  setFind(_query: string, _caseSensitive: boolean): number {
+    return 0;
+  }
+
+  activateMatch(_index: number): void {}
+
+  replaceCurrent(_replacement: string): boolean {
+    return false;
+  }
+
+  replaceAll(_replacement: string): number {
+    return 0;
+  }
+
+  async pastePlainText(): Promise<boolean> {
+    return false;
+  }
+
+  async copySelection(): Promise<boolean> {
+    return false;
+  }
+
+  async cutSelection(): Promise<void> {}
 
   canUndo(): boolean {
     return false;

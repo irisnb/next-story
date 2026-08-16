@@ -5,6 +5,15 @@
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version 1 blank document still accepted",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
         "version": 1,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
@@ -14,7 +23,7 @@
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -25,11 +34,26 @@
       }
     },
     {
+      "name": "heading levels 3 through 6",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "三级" }] },
+            { "type": "heading", "attrs": { "level": 6 }, "content": [{ "type": "text", "text": "六级" }] }
+          ]
+        }
+      }
+    },
+    {
       "name": "bold and italic marks",
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -46,11 +70,158 @@
       }
     },
     {
+      "name": "underline and strike marks",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "下", "marks": [{ "type": "underline" }] },
+                { "type": "text", "text": "删", "marks": [{ "type": "strike" }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "textStyle color mark",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "红", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "textStyle fontFamily and fontSize marks",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "宋体", "marks": [{ "type": "textStyle", "attrs": { "fontFamily": "宋体" } }] },
+                { "type": "text", "text": "十四", "marks": [{ "type": "textStyle", "attrs": { "fontSize": "14pt" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "textStyle with combined attrs",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "组合", "marks": [{ "type": "textStyle", "attrs": { "color": "#00ff00", "fontFamily": "黑体", "fontSize": "12pt" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "highlight mark",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "高亮", "marks": [{ "type": "highlight", "attrs": { "color": "#ffff00" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "link mark",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "链接", "marks": [{ "type": "link", "attrs": { "href": "https://example.com" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "full mark ordering across all rank levels",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "全",
+                  "marks": [
+                    { "type": "bold" },
+                    { "type": "italic" },
+                    { "type": "underline" },
+                    { "type": "strike" },
+                    { "type": "textStyle", "attrs": { "color": "#ff0000" } },
+                    { "type": "highlight", "attrs": { "color": "#ffff00" } },
+                    { "type": "link", "attrs": { "href": "https://example.com" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "adjacent text with different marks stays separate",
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -67,11 +238,85 @@
       }
     },
     {
+      "name": "adjacent text with different textStyle color stays separate",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "红", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000" } }] },
+                { "type": "text", "text": "蓝", "marks": [{ "type": "textStyle", "attrs": { "color": "#0000ff" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "paragraph with textAlign center",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "paragraph", "attrs": { "textAlign": "center" }, "content": [{ "type": "text", "text": "居中" }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "paragraph with all paragraph attrs",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "textAlign": "justify",
+                "lineHeight": "1.5",
+                "spacingBefore": "6pt",
+                "spacingAfter": "6pt",
+                "textIndent": "2em",
+                "indentLeft": "1cm",
+                "indentRight": "1cm"
+              },
+              "content": [{ "type": "text", "text": "段落" }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "heading with paragraph attrs",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "heading", "attrs": { "level": 2, "textAlign": "right" }, "content": [{ "type": "text", "text": "右对齐标题" }] }
+          ]
+        }
+      }
+    },
+    {
       "name": "bullet list",
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -91,7 +336,7 @@
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -108,11 +353,73 @@
       }
     },
     {
+      "name": "nested bullet list",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "bulletList",
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph", "content": [{ "type": "text", "text": "父" }] },
+                    {
+                      "type": "bulletList",
+                      "content": [
+                        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子" }] }] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "nested ordered list with start",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "orderedList",
+              "attrs": { "start": 1 },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph", "content": [{ "type": "text", "text": "父" }] },
+                    {
+                      "type": "orderedList",
+                      "attrs": { "start": 1 },
+                      "content": [
+                        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子" }] }] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "leading trailing and consecutive empty paragraphs",
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -131,7 +438,7 @@
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -145,7 +452,7 @@
       "valid": true,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [{ "type": "heading", "attrs": { "level": 1 } }]
@@ -157,7 +464,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] },
         "extra": true
       }
@@ -174,21 +481,21 @@
       "name": "missing format",
       "valid": false,
       "value": {
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
     },
     {
       "name": "missing document",
       "valid": false,
-      "value": { "format": "next-story-tiptap", "version": 1 }
+      "value": { "format": "next-story-tiptap", "version": 2 }
     },
     {
       "name": "wrong format value",
       "valid": false,
       "value": {
         "format": "tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
     },
@@ -197,7 +504,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": "1",
+        "version": "2",
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
     },
@@ -215,7 +522,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1.5,
+        "version": 2.5,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
     },
@@ -229,11 +536,20 @@
       }
     },
     {
+      "name": "version zero",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 0,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
       "name": "unsupported future version",
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 2,
+        "version": 3,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
       }
     },
@@ -242,7 +558,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [] }
       }
     },
@@ -251,7 +567,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc" }
       }
     },
@@ -260,7 +576,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }], "extra": 1 }
       }
     },
@@ -269,7 +585,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "extra": 1 }] }
       }
     },
@@ -278,17 +594,44 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [] }] }
       }
     },
     {
-      "name": "heading level 3",
+      "name": "paragraph with empty attrs object",
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
-        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "三级" }] }] }
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "attrs": {} }] }
+      }
+    },
+    {
+      "name": "paragraph with invalid textAlign",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "attrs": { "textAlign": "diagonal" } }] }
+      }
+    },
+    {
+      "name": "paragraph with extra attr key",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "attrs": { "textAlign": "left", "extra": 1 } }] }
+      }
+    },
+    {
+      "name": "paragraph with non-string lineHeight",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "attrs": { "lineHeight": 1.5 } }] }
       }
     },
     {
@@ -296,7 +639,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "heading", "content": [{ "type": "text", "text": "无属性" }] }] }
       }
     },
@@ -305,8 +648,35 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 1, "extra": 1 }, "content": [{ "type": "text", "text": "多余" }] }] }
+      }
+    },
+    {
+      "name": "heading level 7",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 7 }, "content": [{ "type": "text", "text": "七级" }] }] }
+      }
+    },
+    {
+      "name": "heading level 0",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": 0 }, "content": [{ "type": "text", "text": "零级" }] }] }
+      }
+    },
+    {
+      "name": "heading level as string",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "heading", "attrs": { "level": "1" }, "content": [{ "type": "text", "text": "字符" }] }] }
       }
     },
     {
@@ -314,7 +684,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "" }] }] }
       }
     },
@@ -323,7 +693,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a\rb" }] }] }
       }
     },
@@ -332,7 +702,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a\nb" }] }] }
       }
     },
@@ -341,7 +711,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "extra": 1 }] }] }
       }
     },
@@ -350,7 +720,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [] }] }] }
       }
     },
@@ -359,8 +729,17 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "italic" }, { "type": "bold" }] }] }] }
+      }
+    },
+    {
+      "name": "marks out of order across textStyle",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000" } }, { "type": "bold" }] }] }] }
       }
     },
     {
@@ -368,7 +747,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "bold" }, { "type": "bold" }] }] }] }
       }
     },
@@ -377,17 +756,125 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "bold", "extra": 1 }] }] }] }
       }
     },
     {
-      "name": "unknown mark underline",
+      "name": "unknown mark type",
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
-        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "underline" }] }] }] }
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "superscript" }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle missing attrs",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle" }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle empty attrs",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": {} }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle invalid color",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "red" } }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle uppercase color",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "#FF0000" } }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle short hex color",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "#f00" } }] }] }] }
+      }
+    },
+    {
+      "name": "textStyle extra attr key",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000", "extra": 1 } }] }] }] }
+      }
+    },
+    {
+      "name": "highlight missing color",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "highlight", "attrs": {} }] }] }] }
+      }
+    },
+    {
+      "name": "highlight invalid color",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "highlight", "attrs": { "color": "yellow" } }] }] }] }
+      }
+    },
+    {
+      "name": "highlight extra attr",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "highlight", "attrs": { "color": "#ffff00", "extra": 1 } }] }] }] }
+      }
+    },
+    {
+      "name": "link missing href",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "link", "attrs": {} }] }] }] }
+      }
+    },
+    {
+      "name": "link empty href",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "link", "attrs": { "href": "" } }] }] }] }
+      }
+    },
+    {
+      "name": "link extra attr",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "link", "attrs": { "href": "https://x.com", "extra": 1 } }] }] }] }
       }
     },
     {
@@ -395,7 +882,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -411,11 +898,31 @@
       }
     },
     {
+      "name": "unmerged adjacent identical textStyle text",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "a", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000" } }] },
+                { "type": "text", "text": "b", "marks": [{ "type": "textStyle", "attrs": { "color": "#ff0000" } }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "bulletList with empty content",
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [] }] }
       }
     },
@@ -424,7 +931,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [{ "type": "paragraph" }] }] }
       }
     },
@@ -433,7 +940,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -452,7 +959,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "bulletList", "content": [{ "type": "listItem", "content": [] }] }] }
       }
     },
@@ -461,7 +968,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -471,11 +978,30 @@
       }
     },
     {
-      "name": "nested bullet list",
+      "name": "listItem starting with nested list",
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "bulletList",
+              "content": [
+                { "type": "listItem", "content": [{ "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "listItem with two nested lists",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -486,7 +1012,8 @@
                   "type": "listItem",
                   "content": [
                     { "type": "paragraph" },
-                    { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+                    { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] },
+                    { "type": "orderedList", "attrs": { "start": 1 }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
                   ]
                 }
               ]
@@ -500,7 +1027,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -514,7 +1041,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -528,7 +1055,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -542,7 +1069,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -556,7 +1083,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -577,7 +1104,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
           "type": "doc",
           "content": [
@@ -591,7 +1118,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "image", "attrs": { "src": "x.png" } }] }
       }
     },
@@ -600,17 +1127,8 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "table", "content": [] }] }
-      }
-    },
-    {
-      "name": "link mark",
-      "valid": false,
-      "value": {
-        "format": "next-story-tiptap",
-        "version": 1,
-        "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a", "marks": [{ "type": "link", "attrs": { "href": "x" } }] }] }] }
       }
     },
     {
@@ -618,7 +1136,7 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a" }, { "type": "hardBreak" }] }] }
       }
     }

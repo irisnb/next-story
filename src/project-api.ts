@@ -78,6 +78,11 @@ export async function saveProject(
   });
 }
 
+/** 在系统默认浏览器中打开 http/https 链接（后端会再次校验协议）。 */
+export async function openUrl(url: string): Promise<void> {
+  await tauriInvoke("open_url", { url });
+}
+
 /** 加载已保存配置：后端不回传明文密钥，只给非敏感字段与 `has_api_key`。 */
 export async function loadLlmConfig(): Promise<LlmConfigSummary | null> {
   return tauriInvoke<LlmConfigSummary | null>("load_llm_config");

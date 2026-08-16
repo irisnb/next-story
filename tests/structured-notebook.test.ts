@@ -135,6 +135,41 @@ test("serializer output always passes validation", () => {
   assert.equal(validateNotebookDocument(doc).ok, true);
 });
 
+test("serializer preserves nested ordered list type", () => {
+  const raw = {
+    type: "doc",
+    content: [
+      {
+        type: "orderedList",
+        attrs: { start: 1 },
+        content: [
+          {
+            type: "listItem",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "父" }] },
+              {
+                type: "orderedList",
+                attrs: { start: 1 },
+                content: [
+                  { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "子" }] }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const doc = serializeNotebookDocument(raw);
+  const outer = doc.document.content[0];
+  assert.equal(outer.type, "orderedList");
+  if (outer.type === "orderedList") {
+    const item = outer.content[0];
+    assert.equal(item.content.length, 2);
+    assert.equal(item.content[1].type, "orderedList");
+  }
+});
+
 test("canonicalNotebookJson is deterministic", () => {
   const raw = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] };
   assert.equal(canonicalNotebookJson(raw), canonicalNotebookJson(raw));

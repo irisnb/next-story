@@ -78,6 +78,10 @@
           <option value="paragraph">正文</option>
           <option value="heading1">一级标题</option>
           <option value="heading2">二级标题</option>
+          <option value="heading3">三级标题</option>
+          <option value="heading4">四级标题</option>
+          <option value="heading5">五级标题</option>
+          <option value="heading6">六级标题</option>
         </select>
         <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
         <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
@@ -94,8 +98,21 @@
             <button id="btn-more-redo" class="more-menu-btn" type="button" role="menuitem">重做</button>
           </div>
         </div>
+        <button id="btn-format-drawer" class="toolbar-btn format-drawer-toggle" type="button" aria-expanded="false" aria-controls="format-drawer">格式</button>
       </div>
-      
+
+      <div id="find-bar" class="find-bar hidden" role="search" aria-label="查找替换">
+        <input type="text" id="find-input" class="find-input" placeholder="查找" aria-label="查找" />
+        <label class="find-case"><input type="checkbox" id="find-case-sensitive" />区分大小写</label>
+        <button id="btn-find-prev" class="toolbar-btn" type="button" disabled>上一个</button>
+        <button id="btn-find-next" class="toolbar-btn" type="button" disabled>下一个</button>
+        <span id="find-count" class="find-count" aria-live="polite"></span>
+        <input type="text" id="replace-input" class="replace-input" placeholder="替换为" aria-label="替换为" />
+        <button id="btn-replace" class="toolbar-btn" type="button" disabled>替换</button>
+        <button id="btn-replace-all" class="toolbar-btn" type="button" disabled>全部替换</button>
+        <button id="btn-find-close" class="toolbar-btn find-close" type="button" aria-label="关闭查找替换">关闭</button>
+      </div>
+
       <div class="editor-body">
         <div class="editor-notebooks">
           <div id="draft-textarea" class="notebook-textarea" data-placeholder="在这里写草稿..."></div>
@@ -147,6 +164,173 @@
             </form>
           </div>
         </aside>
+
+        <aside id="format-drawer" class="format-drawer" aria-hidden="true" aria-label="格式面板">
+          <div class="format-drawer-header">
+            <span class="format-drawer-title">格式</span>
+            <button id="btn-format-drawer-close" class="ai-panel-btn" type="button">收起</button>
+          </div>
+          <div class="format-drawer-body">
+            <section class="drawer-group" aria-label="字符格式">
+              <h2 class="drawer-group-title">字符</h2>
+              <div class="drawer-inline">
+                <button id="btn-underline" class="drawer-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">下划线</span></button>
+                <button id="btn-strike" class="drawer-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">删除线</span></button>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-font-family">字体</label>
+                <select id="select-font-family" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">默认字体</option>
+                  <option value="宋体" style="font-family: 宋体">宋体</option>
+                  <option value="黑体" style="font-family: 黑体">黑体</option>
+                  <option value="楷体" style="font-family: 楷体">楷体</option>
+                  <option value="仿宋" style="font-family: 仿宋">仿宋</option>
+                  <option value="微软雅黑" style="font-family: 微软雅黑">微软雅黑</option>
+                  <option value="Arial" style="font-family: Arial">Arial</option>
+                  <option value="Times New Roman" style="font-family: 'Times New Roman'">Times New Roman</option>
+                  <option value="Courier New" style="font-family: 'Courier New'">Courier New</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-font-size">字号</label>
+                <select id="select-font-size" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">默认字号</option>
+                  <option value="10.5pt">10.5pt（五号）</option>
+                  <option value="12pt">12pt（小四）</option>
+                  <option value="14pt">14pt（四号）</option>
+                  <option value="16pt">16pt（三号）</option>
+                  <option value="18pt">18pt（小二）</option>
+                  <option value="24pt">24pt（小一）</option>
+                  <option value="36pt">36pt</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="input-text-color">文字颜色</label>
+                <div class="drawer-inline">
+                  <input type="color" id="input-text-color" class="drawer-color" value="#000000" />
+                  <button id="btn-clear-text-color" class="drawer-btn" type="button">清除颜色</button>
+                </div>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="input-highlight">背景高亮</label>
+                <div class="drawer-inline">
+                  <input type="color" id="input-highlight" class="drawer-color" value="#ffffff" />
+                  <button id="btn-clear-highlight" class="drawer-btn" type="button">清除高亮</button>
+                </div>
+              </div>
+              <button id="btn-clear-character-format" class="drawer-btn drawer-clear-btn" type="button">清除字符格式</button>
+            </section>
+
+            <section class="drawer-group" aria-label="段落格式">
+              <h2 class="drawer-group-title">段落</h2>
+              <div class="drawer-field">
+                <span class="drawer-label">对齐</span>
+                <div class="drawer-inline">
+                  <button id="btn-align-left" class="drawer-btn" type="button" aria-label="左对齐" aria-pressed="true">左</button>
+                  <button id="btn-align-center" class="drawer-btn" type="button" aria-label="居中对齐" aria-pressed="false">中</button>
+                  <button id="btn-align-right" class="drawer-btn" type="button" aria-label="右对齐" aria-pressed="false">右</button>
+                  <button id="btn-align-justify" class="drawer-btn" type="button" aria-label="两端对齐" aria-pressed="false">两端</button>
+                </div>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-line-height">行距</label>
+                <select id="select-line-height" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">默认</option>
+                  <option value="1.0">1.0</option>
+                  <option value="1.15">1.15</option>
+                  <option value="1.5">1.5</option>
+                  <option value="2.0">2.0</option>
+                  <option value="2.5">2.5</option>
+                  <option value="3.0">3.0</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-spacing-before">段前间距</label>
+                <select id="select-spacing-before" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">默认</option>
+                  <option value="0pt">0pt</option>
+                  <option value="6pt">6pt</option>
+                  <option value="12pt">12pt</option>
+                  <option value="18pt">18pt</option>
+                  <option value="24pt">24pt</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-spacing-after">段后间距</label>
+                <select id="select-spacing-after" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">默认</option>
+                  <option value="0pt">0pt</option>
+                  <option value="6pt">6pt</option>
+                  <option value="12pt">12pt</option>
+                  <option value="18pt">18pt</option>
+                  <option value="24pt">24pt</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-text-indent">首行缩进</label>
+                <select id="select-text-indent" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">无</option>
+                  <option value="2em">2em</option>
+                  <option value="4em">4em</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-indent-left">左缩进</label>
+                <select id="select-indent-left" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">无</option>
+                  <option value="1em">1em</option>
+                  <option value="2em">2em</option>
+                  <option value="3em">3em</option>
+                </select>
+              </div>
+              <div class="drawer-field">
+                <label class="drawer-label" for="select-indent-right">右缩进</label>
+                <select id="select-indent-right" class="drawer-select">
+                  <option value="mixed" disabled>多种</option>
+                  <option value="">无</option>
+                  <option value="1em">1em</option>
+                  <option value="2em">2em</option>
+                  <option value="3em">3em</option>
+                </select>
+              </div>
+              <button id="btn-clear-paragraph-format" class="drawer-btn drawer-clear-btn" type="button">清除段落格式</button>
+            </section>
+          </div>
+        </aside>
+      </div>
+
+      <div id="context-menu" class="context-menu hidden" role="menu" aria-label="编辑菜单">
+        <button id="ctx-cut" class="more-menu-btn" type="button" role="menuitem">剪切</button>
+        <button id="ctx-copy" class="more-menu-btn" type="button" role="menuitem">复制</button>
+        <button id="ctx-paste" class="more-menu-btn" type="button" role="menuitem">粘贴</button>
+        <button id="ctx-paste-plain" class="more-menu-btn" type="button" role="menuitem">粘贴为纯文本</button>
+        <div id="ctx-selection-group" class="hidden">
+          <div class="context-menu-separator" role="separator"></div>
+          <button id="ctx-underline" class="more-menu-btn" type="button" role="menuitem">下划线</button>
+          <button id="ctx-strike" class="more-menu-btn" type="button" role="menuitem">删除线</button>
+          <button id="ctx-clear-character" class="more-menu-btn" type="button" role="menuitem">清除字符格式</button>
+          <button id="ctx-clear-paragraph" class="more-menu-btn" type="button" role="menuitem">清除段落格式</button>
+          <button id="ctx-link-create" class="more-menu-btn" type="button" role="menuitem">创建链接</button>
+        </div>
+        <div id="ctx-link-group" class="hidden">
+          <div class="context-menu-separator" role="separator"></div>
+          <button id="ctx-link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
+          <button id="ctx-link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
+          <button id="ctx-link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
+        </div>
+      </div>
+
+      <div id="link-popover" class="link-popover hidden" role="menu" aria-label="链接操作">
+        <button id="link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
+        <button id="link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
+        <button id="link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
       </div>
     </main>
 

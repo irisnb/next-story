@@ -2,17 +2,34 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  blocksToDocument,
+  nodesToDocument,
   compareHtmlAndPlain,
   decidePasteAction,
+  normalizeColor,
   plainTextToDocument,
   stripListMarker,
   tableRowsToText,
   type PasteParseResult,
+  type ParsedNode,
+  type TextRun,
 } from "../src/controlled-paste.ts";
 
-function parsed(blocks: PasteParseResult["blocks"], extra: Partial<PasteParseResult> = {}): PasteParseResult {
-  return { blocks, hasImage: false, hasUnknownVisibleEmbed: false, ...extra };
+function run(text: string, overrides: Partial<TextRun> = {}): TextRun {
+  return {
+    text,
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    href: null,
+    color: null,
+    highlight: null,
+    ...overrides,
+  };
+}
+
+function parsed(content: ParsedNode[], extra: Partial<PasteParseResult> = {}): PasteParseResult {
+  return { content, hasImage: false, hasUnknownVisibleEmbed: false, ...extra };
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +72,20 @@ test("stripListMarker strips bullet and numbered markers", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 颜色归一化
+// ---------------------------------------------------------------------------
+
+test("normalizeColor normalizes hex and rgb", () => {
+  assert.equal(normalizeColor("#ff0000"), "#ff0000");
+  assert.equal(normalizeColor("#FF0000"), "#ff0000");
+  assert.equal(normalizeColor("#f00"), "#ff0000");
+  assert.equal(normalizeColor("rgb(255, 0, 0)"), "#ff0000");
+  assert.equal(normalizeColor("rgba(0, 255, 0, 0.5)"), "#00ff00");
+  assert.equal(normalizeColor("red"), null);
+  assert.equal(normalizeColor(null), null);
+});
+
+// ---------------------------------------------------------------------------
 // 纯文本 → 文档
 // ---------------------------------------------------------------------------
 
@@ -89,15 +120,15 @@ test("inserts plain text when no HTML is present", () => {
 
 test("inserts HTML when projection matches plain text", () => {
   const blocks = parsed([
-    { type: "paragraph", textRuns: [{ text: "甲", bold: false, italic: false }] },
-    { type: "paragraph", textRuns: [{ text: "乙", bold: false, italic: false }] },
+    { type: "paragraph", textRuns: [run("甲")] },
+    { type: "paragraph", textRuns: [run("乙")] },
   ]);
   const action = decidePasteAction("甲\n乙", true, blocks);
   assert.equal(action.kind, "insert");
 });
 
 test("rejects when projection does not match plain text", () => {
-  const blocks = parsed([{ type: "paragraph", textRuns: [{ text: "甲", bold: false, italic: false }] }]);
+  const blocks = parsed([{ type: "paragraph", textRuns: [run("甲")] }]);
   const action = decidePasteAction("乙", true, blocks);
   assert.equal(action.kind, "reject");
 });
@@ -115,16 +146,88 @@ test("rejects unknown visible embed when only HTML is present", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 归一化块 → 文档
+// 归一化节点 → 文档
 // ---------------------------------------------------------------------------
 
-test("blocksToDocument groups consecutive list items and preserves headings", () => {
-  const doc = blocksToDocument([
-    { type: "heading", level: 1, textRuns: [{ text: "标题", bold: false, italic: false }] },
-    { type: "paragraph", listType: "bullet", textRuns: [{ text: "甲", bold: false, italic: false }] },
-    { type: "paragraph", listType: "bullet", textRuns: [{ text: "乙", bold: true, italic: false }] },
+test("nodesToDocument assembles headings and flat lists", () => {
+  const doc = nodesToDocument([
+    { type: "heading", level: 1, textRuns: [run("标题")] },
+    {
+      type: "bulletList",
+      items: [
+        { textRuns: [run("甲")], nested: null },
+        { textRuns: [run("乙", { bold: true })], nested: null },
+      ],
+    },
   ]);
   assert.equal(doc.content.length, 2);
   assert.equal((doc.content[0] as { type: string }).type, "heading");
   assert.equal((doc.content[1] as { type: string }).type, "bulletList");
+});
+
+test("nodesToDocument preserves nested lists", () => {
+  const doc = nodesToDocument([
+    {
+      type: "bulletList",
+      items: [
+        {
+          textRuns: [run("父")],
+          nested: {
+            type: "bulletList",
+            items: [{ textRuns: [run("子")], nested: null }],
+          },
+        },
+      ],
+    },
+  ]);
+  assert.deepEqual(doc, {
+    type: "doc",
+    content: [
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "父" }] },
+              {
+                type: "bulletList",
+                content: [
+                  {
+                    type: "listItem",
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "子" }] }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+});
+
+test("nodesToDocument outputs character marks in rank order", () => {
+  const doc = nodesToDocument([
+    {
+      type: "paragraph",
+      textRuns: [
+        run("彩", {
+          bold: true,
+          underline: true,
+          color: "#ff0000",
+          highlight: "#ffff00",
+          href: "https://example.com",
+        }),
+      ],
+    },
+  ]);
+  const paragraph = doc.content[0] as {
+    content: [{ text: string; marks: { type: string }[] }];
+  };
+  assert.equal(paragraph.content[0].text, "彩");
+  assert.deepEqual(
+    paragraph.content[0].marks.map((m) => m.type),
+    ["bold", "underline", "textStyle", "highlight", "link"],
+  );
 });

@@ -1,25 +1,82 @@
-import type { DocNode } from "./structured-notebook.ts";
+import type {
+  BulletListNode,
+  DocNode,
+  Mark,
+  OrderedListNode,
+  ParagraphAttrs,
+  ParagraphNode,
+  HeadingNode,
+} from "./structured-notebook.ts";
 
 export type FormatCommand =
   | { kind: "paragraph" }
-  | { kind: "heading"; level: 1 | 2 }
+  | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6 }
   | { kind: "bold" }
   | { kind: "italic" }
+  | { kind: "underline" }
+  | { kind: "strike" }
   | { kind: "bulletList" }
   | { kind: "orderedList" }
+  | { kind: "sinkListItem" }
+  | { kind: "liftListItem" }
   | { kind: "clearFormatting" }
+  | { kind: "clearCharacterFormat" }
+  | { kind: "clearParagraphFormat" }
+  | { kind: "textColor"; color: string | null }
+  | { kind: "highlight"; color: string | null }
+  | { kind: "fontFamily"; font: string | null }
+  | { kind: "fontSize"; size: string | null }
+  | { kind: "textAlign"; align: "left" | "center" | "right" | "justify" }
+  | { kind: "lineHeight"; value: string | null }
+  | { kind: "spacingBefore"; value: string | null }
+  | { kind: "spacingAfter"; value: string | null }
+  | { kind: "textIndent"; value: string | null }
+  | { kind: "indentLeft"; value: string | null }
+  | { kind: "indentRight"; value: string | null }
+  | { kind: "setLink"; href: string }
+  | { kind: "unsetLink" }
   | { kind: "undo" }
   | { kind: "redo" };
 
 export type TriState = "off" | "mixed" | "on";
 
+export type ParagraphStyleKind =
+  | "paragraph"
+  | "heading1"
+  | "heading2"
+  | "heading3"
+  | "heading4"
+  | "heading5"
+  | "heading6";
+
+export type TextAlignKind = "left" | "center" | "right" | "justify";
+
 export interface FormatState {
-  /** 段落样式：正文 / 一级标题 / 二级标题 / 多种格式 */
-  paragraphStyle: "paragraph" | "heading1" | "heading2" | "mixed";
+  paragraphStyle: ParagraphStyleKind | "mixed";
   bold: TriState;
   italic: TriState;
+  underline: TriState;
+  strike: TriState;
   /** 列表状态：无 / 无序 / 有序 / 多种 */
   list: "none" | "bullet" | "ordered" | "mixed";
+  /** 有效对齐（无属性按默认左对齐），统一值或多种 */
+  textAlign: TextAlignKind | "mixed";
+  /** 统一值 / 无（默认）/ 多种 */
+  textColor: string | null | "mixed";
+  highlight: string | null | "mixed";
+  fontFamily: string | null | "mixed";
+  fontSize: string | null | "mixed";
+  lineHeight: string | null | "mixed";
+  spacingBefore: string | null | "mixed";
+  spacingAfter: string | null | "mixed";
+  textIndent: string | null | "mixed";
+  indentLeft: string | null | "mixed";
+  indentRight: string | null | "mixed";
+}
+
+interface TextNodeInfo {
+  text: string;
+  marks?: Mark[];
 }
 
 interface BlockInfo {
@@ -27,8 +84,17 @@ interface BlockInfo {
   end: number;
   textStart: number;
   textEnd: number;
-  kind: "paragraph" | "heading1" | "heading2" | "bulletItem" | "orderedItem";
-  textNodes: { text: string; marks?: { type: string }[] }[];
+  kind: "paragraph" | ParagraphStyleKind | "bulletItem" | "orderedItem";
+  /** 列表嵌套深度（顶层为 0）。 */
+  depth: number;
+  textAlign: string | null;
+  lineHeight: string | null;
+  spacingBefore: string | null;
+  spacingAfter: string | null;
+  textIndent: string | null;
+  indentLeft: string | null;
+  indentRight: string | null;
+  textNodes: TextNodeInfo[];
 }
 
 function nodeSize(node: unknown): number {
@@ -39,76 +105,113 @@ function nodeSize(node: unknown): number {
   return size;
 }
 
-function textNodes(content: unknown): { text: string; marks?: { type: string }[] }[] {
+function textNodes(content: unknown): TextNodeInfo[] {
   if (!Array.isArray(content)) return [];
   return content
     .filter((node) => (node as { type?: string }).type === "text")
     .map((node) => {
-      const n = node as { text?: string; marks?: { type: string }[] };
+      const n = node as { text?: string; marks?: Mark[] };
       return { text: n.text ?? "", marks: n.marks };
     });
 }
 
-/** 展开文档为扁平的块信息（列表项按各自列表类型展开）。 */
+function inlineText(content: { text: string }[] | undefined): string {
+  return (content ?? []).map((node) => node.text).join("");
+}
+
+function paragraphAttrsOf(node: { attrs?: ParagraphAttrs }): {
+  textAlign: string | null;
+  lineHeight: string | null;
+  spacingBefore: string | null;
+  spacingAfter: string | null;
+  textIndent: string | null;
+  indentLeft: string | null;
+  indentRight: string | null;
+} {
+  const attrs = node.attrs;
+  return {
+    textAlign: attrs?.textAlign ?? null,
+    lineHeight: attrs?.lineHeight ?? null,
+    spacingBefore: attrs?.spacingBefore ?? null,
+    spacingAfter: attrs?.spacingAfter ?? null,
+    textIndent: attrs?.textIndent ?? null,
+    indentLeft: attrs?.indentLeft ?? null,
+    indentRight: attrs?.indentRight ?? null,
+  };
+}
+
+/**
+ * 展开文档为扁平的块信息，递归展开嵌套列表并记录深度。
+ * 位置模型与 ProseMirror 一致：doc 开/闭 token 不计入位置，第一个 block 从 0 开始。
+ */
 function collectBlocks(doc: DocNode): BlockInfo[] {
   const blocks: BlockInfo[] = [];
-  // ProseMirror 位置模型：doc 节点的开/闭 token 不计入位置，第一个 block 从 0 开始。
+
+  function pushParagraph(
+    block: ParagraphNode | HeadingNode,
+    blockStart: number,
+    kind: BlockInfo["kind"],
+    depth: number,
+  ): number {
+    const size = nodeSize(block);
+    const nodes = textNodes(block.content);
+    const text = inlineText(nodes);
+    blocks.push({
+      start: blockStart,
+      end: blockStart + size,
+      textStart: blockStart + 1,
+      textEnd: blockStart + 1 + text.length,
+      kind,
+      depth,
+      ...paragraphAttrsOf(block),
+      textNodes: nodes,
+    });
+    return blockStart + size;
+  }
+
+  function visitList(
+    list: BulletListNode | OrderedListNode,
+    listPos: number,
+    depth: number,
+  ): number {
+    const listKind = list.type === "bulletList" ? "bulletItem" : "orderedItem";
+    let itemPos = listPos + 1;
+    for (const item of list.content) {
+      const itemEnd = itemPos + nodeSize(item);
+      const paragraph = item.content[0];
+      const paragraphPos = itemPos + 1;
+      const paragraphSize = nodeSize(paragraph);
+      const nodes = textNodes(paragraph.content);
+      const text = inlineText(nodes);
+      blocks.push({
+        // 块范围用列表项自身段落范围，不含嵌套子列表，避免选中子列表时父项被误判触及。
+        start: paragraphPos,
+        end: paragraphPos + paragraphSize,
+        textStart: paragraphPos + 1,
+        textEnd: paragraphPos + 1 + text.length,
+        kind: listKind,
+        depth,
+        ...paragraphAttrsOf(paragraph),
+        textNodes: nodes,
+      });
+      if (item.content.length === 2) {
+        const nested = item.content[1];
+        visitList(nested, paragraphPos + paragraphSize, depth + 1);
+      }
+      itemPos = itemEnd;
+    }
+    return itemPos + 1;
+  }
+
   let pos = 0;
   for (const block of doc.content) {
-    const blockStart = pos;
-    const blockEnd = pos + nodeSize(block);
     if (block.type === "paragraph") {
-      const nodes = textNodes(block.content);
-      blocks.push({
-        start: blockStart,
-        end: blockEnd,
-        textStart: blockStart + 1,
-        textEnd: blockStart + 1 + nodes.reduce((sum, t) => sum + t.text.length, 0),
-        kind: "paragraph",
-        textNodes: nodes,
-      });
+      pos = pushParagraph(block, pos, "paragraph", 0);
     } else if (block.type === "heading") {
-      const nodes = textNodes(block.content);
-      blocks.push({
-        start: blockStart,
-        end: blockEnd,
-        textStart: blockStart + 1,
-        textEnd: blockStart + 1 + nodes.reduce((sum, t) => sum + t.text.length, 0),
-        kind: block.attrs.level === 1 ? "heading1" : "heading2",
-        textNodes: nodes,
-      });
-    } else if (block.type === "bulletList") {
-      let itemPos = blockStart + 1;
-      for (const item of block.content) {
-        const itemEnd = itemPos + nodeSize(item);
-        const nodes = textNodes(item.content[0].content);
-        blocks.push({
-          start: itemPos,
-          end: itemEnd,
-          textStart: itemPos + 2,
-          textEnd: itemPos + 2 + nodes.reduce((sum, t) => sum + t.text.length, 0),
-          kind: "bulletItem",
-          textNodes: nodes,
-        });
-        itemPos = itemEnd;
-      }
+      pos = pushParagraph(block, pos, `heading${block.attrs.level}`, 0);
     } else {
-      let itemPos = blockStart + 1;
-      for (const item of block.content) {
-        const itemEnd = itemPos + nodeSize(item);
-        const nodes = textNodes(item.content[0].content);
-        blocks.push({
-          start: itemPos,
-          end: itemEnd,
-          textStart: itemPos + 2,
-          textEnd: itemPos + 2 + nodes.reduce((sum, t) => sum + t.text.length, 0),
-          kind: "orderedItem",
-          textNodes: nodes,
-        });
-        itemPos = itemEnd;
-      }
+      pos = visitList(block, pos, 0);
     }
-    pos = blockEnd;
   }
   return blocks;
 }
@@ -117,25 +220,80 @@ function intersects(block: BlockInfo, from: number, to: number): boolean {
   return block.end > from && block.start < to;
 }
 
+function markTriState(nodes: TextNodeInfo[], mark: string): TriState {
+  let total = 0;
+  let matched = 0;
+  for (const node of nodes) {
+    total += node.text.length;
+    if (node.marks?.some((m) => m.type === mark)) matched += node.text.length;
+  }
+  if (matched === 0) return "off";
+  if (matched === total) return "on";
+  return "mixed";
+}
+
+/** 读取某个带属性 mark 的指定属性值。 */
+function markAttr(mark: Mark | undefined, attr: string): string | undefined {
+  if (!mark) return undefined;
+  if (mark.type === "textStyle" || mark.type === "highlight" || mark.type === "link") {
+    const value = (mark.attrs as Record<string, unknown>)[attr];
+    return typeof value === "string" ? value : undefined;
+  }
+  return undefined;
+}
+
+/** 从文本节点集合推导带属性 mark 的属性状态：统一值 / 无 / 多种。 */
+function attrTriState(nodes: TextNodeInfo[], markType: string, attr: string): string | null | "mixed" {
+  let found: string | null = null;
+  let sawValue = false;
+  let sawNone = false;
+  for (const node of nodes) {
+    const value = markAttr(node.marks?.find((m) => m.type === markType), attr);
+    if (value === undefined) {
+      sawNone = true;
+    } else {
+      sawValue = true;
+      if (found === null) found = value;
+      else if (found !== value) return "mixed";
+    }
+  }
+  if (sawValue && !sawNone) return found;
+  if (!sawValue && sawNone) return null;
+  return "mixed";
+}
+
+/** 段落属性（默认 null 表示无）的统一状态。 */
+function paragraphAttrState(values: (string | null)[]): string | null | "mixed" {
+  const nonNull = values.filter((v): v is string => v !== null);
+  if (nonNull.length === 0) return null;
+  const first = nonNull[0];
+  return nonNull.every((v) => v === first) ? first : "mixed";
+}
+
+/** 对齐的统一状态（无属性按默认左对齐）。 */
+function textAlignState(values: (string | null)[]): TextAlignKind | "mixed" {
+  const effective = values.map((v) => (v === "left" || v === "center" || v === "right" || v === "justify" ? v : "left"));
+  const first = effective[0];
+  return effective.every((v) => v === first) ? (first as TextAlignKind) : "mixed";
+}
+
 /**
  * 从结构化文档与选区位置推导工具栏格式状态（纯函数）。
- * 段落样式与列表按“选区触及的完整块”判断，粗斜体按选区内文字判断。
+ * 段落样式、列表与段落属性按“选区触及的完整块”判断，字符标记按选区内文字判断。
  */
 export function analyzeSelection(doc: DocNode, from: number, to: number): FormatState {
   const blocks = collectBlocks(doc);
   const touched = blocks.filter((block) => intersects(block, from, to));
 
-  // 段落样式
+  // 段落样式（含一到六级标题）
   const styleKinds = touched
-    .filter((b) => b.kind === "paragraph" || b.kind === "heading1" || b.kind === "heading2")
-    .map((b) => b.kind);
+    .filter((b) => b.kind !== "bulletItem" && b.kind !== "orderedItem")
+    .map((b) => b.kind) as ParagraphStyleKind[];
   const uniqueStyles = new Set(styleKinds);
   let paragraphStyle: FormatState["paragraphStyle"];
   if (uniqueStyles.size === 0) paragraphStyle = "mixed";
-  else if (uniqueStyles.size === 1) {
-    const only = [...uniqueStyles][0];
-    paragraphStyle = only as "paragraph" | "heading1" | "heading2";
-  } else paragraphStyle = "mixed";
+  else if (uniqueStyles.size === 1) paragraphStyle = [...uniqueStyles][0];
+  else paragraphStyle = "mixed";
 
   // 列表状态
   const listKinds = new Set(
@@ -150,8 +308,17 @@ export function analyzeSelection(doc: DocNode, from: number, to: number): Format
     list = nonListItem ? "mixed" : ([...listKinds][0] as "bullet" | "ordered");
   } else list = "mixed";
 
-  // 粗斜体（按选区文字范围）
-  const selectedTextNodes: { text: string; marks?: { type: string }[] }[] = [];
+  // 段落属性（按触及的完整块）
+  const textAlign = textAlignState(touched.map((b) => b.textAlign));
+  const lineHeight = paragraphAttrState(touched.map((b) => b.lineHeight));
+  const spacingBefore = paragraphAttrState(touched.map((b) => b.spacingBefore));
+  const spacingAfter = paragraphAttrState(touched.map((b) => b.spacingAfter));
+  const textIndent = paragraphAttrState(touched.map((b) => b.textIndent));
+  const indentLeft = paragraphAttrState(touched.map((b) => b.indentLeft));
+  const indentRight = paragraphAttrState(touched.map((b) => b.indentRight));
+
+  // 字符标记（按选区文字范围）
+  const selectedTextNodes: TextNodeInfo[] = [];
   for (const block of blocks) {
     if (!intersects(block, from, to)) continue;
     let offset = block.textStart;
@@ -165,20 +332,33 @@ export function analyzeSelection(doc: DocNode, from: number, to: number): Format
       selectedTextNodes.push({ text: node.text.slice(sliceFrom, sliceTo), marks: node.marks });
     }
   }
+
   const bold = markTriState(selectedTextNodes, "bold");
   const italic = markTriState(selectedTextNodes, "italic");
+  const underline = markTriState(selectedTextNodes, "underline");
+  const strike = markTriState(selectedTextNodes, "strike");
+  const textColor = attrTriState(selectedTextNodes, "textStyle", "color");
+  const fontFamily = attrTriState(selectedTextNodes, "textStyle", "fontFamily");
+  const fontSize = attrTriState(selectedTextNodes, "textStyle", "fontSize");
+  const highlight = attrTriState(selectedTextNodes, "highlight", "color");
 
-  return { paragraphStyle, bold, italic, list };
-}
-
-function markTriState(nodes: { text: string; marks?: { type: string }[] }[], mark: string): TriState {
-  let total = 0;
-  let matched = 0;
-  for (const node of nodes) {
-    total += node.text.length;
-    if (node.marks?.some((m) => m.type === mark)) matched += node.text.length;
-  }
-  if (matched === 0) return "off";
-  if (matched === total) return "on";
-  return "mixed";
+  return {
+    paragraphStyle,
+    bold,
+    italic,
+    underline,
+    strike,
+    list,
+    textAlign,
+    textColor,
+    highlight,
+    fontFamily,
+    fontSize,
+    lineHeight,
+    spacingBefore,
+    spacingAfter,
+    textIndent,
+    indentLeft,
+    indentRight,
+  };
 }

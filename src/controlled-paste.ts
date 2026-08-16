@@ -1,5 +1,6 @@
 // 受控粘贴：只保留本轮支持的可见文字与结构，清除未支持样式，表格降级为文字，
 // 图片忽略，无法保证文字完整时整次拒绝。
+// 格式版本 2 扩展：下划线、删除线、文字颜色、背景高亮、链接、一到六级标题、嵌套列表。
 
 /** 把纯文本规范化为比较用行数组：CRLF/CR→LF、NBSP→空格、去行尾空白、去至多一个末尾 LF。 */
 export function normalizePlainLines(raw: string): string[] {
@@ -63,37 +64,89 @@ export function tableRowsToText(rows: string[][]): string[] {
 const EMBED_TAGS = new Set(["iframe", "object", "embed", "canvas", "svg", "video", "audio", "picture", "math"]);
 const IGNORED_TAGS = new Set(["img", "script", "style", "meta", "link", "head", "template", "noscript"]);
 
-interface TextRun {
+export interface TextRun {
   text: string;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
+  strike: boolean;
+  href: string | null;
+  color: string | null;
+  highlight: string | null;
 }
 
-interface ParsedBlock {
-  type: "paragraph" | "heading";
-  level?: 1 | 2;
-  listType?: "bullet" | "ordered";
+export type ParsedNode =
+  | { type: "paragraph"; textRuns: TextRun[] }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; textRuns: TextRun[] }
+  | { type: "bulletList"; items: ParsedListItem[] }
+  | { type: "orderedList"; start: number; items: ParsedListItem[] };
+
+export interface ParsedListItem {
   textRuns: TextRun[];
+  nested: ParsedNode | null;
 }
 
 export interface PasteParseResult {
-  blocks: ParsedBlock[];
+  content: ParsedNode[];
   hasImage: boolean;
   hasUnknownVisibleEmbed: boolean;
 }
 
-/** 收集元素的内联文字与格式（strong/b/em/i 映射为粗斜体），不进入块级子元素。 */
+interface FormatFlags {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+  href: string | null;
+  color: string | null;
+  highlight: string | null;
+}
+
+const DEFAULT_FORMAT: FormatFlags = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  href: null,
+  color: null,
+  highlight: null,
+};
+
+/** 把 CSS 颜色字符串归一化为小写 #rrggbb；无法稳定识别返回 null。 */
+export function normalizeColor(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const s = value.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) {
+    return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  }
+  const m = s.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[0-9.]+\s*)?\)$/);
+  if (m) {
+    const hex = (n: string): string =>
+      Math.min(255, Math.max(0, parseInt(n, 10))).toString(16).padStart(2, "0");
+    return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+  }
+  return null;
+}
+
+function styleValue(element: Element, property: "color" | "backgroundColor"): string | null {
+  const style = (element as HTMLElement).style;
+  if (!style) return null;
+  const value = (style as unknown as Record<string, string>)[property];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** 收集元素的内联文字与格式，不进入块级子元素（ul/ol/li/table）。 */
 function collectInlineRuns(
   element: Element,
   runs: TextRun[],
-  bold: boolean,
-  italic: boolean,
+  fmt: FormatFlags,
   state: { hasImage: boolean; hasUnknownVisibleEmbed: boolean },
 ): void {
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === 3) {
       const text = child.textContent ?? "";
-      if (text.length > 0) runs.push({ text, bold, italic });
+      if (text.length > 0) runs.push({ text, ...fmt });
       continue;
     }
     if (child.nodeType !== 1) continue;
@@ -107,31 +160,37 @@ function collectInlineRuns(
       if ((el.textContent ?? "").trim().length > 0) state.hasUnknownVisibleEmbed = true;
       continue;
     }
-    // 块级或列表元素由外层处理，这里只透传内联元素。
-    // 注意：p/div 不能跳过——Tiptap 序列化的列表项是 <li><p>文字</p></li>，
-    // 网页里列表项也可能是 <li><div>文字</div></li>，跳过会导致文字丢失。
-    if (tag === "ul" || tag === "ol" || tag === "table" || tag === "li") {
-      continue;
-    }
+    if (tag === "ul" || tag === "ol" || tag === "table" || tag === "li") continue;
     if (tag === "br") continue;
-    collectInlineRuns(
-      el,
-      runs,
-      bold || tag === "strong" || tag === "b",
-      italic || tag === "em" || tag === "i",
-      state,
-    );
+
+    const next: FormatFlags = { ...fmt };
+    if (tag === "strong" || tag === "b") next.bold = true;
+    if (tag === "em" || tag === "i") next.italic = true;
+    if (tag === "u" || tag === "ins") next.underline = true;
+    if (tag === "s" || tag === "del") next.strike = true;
+    if (tag === "a") {
+      const href = el.getAttribute("href");
+      if (href && href.trim().length > 0) next.href = href.trim();
+    }
+    const color = normalizeColor(styleValue(el, "color"));
+    if (color) next.color = color;
+    if (tag === "mark") {
+      next.highlight = normalizeColor(styleValue(el, "backgroundColor")) ?? "#ffff00";
+    } else {
+      const background = normalizeColor(styleValue(el, "backgroundColor"));
+      if (background) next.highlight = background;
+    }
+    collectInlineRuns(el, runs, next, state);
   }
 }
 
-/** 处理一个段落/标题块，按 `br` 拆成多个同类型块。 */
-function pushBlockWithBr(
+/** 处理一个段落/标题块，按 `br` 拆成多个同类型块，返回 ParsedNode 数组。 */
+function blockNodesWithBr(
   element: Element,
   type: "paragraph" | "heading",
-  level: 1 | 2 | undefined,
-  blocks: ParsedBlock[],
+  level: 1 | 2 | 3 | 4 | 5 | 6 | undefined,
   state: { hasImage: boolean; hasUnknownVisibleEmbed: boolean },
-): void {
+): ParsedNode[] {
   const fragments: Element[] = [];
   let current: Element | null = null;
   for (const child of Array.from(element.childNodes)) {
@@ -147,46 +206,66 @@ function pushBlockWithBr(
   }
   if (fragments.length === 0) fragments.push(element);
 
-  for (const fragment of fragments) {
+  return fragments.map((fragment) => {
     const runs: TextRun[] = [];
-    collectInlineRuns(fragment, runs, false, false, state);
-    blocks.push({ type, level, textRuns: runs });
-  }
+    collectInlineRuns(fragment, runs, DEFAULT_FORMAT, state);
+    return type === "heading" ? { type: "heading", level: level ?? 1, textRuns: runs } : { type: "paragraph", textRuns: runs };
+  });
 }
 
+/** 归一化一个列表，返回嵌套的列表项树（每项含自身文字与可选嵌套子列表）。 */
 function normalizeList(
   list: Element,
-  listType: "bullet" | "ordered",
-  blocks: ParsedBlock[],
   state: { hasImage: boolean; hasUnknownVisibleEmbed: boolean },
-): void {
+): ParsedListItem[] {
+  const items: ParsedListItem[] = [];
   for (const item of Array.from(list.children)) {
     if (item.nodeType !== 1) continue;
     const tag = (item as Element).tagName.toLowerCase();
     if (tag === "ul") {
-      normalizeList(item as Element, "bullet", blocks, state);
+      items.push(...normalizeList(item as Element, state));
       continue;
     }
     if (tag === "ol") {
-      normalizeList(item as Element, "ordered", blocks, state);
+      items.push(...normalizeList(item as Element, state));
       continue;
     }
     if (tag !== "li") continue;
 
-    // 先把 li 自身文字作为列表项输出，再按显示顺序输出嵌套子列表。
-    // collectInlineRuns 内部会跳过 ul/ol/li 子元素，只收取内联文字。
+    // 先把 li 自身文字作为列表项输出，再检测嵌套子列表。
     const runs: TextRun[] = [];
-    collectInlineRuns(item as Element, runs, false, false, state);
-    blocks.push({ type: "paragraph", listType, textRuns: runs });
+    collectInlineRuns(item as Element, runs, DEFAULT_FORMAT, state);
 
-    for (const child of Array.from(item.childNodes)) {
+    let nested: ParsedNode | null = null;
+    for (const child of Array.from((item as Element).childNodes)) {
       if (child.nodeType !== 1) continue;
       const childEl = child as Element;
       const childTag = childEl.tagName.toLowerCase();
-      if (childTag === "ul") normalizeList(childEl, "bullet", blocks, state);
-      else if (childTag === "ol") normalizeList(childEl, "ordered", blocks, state);
+      if (childTag === "ul") {
+        const childItems = normalizeList(childEl, state);
+        if (childItems.length > 0) nested = { type: "bulletList", items: childItems };
+        break;
+      }
+      if (childTag === "ol") {
+        const childItems = normalizeList(childEl, state);
+        if (childItems.length > 0) {
+          nested = { type: "orderedList", start: orderedListStart(childEl), items: childItems };
+        }
+        break;
+      }
     }
+
+    items.push({ textRuns: runs, nested });
   }
+  return items;
+}
+
+/** 读取有序列表的起始编号（浏览器解析后的 start，1..2^53-1，非法回退 1）。 */
+function orderedListStart(list: Element): number {
+  const raw = list.getAttribute("start");
+  const parsed = raw === null ? NaN : Number(raw);
+  if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 9007199254740991) return parsed;
+  return 1;
 }
 
 /** 单元格文字：多块扁平化为空格连接。 */
@@ -195,15 +274,16 @@ function cellText(element: Element): string {
 }
 
 /**
- * 归一化外部 HTML：只保留正文、两级标题、粗斜体与两种列表；表格降级为文字；
- * 图片忽略；含可见文字的嵌入结构标记为未知（供整次拒绝）。
+ * 归一化外部 HTML：保留正文、一到六级标题、粗斜体、下划线、删除线、文字颜色、
+ * 背景高亮、链接、两种列表（含嵌套）；表格降级为文字；图片忽略；含可见文字的
+ * 嵌入结构标记为未知（供整次拒绝）。
  */
 export function parseHtmlToBlocks(
   html: string,
   parser: (html: string) => Document = (source) => new DOMParser().parseFromString(source, "text/html"),
 ): PasteParseResult {
   const state = { hasImage: false, hasUnknownVisibleEmbed: false };
-  const blocks: ParsedBlock[] = [];
+  const content: ParsedNode[] = [];
 
   const walk = (element: Element): void => {
     for (const child of Array.from(element.childNodes)) {
@@ -220,22 +300,29 @@ export function parseHtmlToBlocks(
         continue;
       }
       if (tag === "ul") {
-        normalizeList(el, "bullet", blocks, state);
+        content.push({ type: "bulletList", items: normalizeList(el, state) });
         continue;
       }
       if (tag === "ol") {
-        normalizeList(el, "ordered", blocks, state);
+        content.push({ type: "orderedList", start: orderedListStart(el), items: normalizeList(el, state) });
         continue;
       }
       if (tag === "table") {
         for (const row of Array.from(el.querySelectorAll("tr"))) {
           const cells = Array.from(row.children).map((cell) => cellText(cell as Element));
-          blocks.push({ type: "paragraph", textRuns: [{ text: cells.join("\t"), bold: false, italic: false }] });
+          content.push({
+            type: "paragraph",
+            textRuns: [{ text: cells.join("\t"), ...DEFAULT_FORMAT }],
+          });
         }
         continue;
       }
-      if (tag === "p" || tag === "h1" || tag === "h2" || tag === "div") {
-        pushBlockWithBr(el, tag === "h1" || tag === "h2" ? "heading" : "paragraph", tag === "h1" ? 1 : tag === "h2" ? 2 : undefined, blocks, state);
+      if (/^h[1-6]$/.test(tag)) {
+        content.push(...blockNodesWithBr(el, "heading", Number(tag[1]) as 1 | 2 | 3 | 4 | 5 | 6, state));
+        continue;
+      }
+      if (tag === "p" || tag === "div") {
+        content.push(...blockNodesWithBr(el, "paragraph", undefined, state));
         continue;
       }
       // 其它元素按普通容器透明降级
@@ -246,18 +333,28 @@ export function parseHtmlToBlocks(
   const doc = parser(html);
   walk(doc.body);
 
-  return { blocks, hasImage: state.hasImage, hasUnknownVisibleEmbed: state.hasUnknownVisibleEmbed };
+  return { content, hasImage: state.hasImage, hasUnknownVisibleEmbed: state.hasUnknownVisibleEmbed };
 }
 
 // ---------------------------------------------------------------------------
-// 归一化块 → 结构化文档 与 粘贴决策（纯逻辑）
+// 归一化节点 → 结构化文档 与 粘贴决策（纯逻辑）
 // ---------------------------------------------------------------------------
 
+/** 行内 runs 合并相邻同格式并转成 text 节点序列。 */
 function textRunsToContent(runs: TextRun[]): unknown[] | undefined {
   const merged: TextRun[] = [];
   for (const run of runs) {
     const prev = merged[merged.length - 1];
-    if (prev && prev.bold === run.bold && prev.italic === run.italic) {
+    if (
+      prev &&
+      prev.bold === run.bold &&
+      prev.italic === run.italic &&
+      prev.underline === run.underline &&
+      prev.strike === run.strike &&
+      prev.href === run.href &&
+      prev.color === run.color &&
+      prev.highlight === run.highlight
+    ) {
       prev.text += run.text;
     } else {
       merged.push({ ...run });
@@ -265,55 +362,84 @@ function textRunsToContent(runs: TextRun[]): unknown[] | undefined {
   }
   if (merged.length === 0) return undefined;
   return merged.map((run) => {
-    const node: { type: string; text: string; marks?: { type: string }[] } = { type: "text", text: run.text };
-    if (run.bold || run.italic) {
-      node.marks = [];
-      if (run.bold) node.marks.push({ type: "bold" });
-      if (run.italic) node.marks.push({ type: "italic" });
-    }
+    const node: { type: "text"; text: string; marks?: unknown[] } = { type: "text", text: run.text };
+    const marks: unknown[] = [];
+    if (run.bold) marks.push({ type: "bold" });
+    if (run.italic) marks.push({ type: "italic" });
+    if (run.underline) marks.push({ type: "underline" });
+    if (run.strike) marks.push({ type: "strike" });
+    if (run.color) marks.push({ type: "textStyle", attrs: { color: run.color } });
+    if (run.highlight) marks.push({ type: "highlight", attrs: { color: run.highlight } });
+    if (run.href) marks.push({ type: "link", attrs: { href: run.href } });
+    if (marks.length > 0) node.marks = marks;
     return node;
   });
 }
 
-function blockToParagraphNode(block: ParsedBlock): { type: "paragraph"; content?: unknown[] } {
-  const content = textRunsToContent(block.textRuns);
+function runsToParagraph(runs: TextRun[]): { type: "paragraph"; content?: unknown[] } {
+  const content = textRunsToContent(runs);
   return content ? { type: "paragraph", content } : { type: "paragraph" };
 }
 
-function blockToNode(block: ParsedBlock): unknown {
-  if (block.type === "heading") {
-    const content = textRunsToContent(block.textRuns);
-    return content
-      ? { type: "heading", attrs: { level: block.level ?? 1 }, content }
-      : { type: "heading", attrs: { level: block.level ?? 1 } };
+function nodeToDocument(node: ParsedNode): unknown {
+  switch (node.type) {
+    case "paragraph":
+      return runsToParagraph(node.textRuns);
+    case "heading": {
+      const content = textRunsToContent(node.textRuns);
+      return content
+        ? { type: "heading", attrs: { level: node.level }, content }
+        : { type: "heading", attrs: { level: node.level } };
+    }
+    case "bulletList":
+      return { type: "bulletList", content: node.items.map(itemToDocument) };
+    case "orderedList":
+      return { type: "orderedList", attrs: { start: node.start }, content: node.items.map(itemToDocument) };
   }
-  return blockToParagraphNode(block);
 }
 
-/** 把归一化块组装为结构化文档（连续同类列表项合并为列表，有序列表从 1 开始）。 */
-export function blocksToDocument(blocks: ParsedBlock[]): { type: "doc"; content: unknown[] } {
-  const content: unknown[] = [];
-  let i = 0;
-  while (i < blocks.length) {
-    const block = blocks[i];
-    if (block.listType) {
-      const listType = block.listType;
-      const items: unknown[] = [];
-      while (i < blocks.length && blocks[i].listType === listType) {
-        items.push({ type: "listItem", content: [blockToParagraphNode(blocks[i])] });
-        i += 1;
-      }
-      content.push({
-        type: listType === "bullet" ? "bulletList" : "orderedList",
-        ...(listType === "ordered" ? { attrs: { start: 1 } } : {}),
-        content: items,
-      });
+function itemToDocument(item: ParsedListItem): unknown {
+  const paragraph = runsToParagraph(item.textRuns);
+  if (item.nested) {
+    return { type: "listItem", content: [paragraph, nodeToDocument(item.nested)] };
+  }
+  return { type: "listItem", content: [paragraph] };
+}
+
+/** 把归一化节点树组装为结构化文档。 */
+export function nodesToDocument(content: ParsedNode[]): { type: "doc"; content: unknown[] } {
+  return { type: "doc", content: content.map(nodeToDocument) };
+}
+
+/** 按显示顺序把节点树投影为每块一行的纯文本行数组（列表项不含符号）。 */
+export function flattenNodeTexts(content: ParsedNode[]): string[] {
+  const texts: string[] = [];
+  for (const node of content) {
+    if (node.type === "paragraph" || node.type === "heading") {
+      texts.push(node.textRuns.map((run) => run.text).join(""));
     } else {
-      content.push(blockToNode(block));
-      i += 1;
+      for (const item of node.items) {
+        texts.push(item.textRuns.map((run) => run.text).join(""));
+        if (item.nested) texts.push(...flattenNodeTexts([item.nested]));
+      }
     }
   }
-  return { type: "doc", content };
+  return texts;
+}
+
+function totalTextOfNodes(content: ParsedNode[]): number {
+  let total = 0;
+  for (const node of content) {
+    if (node.type === "paragraph" || node.type === "heading") {
+      total += node.textRuns.reduce((sum, run) => sum + run.text.length, 0);
+    } else {
+      for (const item of node.items) {
+        total += item.textRuns.reduce((sum, run) => sum + run.text.length, 0);
+        if (item.nested) total += totalTextOfNodes([item.nested]);
+      }
+    }
+  }
+  return total;
 }
 
 export type PasteAction =
@@ -330,10 +456,7 @@ export function decidePasteAction(plain: string, hasHtml: boolean, parsed: Paste
     return { kind: "insert", document: plainTextToDocument(plain) };
   }
 
-  const totalText = parsed.blocks.reduce(
-    (sum, block) => sum + block.textRuns.reduce((t, run) => t + run.text.length, 0),
-    0,
-  );
+  const totalText = totalTextOfNodes(parsed.content);
 
   if (parsed.hasImage && totalText === 0) {
     return { kind: "nothing" };
@@ -343,12 +466,10 @@ export function decidePasteAction(plain: string, hasHtml: boolean, parsed: Paste
     return { kind: "reject", reason: "内容无法可靠提取，已取消粘贴" };
   }
 
-  const document = blocksToDocument(parsed.blocks);
+  const document = nodesToDocument(parsed.content);
 
   if (plain !== "") {
-    const projection = blocksToProjection(
-      parsed.blocks.map((block) => block.textRuns.map((run) => run.text).join("")),
-    );
+    const projection = blocksToProjection(flattenNodeTexts(parsed.content));
     if (!compareHtmlAndPlain(projection, plain)) {
       return { kind: "reject", reason: "粘贴内容与纯文本不一致，已取消粘贴" };
     }
@@ -356,6 +477,3 @@ export function decidePasteAction(plain: string, hasHtml: boolean, parsed: Paste
 
   return { kind: "insert", document };
 }
-
-
-

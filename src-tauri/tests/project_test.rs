@@ -127,7 +127,7 @@ fn create_new_project_writes_valid_blank_structured_notebooks() {
     for content in [draft, main] {
         let value: serde_json::Value = serde_json::from_str(&content).expect("parse notebook");
         assert_eq!(value["format"], "next-story-tiptap");
-        assert_eq!(value["version"], 1);
+        assert_eq!(value["version"], 2);
         assert_eq!(value["document"]["type"], "doc");
         assert_eq!(value["document"]["content"][0]["type"], "paragraph");
     }
@@ -559,7 +559,7 @@ fn open_rejects_corrupted_notebook_json() {
 fn open_rejects_unsupported_notebook_document_version() {
     let doc = serde_json::json!({
         "format": "next-story-tiptap",
-        "version": 2,
+        "version": 3,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
     });
     assert_open_rejects_invalid_notebook(
@@ -582,10 +582,14 @@ fn open_rejects_unknown_node_type() {
 }
 
 #[test]
-fn open_rejects_nested_list() {
+fn open_accepts_nested_list() {
+    let temp = TempDir::new().expect("create temp dir");
+    let root = temp.path().join("嵌套列表");
+    create_valid_project_folder(&root, "嵌套列表");
+
     let doc = serde_json::json!({
         "format": "next-story-tiptap",
-        "version": 1,
+        "version": 2,
         "document": {
             "type": "doc",
             "content": [
@@ -595,8 +599,8 @@ fn open_rejects_nested_list() {
                         {
                             "type": "listItem",
                             "content": [
-                                { "type": "paragraph" },
-                                { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+                                { "type": "paragraph", "content": [{ "type": "text", "text": "父" }] },
+                                { "type": "bulletList", "content": [{ "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子" }] }] }] }
                             ]
                         }
                     ]
@@ -604,10 +608,11 @@ fn open_rejects_nested_list() {
             ]
         }
     });
-    assert_open_rejects_invalid_notebook(
-        &serde_json::to_string(&doc).expect("serialize"),
-        "草稿本.json",
-    );
+    let target = root.join("作品文本").join("草稿本.json");
+    fs::write(&target, serde_json::to_string(&doc).expect("serialize")).expect("write nested notebook");
+
+    let result = open_existing_project(&root);
+    assert!(result.is_ok(), "版本 2 的嵌套列表应可打开，实际: {result:?}");
 }
 
 #[test]

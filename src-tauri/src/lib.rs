@@ -212,6 +212,18 @@ async fn save_project(
 
 // ========== LLM 配置命令 ==========
 
+/// 在系统默认浏览器中打开 http/https 链接；其它地址拒绝。
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("不是 http/https 地址".to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || open::that(&url))
+        .await
+        .map_err(|e| format!("打开链接任务执行失败: {e}"))?
+        .map_err(|e| format!("无法打开链接: {e}"))
+}
+
 /// 保存 LLM 配置：同步目录/文件/钥匙串操作放在阻塞线程，事务化保存由
 /// `llm_config::save_llm_config` 内部的进程内互斥串行化。
 #[tauri::command]
@@ -276,10 +288,32 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // 进程内作品锁注册表：同一作品的操作串行化。
         .manage(ProjectLocks::default())
+        // 关闭 WebView2 的浏览器快捷键拦截（默认会吞掉 Ctrl+U/Ctrl+F 等，前端 keydown 收不到）。
+        .setup(|app| {
+            #[cfg(windows)]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                        use windows_core::Interface;
+                        let controller = webview.controller();
+                        if let Ok(core) = unsafe { controller.CoreWebView2() } {
+                            if let Ok(settings) = unsafe { core.Settings() } {
+                                if let Ok(settings3) = settings.cast::<ICoreWebView2Settings3>() {
+                                    let _ = unsafe { settings3.SetAreBrowserAcceleratorKeysEnabled(false) };
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             create_project,
             open_project,
             save_project,
+            open_url,
             save_llm_config,
             load_llm_config,
             test_llm_connection,

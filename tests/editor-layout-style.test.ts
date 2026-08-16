@@ -12,7 +12,8 @@ function rule(selector: string): string {
 }
 
 function hasDeclaration(block: string, property: string, value: string): void {
-  assert.match(block, new RegExp(`${property}\\s*:\\s*${value}\\s*;`));
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(block, new RegExp(`${property}\\s*:\\s*${escaped}\\s*;`));
 }
 
 test("Tiptap notebooks preserve the bounded writing surface and focus treatment", () => {
@@ -24,8 +25,8 @@ test("Tiptap notebooks preserve the bounded writing surface and focus treatment"
   hasDeclaration(notebooks, "min-height", "0");
   hasDeclaration(mount, "min-height", "0");
   hasDeclaration(mount, "overflow", "hidden");
-  hasDeclaration(mount, "border", "1px solid #e2e8f0");
-  hasDeclaration(mount, "border-radius", "8px");
+  hasDeclaration(mount, "border", "var(--border-editor)");
+  hasDeclaration(mount, "border-radius", "var(--radius-md)");
 
   hasDeclaration(editable, "width", "100%");
   hasDeclaration(editable, "height", "100%");
@@ -35,5 +36,5 @@ test("Tiptap notebooks preserve the bounded writing surface and focus treatment"
   hasDeclaration(editable, "font-size", "1rem");
   hasDeclaration(editable, "font-family", "inherit");
 
-  hasDeclaration(focusedMount, "border-color", "#4a5568");
+  hasDeclaration(focusedMount, "border-color", "var(--color-primary)");
 });

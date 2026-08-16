@@ -141,7 +141,7 @@ impl ProjectLocks {
                 .inner
                 .lock()
                 .map_err(|_| ProjectError::WriteError("作品锁注册表不可用".to_string()))?;
-            *locks
+            locks
                 .entry(canonical)
                 .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
         };

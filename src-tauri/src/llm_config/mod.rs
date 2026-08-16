@@ -424,9 +424,7 @@ fn save_llm_config_transaction(
         .map_err(|e| LlmConfigError::WriteError(e.to_string()))?;
 
     // 3. 更新钥匙串；失败时钥匙串未变，无需回滚。
-    if let Err(error) = store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &effective_key) {
-        return Err(error);
-    }
+    store.set(KEYRING_SERVICE, KEYRING_ACCOUNT, &effective_key)?;
 
     // 故障注入点：钥匙串已更新、磁盘尚未替换。
     if let Err(error) = checkpoint(ConfigSavePhase::AfterKeyringUpdate) {

@@ -187,18 +187,14 @@ enum TransactionPhase {
 
 /// 事务用途：手动保存与迁移回滚共用同一事务目录与恢复机制，
 /// 迁移模块据此在读取版本前优先恢复自己中断的回滚。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 enum ManifestPurpose {
+    #[default]
     Save,
     MigrationRollback,
 }
 
-impl Default for ManifestPurpose {
-    fn default() -> Self {
-        ManifestPurpose::Save
-    }
-}
 
 /// 进程内唯一递增的事务计数器，配合纳秒时间戳生成事务标识。
 static TRANSACTION_COUNTER: AtomicU64 = AtomicU64::new(0);

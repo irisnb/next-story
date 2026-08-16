@@ -90,7 +90,7 @@ fn is_hex_color(s: &str) -> bool {
         && bytes[0] == b'#'
         && bytes[1..]
             .iter()
-            .all(|b| (b'0'..=b'9').contains(b) || (b'a'..=b'f').contains(b))
+            .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
 }
 
 /// mark 的稳定字符串签名：type + 完整 attrs（含带属性 mark 的身份比较）。
@@ -148,7 +148,7 @@ fn validate_mark(value: &Value, loc: &str) -> Result<(), String> {
             return Err(format!("{loc}: textStyle attrs 不能为空"));
         }
         if let Some(color) = attrs.get("color") {
-            if color.as_str().map(|s| is_hex_color(s)) != Some(true) {
+            if color.as_str().map(is_hex_color) != Some(true) {
                 return Err(format!("{loc}: textStyle color 必须为小写 #rrggbb"));
             }
         }
@@ -266,8 +266,7 @@ fn validate_inline_content(value: Option<&Value>, loc: &str) -> Result<(), Strin
         validate_text(node, &here)?;
         let current_marks = node
             .get("marks")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.clone())
+            .and_then(|v| v.as_array()).cloned()
             .unwrap_or_default();
         if has_previous && same_mark_set(&previous_marks, &current_marks) {
             return Err(format!("{loc}: 相同 marks 的相邻文本必须合并"));
@@ -282,7 +281,7 @@ fn validate_inline_content(value: Option<&Value>, loc: &str) -> Result<(), Strin
 fn validate_paragraph_attr_values(attrs: &Map<String, Value>, loc: &str) -> Result<(), String> {
     if let Some(v) = attrs.get("textAlign") {
         match v.as_str() {
-            Some(s) if matches!(s, "left" | "center" | "right" | "justify") => {}
+            Some("left" | "center" | "right" | "justify") => {}
             _ => return Err(format!("{loc}: textAlign 值非法")),
         }
     }
@@ -349,7 +348,7 @@ fn validate_list_item(value: &Value, loc: &str) -> Result<(), String> {
         .get("content")
         .and_then(|v| v.as_array())
         .ok_or_else(|| format!("{loc}: content 不是数组"))?;
-    if content.len() < 1 || content.len() > 2 {
+    if content.is_empty() || content.len() > 2 {
         return Err(format!("{loc}: listItem content 必须为一个 paragraph 加可选一个嵌套列表"));
     }
     validate_paragraph(&content[0], &format!("{loc} 的 paragraph"))?;

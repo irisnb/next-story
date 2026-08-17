@@ -1,0 +1,9 @@
+{
+  "name": "next-story-dsh-sidecar",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DSH headless sidecar for Next Story (spike)",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.7"
+  }
+}

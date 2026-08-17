@@ -28,9 +28,9 @@
 - `boot()` 程序化 API 需要宿主自己实现 `appExit` hook，成本高，留作备选。
 - 关键验证点：追问（无状态全量历史）能否被序列化进单次 task 而不丢语义——这是 spike 的头号未知数。
 
-**D2. 对话序列化：写一个最小 DSH 插件承接结构化请求。**
-- 复用现有 `FIXED_SYSTEM_PROMPT` + 消息构造逻辑，把「system + 首问 + 追问轮次」序列化成 DSH 能执行的请求。
-- 优先验证「插件能替换 agent 循环、能拿到模型适配器」这条官方承诺（docs/architecture.md），这正是未来「自我进化引擎」的地基。
+**D2. 等价迁移（已定：先 A 后 B）。**
+- **A（本 spike）**：迁移第一步保持现有行为——复用 `FIXED_SYSTEM_PROMPT` + 消息构造，无工具、无 agent 副作用。优先用配置实现（设 system prompt + 禁用工具）；不够等价再写最小插件直连模型适配器。
+- **B（后续方向）**：DSH 的 agent 能力（思考、工具、自我进化）逐步受控打开，每个能力单独走 OpenSpec，且必须先限制工具（禁写文件、禁命令），守住铁律 1。
 
 **D3. 版本锁定：精确 `0.1.0-rc.7` + vendor Node 22.19+。**
 - 不用 `^`；`dsh-headless` 的 `latest` 标签停在过时 0.0.1-rc.1，必须显式 `@next` 或精确版本。
@@ -55,3 +55,29 @@
 - [Risk] ACP 版本错位，未来「正规多轮」暂时走不通 → [Mitigation] 本 spike 不依赖 ACP；确认 one-shot/插件路线可行即可。
 - [Risk] 第三方凭据 provider 挂载无官方逐步教程 → [Mitigation] 插件已实现 `CredentialProvider` 四方法，按 Cordis 插件行挂载，真机验证。
 - [Risk] 头less 启动缺 `appExit` host hook → [Mitigation] 直接用 `dsh` 启动器（它自带 `appExit`），不走裸 boot。
+
+## 验证结论（spike 结果，2026-08-17）
+
+**结论：DSH 可行，可作为 Next Story 的后端引擎，「一次性迁移」的地基成立。**
+
+真机已验证：
+- DSH `0.1.0-rc.7` 能装、能跑：`dsh --profile headless "task"` 一次性任务，退出码=成败、stdout=最终答案。
+- 真生成质量对得上「陪想」：区分文字事实/解释、提问题、给方向、不代写不评价。
+- `dsh-credentials-keyring` 挂进 `ctx.credentials` 后，从钥匙串读 key（无环境变量、无明文）。
+- 追问（整段对话序列化进一个 task）成立，仍锚定原选区。
+- 「A」等价迁移安全：禁用全部工具后生成照常，且要求写文件被明确拒绝、文件未创建（铁律 1 落地）。
+
+关键发现（已更新上方对应决策）：
+1. 「零交接」不成立：DSH 凭据引用名必须 POSIX 标识符（`^[A-Za-z_][A-Za-z0-9_]*$`），Rust account `llm-api-key` 含连字符 → 改一次性交接（复制到 `DEEPSEEK_API_KEY`）。
+2. DSH dev preview、7 天 7 版、官方声明破坏性变更 → 必须精确锁版 + vendor。
+3. ACP 卡旧版本线（`0.0.1-rc.1`，与主线 peer 冲突）→ 用 one-shot headless，ACP 后置。
+4. DSH 默认 agent 带工具 → 「A」禁工具；「B」agent 能力（思考/工具/自我进化）后续受控打开。
+
+遗留（归入迁移 phase，本 spike 不展开）：
+- vendor Node 运行时打包（1.2）。
+- A/B 开关接线到 `generate_ai_thinking`（3.4，默认仍走 Rust）。
+
+补充发现（spike 后期新增，细节见 `docs/dsh-migration-spike.md`）：
+5. keyring 插件挂载语法：patch 对 `id` 覆盖要求 `name` 匹配、否则「name mismatch … skipping」跳过；正确做法是 `- id: credentials, disabled: true` + `- insert: [{ id: credentials-keyring, name: dsh-credentials-keyring, config: { service: ... } }]`。
+6. Rust spawn 管道死锁：DSH 流式写输出，「退出后再读 stdout/stderr」会写满管道缓冲区（~64KB）而阻塞；必须并发排空（读线程 + `try_wait` 轮询）。
+7. 超时需放宽：DSH agent（含思考模式）比原单次 HTTP 慢，60s 不够（真机 25~180s），迁移时要与「关闭思考模式」一起调优。

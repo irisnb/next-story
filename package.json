@@ -23,7 +23,7 @@
     "@tiptap/extension-bold": "2.27.2",
     "@tiptap/extension-bullet-list": "2.27.2",
     "@tiptap/extension-color": "2.27.2",
-    "@tiptap/extension-document": "2.27.2",
+    "@tiptap/extension-document": "3.30.0",
     "@tiptap/extension-font-family": "2.27.2",
     "@tiptap/extension-heading": "2.27.2",
     "@tiptap/extension-highlight": "2.27.2",

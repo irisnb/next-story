@@ -1,3 +1,4 @@
+pub mod dsh_sidecar;
 pub mod llm_config;
 pub mod project;
 

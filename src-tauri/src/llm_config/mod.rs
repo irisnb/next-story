@@ -243,14 +243,9 @@ impl GenerateAiResult {
 }
 
 pub mod generate;
-pub use generate::{
-    generate_ai_thinking, generate_ai_thinking_in_dir, generate_ai_thinking_with_timeout,
-};
+pub use generate::{generate_ai_thinking, generate_ai_thinking_in_dir};
 
 mod http;
-pub use http::{
-    CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
-};
 
 pub fn app_data_dir_failure_result() -> GenerateAiResult {
     GenerateAiResult::failure(GenerateAiError::new(

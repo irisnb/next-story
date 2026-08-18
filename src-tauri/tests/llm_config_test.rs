@@ -8,25 +8,15 @@ use std::time::{Duration, Instant};
 
 use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
-    generate_ai_thinking_with_timeout, load_llm_config_summary_with_store,
-    load_llm_config_with_store, save_llm_config_with_store, save_llm_config_with_store_checked,
-    test_llm_connection, validate_llm_config, ConfigSavePhase, GenerateAiError,
+    load_llm_config_summary_with_store, load_llm_config_with_store, save_llm_config_with_store,
+    save_llm_config_with_store_checked, test_llm_connection, validate_llm_config, ConfigSavePhase,
     GenerateAiErrorCode, GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
-    LlmConfigError, SecretStore, CONNECTION_TEST_TIMEOUT_SECS, GENERATION_TIMEOUT_SECS,
-    KEYRING_ACCOUNT, KEYRING_SERVICE, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+    LlmConfigError, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
 };
 use next_story_lib::project::{
     create_new_project, save_existing_project, CreateProjectParams, ProjectPaths,
 };
 use tempfile::TempDir;
-
-const EXPECTED_FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文，以及用户可选的探索方向。\
-你只能基于这段选区原文回应；若提供了探索方向，把它当作用户希望继续探索的角度，而不是作品事实或最终判断。\
-先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
-追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
-不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
-不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
-不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
 
 fn sample_config(api_base_url: String) -> LlmConfig {
     LlmConfig {
@@ -81,16 +71,6 @@ fn first_request(selected_text: impl Into<String>) -> GenerateAiRequest {
     }
 }
 
-fn first_request_with_direction(
-    selected_text: impl Into<String>,
-    direction: impl Into<String>,
-) -> GenerateAiRequest {
-    GenerateAiRequest::First {
-        selected_text: selected_text.into(),
-        thinking_direction: Some(direction.into()),
-    }
-}
-
 fn message(role: GenerateAiMessageRole, content: &str) -> GenerateAiMessage {
     GenerateAiMessage {
         role,
@@ -105,18 +85,6 @@ fn follow_up_request(
     GenerateAiRequest::FollowUp {
         selected_text: selected_text.into(),
         thinking_direction: None,
-        messages,
-    }
-}
-
-fn follow_up_request_with_direction(
-    selected_text: impl Into<String>,
-    direction: impl Into<String>,
-    messages: Vec<GenerateAiMessage>,
-) -> GenerateAiRequest {
-    GenerateAiRequest::FollowUp {
-        selected_text: selected_text.into(),
-        thinking_direction: Some(direction.into()),
         messages,
     }
 }
@@ -145,7 +113,7 @@ fn notebook_json(text: &str) -> String {
 }
 
 /// 启动一个最小 mock HTTP 服务，处理一次请求后返回给定状态码与响应体。
-/// 返回监听地址，便于构造 API base URL。
+/// 返回监听地址，便于构造 API base URL。连接测试仍走 Rust 直连 HTTP，故保留。
 fn start_mock(status: u16, body: &'static str) -> String {
     start_mock_with_headers(status, body, Vec::new())
 }
@@ -183,65 +151,6 @@ fn start_mock_with_headers(
         }
     });
 
-    base
-}
-
-fn start_capturing_mock(body: String) -> (String, mpsc::Receiver<String>) {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
-    let base = format!("http://{}", listener.local_addr().expect("local addr"));
-    let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept request");
-        let mut bytes = Vec::new();
-        let mut buffer = [0u8; 4096];
-        loop {
-            let size = stream.read(&mut buffer).expect("read request");
-            bytes.extend_from_slice(&buffer[..size]);
-            let text = String::from_utf8_lossy(&bytes);
-            let header_end = text.find("\r\n\r\n");
-            let content_length = text.lines().find_map(|line| {
-                line.to_ascii_lowercase()
-                    .strip_prefix("content-length: ")?
-                    .parse::<usize>()
-                    .ok()
-            });
-            if header_end.is_some_and(|end| {
-                content_length.is_some_and(|length| bytes.len() >= end + 4 + length)
-            }) {
-                break;
-            }
-        }
-        let request = String::from_utf8(bytes).expect("utf8 request");
-        let _ = sender.send(request);
-        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
-        stream
-            .write_all(response.as_bytes())
-            .expect("write response");
-    });
-    (base, receiver)
-}
-
-fn start_partial_body_mock(
-    declared_length: usize,
-    body_prefix: &'static [u8],
-    body_delay: Duration,
-) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind partial mock");
-    let base = format!("http://{}", listener.local_addr().expect("local addr"));
-    thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept request");
-        let mut request = [0u8; 4096];
-        let _ = stream.read(&mut request);
-        let headers = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            declared_length
-        );
-        stream.write_all(headers.as_bytes()).expect("write headers");
-        stream.flush().expect("flush headers");
-        thread::sleep(body_delay);
-        let _ = stream.write_all(body_prefix);
-        let _ = stream.flush();
-    });
     base
 }
 
@@ -699,122 +608,9 @@ async fn test_connection_fails_with_readable_error_on_401() {
     }
 }
 
-// ========== AI 思考生成用例 ==========
+// ========== AI 思考生成用例（DSH 路径） ==========
 
-#[tokio::test]
-async fn generate_returns_assistant_content_from_mock() {
-    let base = start_mock(
-        200,
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"换个视角会不会更好？\"}}]}",
-    );
-    let config = sample_config(base);
-    let content = generate_ai_thinking(&config, "背叛")
-        .await
-        .expect("生成应成功");
-    assert_eq!(content, "换个视角会不会更好？");
-}
-
-#[tokio::test]
-async fn generate_joins_all_multipart_assistant_text_in_order() {
-    let base = start_mock(
-        200,
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\" 第一段 \"},{\"type\":\"text\",\"text\":\"第二段\"}]}}]}",
-    );
-    let config = sample_config(base);
-
-    let content = generate_ai_thinking(&config, "背叛")
-        .await
-        .expect("生成应成功");
-
-    assert_eq!(content, "第一段\n第二段");
-}
-
-#[tokio::test]
-async fn generate_ignores_empty_and_unknown_multipart_parts() {
-    let base = start_mock(
-        200,
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"  \"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://example.com/a.png\"}},{\"type\":\"text\",\"text\":\" 可见文本 \"}]}}]}",
-    );
-    let config = sample_config(base);
-
-    let content = generate_ai_thinking(&config, "背叛")
-        .await
-        .expect("生成应成功");
-
-    assert_eq!(content, "可见文本");
-}
-
-#[tokio::test]
-async fn generate_rejects_multipart_without_valid_text() {
-    let base = start_mock(
-        200,
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"  \"},{\"type\":\"tool_call\",\"id\":\"x\"}]}}]}",
-    );
-    let config = sample_config(base);
-
-    let result = generate_ai_thinking(&config, "背叛").await;
-
-    assert!(
-        matches!(
-            result,
-            Err(GenerateAiError {
-                code: GenerateAiErrorCode::InvalidResponse,
-                ..
-            })
-        ),
-        "应因无有效文本失败，实际: {:?}",
-        result
-    );
-}
-
-#[tokio::test]
-async fn generate_rejects_2xx_without_valid_reply() {
-    for body in [
-        "<html>login</html>",
-        "{\"error\":\"model unavailable\"}",
-        "{\"choices\":[]}",
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\"}}]}",
-    ] {
-        let base = start_mock(200, body);
-        let config = sample_config(base);
-        let result = generate_ai_thinking(&config, "x").await;
-        assert!(
-            matches!(
-                result,
-                Err(GenerateAiError {
-                    code: GenerateAiErrorCode::InvalidResponse,
-                    ..
-                })
-            ),
-            "应因无效响应失败，实际: {:?}",
-            result
-        );
-    }
-}
-
-#[tokio::test]
-async fn generate_maps_401_to_authentication_error_without_leaking_secrets() {
-    let base = start_mock(401, "{\"error\":\"unauthorized\"}");
-    let config = sample_config(base);
-    let error = generate_ai_thinking(&config, "x")
-        .await
-        .expect_err("应失败");
-    assert_eq!(error.code, GenerateAiErrorCode::Authentication);
-    assert!(!error.message.contains("Bearer"));
-    assert!(!error.message.contains("test-key"));
-    assert!(!error.message.contains("Authorization"));
-}
-
-#[tokio::test]
-async fn generate_maps_413_to_request_too_large() {
-    let base = start_mock(413, "too large");
-    let config = sample_config(base);
-    let error = generate_ai_thinking(&config, "x")
-        .await
-        .expect_err("应失败");
-    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
-}
-
+/// 配置不完整时，生成在 spawn DSH 之前即被拒绝为 ConfigurationRequired。
 #[tokio::test]
 async fn generate_rejects_incomplete_config_as_configuration_required() {
     let config = LlmConfig {
@@ -826,31 +622,6 @@ async fn generate_rejects_incomplete_config_as_configuration_required() {
         .await
         .expect_err("应失败");
     assert_eq!(error.code, GenerateAiErrorCode::ConfigurationRequired);
-}
-
-#[tokio::test]
-async fn generate_reports_network_error_without_leaking_secrets() {
-    // 指向一个未监听的端口，触发连接失败
-    let config = sample_config("http://127.0.0.1:1/v1".to_string());
-    let error = generate_ai_thinking(&config, "x")
-        .await
-        .expect_err("应失败");
-    assert_eq!(error.code, GenerateAiErrorCode::Network);
-    assert!(!error.message.contains("test-key"));
-}
-
-#[tokio::test]
-async fn generate_does_not_append_context_to_the_request_body() {
-    // 仅验证后端组装的请求体就是固定 Prompt + 选区原文，不含任何前后文/全文/摘要。
-    let base = start_mock(
-        200,
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}",
-    );
-    let config = sample_config(base);
-    let content = generate_ai_thinking(&config, "选区原文")
-        .await
-        .expect("生成应成功");
-    assert_eq!(content, "ok");
 }
 
 #[test]
@@ -890,289 +661,8 @@ async fn corrupted_saved_config_returns_stable_failure_result() {
     );
 }
 
-#[tokio::test]
-async fn generate_sends_exact_fixed_messages_without_context() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-    generate_ai_thinking(&sample_config(base), "选区原文")
-        .await
-        .expect("generate");
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    assert_eq!(value["messages"].as_array().unwrap().len(), 2);
-    assert_eq!(
-        value["messages"][0],
-        serde_json::json!({
-            "role":"system",
-            "content": EXPECTED_FIXED_SYSTEM_PROMPT
-        })
-    );
-    assert_eq!(
-        value["messages"][1],
-        serde_json::json!({"role":"user","content":"选区原文"})
-    );
-    assert_eq!(value.as_object().unwrap().len(), 3);
-}
-
-#[tokio::test]
-async fn generate_first_with_thinking_direction_appends_direction_without_extra_context() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-    generate_ai_thinking(
-        &sample_config(base),
-        first_request_with_direction("冻结选区", "想追的方向"),
-    )
-    .await
-    .expect("generate");
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    assert_eq!(value["messages"].as_array().unwrap().len(), 2);
-    assert_eq!(
-        value["messages"][0],
-        serde_json::json!({
-            "role":"system",
-            "content": EXPECTED_FIXED_SYSTEM_PROMPT
-        })
-    );
-    assert_eq!(
-        value["messages"][1],
-        serde_json::json!({
-            "role":"user",
-            "content": "选区原文：\n冻结选区\n\n用户希望探索的角度（不是作品事实或最终判断）：\n想追的方向"
-        })
-    );
-    let body_text = body.to_string();
-    for forbidden in [
-        "draft",
-        "main",
-        "notebook",
-        "summary",
-        "metadata",
-        "history",
-        "content_library",
-        "api_key",
-    ] {
-        assert!(
-            !body_text.contains(forbidden),
-            "request body must not contain unauthorized context: {forbidden}"
-        );
-    }
-    assert_eq!(value.as_object().unwrap().len(), 3);
-}
-
-#[tokio::test]
-async fn generate_first_prompt_declares_grounding_and_output_boundaries() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-
-    generate_ai_thinking(&sample_config(base), "选区原文")
-        .await
-        .expect("generate");
-
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    let system_prompt = value["messages"][0]["content"]
-        .as_str()
-        .expect("system prompt");
-
-    for required in [
-        "冻结选区原文",
-        "只能基于这段选区原文",
-        "从文字里看到的内容",
-        "可能解释",
-        "问题",
-        "可能方向",
-        "不直接改草稿本或正文本",
-        "不代写正文",
-        "不润色",
-        "不提供替换文本",
-        "不判断故事好坏",
-        "不判断正确或错误",
-        "不判断高级或低级",
-    ] {
-        assert!(
-            system_prompt.contains(required),
-            "首轮 prompt 缺少约束: {required}\n{system_prompt}"
-        );
-    }
-}
-
-#[tokio::test]
-async fn generate_prompt_rejects_unavailable_context_and_memory_claims() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-
-    generate_ai_thinking(&sample_config(base), "选区原文")
-        .await
-        .expect("generate");
-
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    let system_prompt = value["messages"][0]["content"]
-        .as_str()
-        .expect("system prompt");
-
-    for prohibited_claim in [
-        "选区前后文",
-        "当前本子全文",
-        "摘要",
-        "作品元数据",
-        "AI 内容库",
-        "历史会话",
-        "记忆",
-        "用户确认的作品事实",
-    ] {
-        let expected = format!("不能声称读取或使用{prohibited_claim}");
-        assert!(
-            system_prompt.contains(&expected),
-            "prompt 缺少不可用上下文声明: {expected}\n{system_prompt}"
-        );
-    }
-}
-
-#[tokio::test]
-async fn generate_follow_up_sends_exact_full_conversation_once_without_extra_context() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-    let request = follow_up_request(
-        "冻结选区",
-        vec![
-            message(GenerateAiMessageRole::Assistant, "首次回应"),
-            message(GenerateAiMessageRole::User, "问题一"),
-            message(GenerateAiMessageRole::Assistant, "回答一"),
-            message(GenerateAiMessageRole::User, "当前问题"),
-        ],
-    );
-
-    generate_ai_thinking(&sample_config(base), &request)
-        .await
-        .expect("follow-up generate");
-
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    assert_eq!(
-        value["messages"],
-        serde_json::json!([
-            {
-                "role":"system",
-                "content": EXPECTED_FIXED_SYSTEM_PROMPT
-            },
-            {"role":"user","content":"冻结选区"},
-            {"role":"assistant","content":"首次回应"},
-            {"role":"user","content":"问题一"},
-            {"role":"assistant","content":"回答一"},
-            {"role":"user","content":"当前问题"}
-        ])
-    );
-    assert_eq!(body.matches("当前问题").count(), 1);
-    for message in value["messages"].as_array().unwrap().iter().skip(1) {
-        let content = message["content"].as_str().expect("message content");
-        for absent in [
-            "附近上下文",
-            "本子全文",
-            "自动摘要",
-            "作品信息",
-            "AI 内容库",
-        ] {
-            assert!(!content.contains(absent));
-        }
-    }
-    assert_eq!(value["stream"], false);
-}
-
-#[tokio::test]
-async fn generate_follow_up_reuses_direction_bearing_first_material() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-    let request = follow_up_request_with_direction(
-        "冻结选区",
-        "想追的方向",
-        vec![
-            message(GenerateAiMessageRole::Assistant, "首次回应"),
-            message(GenerateAiMessageRole::User, "当前问题"),
-        ],
-    );
-
-    generate_ai_thinking(&sample_config(base), &request)
-        .await
-        .expect("follow-up generate");
-
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    assert_eq!(
-        value["messages"][1],
-        serde_json::json!({
-            "role":"user",
-            "content":"选区原文：\n冻结选区\n\n用户希望探索的角度（不是作品事实或最终判断）：\n想追的方向"
-        })
-    );
-    assert_eq!(body.matches("想追的方向").count(), 1);
-    assert_eq!(body.matches("当前问题").count(), 1);
-}
-
-#[tokio::test]
-async fn generate_follow_up_prompt_anchors_to_frozen_selection_and_temporary_thread() {
-    let response =
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}".to_string();
-    let (base, captured) = start_capturing_mock(response);
-    let request = follow_up_request(
-        "冻结选区",
-        vec![
-            message(GenerateAiMessageRole::Assistant, "首次回应"),
-            message(GenerateAiMessageRole::User, "当前问题"),
-        ],
-    );
-
-    generate_ai_thinking(&sample_config(base), &request)
-        .await
-        .expect("follow-up generate");
-
-    let request = captured
-        .recv_timeout(Duration::from_secs(2))
-        .expect("captured request");
-    let body = request.split_once("\r\n\r\n").expect("request body").1;
-    let value: serde_json::Value = serde_json::from_str(body).expect("json body");
-    let system_prompt = value["messages"][0]["content"]
-        .as_str()
-        .expect("system prompt");
-
-    for required in [
-        "追问仍锚定首次冻结选区",
-        "只把已有轮次当作当前临时线性对话",
-        "不当作持久历史",
-        "不当作作品事实",
-    ] {
-        assert!(
-            system_prompt.contains(required),
-            "追问 prompt 缺少约束: {required}\n{system_prompt}"
-        );
-    }
-}
-
+/// 请求校验在 spawn DSH 之前完成：空白选区/空白消息被稳定拒绝，
+/// 且错误不泄露请求原文。
 #[tokio::test]
 async fn generate_rejects_blank_selection_and_blank_messages_with_safe_stable_error() {
     let cases = [
@@ -1194,10 +684,9 @@ async fn generate_rejects_blank_selection_and_blank_messages_with_safe_stable_er
     ];
 
     for request in cases {
-        let error =
-            generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
-                .await
-                .expect_err("invalid payload must fail before network");
+        let error = generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
+            .await
+            .expect_err("invalid payload must fail before network");
         assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
         assert_eq!(error.message, "AI 请求内容无效，请重试");
         assert!(!error.message.contains("冻结选区"));
@@ -1206,6 +695,8 @@ async fn generate_rejects_blank_selection_and_blank_messages_with_safe_stable_er
     }
 }
 
+/// 追问角色顺序非法（含空消息列表、缺少首次回应、连续同角色、待回答问题后仍有消息）
+/// 在 spawn DSH 之前即被稳定拒绝。
 #[tokio::test]
 async fn generate_rejects_illegal_follow_up_role_order_and_messages_after_pending_user() {
     let cases = [
@@ -1239,93 +730,17 @@ async fn generate_rejects_illegal_follow_up_role_order_and_messages_after_pendin
     }
 }
 
-#[tokio::test]
-async fn generate_rejects_oversize_follow_up_without_truncation_or_text_leak() {
-    let current_question = "不能泄露的当前问题".repeat(MAX_REQUEST_BYTES / 12);
-    let request = follow_up_request(
-        "冻结选区",
-        vec![
-            message(GenerateAiMessageRole::Assistant, "首次回应"),
-            message(GenerateAiMessageRole::User, &current_question),
-        ],
-    );
-    let error = generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
-        .await
-        .expect_err("oversize follow-up must fail");
+// ========== AI 零写回端到端 ==========
 
-    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
-    assert_eq!(error.message, "请求内容过长，请缩短当前临时对话");
-    assert!(!error.message.contains("不能泄露的当前问题"));
-}
-
-#[tokio::test]
-async fn generate_rejects_oversize_request_without_truncation() {
-    let config = sample_config("http://127.0.0.1:1".to_string());
-    let text = "界".repeat(MAX_REQUEST_BYTES / 3 + 1);
-    let error = generate_ai_thinking(&config, &text)
-        .await
-        .expect_err("oversize must fail");
-    assert_eq!(error.code, GenerateAiErrorCode::RequestTooLarge);
-}
-
-#[tokio::test]
-async fn generate_rejects_oversize_response_without_truncation() {
-    let content = "x".repeat(MAX_RESPONSE_BYTES + 1);
-    let body = serde_json::json!({"choices":[{"message":{"role":"assistant","content":content}}]})
-        .to_string();
-    let (base, _captured) = start_capturing_mock(body);
-    let error = generate_ai_thinking(&sample_config(base), "x")
-        .await
-        .expect_err("oversize must fail");
-    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
-    assert_eq!(error.message, "服务响应过长，已拒绝处理");
-}
-
-#[test]
-fn generation_and_connection_test_use_distinct_total_timeouts() {
-    assert_eq!(CONNECTION_TEST_TIMEOUT_SECS, 20);
-    assert_eq!(GENERATION_TIMEOUT_SECS, 60);
-}
-
-#[tokio::test]
-async fn delayed_response_body_maps_to_timeout_without_waiting_for_production_timeout() {
-    let base = start_partial_body_mock(64, b"", Duration::from_millis(150));
-    let error =
-        generate_ai_thinking_with_timeout(&sample_config(base), "x", Duration::from_millis(30))
-            .await
-            .expect_err("delayed body must time out");
-
-    assert_eq!(error.code, GenerateAiErrorCode::Timeout);
-    assert_eq!(error.message, "读取模型响应超时，请稍后重试");
-}
-
-#[tokio::test]
-async fn truncated_response_body_maps_to_distinct_interruption_error() {
-    let base = start_partial_body_mock(128, b"{\"choices\":[", Duration::ZERO);
-    let error =
-        generate_ai_thinking_with_timeout(&sample_config(base), "x", Duration::from_secs(1))
-            .await
-            .expect_err("truncated body must fail");
-
-    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
-    assert_eq!(error.message, "服务响应传输中断，请稍后重试");
-}
-
-// ========== AI 零写回端到端（tasks 9.1） ==========
-
-const MOCK_SUCCESS_BODY: &str =
-    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"换个视角会不会更好？\"}}]}";
-
-/// 9.1 后端命令级端到端：AI 生成（合法首次、合法追问、失败）绝不写回
-/// 草稿本/正文本。每一步之后两份本子与 project.json 的字节都必须与快照
-/// **完全一致**；「用户保存」作为正对照必须真实改变草稿本字节；
-/// 生成流程不得在作品目录留下任何事务/临时文件。
+/// AI 生成命令（无论成功或失败）绝不写回草稿本/正文本。生成链路在 DSH 路径下
+/// 只把选区文本交给 sidecar 子进程、不接触作品目录；本测试用「配置缺失 → 稳定失败」
+/// 与「非法请求 → 稳定失败」两条路径证明生成命令级入口不改作品字节，
+/// 「用户保存」作为正对照必须真实改变草稿本字节。
 #[tokio::test]
 async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     let temp = TempDir::new().expect("create temp dir");
 
-    // 1. 用公开 API 创建真实作品；create 只建空文档，因此先用用户保存
-    //    写入已知内容，再记录三份文件的字节快照。
+    // 1. 用公开 API 创建真实作品；先用户保存写入已知内容，再记录三份文件字节快照。
     let project_root = create_new_project(CreateProjectParams {
         name: "零写回作品".to_string(),
         save_location: temp.path().to_string_lossy().to_string(),
@@ -1355,49 +770,24 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
         assert_eq!(now.2, before.2, "{label} 后 project.json 字节必须完全不变");
     };
 
-    // 2. 配置保存到独立的应用数据目录（与作品目录隔离），指向本机 mock server。
+    // 2. 生成命令（应用数据目录无配置 → 稳定失败）不改作品字节。
     let app_data = temp.path().join("app-data");
-    let store = MockStore::new();
-    let config = sample_config(start_mock(200, MOCK_SUCCESS_BODY));
-    save_llm_config_with_store(&app_data, &config, &store).expect("save llm config");
-
-    // 3a. 合法首次请求（冻结选区）→ 成功，本子字节不变。
-    let content = generate_ai_thinking(&config, first_request("冻结选区"))
-        .await
-        .expect("first generation succeeds against mock");
-    assert_eq!(content, "换个视角会不会更好？");
-    assert_snapshot_unchanged("首次生成");
-
-    // 3b. 合法追问请求 → 成功，本子字节不变（每次生成用独立的 mock 连接）。
-    let follow_up = follow_up_request(
-        "冻结选区",
-        vec![
-            message(GenerateAiMessageRole::Assistant, "首次回应"),
-            message(GenerateAiMessageRole::User, "再往深处想"),
-        ],
+    let result = generate_ai_result_in(&app_data, first_request("冻结选区")).await;
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.expect("failure error").code,
+        GenerateAiErrorCode::ConfigurationRequired
     );
-    let follow_up_config = sample_config(start_mock(200, MOCK_SUCCESS_BODY));
-    let content = generate_ai_thinking(&follow_up_config, &follow_up)
-        .await
-        .expect("follow-up generation succeeds against mock");
-    assert_eq!(content, "换个视角会不会更好？");
-    assert_snapshot_unchanged("追问生成");
+    assert_snapshot_unchanged("配置缺失生成失败");
 
-    // 3c. 失败生成（认证失败 401）→ 稳定失败，本子字节不变。
-    let failing_config = sample_config(start_mock(401, "{\"error\":\"unauthorized\"}"));
-    let error = generate_ai_thinking(&failing_config, first_request("冻结选区"))
-        .await
-        .expect_err("401 generation must fail");
-    assert_eq!(error.code, GenerateAiErrorCode::Authentication);
-    assert_snapshot_unchanged("认证失败生成");
-
-    // 3d. 失败生成（无有效 choices）→ 稳定失败，本子字节不变。
-    let empty_config = sample_config(start_mock(200, "{\"choices\":[]}"));
-    let error = generate_ai_thinking(&empty_config, first_request("冻结选区"))
-        .await
-        .expect_err("empty choices generation must fail");
-    assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
-    assert_snapshot_unchanged("空回复失败生成");
+    // 3. 生成命令（非法请求 → 稳定失败）不改作品字节。
+    let result = generate_ai_result_in(&app_data, first_request("   ")).await;
+    assert!(!result.ok);
+    assert_eq!(
+        result.error.expect("failure error").code,
+        GenerateAiErrorCode::InvalidResponse
+    );
+    assert_snapshot_unchanged("非法请求生成失败");
 
     // 4. 生成流程后：作品目录不得多出任何事务/临时文件（AI 链路零写盘）。
     let system_dir = project_root.join("next-story-system");

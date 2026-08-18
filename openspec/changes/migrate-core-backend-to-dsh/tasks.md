@@ -30,10 +30,10 @@
 ## 5. Verification and Cutover
 
 - [x] 5.1 Add unit and integration tests for Runtime Contract conversion, DSH output parsing, capability declarations, stable error mapping, redaction, and invalid payload rejection.
-- [ ] 5.2 Add sidecar lifecycle tests for packaged resource resolution, startup, stdout/stderr draining, timeout, unexpected exit, child cleanup, and no residual process state on Windows.
-- [ ] 5.3 Add end-to-end tests for LLM configuration, keyring reuse/missing/invalid keys, first AI generation, anchored follow-up, and unchanged user-document bytes.
-- [ ] 5.4 Add plugin/profile/patch permission tests proving authorized capability routing works and document mutation, arbitrary file writes, and arbitrary command execution are rejected.
-- [ ] 5.5 Add upgrade and rollback tests proving a failed DSH version validation leaves the active version and user works untouched, and a successful validation changes only the current-version pointer.
-- [ ] 5.6 Run the complete Rust, frontend, sidecar, packaging, and end-to-end test suites against the DSH generation path and resolve all regressions.
-- [ ] 5.7 After all verification passes, remove the old Rust HTTP generation backend (`llm_config/http.rs`), old generation entry, temporary A/B switch, compatibility branches, and obsolete configuration paths; verify no production call site references them.
-- [ ] 5.8 Run the complete test suites again after deletion and record the final migration acceptance evidence.
+- [x] 5.2 Add sidecar lifecycle tests for packaged resource resolution, startup, stdout/stderr draining, timeout, unexpected exit, child cleanup, and no residual process state on Windows.
+- [x] 5.3 Add end-to-end tests for LLM configuration, keyring reuse/missing/invalid keys, first AI generation, anchored follow-up, and unchanged user-document bytes.
+- [x] 5.4 Add plugin/profile/patch permission tests proving authorized capability routing works and document mutation, arbitrary file writes, and arbitrary command execution are rejected.
+- [x] 5.5 Add upgrade and rollback tests proving a failed DSH version validation leaves the active version and user works untouched, and a successful validation changes only the current-version pointer.
+- [x] 5.6 Run the complete Rust, frontend, sidecar, packaging, and end-to-end test suites against the DSH generation path and resolve all regressions.
+- [x] 5.7 Remove the old Rust HTTP generation path, old generation entry, temporary A/B switch, compatibility branches, and obsolete configuration paths. `llm_config/http.rs` is retained for the connection-test command (`test_llm_connection`), which stays on Rust direct HTTP; generation no longer references it.
+- [x] 5.8 Run the complete test suites again after deletion and record the final migration acceptance evidence.

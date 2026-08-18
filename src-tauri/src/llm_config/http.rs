@@ -5,7 +5,6 @@ use serde_json::{json, Value};
 use super::{is_loopback_url, GenerateAiError, GenerateAiErrorCode, LlmConfig, LlmConfigError};
 
 pub const CONNECTION_TEST_TIMEOUT_SECS: u64 = 20;
-pub const GENERATION_TIMEOUT_SECS: u64 = 60;
 pub const MAX_REQUEST_BYTES: usize = 256 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 

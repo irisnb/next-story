@@ -239,6 +239,14 @@ pub fn map_dsh_failure(exit_code: Option<i32>, stderr: &str) -> GenerateAiError 
             GenerateAiErrorCode::Timeout,
             "连接超时，请检查 API 地址或网络".to_string(),
         )
+    } else if lower.contains("context_window_exceeded")
+        || lower.contains("context window exceeded")
+        || lower.contains("request too large")
+    {
+        (
+            GenerateAiErrorCode::RequestTooLarge,
+            "请求内容过长，请减少选中的文字".to_string(),
+        )
     } else if lower.contains("connect")
         || lower.contains("network")
         || lower.contains("econnrefused")

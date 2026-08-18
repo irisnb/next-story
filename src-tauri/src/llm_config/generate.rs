@@ -1,23 +1,17 @@
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+//! 使用唯一保存配置，通过 DSH headless 生成 AI 思考材料。
+//!
+//! 只接收选区原文（含可选方向与追问轮次），由本模块集中组装固定首版思考任务，
+//! 序列化为单个 task 字符串交给 DSH。前端不传入 API Key，也不持有任何写入
+//! 草稿本或正文本的入口。
 
-use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 
 use super::{
-    http, parse_api_base_url, validate_llm_config, GenerateAiError, GenerateAiErrorCode,
-    GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
+    validate_llm_config, GenerateAiError, GenerateAiErrorCode, GenerateAiMessageRole,
+    GenerateAiRequest, LlmConfig,
 };
 use crate::dsh_sidecar::{self, DshGenerationParams};
 use crate::dsh_version::DshVersionLayout;
-
-/// DSH 生成开关（迁移期内部保险，不作为长期产品配置）。
-/// 默认关闭（沿用现有 Rust 直连路径）；设为 `1`/`true` 走 DSH headless 路径。
-fn dsh_generation_enabled() -> bool {
-    matches!(
-        std::env::var("NEXT_STORY_DSH_ENABLED").as_deref(),
-        Ok("1") | Ok("true")
-    )
-}
 
 /// 固定首版思考任务：围绕冻结选区提出观察、问题和可能方向，不代写正文。
 /// 该职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
@@ -29,85 +23,27 @@ const FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当
 不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
 不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
 
-/// 使用唯一保存配置，围绕选区原文发起一次真实非流式生成。
+/// 使用唯一保存配置，围绕选区原文发起一次真实非流式生成（DSH headless）。
 ///
-/// 只接收选区原文，由本用例集中组装固定首版思考任务 Prompt。后端自行加载并校验
-/// 唯一 LLM 配置；前端不传入 API Key，也不持有任何写入草稿本或正文本的入口。
+/// 使用 DSH 默认 home；测试路径使用本函数，生产命令入口使用
+/// [`generate_ai_thinking_in_dir`]（版本隔离 home）。
 pub async fn generate_ai_thinking(
     config: &LlmConfig,
     request: impl Into<GenerateAiRequest>,
 ) -> Result<String, GenerateAiError> {
-    generate_ai_thinking_with_timeout(
-        config,
-        request,
-        Duration::from_secs(http::GENERATION_TIMEOUT_SECS),
-    )
-    .await
+    let request = request.into();
+    generate_with_dsh(config, &request, None).await
 }
 
-/// 从应用数据目录生成：走 DSH 时用版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current>`）。
-/// 生产命令入口使用本函数；测试直接调 [`generate_ai_thinking`]（默认 DSH home）。
+/// 从应用数据目录生成：用版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current>`）。
+/// 生产命令入口使用本函数。
 pub async fn generate_ai_thinking_in_dir(
     config: &LlmConfig,
     request: impl Into<GenerateAiRequest>,
     base_dir: &Path,
 ) -> Result<String, GenerateAiError> {
     let request = request.into();
-    generate_ai_thinking_core(
-        config,
-        &request,
-        Duration::from_secs(http::GENERATION_TIMEOUT_SECS),
-        Some(versioned_dsh_home(base_dir)),
-    )
-    .await
-}
-
-pub async fn generate_ai_thinking_with_timeout(
-    config: &LlmConfig,
-    request: impl Into<GenerateAiRequest>,
-    total_timeout: Duration,
-) -> Result<String, GenerateAiError> {
-    let request = request.into();
-    generate_ai_thinking_core(config, &request, total_timeout, None).await
-}
-
-/// 核心生成逻辑：DSH 开关、请求校验、配置校验、HTTP/DSH 分流。
-async fn generate_ai_thinking_core(
-    config: &LlmConfig,
-    request: &GenerateAiRequest,
-    total_timeout: Duration,
-    dsh_home: Option<PathBuf>,
-) -> Result<String, GenerateAiError> {
-    if dsh_generation_enabled() {
-        return generate_with_dsh(config, request, dsh_home).await;
-    }
-
-    let messages = build_messages(request)?;
-
-    let base_url = parse_api_base_url(&config.api_base_url).map_err(|_| {
-        GenerateAiError::new(
-            GenerateAiErrorCode::ConfigurationRequired,
-            "LLM 配置中的 API 地址无效",
-        )
-    })?;
-
-    validate_llm_config(config).map_err(|_| {
-        GenerateAiError::new(
-            GenerateAiErrorCode::ConfigurationRequired,
-            "LLM 配置不完整，请检查 API 地址、Key 与模型名",
-        )
-    })?;
-
-    let value = http::post_chat_completions(config, base_url, messages, total_timeout)
-        .await
-        .map_err(|error| map_request_error(request, error))?;
-
-    http::extract_assistant_text(&value).ok_or_else(|| {
-        GenerateAiError::new(
-            GenerateAiErrorCode::InvalidResponse,
-            "模型没有返回有效的思考内容",
-        )
-    })
+    generate_with_dsh(config, &request, Some(versioned_dsh_home(base_dir))).await
 }
 
 /// 通过 DSH headless 生成一次回复。
@@ -115,7 +51,7 @@ async fn generate_ai_thinking_core(
 /// DSH 一次性任务模型接收单个 task 字符串，因此把固定系统提示词、选区原文、
 /// 可选方向与追问轮次序列化进一个 task；spike 已验证「整段对话序列化进一个 task」
 /// 的追问仍锚定首次冻结选区。子进程 spawn 是阻塞操作，放进阻塞线程避免占住异步执行线程。
-/// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制，不使用 HTTP 路径的 60s。
+/// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；`None` 表示沿用 DSH 默认 home（仅测试路径）。
 async fn generate_with_dsh(
@@ -261,57 +197,6 @@ fn first_user_content(selected_text: &str, thinking_direction: Option<&str>) -> 
     }
 }
 
-fn build_messages(request: &GenerateAiRequest) -> Result<Value, GenerateAiError> {
-    validate_generate_ai_request(request)?;
-
-    let (selected_text, thinking_direction, turns) = match request {
-        GenerateAiRequest::First {
-            selected_text,
-            thinking_direction,
-        } => (selected_text.as_str(), thinking_direction.as_deref(), None),
-        GenerateAiRequest::FollowUp {
-            selected_text,
-            thinking_direction,
-            messages,
-        } => (
-            selected_text.as_str(),
-            thinking_direction.as_deref(),
-            Some(messages),
-        ),
-    };
-
-    let mut provider_messages = vec![
-        json!({ "role": "system", "content": FIXED_SYSTEM_PROMPT }),
-        json!({
-            "role": "user",
-            "content": first_user_content(selected_text, thinking_direction),
-        }),
-    ];
-
-    if let Some(turns) = turns {
-        for turn in turns {
-            provider_messages.push(json!({
-                "role": match turn.role {
-                    GenerateAiMessageRole::User => "user",
-                    GenerateAiMessageRole::Assistant => "assistant",
-                },
-                "content": turn.content,
-            }));
-        }
-    }
-
-    Ok(Value::Array(provider_messages))
-}
-
-fn map_request_error(request: &GenerateAiRequest, mut error: GenerateAiError) -> GenerateAiError {
-    if matches!(request, GenerateAiRequest::FollowUp { .. })
-        && error.code == GenerateAiErrorCode::RequestTooLarge
-    {
-        error.message = "请求内容过长，请缩短当前临时对话".to_string();
-    }
-    error
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +243,45 @@ mod tests {
         };
         let err = build_task_string(&request).expect_err("empty selection rejected");
         assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
+    }
+
+    /// 固定系统提示词必须声明 grounding 边界、不代写正文、不判断故事好坏，
+    /// 并明确拒绝读取任何不可用上下文。这是铁律 2/3 在提示词层的落地。
+    #[test]
+    fn fixed_system_prompt_declares_grounding_and_output_boundaries() {
+        for required in [
+            "冻结选区原文",
+            "只能基于这段选区原文",
+            "不直接改草稿本或正文本",
+            "不代写正文",
+            "不润色",
+            "不提供替换文本",
+            "不判断故事好坏",
+            "不判断正确或错误",
+            "不判断高级或低级",
+            "追问仍锚定首次冻结选区",
+            "只把已有轮次当作当前临时线性对话",
+        ] {
+            assert!(
+                FIXED_SYSTEM_PROMPT.contains(required),
+                "固定系统提示词缺少约束: {required}"
+            );
+        }
+        for prohibited_claim in [
+            "选区前后文",
+            "当前本子全文",
+            "摘要",
+            "作品元数据",
+            "AI 内容库",
+            "历史会话",
+            "记忆",
+            "用户确认的作品事实",
+        ] {
+            let expected = format!("不能声称读取或使用{prohibited_claim}");
+            assert!(
+                FIXED_SYSTEM_PROMPT.contains(&expected),
+                "固定系统提示词缺少不可用上下文声明: {expected}"
+            );
+        }
     }
 }

@@ -1,8 +1,31 @@
-# dsh-headless-generation Specification
+## ADDED Requirements
 
-## Purpose
-TBD - created by archiving change spike-dsh-headless-generation. Update Purpose after archive.
-## Requirements
+### Requirement: API Key 经宿主注入不落磁盘
+宿主 SHALL 从系统钥匙串读取 API Key，并以 `DEEPSEEK_API_KEY` 环境变量在 spawn 时注入 DSH（DSH 官方 per-run override，环境变量优先）；API Key MUST NOT 写入 DSH_HOME、settings 或任何磁盘文件。
+
+#### Scenario: 复用已存 Key
+- **WHEN** 系统钥匙串中已保存 API Key 且磁盘配置无明文 key
+- **THEN** 宿主从钥匙串读出 Key 并注入 DSH 生成，无需用户重输
+
+#### Scenario: 缺少 Key
+- **WHEN** 钥匙串中不存在 API Key
+- **THEN** 生成返回「缺少 LLM 配置」类错误，不静默假装成功
+
+### Requirement: DSH 能力受 Next Story 安全边界控制
+DSH 插件、profile、patch 和工具能力 SHALL 保留可加载和扩展能力，但进入 Next Story 的能力 MUST 经过宿主能力网关；AI 和插件 MUST NOT 写入、追加、替换、删除、移动或整理用户文档，默认也 MUST NOT 执行任意系统命令或任意文件写入。
+
+#### Scenario: Plugin capability is allowed through gateway
+- **WHEN** 已安装插件请求一个 Next Story 明确定义且授权的能力
+- **THEN** 宿主按能力声明和权限策略转发请求
+- **AND** DSH 插件市场和插件运行机制仍然可用
+
+#### Scenario: Plugin attempts document mutation
+- **WHEN** DSH、插件或工具尝试修改用户文档
+- **THEN** 能力网关拒绝该操作
+- **AND** 用户文档内容和保存状态保持不变
+
+## MODIFIED Requirements
+
 ### Requirement: DSH headless 生成与现有链等价
 系统 SHALL 通过 headless DSH adapter 生成 AI 思考响应，其输入（冻结选区原文 + 可选方向 + 追问轮次）与输出语义与现有生成链一致：不代写正文、不评价故事、纯文本回答、追问仍锚定首次冻结选区。Runtime Contract MUST 保留任务、事件、结果、错误和能力声明的扩展位，即使本次首版只返回一次非流式结果。
 
@@ -41,27 +64,8 @@ DSH 路径的错误 MUST 映射到稳定的 `GenerateAiErrorCode` 分类，且 `
 - **WHEN** DSH 生成因上下文窗口超限而失败
 - **THEN** 返回 `code = request_too_large` 的错误
 
-### Requirement: API Key 经宿主注入不落磁盘
-宿主 SHALL 从系统钥匙串读取 API Key，并以 `DEEPSEEK_API_KEY` 环境变量在 spawn 时注入 DSH（DSH 官方 per-run override，环境变量优先）；API Key MUST NOT 写入 DSH_HOME、settings 或任何磁盘文件。
+## REMOVED Requirements
 
-#### Scenario: 复用已存 Key
-- **WHEN** 系统钥匙串中已保存 API Key 且磁盘配置无明文 key
-- **THEN** 宿主从钥匙串读出 Key 并注入 DSH 生成，无需用户重输
-
-#### Scenario: 缺少 Key
-- **WHEN** 钥匙串中不存在 API Key
-- **THEN** 生成返回「缺少 LLM 配置」类错误，不静默假装成功
-
-### Requirement: DSH 能力受 Next Story 安全边界控制
-DSH 插件、profile、patch 和工具能力 SHALL 保留可加载和扩展能力，但进入 Next Story 的能力 MUST 经过宿主能力网关；AI 和插件 MUST NOT 写入、追加、替换、删除、移动或整理用户文档，默认也 MUST NOT 执行任意系统命令或任意文件写入。
-
-#### Scenario: Plugin capability is allowed through gateway
-- **WHEN** 已安装插件请求一个 Next Story 明确定义且授权的能力
-- **THEN** 宿主按能力声明和权限策略转发请求
-- **AND** DSH 插件市场和插件运行机制仍然可用
-
-#### Scenario: Plugin attempts document mutation
-- **WHEN** DSH、插件或工具尝试修改用户文档
-- **THEN** 能力网关拒绝该操作
-- **AND** 用户文档内容和保存状态保持不变
-
+### Requirement: API Key 经钥匙串凭据接缝解析
+**Reason**: 官方 `@deepseek-ai/dsh@0.1.0-rc.7` 未提供 OS keychain 凭据 provider（官方 README 标注为 deferred），spike 使用的 `dsh-credentials-keyring` 是第三方插件；改用宿主从钥匙串读取并注入环境变量的方式，更简单且不依赖第三方插件。
+**Migration**: 宿主（Rust）继续从系统钥匙串 `service=com.nextstory.desktop` 读取 API Key，在 spawn DSH 时以 `DEEPSEEK_API_KEY` 环境变量注入；不再挂载 keyring 插件，也不需要 `DEEPSEEK_API_KEY` 槽位的额外交接。

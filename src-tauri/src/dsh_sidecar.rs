@@ -139,6 +139,13 @@ pub fn generate_via_dsh(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(home) = &paths.dsh_home {
+        // 确保版本隔离的 DSH_HOME 存在，否则 DSH 可能启动失败或回退到默认 home。
+        std::fs::create_dir_all(home).map_err(|e| {
+            GenerateAiError::new(
+                GenerateAiErrorCode::Service,
+                format!("无法创建 DSH 运行目录: {e}"),
+            )
+        })?;
         command.env("DSH_HOME", home);
     }
 

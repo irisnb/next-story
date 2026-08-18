@@ -311,4 +311,34 @@ mod tests {
         assert!(!err.message.contains("sk-secret-key-123"));
         assert!(!err.message.contains("auth failed"));
     }
+
+    /// 真机端到端：读系统钥匙串 key → 注入 env → 跑真实 DSH headless 生成。
+    /// 默认 `#[ignore]`，手动运行：`cargo test -- --ignored dsh_headless`。
+    /// 需要 DSH sidecar 已装（`sidecar/node_modules`）、钥匙串已存 key、网络可达。
+    /// 使用隔离临时 DSH_HOME，不碰全局 `~/.dsh`（那里有残留 settings 会覆盖 patch）。
+    #[test]
+    #[ignore = "需要 DSH sidecar + 钥匙串 + 网络，手动运行"]
+    fn dsh_headless_generates_real_response() {
+        use crate::llm_config::secret_store::{KeyringStore, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE};
+
+        let api_key = KeyringStore
+            .get(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .expect("读钥匙串")
+            .expect("钥匙串中有 API Key");
+
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut paths = resolve_paths(None).expect("解析 sidecar 路径");
+        paths.dsh_home = Some(temp.path().join("dsh-home"));
+
+        let params = DshGenerationParams {
+            model: "deepseek-chat".to_string(),
+            api_base_url: "https://api.deepseek.com".to_string(),
+            api_key,
+        };
+        let task = "你是陪剧本创作者思考的助手。选区原文：『林站在天台边。』请提出两个帮助创作者继续思考的问题，纯文本回答。";
+        let result = generate_via_dsh(task, &params, &paths);
+        assert!(result.is_ok(), "DSH 生成失败: {:?}", result.err());
+        let text = result.unwrap();
+        assert!(!text.trim().is_empty(), "DSH 返回了空响应");
+    }
 }

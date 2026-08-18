@@ -67,19 +67,37 @@ pub fn build_runtime_patch(model: &str, api_base_url: &str) -> String {
 /// 解析 DSH sidecar 的本地路径。
 ///
 /// sidecar 根目录优先取应用资源目录（`<resource>/sidecar/`，打包后），
-/// 否则回退到开发目录（`CARGO_MANIFEST_DIR/../sidecar`）。Node 运行时优先用
-/// vendored 的 `sidecar/node-runtime/<node>`，不存在时回退到系统 PATH 的 `node`。
+/// 若资源目录下没有 sidecar（裸 exe 直接运行）则回退到开发目录
+/// （`CARGO_MANIFEST_DIR/../sidecar`）。Node 运行时优先用 vendored 的
+/// `sidecar/node-runtime/<node>`，不存在时回退到系统 PATH 的 `node`。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；传 `None` 表示沿用 DSH 默认 home（仅测试用）。
 pub fn resolve_paths(
     dsh_home: Option<PathBuf>,
     resource_dir: Option<&Path>,
 ) -> Result<DshRuntimePaths, GenerateAiError> {
+    let dev_sidecar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("sidecar");
+
+    // 资源目录优先，但若其下没有 bin.js（未打包裸 exe），回退开发目录。
     let sidecar_root = match resource_dir {
-        Some(dir) => dir.join("sidecar"),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("sidecar"),
+        Some(dir) => {
+            let candidate = dir.join("sidecar");
+            if candidate
+                .join("node_modules")
+                .join("@deepseek-ai")
+                .join("dsh")
+                .join("lib")
+                .join("bin.js")
+                .exists()
+            {
+                candidate
+            } else {
+                dev_sidecar
+            }
+        }
+        None => dev_sidecar,
     };
 
     let vendored_node = sidecar_root.join("node-runtime").join(node_exe_name());

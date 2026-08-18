@@ -59,7 +59,7 @@ mod tests {
         ];
 
         for request in cases {
-            let result = super::generate_ai_result_for_request(Path::new("unused"), request).await;
+            let result = super::generate_ai_result_for_request(Path::new("unused"), None, request).await;
             assert!(!result.ok);
             let error = result.error.expect("malformed request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
@@ -88,7 +88,7 @@ mod tests {
         ];
 
         for request in cases {
-            let result = super::generate_ai_result_for_request(temp.path(), request).await;
+            let result = super::generate_ai_result_for_request(temp.path(), None, request).await;
             assert!(!result.ok);
             let error = result.error.expect("invalid request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
@@ -144,7 +144,7 @@ mod tests {
         ];
 
         for request in cases {
-            let result = super::generate_ai_result_for_request(temp.path(), request).await;
+            let result = super::generate_ai_result_for_request(temp.path(), None, request).await;
             assert!(!result.ok, "未知字段请求必须被拒绝");
             let error = result.error.expect("rejected request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
@@ -268,12 +268,14 @@ async fn generate_ai_thinking(
         Ok(dir) => dir,
         Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
     };
+    let resource_dir = app.path().resource_dir().ok();
 
-    Ok(generate_ai_result_for_request(&dir, request).await)
+    Ok(generate_ai_result_for_request(&dir, resource_dir.as_deref(), request).await)
 }
 
 async fn generate_ai_result_for_request(
     base_dir: &std::path::Path,
+    resource_dir: Option<&std::path::Path>,
     request: serde_json::Value,
 ) -> GenerateAiResult {
     let request = match llm_config::parse_generate_ai_request(request) {
@@ -281,7 +283,7 @@ async fn generate_ai_result_for_request(
         Err(error) => return GenerateAiResult::failure(error),
     };
 
-    llm_config::generate_ai_result_in(base_dir, request).await
+    llm_config::generate_ai_result_in_with_resource(base_dir, resource_dir, request).await
 }
 
 // ========== Application Entry Point ==========

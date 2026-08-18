@@ -25,25 +25,32 @@ const FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当
 
 /// 使用唯一保存配置，围绕选区原文发起一次真实非流式生成（DSH headless）。
 ///
-/// 使用 DSH 默认 home；测试路径使用本函数，生产命令入口使用
-/// [`generate_ai_thinking_in_dir`]（版本隔离 home）。
+/// 使用 DSH 默认 home 与开发目录；测试路径使用本函数，生产命令入口使用
+/// [`generate_ai_thinking_in_dir`]（版本隔离 home + 资源目录）。
 pub async fn generate_ai_thinking(
     config: &LlmConfig,
     request: impl Into<GenerateAiRequest>,
 ) -> Result<String, GenerateAiError> {
     let request = request.into();
-    generate_with_dsh(config, &request, None).await
+    generate_with_dsh(config, &request, None, None).await
 }
 
-/// 从应用数据目录生成：用版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current>`）。
-/// 生产命令入口使用本函数。
+/// 从应用数据目录与资源目录生成：用版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current>`）
+/// 与打包后的资源目录解析 sidecar。生产命令入口使用本函数。
 pub async fn generate_ai_thinking_in_dir(
     config: &LlmConfig,
     request: impl Into<GenerateAiRequest>,
     base_dir: &Path,
+    resource_dir: Option<&Path>,
 ) -> Result<String, GenerateAiError> {
     let request = request.into();
-    generate_with_dsh(config, &request, Some(versioned_dsh_home(base_dir))).await
+    generate_with_dsh(
+        config,
+        &request,
+        Some(versioned_dsh_home(base_dir)),
+        resource_dir,
+    )
+    .await
 }
 
 /// 通过 DSH headless 生成一次回复。
@@ -54,10 +61,12 @@ pub async fn generate_ai_thinking_in_dir(
 /// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；`None` 表示沿用 DSH 默认 home（仅测试路径）。
+/// `resource_dir` 为打包后的资源目录；`None` 表示开发目录回退。
 async fn generate_with_dsh(
     config: &LlmConfig,
     request: &GenerateAiRequest,
     dsh_home: Option<PathBuf>,
+    resource_dir: Option<&Path>,
 ) -> Result<String, GenerateAiError> {
     let task = build_task_string(request)?;
 
@@ -68,7 +77,7 @@ async fn generate_with_dsh(
         )
     })?;
 
-    let paths = dsh_sidecar::resolve_paths(dsh_home)?;
+    let paths = dsh_sidecar::resolve_paths(dsh_home, resource_dir)?;
     let params = DshGenerationParams {
         model: config.model.clone(),
         api_base_url: config.api_base_url.clone(),

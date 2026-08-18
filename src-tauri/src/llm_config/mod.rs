@@ -258,6 +258,16 @@ pub async fn generate_ai_result_in(
     base_dir: &Path,
     request: impl Into<GenerateAiRequest>,
 ) -> GenerateAiResult {
+    generate_ai_result_in_with_resource(base_dir, None, request).await
+}
+
+/// 生产命令入口：额外接收打包后的资源目录（解析 sidecar），
+/// 其余逻辑与 [`generate_ai_result_in`] 相同。
+pub async fn generate_ai_result_in_with_resource(
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+    request: impl Into<GenerateAiRequest>,
+) -> GenerateAiResult {
     let request = request.into();
     if let Err(error) = generate::validate_generate_ai_request(&request) {
         return GenerateAiResult::failure(error);
@@ -290,7 +300,7 @@ pub async fn generate_ai_result_in(
         }
     };
 
-    match generate_ai_thinking_in_dir(&config, request, &config_base_dir).await {
+    match generate_ai_thinking_in_dir(&config, request, &config_base_dir, resource_dir).await {
         Ok(content) => GenerateAiResult::success(content),
         Err(error) => GenerateAiResult::failure(error),
     }

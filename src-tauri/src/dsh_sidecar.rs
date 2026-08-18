@@ -15,7 +15,7 @@
 //!   守铁律 1（见 [`crate::capability_gateway::FORBIDDEN_TOOL_IDS`]）。
 
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -66,15 +66,30 @@ pub fn build_runtime_patch(model: &str, api_base_url: &str) -> String {
 
 /// 解析 DSH sidecar 的本地路径。
 ///
-/// 开发期指向 `sidecar/node_modules` 下的入口；生产打包后应从应用资源目录解析
-/// （见打包任务的 `bundle.resources` / `externalBin`，届时替换本函数实现）。
+/// sidecar 根目录优先取应用资源目录（`<resource>/sidecar/`，打包后），
+/// 否则回退到开发目录（`CARGO_MANIFEST_DIR/../sidecar`）。Node 运行时优先用
+/// vendored 的 `sidecar/node-runtime/<node>`，不存在时回退到系统 PATH 的 `node`。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；传 `None` 表示沿用 DSH 默认 home（仅测试用）。
-pub fn resolve_paths(dsh_home: Option<PathBuf>) -> Result<DshRuntimePaths, GenerateAiError> {
-    let node_bin = PathBuf::from("node");
-    let bin_js = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("sidecar")
+pub fn resolve_paths(
+    dsh_home: Option<PathBuf>,
+    resource_dir: Option<&Path>,
+) -> Result<DshRuntimePaths, GenerateAiError> {
+    let sidecar_root = match resource_dir {
+        Some(dir) => dir.join("sidecar"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("sidecar"),
+    };
+
+    let vendored_node = sidecar_root.join("node-runtime").join(node_exe_name());
+    let node_bin = if vendored_node.exists() {
+        vendored_node
+    } else {
+        PathBuf::from("node")
+    };
+
+    let bin_js = sidecar_root
         .join("node_modules")
         .join("@deepseek-ai")
         .join("dsh")
@@ -91,6 +106,16 @@ pub fn resolve_paths(dsh_home: Option<PathBuf>) -> Result<DshRuntimePaths, Gener
         bin_js,
         dsh_home,
     })
+}
+
+#[cfg(windows)]
+fn node_exe_name() -> &'static str {
+    "node.exe"
+}
+
+#[cfg(not(windows))]
+fn node_exe_name() -> &'static str {
+    "node"
 }
 
 /// 通过 DSH headless 生成一次 AI 回复。
@@ -335,7 +360,7 @@ mod tests {
             .expect("钥匙串中有 API Key");
 
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let mut paths = resolve_paths(None).expect("解析 sidecar 路径");
+        let mut paths = resolve_paths(None, None).expect("解析 sidecar 路径");
         paths.dsh_home = Some(temp.path().join("dsh-home"));
 
         let params = DshGenerationParams {

@@ -27,6 +27,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "../sidecar/node_modules/": "sidecar/node_modules/",
+      "../sidecar/node-runtime/": "sidecar/node-runtime/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

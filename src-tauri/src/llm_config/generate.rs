@@ -6,6 +6,16 @@ use super::{
     http, parse_api_base_url, validate_llm_config, GenerateAiError, GenerateAiErrorCode,
     GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
 };
+use crate::dsh_sidecar::{self, DshGenerationParams};
+
+/// DSH 生成开关（迁移期内部保险，不作为长期产品配置）。
+/// 默认关闭（沿用现有 Rust 直连路径）；设为 `1`/`true` 走 DSH headless 路径。
+fn dsh_generation_enabled() -> bool {
+    matches!(
+        std::env::var("NEXT_STORY_DSH_ENABLED").as_deref(),
+        Ok("1") | Ok("true")
+    )
+}
 
 /// 固定首版思考任务：围绕冻结选区提出观察、问题和可能方向，不代写正文。
 /// 该职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
@@ -39,6 +49,11 @@ pub async fn generate_ai_thinking_with_timeout(
     total_timeout: Duration,
 ) -> Result<String, GenerateAiError> {
     let request = request.into();
+
+    if dsh_generation_enabled() {
+        return generate_with_dsh(config, &request).await;
+    }
+
     let messages = build_messages(&request)?;
 
     let base_url = parse_api_base_url(&config.api_base_url).map_err(|_| {
@@ -65,6 +80,89 @@ pub async fn generate_ai_thinking_with_timeout(
             "模型没有返回有效的思考内容",
         )
     })
+}
+
+/// 通过 DSH headless 生成一次回复。
+///
+/// DSH 一次性任务模型接收单个 task 字符串，因此把固定系统提示词、选区原文、
+/// 可选方向与追问轮次序列化进一个 task；spike 已验证「整段对话序列化进一个 task」
+/// 的追问仍锚定首次冻结选区。子进程 spawn 是阻塞操作，放进阻塞线程避免占住异步执行线程。
+/// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制，不使用 HTTP 路径的 60s。
+async fn generate_with_dsh(
+    config: &LlmConfig,
+    request: &GenerateAiRequest,
+) -> Result<String, GenerateAiError> {
+    let task = build_task_string(request)?;
+
+    validate_llm_config(config).map_err(|_| {
+        GenerateAiError::new(
+            GenerateAiErrorCode::ConfigurationRequired,
+            "LLM 配置不完整，请检查 API 地址、Key 与模型名",
+        )
+    })?;
+
+    let paths = dsh_sidecar::resolve_paths()?;
+    let params = DshGenerationParams {
+        model: config.model.clone(),
+        api_base_url: config.api_base_url.clone(),
+        api_key: config.api_key.clone(),
+    };
+
+    match tauri::async_runtime::spawn_blocking(move || {
+        dsh_sidecar::generate_via_dsh(&task, &params, &paths)
+    })
+    .await
+    {
+        Ok(Ok(content)) => Ok(content),
+        Ok(Err(error)) => Err(error),
+        Err(join_error) => Err(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("DSH 生成任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 把请求序列化为单个 DSH task 字符串：固定系统提示词 + 选区原文（含可选方向）
+/// + 追问轮次（按角色标注），保持无状态临时对话语义。
+fn build_task_string(request: &GenerateAiRequest) -> Result<String, GenerateAiError> {
+    validate_generate_ai_request(request)?;
+
+    let (selected_text, thinking_direction, turns) = match request {
+        GenerateAiRequest::First {
+            selected_text,
+            thinking_direction,
+        } => (selected_text.as_str(), thinking_direction.as_deref(), None),
+        GenerateAiRequest::FollowUp {
+            selected_text,
+            thinking_direction,
+            messages,
+        } => (
+            selected_text.as_str(),
+            thinking_direction.as_deref(),
+            Some(messages),
+        ),
+    };
+
+    let mut task = String::new();
+    task.push_str(FIXED_SYSTEM_PROMPT);
+    task.push_str("\n\n");
+    task.push_str(&first_user_content(selected_text, thinking_direction));
+
+    if let Some(turns) = turns {
+        for turn in turns {
+            task.push_str("\n\n");
+            match turn.role {
+                GenerateAiMessageRole::User => {
+                    task.push_str(&format!("用户追问：{}", turn.content))
+                }
+                GenerateAiMessageRole::Assistant => {
+                    task.push_str(&format!("你的上一次回应：{}", turn.content))
+                }
+            }
+        }
+    }
+
+    Ok(task)
 }
 
 fn invalid_request() -> GenerateAiError {

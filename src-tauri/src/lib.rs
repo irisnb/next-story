@@ -1,6 +1,9 @@
+pub mod capability_gateway;
 pub mod dsh_sidecar;
+pub mod dsh_version;
 pub mod llm_config;
 pub mod project;
+pub mod runtime_contract;
 
 use std::path::PathBuf;
 

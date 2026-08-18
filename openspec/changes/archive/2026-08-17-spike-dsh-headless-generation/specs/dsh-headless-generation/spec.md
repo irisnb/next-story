@@ -22,7 +22,7 @@ sidecar 使用的 DSH SHALL 锁定为精确版本（当前 `0.1.0-rc.7`），Nod
 
 ### Requirement: API Key 经钥匙串凭据接缝解析
 
-sidecar SHALL 通过 `dsh-credentials-keyring` 挂载的凭据接缝解析 API Key，读取与现有 Rust 后端相同的钥匙串槽位（`service=com.nextstory.desktop`、`account=llm-api-key`），不在磁盘落明文。
+sidecar SHALL 通过 `dsh-credentials-keyring` 挂载的凭据接缝解析 API Key，读取钥匙串槽位（`service=com.nextstory.desktop`、`account=DEEPSEEK_API_KEY`），不在磁盘落明文。
 
 #### Scenario: 复用已存 Key
 - **WHEN** 系统钥匙串中已保存 API Key 且磁盘配置无明文 key
@@ -41,5 +41,5 @@ DSH 路径的错误 MUST 映射到与现有链相同的 `GenerateAiErrorCode` �
 - **THEN** 返回 `code = authentication` 的错误，message 不泄露 Key
 
 #### Scenario: 超时映射
-- **WHEN** 生成超过 60 秒被壳侧强制终止
+- **WHEN** 生成超过超时上限（当前 180 秒）被壳侧强制终止
 - **THEN** 返回 `code = timeout` 的错误

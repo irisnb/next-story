@@ -261,8 +261,8 @@ mod tests {
         assert!(patch.contains("model: 'deepseek-chat'"));
         assert!(patch.contains("baseURL: 'https://api.deepseek.com'"));
         assert!(patch.contains("thinking: disabled"));
-        // 文件写 + 命令执行 + 联网 + 子 agent 四类危险入口必须都被禁用。
-        for id in ["tool-fs", "tool-bash", "tool-pwsh", "tool-web", "tool-subagent"] {
+        // 铁律 1 测试锚点：能力网关声明的每一类危险入口都必须被禁用，缺一不可。
+        for id in FORBIDDEN_TOOL_IDS {
             assert!(
                 patch.contains(&format!("- id: {id}\n  disabled: true")),
                 "patch 缺少禁用 {id}"

@@ -9,8 +9,8 @@
 - [ ] 2.1 Vendor the supported Node runtime and exact DSH `0.1.0-rc.7` dependency set in the sidecar package, including reproducible lockfile and build metadata.
 - [ ] 2.2 Add Tauri packaging resources and runtime resource-directory resolution for `bin.js`, Node, adapter assets, profiles, patches, and plugins.
 - [x] 2.3 Implement sidecar process startup, concurrent stdout/stderr draining, exit-code handling, timeout termination, child-process cleanup, and diagnostic redaction.
-- [ ] 2.4 Implement per-version `versions/<version>`, `homes/<version>`, and current-version pointer management, including validation-before-activation and rollback to the previously verified version.
-- [ ] 2.5 Load Next Story profile, patch, and plugin configuration from the version-isolated runtime without relying on the user global `~/.dsh` state.
+- [x] 2.4 Implement per-version `versions/<version>`, `homes/<version>`, and current-version pointer management, including validation-before-activation and rollback to the previously verified version.
+- [x] 2.5 Load Next Story profile, patch, and plugin configuration from the version-isolated runtime without relying on the user global `~/.dsh` state.
 
 ## 3. Credentials and DSH Generation Integration
 
@@ -29,7 +29,7 @@
 
 ## 5. Verification and Cutover
 
-- [ ] 5.1 Add unit and integration tests for Runtime Contract conversion, DSH output parsing, capability declarations, stable error mapping, redaction, and invalid payload rejection.
+- [x] 5.1 Add unit and integration tests for Runtime Contract conversion, DSH output parsing, capability declarations, stable error mapping, redaction, and invalid payload rejection.
 - [ ] 5.2 Add sidecar lifecycle tests for packaged resource resolution, startup, stdout/stderr draining, timeout, unexpected exit, child cleanup, and no residual process state on Windows.
 - [ ] 5.3 Add end-to-end tests for LLM configuration, keyring reuse/missing/invalid keys, first AI generation, anchored follow-up, and unchanged user-document bytes.
 - [ ] 5.4 Add plugin/profile/patch permission tests proving authorized capability routing works and document mutation, arbitrary file writes, and arbitrary command execution are rejected.

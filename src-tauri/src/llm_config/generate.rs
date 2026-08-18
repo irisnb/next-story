@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -7,6 +8,7 @@ use super::{
     GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
 };
 use crate::dsh_sidecar::{self, DshGenerationParams};
+use crate::dsh_version::DshVersionLayout;
 
 /// DSH 生成开关（迁移期内部保险，不作为长期产品配置）。
 /// 默认关闭（沿用现有 Rust 直连路径）；设为 `1`/`true` 走 DSH headless 路径。
@@ -43,18 +45,44 @@ pub async fn generate_ai_thinking(
     .await
 }
 
+/// 从应用数据目录生成：走 DSH 时用版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current>`）。
+/// 生产命令入口使用本函数；测试直接调 [`generate_ai_thinking`]（默认 DSH home）。
+pub async fn generate_ai_thinking_in_dir(
+    config: &LlmConfig,
+    request: impl Into<GenerateAiRequest>,
+    base_dir: &Path,
+) -> Result<String, GenerateAiError> {
+    let request = request.into();
+    generate_ai_thinking_core(
+        config,
+        &request,
+        Duration::from_secs(http::GENERATION_TIMEOUT_SECS),
+        Some(versioned_dsh_home(base_dir)),
+    )
+    .await
+}
+
 pub async fn generate_ai_thinking_with_timeout(
     config: &LlmConfig,
     request: impl Into<GenerateAiRequest>,
     total_timeout: Duration,
 ) -> Result<String, GenerateAiError> {
     let request = request.into();
+    generate_ai_thinking_core(config, &request, total_timeout, None).await
+}
 
+/// 核心生成逻辑：DSH 开关、请求校验、配置校验、HTTP/DSH 分流。
+async fn generate_ai_thinking_core(
+    config: &LlmConfig,
+    request: &GenerateAiRequest,
+    total_timeout: Duration,
+    dsh_home: Option<PathBuf>,
+) -> Result<String, GenerateAiError> {
     if dsh_generation_enabled() {
-        return generate_with_dsh(config, &request).await;
+        return generate_with_dsh(config, request, dsh_home).await;
     }
 
-    let messages = build_messages(&request)?;
+    let messages = build_messages(request)?;
 
     let base_url = parse_api_base_url(&config.api_base_url).map_err(|_| {
         GenerateAiError::new(
@@ -72,7 +100,7 @@ pub async fn generate_ai_thinking_with_timeout(
 
     let value = http::post_chat_completions(config, base_url, messages, total_timeout)
         .await
-        .map_err(|error| map_request_error(&request, error))?;
+        .map_err(|error| map_request_error(request, error))?;
 
     http::extract_assistant_text(&value).ok_or_else(|| {
         GenerateAiError::new(
@@ -88,9 +116,12 @@ pub async fn generate_ai_thinking_with_timeout(
 /// 可选方向与追问轮次序列化进一个 task；spike 已验证「整段对话序列化进一个 task」
 /// 的追问仍锚定首次冻结选区。子进程 spawn 是阻塞操作，放进阻塞线程避免占住异步执行线程。
 /// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制，不使用 HTTP 路径的 60s。
+///
+/// `dsh_home` 为版本隔离的 DSH_HOME；`None` 表示沿用 DSH 默认 home（仅测试路径）。
 async fn generate_with_dsh(
     config: &LlmConfig,
     request: &GenerateAiRequest,
+    dsh_home: Option<PathBuf>,
 ) -> Result<String, GenerateAiError> {
     let task = build_task_string(request)?;
 
@@ -101,7 +132,7 @@ async fn generate_with_dsh(
         )
     })?;
 
-    let paths = dsh_sidecar::resolve_paths()?;
+    let paths = dsh_sidecar::resolve_paths(dsh_home)?;
     let params = DshGenerationParams {
         model: config.model.clone(),
         api_base_url: config.api_base_url.clone(),
@@ -120,6 +151,11 @@ async fn generate_with_dsh(
             format!("DSH 生成任务执行失败: {join_error}"),
         )),
     }
+}
+
+/// 从应用数据目录派生版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current_version>`）。
+fn versioned_dsh_home(base_dir: &Path) -> PathBuf {
+    DshVersionLayout::new(base_dir.join("dsh")).current_home()
 }
 
 /// 把请求序列化为单个 DSH task 字符串：固定系统提示词 + 选区原文（含可选方向）
@@ -274,4 +310,53 @@ fn map_request_error(request: &GenerateAiRequest, mut error: GenerateAiError) ->
         error.message = "请求内容过长，请缩短当前临时对话".to_string();
     }
     error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm_config::GenerateAiMessage;
+
+    #[test]
+    fn build_task_string_for_first_includes_system_prompt_and_selection() {
+        let request = GenerateAiRequest::First {
+            selected_text: "林站在天台边。".to_string(),
+            thinking_direction: None,
+        };
+        let task = build_task_string(&request).expect("build task");
+        assert!(task.contains(FIXED_SYSTEM_PROMPT), "必须包含固定系统提示词");
+        assert!(task.contains("林站在天台边。"), "必须包含选区原文");
+    }
+
+    #[test]
+    fn build_task_string_for_follow_up_preserves_turns_and_roles() {
+        let request = GenerateAiRequest::FollowUp {
+            selected_text: "林站在天台边。".to_string(),
+            thinking_direction: None,
+            messages: vec![
+                GenerateAiMessage {
+                    role: GenerateAiMessageRole::Assistant,
+                    content: "他为什么站上天台？".to_string(),
+                },
+                GenerateAiMessage {
+                    role: GenerateAiMessageRole::User,
+                    content: "我还没想清楚。".to_string(),
+                },
+            ],
+        };
+        let task = build_task_string(&request).expect("build task");
+        assert!(task.contains("你的上一次回应：他为什么站上天台？"));
+        assert!(task.contains("用户追问：我还没想清楚。"));
+        assert!(task.contains("林站在天台边。"), "追问仍锚定原选区");
+    }
+
+    #[test]
+    fn build_task_string_rejects_empty_selection() {
+        let request = GenerateAiRequest::First {
+            selected_text: "   ".to_string(),
+            thinking_direction: None,
+        };
+        let err = build_task_string(&request).expect_err("empty selection rejected");
+        assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
+    }
 }

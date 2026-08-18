@@ -243,7 +243,9 @@ impl GenerateAiResult {
 }
 
 pub mod generate;
-pub use generate::{generate_ai_thinking, generate_ai_thinking_with_timeout};
+pub use generate::{
+    generate_ai_thinking, generate_ai_thinking_in_dir, generate_ai_thinking_with_timeout,
+};
 
 mod http;
 pub use http::{
@@ -268,6 +270,7 @@ pub async fn generate_ai_result_in(
 
     // 同步目录/文件/钥匙串读取放入阻塞线程，避免占住异步执行线程。
     let base_dir = base_dir.to_path_buf();
+    let config_base_dir = base_dir.clone();
     let loaded = tauri::async_runtime::spawn_blocking(move || load_llm_config(&base_dir)).await;
 
     let config = match loaded {
@@ -292,7 +295,7 @@ pub async fn generate_ai_result_in(
         }
     };
 
-    match generate_ai_thinking(&config, request).await {
+    match generate_ai_thinking_in_dir(&config, request, &config_base_dir).await {
         Ok(content) => GenerateAiResult::success(content),
         Err(error) => GenerateAiResult::failure(error),
     }

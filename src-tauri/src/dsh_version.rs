@@ -65,6 +65,13 @@ impl DshVersionLayout {
             .unwrap_or_else(|| LOCKED_DSH_VERSION.to_string())
     }
 
+    /// 当前激活版本的 DSH_HOME（`homes/<current_version>`）。
+    ///
+    /// 指针缺失时回退到锁定版本；目录本身可能尚未创建，由调用方按需 `create_dir_all`。
+    pub fn current_home(&self) -> PathBuf {
+        self.home_dir(&self.current_version())
+    }
+
     /// 激活某版本：原子写入 `current.json` 指针。
     ///
     /// 调用方应先确保该版本已安装且通过验证；本函数只负责切换指针，不做校验，

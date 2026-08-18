@@ -68,7 +68,9 @@ pub fn build_runtime_patch(model: &str, api_base_url: &str) -> String {
 ///
 /// 开发期指向 `sidecar/node_modules` 下的入口；生产打包后应从应用资源目录解析
 /// （见打包任务的 `bundle.resources` / `externalBin`，届时替换本函数实现）。
-pub fn resolve_paths() -> Result<DshRuntimePaths, GenerateAiError> {
+///
+/// `dsh_home` 为版本隔离的 DSH_HOME；传 `None` 表示沿用 DSH 默认 home（仅测试用）。
+pub fn resolve_paths(dsh_home: Option<PathBuf>) -> Result<DshRuntimePaths, GenerateAiError> {
     let node_bin = PathBuf::from("node");
     let bin_js = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -87,7 +89,7 @@ pub fn resolve_paths() -> Result<DshRuntimePaths, GenerateAiError> {
     Ok(DshRuntimePaths {
         node_bin,
         bin_js,
-        dsh_home: None,
+        dsh_home,
     })
 }
 

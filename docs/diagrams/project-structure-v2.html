@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Next Story · 项目结构图 v2</title>
+<style>
+  :root{
+    --paper:#F5F3EE;
+    --ink:#23252A;
+    --ink-2:#5B5D64;
+    --ink-3:#8A8C93;
+    --front-bd:#5C7B93; --front-bg:#E9EEF3; --front-dk:#2C4A63;
+    --tauri-bd:#B9922F; --tauri-bg:#F6EED6; --tauri-dk:#7C6119;
+    --rust-bd:#B05B49; --rust-bg:#F3E5E1; --rust-dk:#7E3627;
+    --dsh-bd:#7D8B4B;  --dsh-bg:#EBEEDA;  --dsh-dk:#55632D;
+    --store-bd:#5A5B63;--store-bg:#ECECEF; --store-dk:#3B3C42;
+    --sec:#B3261E;     --sec-bg:#F8E7E5;
+    --plan-bd:#9AA6B5; --plan-bg:#EFF1F5; --plan-tx:#727C8A;
+    --arrow:#5B5D64;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--paper); }
+  body{
+    font-family:"Segoe UI","Microsoft YaHei","微软雅黑",system-ui,sans-serif;
+    color:var(--ink);
+  }
+  #canvas{
+    position:relative; width:1920px; height:1740px;
+    background:var(--paper);
+    overflow:hidden;
+  }
+  .mono{ font-family:Consolas,"Cascadia Mono",ui-monospace,monospace; }
+
+  .box{ position:absolute; background:#fff; border:1px solid var(--ink-3); border-radius:3px; }
+  .col-hdr{ position:absolute; display:flex; align-items:center; padding:0 12px; font-weight:600; font-size:16px; letter-spacing:.2px; }
+
+  .cluster{ position:absolute; background:rgba(255,255,255,.6); border:1px solid #D8D6D0; border-left:3px solid var(--ink-3); border-radius:3px; padding:6px 8px 6px 10px; }
+  .cluster-t{ font-size:11px; font-weight:700; letter-spacing:.5px; color:var(--ink-2); text-transform:uppercase; margin-bottom:5px; }
+  .chip{ display:inline-block; font-size:12px; line-height:1.35; margin:1px 4px 1px 0; padding:1px 4px; background:#fff; border:1px solid #E2E0DA; border-radius:2px; white-space:nowrap; }
+  .chip .role{ color:var(--ink-3); font-size:10.5px; }
+  .chip.key{ font-weight:600; }
+
+  .step{ position:absolute; background:#fff; border:1px solid var(--ink-3); border-radius:3px; padding:8px 10px; }
+  .step-n{ position:absolute; left:-11px; top:8px; width:20px; height:20px; border-radius:50%; color:#fff; font-size:11px; font-weight:700; text-align:center; line-height:20px; }
+  .step-t{ font-size:12.5px; font-weight:700; margin:0 0 3px 8px; }
+  .step-f{ font-size:11.5px; line-height:1.4; color:var(--ink-2); }
+  .step-f .mono{ color:var(--ink); }
+
+  .band-hdr{ position:absolute; font-size:13px; font-weight:700; color:var(--ink-2); letter-spacing:.4px; }
+
+  .legend-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2); margin-right:18px; }
+  .swatch{ width:12px; height:12px; border-radius:2px; border:1px solid rgba(0,0,0,.18); }
+  .legend-line{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2); margin-right:18px; }
+
+  .no-enter{
+    width:20px; height:20px; border-radius:50%;
+    border:2px solid var(--sec); position:relative; display:inline-block; vertical-align:middle;
+  }
+  .no-enter::after{
+    content:""; position:absolute; left:-2px; top:7px; width:22px; height:2.5px; background:var(--sec);
+    transform:rotate(-45deg);
+  }
+  .reddot{ color:var(--sec); font-weight:700; }
+
+  .muted{ color:var(--ink-3); }
+  .small{ font-size:10.5px; }
+</style>
+</head>
+<body>
+<div id="canvas">
+
+  <!-- ============ HEADER ============ -->
+  <div style="position:absolute; left:40px; top:34px; font-size:32px; font-weight:700; letter-spacing:.5px; color:var(--ink);">Next Story · 项目结构图</div>
+  <div style="position:absolute; left:40px; top:76px; font-size:15px; color:var(--ink-2);">双层总览 + 关键链路放大 —— 带 AI 思考能力的剧本写作桌面编辑器</div>
+
+  <div style="position:absolute; left:1200px; top:34px; text-align:right; font-size:12.5px; line-height:1.7; color:var(--ink-2);">
+    <div>v0.1.0 &nbsp;·&nbsp; 2026-08-19 &nbsp;·&nbsp; Tauri 2 (WebView2)</div>
+    <div class="mono" style="font-size:12px;">Node v24.15.0 &nbsp;·&nbsp; @deepseek-ai/dsh 0.1.0-rc.7（锁版）</div>
+    <div style="color:var(--ink-3);">代码地图基于 <span class="mono">src/</span> 与 <span class="mono">src-tauri/</span> 实测</div>
+  </div>
+
+  <!-- legend -->
+  <div style="position:absolute; left:40px; top:112px; white-space:nowrap;">
+    <span class="legend-chip"><span class="swatch" style="background:var(--front-bg);"></span>前端 WebView2</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--tauri-bg);"></span>Tauri IPC</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--rust-bg);"></span>Rust 后端</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--dsh-bg);"></span>DSH sidecar</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--store-bg);"></span>作品存储</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--sec-bg);"></span>安全边界</span>
+    <span class="legend-chip"><span class="swatch" style="background:var(--plan-bg); border-style:dashed;"></span>规划中（虚线）</span>
+    <span class="legend-line"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="#5B5D64" stroke-width="1.5"/></svg>实线 = 已实现</span>
+    <span class="legend-line"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="#9AA6B5" stroke-width="1.5" stroke-dasharray="4 3"/></svg>虚线 = 规划中</span>
+  </div>
+
+  <!-- ============ SVG ARROWS (overlay) ============ -->
+  <svg width="1920" height="1740" viewBox="0 0 1920 1740" style="position:absolute; left:0; top:0; pointer-events:none;">
+    <defs>
+      <marker id="ar-ink" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#5B5D64"/></marker>
+      <marker id="ar-gold" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#B9922F"/></marker>
+      <marker id="ar-olive" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#7D8B4B"/></marker>
+      <marker id="ar-red" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#B3261E"/></marker>
+    </defs>
+
+    <!-- overview: frontend -> IPC -> Rust -->
+    <path d="M600,470 L616,470" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M880,470 L896,470" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <text x="606" y="462" font-size="11" fill="#5B5D64">invoke</text>
+    <text x="886" y="462" font-size="11" fill="#5B5D64">handler</text>
+
+    <!-- overview: project-api bridge (frontend bottom) -> IPC -->
+    <path d="M596,775 L616,775" stroke="#B9922F" stroke-width="1.6" fill="none" marker-end="url(#ar-gold)"/>
+
+    <!-- overview: dsh_sidecar (R4) -> sidecar runtime (R5) -->
+    <path d="M1552,352 L1552,358" stroke="#7D8B4B" stroke-width="1.6" fill="none" marker-end="url(#ar-olive)"/>
+
+    <!-- Chain A vertical flow (center x=255) -->
+    <path d="M255,948 L255,966" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M255,1026 L255,1034" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M255,1110 L255,1128" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M255,1204 L255,1214" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M255,1314 L255,1322" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+
+    <!-- Chain B vertical flow (center x=1440) -->
+    <path d="M1440,974 L1440,992" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M1440,1088 L1440,1096" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M1440,1162 L1440,1170" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M1440,1260 L1440,1268" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+    <path d="M1440,1386 L1440,1394" stroke="#5B5D64" stroke-width="1.6" fill="none" marker-end="url(#ar-ink)"/>
+
+    <!-- red no-write boundary: DSH/AI side -> user documents -->
+    <path d="M1000,1420 L500,1420" stroke="#B3261E" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ar-red)"/>
+    <text x="560" y="1410" font-size="11.5" fill="#B3261E" font-weight="600">红线 · 零写回 —— AI / DSH 不写用户文档</text>
+  </svg>
+
+  <!-- ============ SECTION 1 LABEL ============ -->
+  <div style="position:absolute; left:40px; top:142px; font-size:13px; font-weight:700; color:var(--ink-2); letter-spacing:.5px;">一 · 运行层总览（模块地图）</div>
+
+  <!-- ===== FRONTEND COLUMN ===== -->
+  <div class="box" style="left:40px; top:166px; width:560px; height:640px; border-color:var(--front-bd); background:var(--front-bg);">
+    <div class="col-hdr" style="left:0; top:0; width:100%; height:34px; background:#DCE5EC; color:var(--front-dk); border-bottom:1px solid var(--front-bd);">前端 <span class="mono" style="font-size:13px;">src/</span><span class="muted small" style="font-weight:400;"> · WebView2 / TypeScript</span></div>
+
+    <div class="cluster" style="left:12px; top:46px; width:534px; height:76px; border-left-color:var(--front-bd);">
+      <div class="cluster-t">入口 · 页面</div>
+      <span class="chip key mono">main.ts</span>
+      <span class="chip mono">views.ts <span class="role">四页切换</span></span>
+      <span class="chip mono">dom.ts <span class="role">DOM 引用</span></span>
+      <span class="chip mono">types.ts <span class="role">契约</span></span>
+      <div class="small muted" style="margin-top:3px;">页面：welcome / new-project / editor / llm-config</div>
+    </div>
+
+    <div class="cluster" style="left:12px; top:130px; width:534px; height:72px; border-left-color:var(--front-bd);">
+      <div class="cluster-t">页面流程 · 配置 · 离开守卫</div>
+      <span class="chip mono">new-project-form.ts <span class="role">建/开作品</span></span>
+      <span class="chip mono">llm-config-form.ts · llm-config-state.ts <span class="role">设置</span></span>
+      <span class="chip mono">close-guard.ts · leave-guard.ts · leave-dialog.ts</span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:210px; width:534px; height:150px; border-left-color:var(--front-bd);">
+      <div class="cluster-t">编辑器 · 富文本内核（Tiptap）</div>
+      <span class="chip key mono">editor.ts <span class="role">编排/保存/脏状态</span></span>
+      <span class="chip key mono">rich-text-editor.ts <span class="role">Tiptap 内核</span></span>
+      <span class="chip key mono">structured-notebook.ts <span class="role">本子契约 v2（前端侧）</span></span>
+      <span class="chip mono">editor-extensions.ts · format-commands.ts</span>
+      <span class="chip mono">find-replace.ts · controlled-paste.ts · list-numbering.ts</span>
+      <span class="chip mono">editor-margin.ts · editor-save-state.ts · notebook-memory.ts</span>
+      <span class="chip mono">selection-adapter.ts</span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:368px; width:534px; height:130px; border-left-color:var(--front-bd);">
+      <div class="cluster-t">AI · 选区入口 & 请求</div>
+      <span class="chip key mono">selection-entry.ts <span class="role">选区浮动入口（及时召唤/思维扩展）</span></span>
+      <span class="chip key mono">ai-feature.ts <span class="role">AI 装配</span></span>
+      <span class="chip key mono">ai-feature-first-request.ts <span class="role">首问预检</span></span>
+      <span class="chip key mono">ai-feature-follow-up.ts <span class="role">追问</span></span>
+      <span class="chip key mono">ai-request.ts <span class="role">AiRequestCoordinator（单飞）</span></span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:506px; width:534px; height:78px; border-left-color:var(--front-bd);">
+      <div class="cluster-t">AI · 面板（纯文本 · 零写回）</div>
+      <span class="chip key mono">ai-panel.ts <span class="role">面板渲染</span></span>
+      <span class="chip key mono">ai-panel-reducer.ts <span class="role">状态迁移</span></span>
+      <span class="chip key mono">ai-panel-conversation.ts <span class="role">TemporaryConversation</span></span>
+      <span class="chip mono">ai-panel-state.ts · view-model.ts · scroll.ts · request-state.ts</span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:592px; width:534px; height:38px; border-left-color:var(--tauri-bd); background:var(--tauri-bg);">
+      <div style="display:flex; align-items:center; gap:8px; height:100%;">
+        <span class="chip key mono" style="border-color:var(--tauri-bd);">project-api.ts <span class="role">Tauri invoke 窄类型桥</span></span>
+        <span class="small muted">建/开/存 + LLM 配置 + 生成，全部经此调用后端</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== IPC COLUMN ===== -->
+  <div class="box" style="left:620px; top:166px; width:260px; height:640px; border-color:var(--tauri-bd); background:var(--tauri-bg);">
+    <div class="col-hdr" style="left:0; top:0; width:100%; height:34px; background:#F0E4C2; color:var(--tauri-dk); border-bottom:1px solid var(--tauri-bd); justify-content:center;">Tauri IPC · 8 命令</div>
+
+    <div style="position:absolute; left:14px; top:44px; right:14px; font-size:11.5px; line-height:1.5; color:var(--ink-2);">
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">1 create_project</span><br><span class="muted small">建作品（阻塞线程）</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">2 open_project</span><br><span class="muted small">取锁 → 迁移+校验+读</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">3 save_project</span><br><span class="muted small">取锁 → 保存事务</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">4 open_url</span><br><span class="muted small">仅 http/https</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">5 save_llm_config</span><br><span class="muted small">事务化保存</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">6 load_llm_config</span><br><span class="muted small">脱敏摘要（无明文 key）</span></div>
+      <div style="margin-bottom:7px;"><span class="mono" style="font-weight:700;">7 test_llm_connection</span><br><span class="muted small">仅连接测试走 http.rs</span></div>
+      <div style="margin-bottom:4px;"><span class="mono" style="font-weight:700;">8 generate_ai_thinking</span><br><span class="muted small">选区 → 真实 AI（走 DSH）</span></div>
+    </div>
+
+    <div style="position:absolute; left:14px; right:14px; bottom:14px; font-size:10.5px; color:var(--ink-3); line-height:1.45;">
+      管理状态：<span class="mono">ProjectLocks</span>（进程内作品锁注册表）
+    </div>
+  </div>
+
+  <!-- ===== RUST COLUMN ===== -->
+  <div class="box" style="left:900px; top:166px; width:980px; height:640px; border-color:var(--rust-bd); background:var(--rust-bg);">
+    <div class="col-hdr" style="left:0; top:0; width:100%; height:34px; background:#EBD5CF; color:var(--rust-dk); border-bottom:1px solid var(--rust-bd);">Rust <span class="mono" style="font-size:13px;">src-tauri/src/</span></div>
+
+    <!-- left sub-area -->
+    <div class="cluster" style="left:12px; top:46px; width:318px; height:78px; border-left-color:var(--rust-bd);">
+      <div class="cluster-t">命令入口 · 生命周期</div>
+      <span class="chip key mono">lib.rs <span class="role">8 命令 + 锁注册 + 快捷键</span></span>
+      <span class="chip mono">main.rs</span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:132px; width:318px; height:156px; border-left-color:var(--rust-bd);">
+      <div class="cluster-t">project/ · 作品存储</div>
+      <span class="chip key mono">mod.rs <span class="role">路径/锁/建开存编排</span></span>
+      <span class="chip key mono">operations.rs <span class="role">保存事务（暂存→提交→恢复）</span></span>
+      <span class="chip key mono">notebook.rs <span class="role">本子 grammar 校验 v2</span></span>
+      <span class="chip mono">migration.rs <span class="role">结构版本迁移</span></span>
+      <span class="chip mono">validation.rs</span>
+    </div>
+
+    <div class="cluster" style="left:12px; top:296px; width:318px; height:128px; border-left-color:var(--rust-bd);">
+      <div class="cluster-t">llm_config/ · 配置 + 生成</div>
+      <span class="chip key mono">mod.rs <span class="role">事务化保存 / 脱敏</span></span>
+      <span class="chip key mono">generate.rs <span class="role">固定 Prompt 组装</span></span>
+      <span class="chip mono">http.rs <span class="role">仅连接测试</span></span>
+      <span class="chip mono">secret_store.rs <span class="role">系统钥匙串</span></span>
+    </div>
+
+    <div style="position:absolute; left:12px; top:432px; width:318px; font-size:10.5px; color:var(--ink-3); line-height:1.45;">
+      同侧对齐：<span class="mono">llm_config</span> 统一走 DSH 生成；<span class="mono">http.rs</span> 仅用于「测试连接」命令。
+    </div>
+
+    <!-- right sub-area -->
+    <div class="cluster" style="left:342px; top:46px; width:620px; height:140px; border-left-color:var(--dsh-bd);">
+      <div class="cluster-t" style="color:var(--dsh-dk);">DSH 运行时（后端侧）</div>
+      <span class="chip key mono">dsh_sidecar.rs <span class="role">spawn + 临时 patch + 180s 超时</span></span>
+      <span class="chip key mono">dsh_version.rs <span class="role">版本隔离 DSH_HOME</span></span>
+      <span class="chip key mono">capability_gateway.rs <span class="role">禁 18 类工具（铁律 1）</span></span>
+      <span class="chip mono">runtime_contract.rs <span class="role">仅 TextGeneration</span></span>
+    </div>
+
+    <div class="cluster" style="left:342px; top:194px; width:620px; height:128px; border-left-color:var(--dsh-bd); background:var(--dsh-bg);">
+      <div class="cluster-t" style="color:var(--dsh-dk);">DSH sidecar · 独立运行时（被 spawn）</div>
+      <div style="font-size:11.5px; line-height:1.5; color:var(--ink-2); margin-bottom:6px;">
+        <span class="mono" style="font-weight:700; color:var(--dsh-dk);">node.exe bin.js --profile headless --patch &lt;临时patch&gt; &lt;task&gt;</span>
+      </div>
+      <span class="chip key mono">sidecar/package.json <span class="role">@deepseek-ai/dsh 0.1.0-rc.7</span></span>
+      <span class="chip key mono">sidecar/node-runtime/node.exe <span class="role">Node v24.15.0（内置）</span></span>
+      <span class="chip mono">…/dsh/lib/bin.js <span class="role">headless 入口</span></span>
+    </div>
+
+    <div class="cluster" style="left:342px; top:330px; width:620px; height:66px; border-left-color:var(--tauri-bd);">
+      <div class="cluster-t">打包 · 构建</div>
+      <span class="chip mono">tauri.conf.json <span class="role">bundle.resources: sidecar/*</span></span>
+      <span class="chip mono">scripts/vendor-node.ps1 <span class="role">下载 Node 24.15.0</span></span>
+      <span class="chip mono">Cargo.toml · build.rs</span>
+    </div>
+
+    <div class="cluster" style="left:342px; top:404px; width:620px; height:72px; border-left-color:var(--store-bd); background:var(--store-bg);">
+      <div class="cluster-t" style="color:var(--store-dk);">真相源 · 行为规范</div>
+      <span class="chip mono">openspec/specs/</span>
+      <span class="small muted">selection-ai-invocation · ai-thinking-panel · structured-notebook-storage · dsh-headless-generation …</span>
+    </div>
+
+    <div style="position:absolute; left:342px; top:482px; width:620px; font-size:11.5px; line-height:1.55; color:var(--ink-2); background:#fff; border:1px dashed var(--ink-3); border-radius:3px; padding:7px 9px;">
+      <span class="reddot">仍为固定「草稿本 / 正文本」双本子</span> —— 「作品内容树」「AI 参考优先级」目前仅存在于方向文档，<span class="mono">src/</span> 与 <span class="mono">src-tauri/</span> 均无代码（见底部规划区）。
+    </div>
+  </div>
+
+  <!-- ============ SECTION 2 LABEL ============ -->
+  <div style="position:absolute; left:40px; top:836px; font-size:13px; font-weight:700; color:var(--ink-2); letter-spacing:.5px;">二 · 关键链路放大</div>
+
+  <!-- ===== CHAIN A ===== -->
+  <div style="position:absolute; left:40px; top:860px; font-size:14.5px; font-weight:700; color:var(--store-dk);">链路 A · 作品建 / 开 / 存事务</div>
+
+  <div class="step" style="left:40px; top:884px; width:430px; height:64px; border-color:var(--front-bd); background:var(--front-bg);">
+    <div class="step-n" style="background:var(--front-bd);">1</div>
+    <div class="step-t">前端入口</div>
+    <div class="step-f"><span class="mono">new-project-form.ts</span>（建/开）· <span class="mono">editor.ts</span> 保存按钮</div>
+  </div>
+
+  <div class="step" style="left:40px; top:966px; width:430px; height:60px; border-color:var(--tauri-bd); background:var(--tauri-bg);">
+    <div class="step-n" style="background:var(--tauri-bd);">2</div>
+    <div class="step-t">桥接 <span class="mono">project-api.ts</span></div>
+    <div class="step-f"><span class="mono">createProject / openProject / saveProject</span>（invoke）</div>
+  </div>
+
+  <div class="step" style="left:40px; top:1034px; width:430px; height:76px; border-color:var(--tauri-bd); background:var(--tauri-bg);">
+    <div class="step-n" style="background:var(--tauri-bd);">3</div>
+    <div class="step-t">Tauri 命令</div>
+    <div class="step-f"><span class="mono">create_project / open_project / save_project</span> — <span class="mono">ProjectLocks</span> 取作品锁，阻塞线程内串行</div>
+  </div>
+
+  <div class="step" style="left:40px; top:1128px; width:430px; height:76px; border-color:var(--rust-bd); background:var(--rust-bg);">
+    <div class="step-n" style="background:var(--rust-bd);">4</div>
+    <div class="step-t">编排 <span class="mono">project/mod.rs</span></div>
+    <div class="step-f"><span class="mono">create_new_project / open_existing_project / save_existing_project</span> — 打开走「迁移 → 校验 → 读取」</div>
+  </div>
+
+  <div class="step" style="left:40px; top:1214px; width:430px; height:100px; border-color:var(--rust-bd); background:var(--rust-bg);">
+    <div class="step-n" style="background:var(--rust-bd);">5</div>
+    <div class="step-t">保存事务 <span class="mono">project/operations.rs</span></div>
+    <div class="step-f">暂存 <span class="mono">save-transaction/</span> → 草稿本 → 正文本 → <span class="mono">project.json</span>（元信息收尾）；中断按 <span class="mono">manifest.json</span> 恢复</div>
+  </div>
+
+  <div class="step" style="left:40px; top:1322px; width:430px; height:84px; border-color:var(--store-bd); background:var(--store-bg);">
+    <div class="step-n" style="background:var(--store-bd);">6</div>
+    <div class="step-t">磁盘作品文件夹</div>
+    <div class="step-f"><span class="mono">作品文本/草稿本.json · 正文本.json</span>（next-story-tiptap v2）<br><span class="mono">next-story-system/project.json · save-transaction/</span></div>
+  </div>
+
+  <!-- ===== CHAIN B ===== -->
+  <div style="position:absolute; left:1000px; top:860px; font-size:14.5px; font-weight:700; color:var(--dsh-dk);">链路 B · 选区 AI 首问 / 追问</div>
+
+  <div class="step" style="left:1000px; top:884px; width:880px; height:90px; border-color:var(--front-bd); background:var(--front-bg);">
+    <div class="step-n" style="background:var(--front-bd);">1</div>
+    <div class="step-t">选区冻结 <span class="mono">selection-entry.ts</span></div>
+    <div class="step-f">选中文字 → 点击「及时召唤」（无输入）/「思维扩展」（可选方向）→ 冻结 <span class="mono">SelectionSnapshot</span>（notebook / selectedText / from / to）</div>
+  </div>
+
+  <div class="step" style="left:1000px; top:992px; width:880px; height:96px; border-color:var(--front-bd); background:var(--front-bg);">
+    <div class="step-n" style="background:var(--front-bd);">2</div>
+    <div class="step-t">协调与临时对话</div>
+    <div class="step-f"><span class="mono">ai-feature.ts</span> 装配 · <span class="mono">ai-request.ts</span>（AiRequestCoordinator 单飞、身份隔离）· <span class="mono">ai-panel-conversation.ts</span>（TemporaryConversation：锚定原选区、线性追问、仅本次启动有效）</div>
+  </div>
+
+  <div class="step" style="left:1000px; top:1096px; width:880px; height:66px; border-color:var(--tauri-bd); background:var(--tauri-bg);">
+    <div class="step-n" style="background:var(--tauri-bd);">3</div>
+    <div class="step-t">桥接 <span class="mono">project-api.ts</span></div>
+    <div class="step-f"><span class="mono">generateAiThinking(request)</span> — 只提交冻结选区 + 受限轮次，不传 API Key</div>
+  </div>
+
+  <div class="step" style="left:1000px; top:1170px; width:880px; height:90px; border-color:var(--rust-bd); background:var(--rust-bg);">
+    <div class="step-n" style="background:var(--rust-bd);">4</div>
+    <div class="step-t">命令与组装 <span class="mono">generate_ai_thinking</span></div>
+    <div class="step-f"><span class="mono">llm_config/mod.rs</span> 加载唯一保存配置（钥匙串补 key）→ <span class="mono">generate.rs</span> 校验请求 + 组装固定 Prompt（纯文本、不代写、不判断好坏）</div>
+  </div>
+
+  <div class="step" style="left:1000px; top:1268px; width:880px; height:118px; border-color:var(--dsh-bd); background:var(--dsh-bg);">
+    <div class="step-n" style="background:var(--dsh-bd);">5</div>
+    <div class="step-t">DSH 适配 <span class="mono">dsh_sidecar.rs</span></div>
+    <div class="step-f">每次 spawn 生成<span class="reddot">临时 patch</span>（覆盖模型/端点、<span class="mono">thinking: disabled</span>、禁 <span class="mono">capability_gateway</span> 的 18 类工具）+ <span class="mono">DEEPSEEK_API_KEY</span> env + 版本隔离 <span class="mono">DSH_HOME</span> → 执行 node bin.js</div>
+  </div>
+
+  <div class="step" style="left:1000px; top:1394px; width:880px; height:70px; border-color:var(--dsh-bd); background:var(--dsh-bg);">
+    <div class="step-n" style="background:var(--dsh-bd);">6</div>
+    <div class="step-t">sidecar 运行时 → 返回</div>
+    <div class="step-f"><span class="mono">sidecar/package.json</span>（@deepseek-ai/dsh 0.1.0-rc.7）· <span class="mono">node-runtime/node.exe</span>（v24.15.0）→ <span class="mono">GenerateAiResult</span> → <span class="mono">ai-panel.ts</span> 纯文本渲染（零写回）</div>
+  </div>
+
+  <!-- ===== SUPPORT / SECURITY BAND ===== -->
+  <div style="position:absolute; left:40px; top:1488px; width:1840px; height:74px; background:#fff; border:1px solid var(--ink-3); border-radius:3px; padding:8px 12px;">
+    <div class="band-hdr" style="left:12px; top:7px;">配置 / 安全支撑</div>
+    <div style="position:absolute; left:12px; top:28px; display:flex; gap:10px; flex-wrap:wrap;">
+      <span class="chip" style="border-color:var(--store-bd);"><span class="mono">llm-config.json</span> <span class="role">磁盘只存非敏感字段，不含明文 key</span></span>
+      <span class="chip" style="border-color:var(--store-bd);"><span class="mono">系统钥匙串</span> <span class="role">secret_store.rs → keyring（Windows 凭据管理器）</span></span>
+      <span class="chip" style="border-color:var(--dsh-bd);"><span class="mono">临时 patch</span> <span class="role">每次 spawn 临时生成，不持久化</span></span>
+      <span class="chip" style="border-color:var(--dsh-bd);"><span class="mono">版本隔离 DSH_HOME</span> <span class="role">dsh_version.rs → dsh/homes/&lt;current&gt; + current.json 指针</span></span>
+    </div>
+  </div>
+
+  <!-- ===== RED BOUNDARY ===== -->
+  <div style="position:absolute; left:40px; top:1574px; width:1840px; height:44px; background:var(--sec-bg); border:1.5px solid var(--sec); border-radius:3px; display:flex; align-items:center; padding:0 14px;">
+    <span class="no-enter" style="margin-right:12px;"></span>
+    <span style="font-size:13.5px; font-weight:700; color:var(--sec);">红线：AI / DSH 永远不写用户文档（草稿本 / 正文本）</span>
+    <span style="font-size:12.5px; color:var(--ink-2); margin-left:16px;">不插入 / 不追加 / 不替换 / 不改写 / 不删除 / 不移动 · 结果只进 AI 面板，用户自己复制粘贴 · 铁律 1、2、3</span>
+  </div>
+
+  <!-- ===== PLANNED AREA ===== -->
+  <div style="position:absolute; left:40px; top:1634px; width:1840px; height:92px; border:1.5px dashed var(--plan-bd); border-radius:3px; background:var(--plan-bg); padding:10px 14px;">
+    <div style="font-size:12.5px; font-weight:700; color:var(--plan-tx);">规划中 · 尚未实现（方向文档，<span class="mono">src/</span> 与 <span class="mono">src-tauri/</span> 无代码）</div>
+    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">作品内容树 <span class="role">文件夹 + 文档（取代双本子）</span></span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">AI 参考优先级 <span class="role">核心 / 一般 / 弱 / 不参考</span></span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">三页导航 → 多页</span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">说明性文档</span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">版本快照</span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">AI 内容库</span>
+      <span class="chip" style="border-style:dashed; border-color:var(--plan-bd); color:var(--plan-tx);">思考收束</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

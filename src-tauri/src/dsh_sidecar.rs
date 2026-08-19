@@ -198,6 +198,15 @@ pub fn generate_via_dsh(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    // Windows：不弹出黑色控制台窗口。node 是控制台程序，GUI 应用直接 spawn 会
+    // 额外弹一个终端，用 CREATE_NO_WINDOW 抑制。
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
     if let Some(home) = &paths.dsh_home {
         // 确保版本隔离的 DSH_HOME 存在，否则 DSH 可能启动失败或回退到默认 home。
         std::fs::create_dir_all(home).map_err(|e| {

@@ -81,9 +81,11 @@ pub fn resolve_paths(
         .join("sidecar");
 
     // 资源目录优先，但若其下没有 bin.js（未打包裸 exe），回退开发目录。
+    // Tauri 返回的 resource_dir 可能带 Windows 扩展路径前缀 `\\?\`，
+    // 该前缀拼进路径后 node 无法解析，故先剥掉。
     let sidecar_root = match resource_dir {
         Some(dir) => {
-            let candidate = dir.join("sidecar");
+            let candidate = strip_verbatim_prefix(&dir.join("sidecar"));
             if candidate
                 .join("node_modules")
                 .join("@deepseek-ai")
@@ -119,11 +121,12 @@ pub fn resolve_paths(
             "DSH sidecar 未安装，请先在 sidecar 目录运行 npm install",
         ));
     }
-    Ok(DshRuntimePaths {
+    let paths = DshRuntimePaths {
         node_bin,
         bin_js,
         dsh_home,
-    })
+    };
+    Ok(paths)
 }
 
 #[cfg(windows)]
@@ -134,6 +137,20 @@ fn node_exe_name() -> &'static str {
 #[cfg(not(windows))]
 fn node_exe_name() -> &'static str {
     "node"
+}
+
+/// 剥离 Windows 的 `\\?\` 扩展路径前缀（verbatim path）。
+///
+/// Tauri 的 `resource_dir()` 可能返回 `\\?\D:\...` 这种形式；该前缀对 Rust 的
+/// 文件系统 API 合法，但拼进命令行传给 node 后，node 会因无法解析而报
+/// `EISDIR: lstat 'D:'`。这里剥成普通盘符路径 `D:\...`。
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
+    } else {
+        path.to_path_buf()
+    }
 }
 
 /// 通过 DSH headless 生成一次 AI 回复。
@@ -250,6 +267,7 @@ pub fn generate_via_dsh(
         }
         return Ok(text);
     }
+
     Err(map_dsh_failure(status.code(), &stderr_text))
 }
 
@@ -312,6 +330,22 @@ pub fn map_dsh_failure(exit_code: Option<i32>, stderr: &str) -> GenerateAiError 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_verbatim_prefix_removes_windows_extended_path() {
+        // Tauri resource_dir 可能返回 `\\?\D:\...`，必须剥成 `D:\...` 才能传给 node。
+        let p = Path::new(r"\\?\D:\Next Story\src-tauri\target\release\sidecar");
+        assert_eq!(
+            strip_verbatim_prefix(p),
+            PathBuf::from(r"D:\Next Story\src-tauri\target\release\sidecar")
+        );
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_keeps_normal_path_unchanged() {
+        let p = Path::new(r"D:\Next Story\sidecar");
+        assert_eq!(strip_verbatim_prefix(p), PathBuf::from(r"D:\Next Story\sidecar"));
+    }
 
     #[test]
     fn build_runtime_patch_injects_model_base_url_and_disables_tools() {

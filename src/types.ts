@@ -35,6 +35,33 @@ export interface ProjectState {
   mainContent: string;
 }
 
+/** 内容树节点类型：文件夹只负责组织，文档只负责写作。 */
+export type NodeKind = "Folder" | "Document";
+
+/** 内容树中的单个节点（后端 `ContentTreeNode` 的 serde 序列化契约）。 */
+export interface ContentTreeNode {
+  id: string;
+  name: string;
+  kind: NodeKind;
+  /** 子节点 ID 列表（文档恒为空）。 */
+  children: string[];
+}
+
+/** 回收站中被删除的子树条目。 */
+export interface RecycleBinEntry {
+  root_id: string;
+  original_parent: string | null;
+  original_index: number;
+  nodes: Record<string, ContentTreeNode>;
+}
+
+/** 整棵内容树结构（后端 `ContentTree` 的 serde 序列化契约）。 */
+export interface ContentTree {
+  root_children: string[];
+  nodes: Record<string, ContentTreeNode>;
+  recycle_bin: RecycleBinEntry[];
+}
+
 /**
  * 两个用户文本本子的唯一代码标识。
  * - `draft` 对应草稿本

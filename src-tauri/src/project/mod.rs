@@ -7,8 +7,8 @@ mod validation;
 pub use content_tree::*;
 pub use notebook::*;
 pub use operations::{
-    create_document, create_folder, delete_node, move_node, rename_node, reorder_children,
-    restore_node,
+    create_document, create_folder, delete_node, move_node, open_content_tree, read_document,
+    rename_node, reorder_children, restore_node, save_document,
 };
 pub use validation::*;
 

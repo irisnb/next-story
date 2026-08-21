@@ -224,6 +224,31 @@ pub(crate) fn read_content_tree(paths: &ProjectPaths) -> Result<ContentTree, Pro
     Ok(tree)
 }
 
+/// 读取整棵内容树结构（公开入口，供命令层调用）：先恢复中断事务，再读取并校验。
+pub fn open_content_tree(project_root: &Path) -> Result<ContentTree, ProjectError> {
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+    recover_interrupted_save(&paths)?;
+    read_content_tree(&paths)
+}
+
+/// 按文档 ID 读取单篇文档正文（公开入口，供命令层调用）。
+/// 校验 ID 是内容树中的文档节点，正文在返回前通过后端校验。
+pub fn read_document(project_root: &Path, document_id: &str) -> Result<String, ProjectError> {
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+    recover_interrupted_save(&paths)?;
+    let tree = read_content_tree(&paths)?;
+    let node = tree
+        .nodes
+        .get(document_id)
+        .ok_or_else(|| ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}")))?;
+    if node.kind != NodeKind::Document {
+        return Err(ProjectError::InvalidStructure(
+            "只能读取文档节点，文件夹不承载正文".to_string(),
+        ));
+    }
+    read_and_validate_notebook(&paths.document_file(document_id), &node.name)
+}
+
 /// 校验并原子写入内容树元数据文件。
 pub(crate) fn write_content_tree(
     paths: &ProjectPaths,
@@ -382,6 +407,73 @@ pub fn delete_node(project_root: &Path, id: &str) -> Result<(), ProjectError> {
 /// 恢复后层级、顺序与名称保持删除前状态，正文文件仍原位。
 pub fn restore_node(project_root: &Path, id: &str) -> Result<(), ProjectError> {
     run_structure_change(project_root, |tree| tree.restore(id).map(|_| None))?;
+    Ok(())
+}
+
+/// 按文档 ID 保存单篇文档正文：校验 ID 是内容树中存在的文档节点、正文为合法
+/// 格式版本 2 且不超限，复用映射式事务把该文档正文 + project.json 作为一个
+/// 完整一致世代原子提交（元信息最后，作为完成标记）。
+pub fn save_document(
+    project_root: &Path,
+    document_id: &str,
+    content: &str,
+) -> Result<(), ProjectError> {
+    // 先在创建事务暂存文件前校验大小上限与结构合法性，非法载荷不得触碰任何文件。
+    validate_notebook_size(content, "文档")?;
+    validate_notebook_content(content, "文档").map_err(ProjectError::InvalidStructure)?;
+
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+
+    recover_interrupted_save(&paths)?;
+
+    // 定位并确认 document_id 是内容树中存在的文档节点。
+    let tree = read_content_tree(&paths)?;
+    let node = tree
+        .nodes
+        .get(document_id)
+        .ok_or_else(|| ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}")))?;
+    if node.kind != NodeKind::Document {
+        return Err(ProjectError::InvalidStructure(
+            "只能保存文档节点，文件夹不承载正文".to_string(),
+        ));
+    }
+
+    // 计算下一世代元信息（基于当前可见元信息，只更新 updated_at）。
+    let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
+        .map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    let mut metadata: ProjectMetadata =
+        serde_json::from_str(&metadata_json).map_err(|e| ProjectError::ReadError(e.to_string()))?;
+    metadata.updated_at = Utc::now().to_rfc3339();
+    let staged_metadata_json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+
+    // 暂存该文档正文 + project.json（元信息最后提交），通过映射式事务前滚提交。
+    let staged_writes: Vec<(StagedFile, String)> = vec![
+        (
+            StagedFile {
+                staged: format!("doc-{document_id}.json"),
+                target: format!("作品文本/documents/{document_id}.json"),
+                action: StagedAction::Replace,
+            },
+            content.to_string(),
+        ),
+        (
+            StagedFile {
+                staged: "project.json".to_string(),
+                target: METADATA_TARGET.to_string(),
+                action: StagedAction::Replace,
+            },
+            staged_metadata_json,
+        ),
+    ];
+
+    transactional_write_mapped(
+        &paths,
+        &staged_writes,
+        &metadata.updated_at,
+        ManifestPurpose::Save,
+    )?;
+
     Ok(())
 }
 
@@ -2314,5 +2406,140 @@ mod tests {
         assert_eq!(manifest.files[2].action, StagedAction::Delete);
         assert_eq!(manifest.files[1].target, "作品文本/草稿本.json");
         assert_eq!(manifest.files[2].target, "作品文本/正文本.json");
+    }
+
+    // ========== 按文档 ID 保存 / 读取内容树（命令层） ==========
+
+    fn any_document_id(paths: &ProjectPaths) -> String {
+        let tree = read_tree(paths);
+        tree.nodes
+            .values()
+            .find(|node| node.kind == NodeKind::Document)
+            .expect("a document exists")
+            .id
+            .clone()
+    }
+
+    const BY_ID_CONTENT: &str = r#"{"format":"next-story-tiptap","version":2,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"按ID写入的内容"}]}]}}"#;
+
+    #[test]
+    fn save_document_writes_body_and_updates_metadata() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("按ID保存".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+        let doc_id = any_document_id(&paths);
+        let before_updated_at = read_visible_updated_at(&paths);
+
+        save_document(&project_root, &doc_id, BY_ID_CONTENT).expect("save document");
+
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&doc_id)).expect("read doc after"),
+            BY_ID_CONTENT
+        );
+        assert_ne!(read_visible_updated_at(&paths), before_updated_at);
+        assert!(!TransactionLayout::new(&paths).dir.exists());
+    }
+
+    #[test]
+    fn save_document_rejects_unknown_id_folder_and_invalid_content() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("按ID保存拒绝".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+
+        // 不存在的 ID
+        assert!(matches!(
+            save_document(&project_root, "不存在的节点", BY_ID_CONTENT),
+            Err(ProjectError::InvalidStructure(_))
+        ));
+
+        // 文件夹不是文档，不能保存正文
+        let folder = create_folder(&project_root, None).expect("create folder");
+        assert!(matches!(
+            save_document(&project_root, &folder, BY_ID_CONTENT),
+            Err(ProjectError::InvalidStructure(_))
+        ));
+
+        // 非法正文在写盘前被拒，且不残留事务目录
+        let doc_id = any_document_id(&paths);
+        let before = fs::read_to_string(paths.document_file(&doc_id)).expect("read before");
+        assert!(save_document(&project_root, &doc_id, "不是 JSON").is_err());
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&doc_id)).expect("read after"),
+            before
+        );
+        assert!(!TransactionLayout::new(&paths).dir.exists());
+    }
+
+    #[test]
+    fn open_content_tree_and_read_document_return_validated_structure() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("读树读文档".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+
+        let tree = open_content_tree(&project_root).expect("open content tree");
+        assert_eq!(tree.root_children.len(), 2);
+        assert!(tree.recycle_bin.is_empty());
+
+        let doc_id = any_document_id(&paths);
+        let body = read_document(&project_root, &doc_id).expect("read document");
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("valid notebook json");
+        assert_eq!(parsed["format"], "next-story-tiptap");
+
+        // 读取不存在的 ID 与文件夹都被拒绝
+        assert!(read_document(&project_root, "不存在的节点").is_err());
+        let folder = create_folder(&project_root, None).expect("create folder");
+        assert!(read_document(&project_root, &folder).is_err());
+    }
+
+    /// 单文档保存事务在 `Staged` 阶段中断：打开时直接丢弃暂存，加载旧世代，
+    /// 证明 `save_document` 走的映射式事务与既有恢复路径一致。
+    #[test]
+    fn open_discards_staged_single_document_save_and_loads_old_generation() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("单文档暂存中断".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+        let doc_id = any_document_id(&paths);
+        let body_before = fs::read_to_string(paths.document_file(&doc_id)).expect("read before");
+        let metadata_before = fs::read(&paths.metadata_file).expect("read metadata before");
+
+        // 手工构造一个 Staged 阶段的单文档保存事务（正文 + project.json）。
+        let layout = TransactionLayout::new(&paths);
+        fs::create_dir_all(&layout.dir).expect("create transaction dir");
+        fs::write(layout.dir.join(format!("doc-{doc_id}.json")), BY_ID_CONTENT)
+            .expect("stage document");
+        fs::write(layout.dir.join("project.json"), "{}").expect("stage metadata placeholder");
+        fs::write(
+            &layout.manifest,
+            serde_json::json!({
+                "manifest_version": 1,
+                "phase": "Staged",
+                "target_updated_at": "2026-09-01T00:00:00Z",
+                "transaction_id": "single-doc-tx",
+                "purpose": "save",
+                "files": [
+                    { "staged": format!("doc-{doc_id}.json"), "target": format!("作品文本/documents/{doc_id}.json"), "action": "replace" },
+                    { "staged": "project.json", "target": "next-story-system/project.json", "action": "replace" }
+                ],
+            })
+            .to_string(),
+        )
+        .expect("write manifest");
+
+        // 打开：Staged 事务被丢弃，加载旧世代，可见文件字节不变。
+        let opened = open_project(&project_root).expect("open discards staged single-doc save");
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&doc_id)).expect("read doc after"),
+            body_before
+        );
+        assert_eq!(
+            fs::read(&paths.metadata_file).expect("read metadata after"),
+            metadata_before
+        );
+        assert!(!layout.dir.exists(), "Staged 事务目录应被丢弃");
+        assert_eq!(opened.metadata.version, ProjectMetadata::CURRENT_VERSION);
     }
 }

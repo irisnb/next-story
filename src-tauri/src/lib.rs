@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 use llm_config::{GenerateAiResult, LlmConfig, LlmConfigSummary};
-use project::{CreateProjectParams, ProjectLocks, ProjectOpenResult};
+use project::{ContentTree, CreateProjectParams, ProjectLocks, ProjectOpenResult};
 
 #[cfg(test)]
 mod tests {
@@ -227,6 +227,201 @@ async fn save_project(
     .map_err(|e| e.to_string())
 }
 
+// ========== 内容树命令（前端文件管理） ==========
+
+/// 读取整棵内容树结构：在阻塞线程内取作品锁后读取并校验。
+#[tauri::command]
+async fn open_content_tree(
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<ContentTree, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::open_content_tree(&project_root)
+    })
+    .await
+    .map_err(|e| format!("读取内容树任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 按文档 ID 读取单篇文档正文：在阻塞线程内取作品锁后读取并校验。
+#[tauri::command]
+async fn read_document(
+    app: tauri::AppHandle,
+    project_path: String,
+    document_id: String,
+) -> Result<String, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::read_document(&project_root, &document_id)
+    })
+    .await
+    .map_err(|e| format!("读取文档任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 按文档 ID 保存单篇文档正文：在阻塞线程内取作品锁后覆盖整个保存事务。
+#[tauri::command]
+async fn save_document(
+    app: tauri::AppHandle,
+    project_path: String,
+    document_id: String,
+    content: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::save_document(&project_root, &document_id, &content)
+    })
+    .await
+    .map_err(|e| format!("保存文档任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 在指定父级（含根级）下创建文件夹，返回新节点 ID。
+#[tauri::command]
+async fn create_folder(
+    app: tauri::AppHandle,
+    project_path: String,
+    parent: Option<String>,
+) -> Result<String, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::create_folder(&project_root, parent.as_deref())
+    })
+    .await
+    .map_err(|e| format!("创建文件夹任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 在指定父级（含根级）下创建文档，返回新节点 ID。
+#[tauri::command]
+async fn create_document(
+    app: tauri::AppHandle,
+    project_path: String,
+    parent: Option<String>,
+) -> Result<String, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::create_document(&project_root, parent.as_deref())
+    })
+    .await
+    .map_err(|e| format!("创建文档任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 重命名节点：校验新名称合法性后事务提交，失败保持原名。
+#[tauri::command]
+async fn rename_node(
+    app: tauri::AppHandle,
+    project_path: String,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::rename_node(&project_root, &id, &name)
+    })
+    .await
+    .map_err(|e| format!("重命名节点任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 移动节点到另一父级（含根级）：禁止循环，事务提交。
+#[tauri::command]
+async fn move_node(
+    app: tauri::AppHandle,
+    project_path: String,
+    id: String,
+    new_parent: Option<String>,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::move_node(&project_root, &id, new_parent.as_deref())
+    })
+    .await
+    .map_err(|e| format!("移动节点任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 重排父级内子节点顺序：顺序列表须完整覆盖且不重复，事务提交。
+#[tauri::command]
+async fn reorder_children(
+    app: tauri::AppHandle,
+    project_path: String,
+    parent: Option<String>,
+    order: Vec<String>,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::reorder_children(&project_root, parent.as_deref(), order)
+    })
+    .await
+    .map_err(|e| format!("重排子节点任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 删除节点（含完整子树）进回收站：正文文件保持原位，事务提交。
+#[tauri::command]
+async fn delete_node(
+    app: tauri::AppHandle,
+    project_path: String,
+    id: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::delete_node(&project_root, &id)
+    })
+    .await
+    .map_err(|e| format!("删除节点任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+/// 从回收站恢复被删除的子树：层级、顺序与名称保持删除前状态，事务提交。
+#[tauri::command]
+async fn restore_node(
+    app: tauri::AppHandle,
+    project_path: String,
+    id: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::restore_node(&project_root, &id)
+    })
+    .await
+    .map_err(|e| format!("恢复节点任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
 // ========== LLM 配置命令 ==========
 
 /// 在系统默认浏览器中打开 http/https 链接；其它地址拒绝。
@@ -334,6 +529,16 @@ pub fn run() {
             create_project,
             open_project,
             save_project,
+            open_content_tree,
+            read_document,
+            save_document,
+            create_folder,
+            create_document,
+            rename_node,
+            move_node,
+            reorder_children,
+            delete_node,
+            restore_node,
             open_url,
             save_llm_config,
             load_llm_config,

@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type {
+  ContentTree,
   GenerateAiRequest,
   GenerateAiResult,
   LlmConfig,
@@ -76,6 +77,84 @@ export async function saveProject(
     draftContent,
     mainContent,
   });
+}
+
+// ========== 内容树命令（前端文件管理） ==========
+
+/** 读取整棵内容树结构（含回收站）。 */
+export async function openContentTree(projectPath: string): Promise<ContentTree> {
+  return tauriInvoke<ContentTree>("open_content_tree", { projectPath });
+}
+
+/** 按文档 ID 读取单篇文档正文。 */
+export async function readDocument(projectPath: string, documentId: string): Promise<string> {
+  return tauriInvoke<string>("read_document", { projectPath, documentId });
+}
+
+/** 按文档 ID 保存单篇文档正文（与后端一致的字节上限纵深防御）。 */
+export async function saveDocument(
+  projectPath: string,
+  documentId: string,
+  content: string,
+): Promise<void> {
+  const sizeError = notebookSizeError(content);
+  if (sizeError) {
+    throw new Error(`文档内容过大：${sizeError}`);
+  }
+  await tauriInvoke("save_document", { projectPath, documentId, content });
+}
+
+/** 在指定父级（null 表示根级）下创建文件夹，返回新节点 ID。 */
+export async function createFolder(
+  projectPath: string,
+  parent: string | null,
+): Promise<string> {
+  return tauriInvoke<string>("create_folder", { projectPath, parent });
+}
+
+/** 在指定父级（null 表示根级）下创建文档，返回新节点 ID。 */
+export async function createDocument(
+  projectPath: string,
+  parent: string | null,
+): Promise<string> {
+  return tauriInvoke<string>("create_document", { projectPath, parent });
+}
+
+/** 重命名节点，失败保持原名。 */
+export async function renameNode(
+  projectPath: string,
+  id: string,
+  name: string,
+): Promise<void> {
+  await tauriInvoke("rename_node", { projectPath, id, name });
+}
+
+/** 移动节点到另一父级（null 表示根级）。 */
+export async function moveNode(
+  projectPath: string,
+  id: string,
+  newParent: string | null,
+): Promise<void> {
+  await tauriInvoke("move_node", { projectPath, id, newParent });
+}
+
+/** 重排父级内子节点顺序。 */
+export async function reorderChildren(
+  projectPath: string,
+  parent: string | null,
+  order: string[],
+): Promise<void> {
+  await tauriInvoke("reorder_children", { projectPath, parent, order });
+}
+
+/** 删除节点（含完整子树）进回收站。 */
+export async function deleteNode(projectPath: string, id: string): Promise<void> {
+  await tauriInvoke("delete_node", { projectPath, id });
+}
+
+/** 从回收站恢复被删除的子树。 */
+export async function restoreNode(projectPath: string, id: string): Promise<void> {
+  await tauriInvoke("restore_node", { projectPath, id });
 }
 
 /** 在系统默认浏览器中打开 http/https 链接（后端会再次校验协议）。 */

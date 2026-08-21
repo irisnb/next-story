@@ -401,7 +401,9 @@ fn save_llm_config_transaction(
     mut checkpoint: impl FnMut(ConfigSavePhase) -> Result<(), LlmConfigError>,
 ) -> Result<(), LlmConfigError> {
     // 并发保存串行化：整个事务（读旧值 → 临时文件 → 钥匙串 → 原子替换）持锁。
-    let _serialize = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _serialize = CONFIG_SAVE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     let effective_key = resolve_effective_key(config, store)?;
 

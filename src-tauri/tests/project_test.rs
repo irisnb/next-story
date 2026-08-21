@@ -89,6 +89,19 @@ fn symlink_dir(target: &Path, link: &Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_dir(target, link)
 }
 
+/// 读取版本 3 作品内容树根级文档 ID（按内容树元数据解析）。
+fn root_doc_ids(project_root: &Path) -> Vec<String> {
+    let tree_json = fs::read_to_string(
+        project_root
+            .join("next-story-system")
+            .join("content-tree.json"),
+    )
+    .expect("read content tree");
+    let tree: next_story_lib::project::ContentTree =
+        serde_json::from_str(&tree_json).expect("parse content tree");
+    tree.root_children
+}
+
 #[test]
 fn create_new_project_creates_expected_chinese_structure() {
     let temp = TempDir::new().expect("create temp dir");
@@ -100,13 +113,19 @@ fn create_new_project_creates_expected_chinese_structure() {
     .expect("create project through production API");
 
     assert!(project_path.join("作品文本").is_dir());
-    assert!(project_path.join("作品文本").join("草稿本.json").is_file());
-    assert!(project_path.join("作品文本").join("正文本.json").is_file());
+    assert!(project_path.join("作品文本").join("documents").is_dir());
     assert!(project_path.join("next-story-system").is_dir());
+    assert!(project_path
+        .join("next-story-system")
+        .join("content-tree.json")
+        .is_file());
     assert!(project_path
         .join("next-story-system")
         .join("project.json")
         .is_file());
+    // 版本 3 不再有根级固定双本子文件
+    assert!(!project_path.join("作品文本").join("草稿本.json").exists());
+    assert!(!project_path.join("作品文本").join("正文本.json").exists());
 }
 
 #[test]
@@ -119,12 +138,17 @@ fn create_new_project_writes_valid_blank_structured_notebooks() {
     })
     .expect("create project");
 
-    let draft =
-        fs::read_to_string(project_path.join("作品文本").join("草稿本.json")).expect("read draft");
-    let main =
-        fs::read_to_string(project_path.join("作品文本").join("正文本.json")).expect("read main");
+    let doc_ids = root_doc_ids(&project_path);
+    assert_eq!(doc_ids.len(), 2, "根级应有两篇文档");
 
-    for content in [draft, main] {
+    for id in doc_ids {
+        let content = fs::read_to_string(
+            project_path
+                .join("作品文本")
+                .join("documents")
+                .join(format!("{id}.json")),
+        )
+        .expect("read document file");
         let value: serde_json::Value = serde_json::from_str(&content).expect("parse notebook");
         assert_eq!(value["format"], "next-story-tiptap");
         assert_eq!(value["version"], 2);
@@ -354,7 +378,7 @@ fn open_rejects_unknown_future_project_structure_version() {
     create_valid_project_folder(&root, "未来版本");
     write_raw_metadata(
         &root,
-        r#"{"name":"未来版本","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":3}"#,
+        r#"{"name":"未来版本","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":4}"#,
     );
 
     reject_with_version_error(open_existing_project(&root));
@@ -609,10 +633,14 @@ fn open_accepts_nested_list() {
         }
     });
     let target = root.join("作品文本").join("草稿本.json");
-    fs::write(&target, serde_json::to_string(&doc).expect("serialize")).expect("write nested notebook");
+    fs::write(&target, serde_json::to_string(&doc).expect("serialize"))
+        .expect("write nested notebook");
 
     let result = open_existing_project(&root);
-    assert!(result.is_ok(), "版本 2 的嵌套列表应可打开，实际: {result:?}");
+    assert!(
+        result.is_ok(),
+        "版本 2 的嵌套列表应可打开，实际: {result:?}"
+    );
 }
 
 #[test]
@@ -643,8 +671,15 @@ fn save_rejects_invalid_notebook_payload_before_staging() {
     })
     .expect("create project");
 
-    let draft_path = project_path.join("作品文本").join("草稿本.json");
-    let main_path = project_path.join("作品文本").join("正文本.json");
+    let doc_ids = root_doc_ids(&project_path);
+    let draft_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{}.json", doc_ids[0]));
+    let main_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{}.json", doc_ids[1]));
     let metadata_path = project_path.join("next-story-system").join("project.json");
 
     let before_draft = fs::read(&draft_path).expect("read draft before");
@@ -660,7 +695,7 @@ fn save_rejects_invalid_notebook_payload_before_staging() {
 
     assert!(matches!(result, Err(ProjectError::InvalidStructure(_))));
 
-    // 三个可见文件保持原有完整世代
+    // 可见文件保持原有完整世代
     assert_eq!(
         fs::read(&draft_path).expect("read draft after"),
         before_draft
@@ -723,8 +758,15 @@ fn save_rejects_oversized_draft_before_staging() {
     })
     .expect("create project");
 
-    let draft_path = project_path.join("作品文本").join("草稿本.json");
-    let main_path = project_path.join("作品文本").join("正文本.json");
+    let doc_ids = root_doc_ids(&project_path);
+    let draft_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{}.json", doc_ids[0]));
+    let main_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{}.json", doc_ids[1]));
     let metadata_path = project_path.join("next-story-system").join("project.json");
 
     let before_draft = fs::read(&draft_path).expect("read draft before");
@@ -738,7 +780,7 @@ fn save_rejects_oversized_draft_before_staging() {
 
     assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
 
-    // 三个可见文件保持原有完整世代
+    // 可见文件保持原有完整世代
     assert_eq!(
         fs::read(&draft_path).expect("read draft after"),
         before_draft
@@ -765,7 +807,11 @@ fn save_rejects_oversized_main_before_staging() {
     })
     .expect("create project");
 
-    let main_path = project_path.join("作品文本").join("正文本.json");
+    let doc_ids = root_doc_ids(&project_path);
+    let main_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{}.json", doc_ids[1]));
     let before_main = fs::read(&main_path).expect("read main before");
 
     let oversized_main = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));

@@ -95,10 +95,7 @@ fn is_hex_color(s: &str) -> bool {
 
 /// mark 的稳定字符串签名：type + 完整 attrs（含带属性 mark 的身份比较）。
 fn mark_signature(mark: &Map<String, Value>) -> String {
-    let mark_type = mark
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let mark_type = mark.get("type").and_then(|v| v.as_str()).unwrap_or("");
     if is_attrless_mark(mark_type) {
         return mark_type.to_string();
     }
@@ -117,12 +114,12 @@ fn same_mark_set(a: &[Value], b: &[Value]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.iter().zip(b.iter()).all(|(x, y)| {
-        match (x.as_object(), y.as_object()) {
+    a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| match (x.as_object(), y.as_object()) {
             (Some(xm), Some(ym)) => mark_signature(xm) == mark_signature(ym),
             _ => false,
-        }
-    })
+        })
 }
 
 fn validate_mark(value: &Value, loc: &str) -> Result<(), String> {
@@ -266,7 +263,8 @@ fn validate_inline_content(value: Option<&Value>, loc: &str) -> Result<(), Strin
         validate_text(node, &here)?;
         let current_marks = node
             .get("marks")
-            .and_then(|v| v.as_array()).cloned()
+            .and_then(|v| v.as_array())
+            .cloned()
             .unwrap_or_default();
         if has_previous && same_mark_set(&previous_marks, &current_marks) {
             return Err(format!("{loc}: 相同 marks 的相邻文本必须合并"));
@@ -349,7 +347,9 @@ fn validate_list_item(value: &Value, loc: &str) -> Result<(), String> {
         .and_then(|v| v.as_array())
         .ok_or_else(|| format!("{loc}: content 不是数组"))?;
     if content.is_empty() || content.len() > 2 {
-        return Err(format!("{loc}: listItem content 必须为一个 paragraph 加可选一个嵌套列表"));
+        return Err(format!(
+            "{loc}: listItem content 必须为一个 paragraph 加可选一个嵌套列表"
+        ));
     }
     validate_paragraph(&content[0], &format!("{loc} 的 paragraph"))?;
     if content.len() == 2 {

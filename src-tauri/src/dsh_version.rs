@@ -81,8 +81,7 @@ impl DshVersionLayout {
         let pointer = CurrentPointer {
             version: version.to_string(),
         };
-        let json = serde_json::to_string_pretty(&pointer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let json = serde_json::to_string_pretty(&pointer).map_err(std::io::Error::other)?;
 
         let mut temp = tempfile::NamedTempFile::new_in(&self.root)?;
         temp.write_all(json.as_bytes())?;

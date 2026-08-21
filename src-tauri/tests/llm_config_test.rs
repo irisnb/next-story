@@ -317,7 +317,9 @@ fn save_rolls_back_keyring_when_disk_replace_fails_after_keyring_update() {
     let new = sample_config("https://api-b.example.com/v1".to_string());
     let result = save_llm_config_with_store_checked(&base, &new, &store, |phase| {
         if phase == ConfigSavePhase::AfterKeyringUpdate {
-            Err(LlmConfigError::WriteError("测试注入的磁盘写入失败".to_string()))
+            Err(LlmConfigError::WriteError(
+                "测试注入的磁盘写入失败".to_string(),
+            ))
         } else {
             Ok(())
         }
@@ -684,9 +686,10 @@ async fn generate_rejects_blank_selection_and_blank_messages_with_safe_stable_er
     ];
 
     for request in cases {
-        let error = generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
-            .await
-            .expect_err("invalid payload must fail before network");
+        let error =
+            generate_ai_thinking(&sample_config("http://127.0.0.1:1".to_string()), &request)
+                .await
+                .expect_err("invalid payload must fail before network");
         assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
         assert_eq!(error.message, "AI 请求内容无效，请重试");
         assert!(!error.message.contains("冻结选区"));
@@ -753,15 +756,23 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
         .expect("user save writes known notebook content");
 
     let paths = ProjectPaths::new(project_root.clone());
+    let tree: next_story_lib::project::ContentTree = serde_json::from_str(
+        &std::fs::read_to_string(&paths.content_tree_file).expect("read content tree"),
+    )
+    .expect("parse content tree");
+    let doc_ids: Vec<String> = tree.root_children.clone();
     let snapshot = || -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         (
-            std::fs::read(&paths.draft_file).expect("read draft"),
-            std::fs::read(&paths.main_file).expect("read main"),
+            std::fs::read(paths.document_file(&doc_ids[0])).expect("read draft doc"),
+            std::fs::read(paths.document_file(&doc_ids[1])).expect("read main doc"),
             std::fs::read(&paths.metadata_file).expect("read metadata"),
         )
     };
     let before = snapshot();
-    assert!(!before.0.is_empty() && !before.1.is_empty(), "本子内容不能为空");
+    assert!(
+        !before.0.is_empty() && !before.1.is_empty(),
+        "本子内容不能为空"
+    );
 
     let assert_snapshot_unchanged = |label: &str| {
         let now = snapshot();
@@ -808,7 +819,7 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     system_entries.sort();
     assert_eq!(
         system_entries,
-        vec!["project.json".to_string()],
+        vec!["content-tree.json".to_string(), "project.json".to_string()],
         "AI 链路不得在系统目录留下任何事务/临时文件: {system_entries:?}"
     );
     let mut text_entries: Vec<String> = std::fs::read_dir(&paths.user_text_dir)
@@ -824,7 +835,7 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     text_entries.sort();
     assert_eq!(
         text_entries,
-        vec!["正文本.json".to_string(), "草稿本.json".to_string()],
+        vec!["documents".to_string()],
         "作品文本文件夹不应多出任何文件: {text_entries:?}"
     );
 
@@ -834,11 +845,14 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     save_existing_project(&project_root, new_draft.clone(), main_doc.clone())
         .expect("user save changes draft");
     let after_save = snapshot();
-    assert_ne!(after_save.0, before.0, "用户保存必须真实改变草稿本字节（正对照）");
+    assert_ne!(
+        after_save.0, before.0,
+        "用户保存必须真实改变草稿本字节（正对照）"
+    );
     assert_eq!(after_save.1, before.1, "只保存草稿，正文本字节应保持");
     assert_ne!(after_save.2, before.2, "用户保存会更新元信息 updated_at");
     assert_eq!(
-        std::fs::read_to_string(&paths.draft_file).expect("read draft after save"),
+        std::fs::read_to_string(paths.document_file(&doc_ids[0])).expect("read draft after save"),
         new_draft,
         "保存后的草稿本内容应等于新内容"
     );

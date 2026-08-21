@@ -59,7 +59,8 @@ mod tests {
         ];
 
         for request in cases {
-            let result = super::generate_ai_result_for_request(Path::new("unused"), None, request).await;
+            let result =
+                super::generate_ai_result_for_request(Path::new("unused"), None, request).await;
             assert!(!result.ok);
             let error = result.error.expect("malformed request error");
             assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
@@ -101,17 +102,25 @@ mod tests {
     #[tokio::test]
     async fn generate_command_rejects_unknown_fields_without_touching_project_files() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
-        let project_root = super::project::create_new_project(super::project::CreateProjectParams {
-            name: "白名单作品".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
+        let project_root =
+            super::project::create_new_project(super::project::CreateProjectParams {
+                name: "白名单作品".to_string(),
+                save_location: temp.path().to_string_lossy().to_string(),
+            })
+            .expect("create project");
 
         let paths = super::project::ProjectPaths::new(project_root);
+        // 版本 3 布局：内容树元数据 + 两篇根级文档正文 + 作品元信息。
+        let tree: super::project::ContentTree = serde_json::from_str(
+            &std::fs::read_to_string(&paths.content_tree_file).expect("read content tree"),
+        )
+        .expect("parse content tree");
+        let doc_ids: Vec<String> = tree.root_children.clone();
         let files = [
-            paths.draft_file.clone(),
-            paths.main_file.clone(),
+            paths.content_tree_file.clone(),
             paths.metadata_file.clone(),
+            paths.document_file(&doc_ids[0]),
+            paths.document_file(&doc_ids[1]),
         ];
         let before: Vec<Vec<u8>> = files
             .iter()
@@ -154,7 +163,8 @@ mod tests {
         for (path, before_bytes) in files.iter().zip(before.iter()) {
             let after = std::fs::read(path).expect("read project file after");
             assert_eq!(
-                &after, before_bytes,
+                &after,
+                before_bytes,
                 "生成命令拒绝未知字段时不得改动作品文件: {}",
                 path.display()
             );
@@ -180,7 +190,10 @@ async fn create_project(params: CreateProjectParams) -> Result<String, String> {
 /// 打开作品：在阻塞线程内取作品锁并覆盖整个「迁移 + 校验 + 读取」流程，
 /// 同一作品的打开/保存/迁移在进程内串行化。
 #[tauri::command]
-async fn open_project(app: tauri::AppHandle, project_path: String) -> Result<ProjectOpenResult, String> {
+async fn open_project(
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<ProjectOpenResult, String> {
     let project_root = PathBuf::from(&project_path);
     let locks = app.state::<ProjectLocks>().inner().clone();
 
@@ -306,7 +319,9 @@ pub fn run() {
                         if let Ok(core) = unsafe { controller.CoreWebView2() } {
                             if let Ok(settings) = unsafe { core.Settings() } {
                                 if let Ok(settings3) = settings.cast::<ICoreWebView2Settings3>() {
-                                    let _ = unsafe { settings3.SetAreBrowserAcceleratorKeysEnabled(false) };
+                                    let _ = unsafe {
+                                        settings3.SetAreBrowserAcceleratorKeysEnabled(false)
+                                    };
                                 }
                             }
                         }

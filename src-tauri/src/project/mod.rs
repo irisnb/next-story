@@ -1,9 +1,15 @@
+mod content_tree;
 mod migration;
 mod notebook;
 mod operations;
 mod validation;
 
+pub use content_tree::*;
 pub use notebook::*;
+pub use operations::{
+    create_document, create_folder, delete_node, move_node, rename_node, reorder_children,
+    restore_node,
+};
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};
@@ -25,7 +31,10 @@ pub struct ProjectMetadata {
 }
 
 impl ProjectMetadata {
-    pub const CURRENT_VERSION: u32 = 2;
+    /// 当前作品结构版本：3 = 内容树（文件夹 + 文档）。
+    /// 版本 2 = 固定双本子（草稿本 / 正文本），打开时由迁移框架升级到 3；
+    /// 版本 1 = 旧 `.txt` 本子，无迁移步骤，继续拒绝。
+    pub const CURRENT_VERSION: u32 = 3;
 }
 
 /// 项目打开结果
@@ -86,9 +95,19 @@ impl std::fmt::Display for ProjectError {
 
 impl std::error::Error for ProjectError {}
 
-/// 获取作品文件夹内的路径结构
+/// 获取作品文件夹内的路径结构。
+///
+/// 版本 3 磁盘布局（正文在用户文本区、树元数据与作品元信息在系统抽屉）：
+/// - 正文：每篇文档一个文件，`作品文本/documents/<稳定ID>.json`，内容为 Tiptap JSON；
+/// - 树元数据：`next-story-system/content-tree.json`（节点类型 / 父子 / 排序 / 回收站）；
+/// - 作品元信息：`next-story-system/project.json`（name / created_at / updated_at / version）。
+///
+/// `draft_file` / `main_file` 是版本 2 固定双本子的旧路径，仅用于迁移与旧事务恢复。
 pub struct ProjectPaths {
+    pub root: PathBuf,
     pub user_text_dir: PathBuf,
+    pub documents_dir: PathBuf,
+    pub content_tree_file: PathBuf,
     pub draft_file: PathBuf,
     pub main_file: PathBuf,
     pub system_dir: PathBuf,
@@ -98,15 +117,24 @@ pub struct ProjectPaths {
 impl ProjectPaths {
     pub fn new(root: PathBuf) -> Self {
         let user_text_dir = root.join("作品文本");
+        let documents_dir = user_text_dir.join("documents");
         let system_dir = root.join("next-story-system");
 
         Self {
+            root,
             user_text_dir: user_text_dir.clone(),
+            documents_dir,
+            content_tree_file: system_dir.join("content-tree.json"),
             draft_file: user_text_dir.join("草稿本.json"),
             main_file: user_text_dir.join("正文本.json"),
             system_dir: system_dir.clone(),
             metadata_file: system_dir.join("project.json"),
         }
+    }
+
+    /// 文档正文文件路径：按稳定节点 ID 寻址，与名称、路径无关。
+    pub fn document_file(&self, id: &str) -> PathBuf {
+        self.documents_dir.join(format!("{id}.json"))
     }
 }
 
@@ -131,9 +159,9 @@ impl ProjectLocks {
     /// 取得指定作品根的锁。路径先规范化，确保同一作品的不同写法（相对/绝对、
     /// 大小写变体等）落到同一把锁；规范化失败视为结构错误拒绝操作。
     pub fn acquire(&self, project_root: &Path) -> Result<ProjectLockGuard, ProjectError> {
-        let canonical = project_root.canonicalize().map_err(|e| {
-            ProjectError::InvalidStructure(format!("作品路径无法解析: {e}"))
-        })?;
+        let canonical = project_root
+            .canonicalize()
+            .map_err(|e| ProjectError::InvalidStructure(format!("作品路径无法解析: {e}")))?;
 
         // 把 `&'static` 引用复制出来，避免锁守卫借用注册表自身的互斥。
         let lock: &'static Mutex<()> = {
@@ -162,8 +190,8 @@ pub fn create_new_project(params: CreateProjectParams) -> Result<PathBuf, Projec
     operations::create_project(params.name, save_path)
 }
 
-/// 打开已有作品：版本不符先走迁移框架（空注册表 → 旧版本拒绝），
-/// 再严格校验结构，最后读取内容。
+/// 打开已有作品：版本不符先走迁移框架（旧双本子 → 内容树，版本 1 继续拒绝），
+/// 迁移前恢复遗留事务，再严格校验结构，最后读取内容。
 pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectError> {
     migration::migrate_project(
         project_root,
@@ -174,7 +202,8 @@ pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, P
     operations::open_project(project_root)
 }
 
-/// 保存已有作品：先确认仍是有效作品，再写入两个本子。
+/// 保存已有作品：先确认仍是有效作品（版本 3 内容树），再事务写入
+/// 「草稿本」「正文本」两篇文档的正文文件与元信息（元信息是完成标记）。
 pub fn save_existing_project(
     project_root: &Path,
     draft_content: String,

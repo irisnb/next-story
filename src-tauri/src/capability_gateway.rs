@@ -63,7 +63,13 @@ mod tests {
     #[test]
     fn forbidden_tool_list_covers_file_and_command_and_network_and_subagent() {
         // 三类最危险的入口必须都在禁用清单里：文件写、命令执行、联网、子 agent。
-        for required in ["tool-fs", "tool-bash", "tool-pwsh", "tool-web", "tool-subagent"] {
+        for required in [
+            "tool-fs",
+            "tool-bash",
+            "tool-pwsh",
+            "tool-web",
+            "tool-subagent",
+        ] {
             assert!(
                 FORBIDDEN_TOOL_IDS.contains(&required),
                 "禁用清单缺少 {required}"

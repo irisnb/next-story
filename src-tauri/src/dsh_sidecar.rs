@@ -353,7 +353,10 @@ mod tests {
     #[test]
     fn strip_verbatim_prefix_keeps_normal_path_unchanged() {
         let p = Path::new(r"D:\Next Story\sidecar");
-        assert_eq!(strip_verbatim_prefix(p), PathBuf::from(r"D:\Next Story\sidecar"));
+        assert_eq!(
+            strip_verbatim_prefix(p),
+            PathBuf::from(r"D:\Next Story\sidecar")
+        );
     }
 
     #[test]
@@ -413,7 +416,9 @@ mod tests {
     #[test]
     #[ignore = "需要 DSH sidecar + 钥匙串 + 网络，手动运行"]
     fn dsh_headless_generates_real_response() {
-        use crate::llm_config::secret_store::{KeyringStore, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE};
+        use crate::llm_config::secret_store::{
+            KeyringStore, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
+        };
 
         let api_key = KeyringStore
             .get(KEYRING_SERVICE, KEYRING_ACCOUNT)

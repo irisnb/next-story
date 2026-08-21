@@ -13,13 +13,13 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 欢迎页提供进入 LLM 配置的入口
 
 ### Requirement: User can create a project folder
-系统 SHALL 允许用户通过作品名和保存位置创建一部新作品，并在保存位置下创建以作品名命名的作品文件夹。系统 MUST NOT overwrite or delete an existing same-name folder, and failed creation cleanup MUST only remove filesystem entries created by the current creation attempt.
+系统 SHALL 允许用户通过作品名和保存位置创建一部新作品，并在保存位置下创建以作品名命名的作品文件夹。系统 MUST NOT overwrite or delete an existing same-name folder, and failed creation cleanup MUST only remove filesystem entries created by the current creation attempt. 新建作品 SHALL 创建一棵内容树，根级包含一篇默认文档，而非固定的「草稿本」「正文本」两篇。
 
 #### Scenario: Create valid project
 - **WHEN** 用户输入非空作品名并选择可访问的保存位置
 - **THEN** 系统创建对应作品文件夹
-- **AND** 系统创建一棵内容树，根级包含两篇普通文档「草稿本」与「正文本」
-- **AND** 系统按稳定文档 ID 在 `作品文本/documents/<id>.json` 保存两篇文档的正文（格式版本 2）
+- **AND** 系统创建一棵内容树，根级包含一篇默认文档
+- **AND** 系统按稳定文档 ID 在 `作品文本/documents/<id>.json` 保存该篇文档的正文（格式版本 2）
 - **AND** 系统在 `next-story-system/content-tree.json` 保存内容树元数据（节点身份、类型、父级、子级顺序、名称，不含正文）
 - **AND** 系统创建项目结构版本为整数 `3` 的 `next-story-system/project.json`
 
@@ -50,7 +50,7 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 系统 MAY remove only files or directories that the current create attempt created
 
 ### Requirement: User can open a valid project folder
-系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构和内容树。系统 MUST 先以只读方式校验 `project.json` 的项目结构版本为整数 3，只有版本受支持后才可运行可能写盘的事务恢复或迁移。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading document contents.
+系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构和内容树。系统 MUST 先以只读方式校验 `project.json` 的项目结构版本为整数 3，只有版本受支持后才可运行可能写盘的事务恢复或迁移。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading document contents. 打开成功时系统 SHALL 返回整棵内容树结构，前端据此确定当前文档。
 
 #### Scenario: Open valid project folder
 - **WHEN** 用户选择包含内容树元数据文件、文档正文文件和 `next-story-system/project.json` 的文件夹
@@ -60,7 +60,7 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** no interrupted manual-save transaction is present or recovery completes successfully
 - **THEN** 系统打开该作品
 - **AND** 系统进入编辑器
-- **AND** 系统默认显示草稿本
+- **AND** 系统返回整棵内容树结构，前端据以展示当前文档
 
 #### Scenario: Open invalid project folder
 - **WHEN** 用户选择的文件夹缺少必要作品结构
@@ -236,20 +236,6 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **THEN** 系统不因全局锁而串行化它们
 - **AND** 每个作品各自保持世代一致
 
-### Requirement: 前端最小适配仍返回/保存两篇迁移文档（过渡边界）
-当前前端最小适配仍把内容树根层的两篇普通文档「草稿本」「正文本」映射为 `draft_content` / `main_content` 两个字段返回与保存，使现有编辑器保持可用。这是过渡形态：作品事实已由内容树承载，前端尚未实现作品结构页 / 写作空间 UI，也未实现按内容树浏览或编辑任意文档。本 requirement 只描述当前前端契约的诚实边界，不是长期产品形态；前端适配另行 change。
-
-#### Scenario: 打开作品返回两篇迁移文档
-- **WHEN** 前端打开一个版本 3 作品
-- **THEN** 后端把内容树根层的「草稿本」「正文本」两篇普通文档内容映射为 `draft_content` / `main_content` 返回
-- **AND** 前端按现有编辑器契约展示这两篇文档
-
-#### Scenario: 保存作品写回两篇迁移文档
-- **WHEN** 前端触发手动保存
-- **AND** 提交 `draft_content` / `main_content`
-- **THEN** 后端把两篇文档内容写回内容树中对应的「草稿本」「正文本」文档正文文件
-- **AND** 保存作为一个完整一致世代提交
-
 ### Requirement: 读取大小限制使用有界读取
 系统 MUST 在读取项目文件与配置文件时，使用「打开一次文件句柄后有界读取」的方式限制读取量，而 MUST NOT 依赖读取前的元数据长度作为最终限制。当实际读取量超过支持上限时，系统 MUST 拒绝并返回中文可读错误，且 MUST NOT 把超限内容无界读入内存。
 
@@ -258,3 +244,4 @@ TBD - created by archiving change establish-desktop-project-foundation. Update P
 - **AND** 实际内容超过支持读取上限
 - **THEN** 系统有界读取并在超过上限时拒绝
 - **AND** 系统不把超限内容无界读入内存
+

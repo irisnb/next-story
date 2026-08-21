@@ -21,9 +21,6 @@
         <button id="btn-open-project" class="action-btn">
           打开作品
         </button>
-        <button id="btn-llm-config" class="action-btn">
-          LLM 配置
-        </button>
       </div>
     </main>
 
@@ -61,327 +58,361 @@
         <div class="editor-actions">
           <span id="save-status" class="save-status">已保存</span>
           <button id="btn-back-welcome" class="save-btn">返回欢迎页</button>
-          <button id="btn-settings" class="save-btn">设置</button>
           <button id="btn-toggle-ai" class="save-btn">AI 面板</button>
           <button id="btn-save" class="save-btn primary" disabled>保存</button>
         </div>
       </header>
-      
-      <nav class="editor-tabs">
-        <button id="tab-draft" class="tab-btn active">草稿本</button>
-        <button id="tab-main" class="tab-btn">正文本</button>
+
+      <nav class="editor-tabs" role="tablist" aria-label="模块导航">
+        <button id="tab-writing" class="tab-btn active" type="button">写作</button>
+        <button id="tab-files" class="tab-btn" type="button">文件管理</button>
+        <button id="tab-settings" class="tab-btn" type="button">设置</button>
       </nav>
-      
-      <div id="find-bar" class="find-bar hidden" role="search" aria-label="查找替换">
-        <input type="text" id="find-input" class="find-input" placeholder="查找" aria-label="查找" />
-        <label class="find-case"><input type="checkbox" id="find-case-sensitive" />区分大小写</label>
-        <button id="btn-find-prev" class="toolbar-btn" type="button" disabled>上一个</button>
-        <button id="btn-find-next" class="toolbar-btn" type="button" disabled>下一个</button>
-        <span id="find-count" class="find-count" aria-live="polite"></span>
-        <input type="text" id="replace-input" class="replace-input" placeholder="替换为" aria-label="替换为" />
-        <button id="btn-replace" class="toolbar-btn" type="button" disabled>替换</button>
-        <button id="btn-replace-all" class="toolbar-btn" type="button" disabled>全部替换</button>
-        <button id="btn-find-close" class="toolbar-btn find-close" type="button" aria-label="关闭查找替换">关闭</button>
-      </div>
 
-      <div class="editor-main">
-        <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="文本格式">
-          <select id="paragraph-style" class="toolbar-select" aria-label="段落样式">
-            <option value="" disabled>多种格式</option>
-            <option value="paragraph">正文</option>
-            <option value="heading1">一级标题</option>
-            <option value="heading2">二级标题</option>
-            <option value="heading3">三级标题</option>
-            <option value="heading4">四级标题</option>
-            <option value="heading5">五级标题</option>
-            <option value="heading6">六级标题</option>
-          </select>
-          <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
-          <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
-          <button id="btn-toolbar-underline" class="toolbar-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">U</span></button>
-          <button id="btn-toolbar-strike" class="toolbar-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">S</span></button>
-          <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
-          <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
-          <button id="btn-undo" class="toolbar-btn" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
-          <button id="btn-redo" class="toolbar-btn" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
-          <button id="btn-find" class="toolbar-btn" type="button" aria-label="查找" title="查找 (Ctrl+F)">查找</button>
-          <button id="btn-margin" class="toolbar-btn" type="button" aria-label="留白" title="留白调节">标准</button>
-          <button id="btn-format-drawer" class="toolbar-btn format-drawer-toggle" type="button" aria-expanded="false" aria-controls="format-drawer">格式</button>
+      <!-- 写作模块 -->
+      <section id="module-writing" class="module-view" aria-label="写作">
+        <div class="writing-doc-bar">
+          <span class="writing-doc-label">当前文档</span>
+          <button id="current-doc-toggle" class="current-doc-toggle" type="button" aria-expanded="false" aria-controls="document-list">
+            <span id="current-document-name" class="current-doc-name"></span>
+            <span class="current-doc-caret" aria-hidden="true"></span>
+          </button>
+          <div id="document-list" class="document-list hidden" role="menu"></div>
         </div>
 
-        <div class="editor-body">
-        <div class="editor-notebooks">
-          <div id="draft-textarea" class="notebook-textarea" data-placeholder="在这里写草稿..."></div>
-          <div id="main-textarea" class="notebook-textarea hidden" data-placeholder="在这里写正文..."></div>
+        <div id="find-bar" class="find-bar hidden" role="search" aria-label="查找替换">
+          <input type="text" id="find-input" class="find-input" placeholder="查找" aria-label="查找" />
+          <label class="find-case"><input type="checkbox" id="find-case-sensitive" />区分大小写</label>
+          <button id="btn-find-prev" class="toolbar-btn" type="button" disabled>上一个</button>
+          <button id="btn-find-next" class="toolbar-btn" type="button" disabled>下一个</button>
+          <span id="find-count" class="find-count" aria-live="polite"></span>
+          <input type="text" id="replace-input" class="replace-input" placeholder="替换为" aria-label="替换为" />
+          <button id="btn-replace" class="toolbar-btn" type="button" disabled>替换</button>
+          <button id="btn-replace-all" class="toolbar-btn" type="button" disabled>全部替换</button>
+          <button id="btn-find-close" class="toolbar-btn find-close" type="button" aria-label="关闭查找替换">关闭</button>
         </div>
 
-        <aside id="ai-panel" class="ai-panel hidden" aria-live="polite">
-          <div class="ai-panel-header">
-            <span class="ai-panel-title">AI 思考</span>
-            <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
+        <div class="editor-main">
+          <div id="format-toolbar" class="format-toolbar" role="toolbar" aria-label="文本格式">
+            <select id="paragraph-style" class="toolbar-select" aria-label="段落样式">
+              <option value="" disabled>多种格式</option>
+              <option value="paragraph">正文</option>
+              <option value="heading1">一级标题</option>
+              <option value="heading2">二级标题</option>
+              <option value="heading3">三级标题</option>
+              <option value="heading4">四级标题</option>
+              <option value="heading5">五级标题</option>
+              <option value="heading6">六级标题</option>
+            </select>
+            <button id="btn-bold" class="toolbar-btn" type="button" aria-label="粗体" aria-pressed="false" title="粗体 (Ctrl+B)">B</button>
+            <button id="btn-italic" class="toolbar-btn" type="button" aria-label="斜体" aria-pressed="false" title="斜体 (Ctrl+I)">I</button>
+            <button id="btn-toolbar-underline" class="toolbar-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">U</span></button>
+            <button id="btn-toolbar-strike" class="toolbar-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">S</span></button>
+            <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
+            <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
+            <button id="btn-undo" class="toolbar-btn" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
+            <button id="btn-redo" class="toolbar-btn" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
+            <button id="btn-find" class="toolbar-btn" type="button" aria-label="查找" title="查找 (Ctrl+F)">查找</button>
+            <button id="btn-margin" class="toolbar-btn" type="button" aria-label="留白" title="留白调节">标准</button>
+            <button id="btn-format-drawer" class="toolbar-btn format-drawer-toggle" type="button" aria-expanded="false" aria-controls="format-drawer">格式</button>
           </div>
-          <div class="ai-panel-body">
-            <div id="ai-snapshot-block" class="ai-block hidden">
-              <div class="ai-block-label">本次选区</div>
-              <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
-            </div>
-            <div id="ai-thinking-expansion-prestate" class="ai-thinking-expansion hidden">
-              <div class="ai-thinking-expansion-header">
-                <h2 id="ai-thinking-expansion-title" class="ai-thinking-expansion-title">思维扩展</h2>
-                <span id="ai-thinking-expansion-count" class="ai-thinking-expansion-count"></span>
-              </div>
-              <form id="ai-thinking-expansion-form" class="ai-thinking-expansion-form">
-                <textarea id="ai-thinking-expansion-input" class="ai-thinking-expansion-input" rows="4" placeholder="写下你想追的方向"></textarea>
-                <button id="ai-thinking-expansion-start" class="ai-thinking-expansion-start" type="submit">开始</button>
-              </form>
-            </div>
-            <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
-            <pre id="ai-response" class="ai-response hidden"></pre>
-            <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
-            <div id="ai-error-block" class="ai-error-block hidden">
-              <div id="ai-error-message" class="ai-error-message"></div>
-              <button id="ai-retry" class="ai-panel-btn" type="button">重新请求</button>
-            </div>
-            <div id="ai-config-block" class="ai-config-block hidden">
-              <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
-              <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
-            </div>
-            <div id="ai-follow-up-error" class="ai-follow-up-error hidden">
-              <div id="ai-follow-up-error-message" class="ai-error-message"></div>
-              <div class="ai-follow-up-error-actions">
-                <button id="ai-follow-up-retry" class="ai-panel-btn" type="button">原样重试</button>
-                <button id="ai-follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
-              </div>
-            </div>
-            <form id="ai-follow-up-form" class="ai-follow-up-form hidden">
-              <label class="ai-follow-up-label" for="ai-follow-up-input">继续追问</label>
-              <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
-              <button id="ai-follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
-            </form>
-          </div>
-        </aside>
 
-        <aside id="format-drawer" class="format-drawer" aria-hidden="true" aria-label="格式面板">
-          <div class="format-drawer-header">
-            <span class="format-drawer-title">格式</span>
-            <button id="btn-format-drawer-close" class="ai-panel-btn" type="button">收起</button>
-          </div>
-          <div class="format-drawer-body">
-            <section class="drawer-group" aria-label="字符格式">
-              <button id="btn-toggle-character-section" class="drawer-group-toggle" type="button" aria-expanded="true">
-                <span class="drawer-group-title">字符</span>
-                <span class="drawer-group-chevron" aria-hidden="true"></span>
-              </button>
-              <div class="drawer-group-content">
-              <div class="drawer-inline">
-                <button id="btn-underline" class="drawer-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">下划线</span></button>
-                <button id="btn-strike" class="drawer-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">删除线</span></button>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-font-family">字体</label>
-                <select id="select-font-family" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">默认字体</option>
-                  <option value="宋体" style="font-family: 宋体">宋体</option>
-                  <option value="黑体" style="font-family: 黑体">黑体</option>
-                  <option value="楷体" style="font-family: 楷体">楷体</option>
-                  <option value="仿宋" style="font-family: 仿宋">仿宋</option>
-                  <option value="微软雅黑" style="font-family: 微软雅黑">微软雅黑</option>
-                  <option value="Arial" style="font-family: Arial">Arial</option>
-                  <option value="Times New Roman" style="font-family: 'Times New Roman'">Times New Roman</option>
-                  <option value="Courier New" style="font-family: 'Courier New'">Courier New</option>
-                </select>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-font-size">字号</label>
-                <select id="select-font-size" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">默认字号</option>
-                  <option value="10.5pt">10.5pt（五号）</option>
-                  <option value="12pt">12pt（小四）</option>
-                  <option value="14pt">14pt（四号）</option>
-                  <option value="16pt">16pt（三号）</option>
-                  <option value="18pt">18pt（小二）</option>
-                  <option value="24pt">24pt（小一）</option>
-                  <option value="36pt">36pt</option>
-                </select>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="input-text-color">文字颜色</label>
-                <div class="drawer-inline">
-                  <input type="color" id="input-text-color" class="drawer-color" value="#000000" />
-                  <button id="btn-clear-text-color" class="drawer-btn" type="button">清除颜色</button>
-                </div>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="input-highlight">背景高亮</label>
-                <div class="drawer-inline">
-                  <input type="color" id="input-highlight" class="drawer-color" value="#ffffff" />
-                  <button id="btn-clear-highlight" class="drawer-btn" type="button">清除高亮</button>
-                </div>
-              </div>
-              <button id="btn-clear-character-format" class="drawer-btn drawer-clear-btn" type="button">清除字符格式</button>
-              </div>
-            </section>
+          <div class="editor-body">
+            <div class="editor-notebooks">
+              <div id="editor-textarea" class="notebook-textarea" data-placeholder="在这里写作..."></div>
+              <div id="writing-empty-state" class="writing-empty-state hidden">这里还没有文档，去文件管理新建一篇吧</div>
+            </div>
 
-            <section class="drawer-group" aria-label="段落格式">
-              <button id="btn-toggle-paragraph-section" class="drawer-group-toggle" type="button" aria-expanded="true">
-                <span class="drawer-group-title">段落</span>
-                <span class="drawer-group-chevron" aria-hidden="true"></span>
-              </button>
-              <div class="drawer-group-content">
-              <div class="drawer-field">
-                <span class="drawer-label">对齐</span>
-                <div class="drawer-inline">
-                  <button id="btn-align-left" class="drawer-btn" type="button" aria-label="左对齐" aria-pressed="true">左</button>
-                  <button id="btn-align-center" class="drawer-btn" type="button" aria-label="居中对齐" aria-pressed="false">中</button>
-                  <button id="btn-align-right" class="drawer-btn" type="button" aria-label="右对齐" aria-pressed="false">右</button>
-                  <button id="btn-align-justify" class="drawer-btn" type="button" aria-label="两端对齐" aria-pressed="false">两端</button>
+            <aside id="ai-panel" class="ai-panel hidden" aria-live="polite">
+              <div class="ai-panel-header">
+                <span class="ai-panel-title">AI 思考</span>
+                <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
+              </div>
+              <div class="ai-panel-body">
+                <div id="ai-snapshot-block" class="ai-block hidden">
+                  <div class="ai-block-label">本次选区</div>
+                  <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
                 </div>
+                <div id="ai-thinking-expansion-prestate" class="ai-thinking-expansion hidden">
+                  <div class="ai-thinking-expansion-header">
+                    <h2 id="ai-thinking-expansion-title" class="ai-thinking-expansion-title">思维扩展</h2>
+                    <span id="ai-thinking-expansion-count" class="ai-thinking-expansion-count"></span>
+                  </div>
+                  <form id="ai-thinking-expansion-form" class="ai-thinking-expansion-form">
+                    <textarea id="ai-thinking-expansion-input" class="ai-thinking-expansion-input" rows="4" placeholder="写下你想追的方向"></textarea>
+                    <button id="ai-thinking-expansion-start" class="ai-thinking-expansion-start" type="submit">开始</button>
+                  </form>
+                </div>
+                <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
+                <pre id="ai-response" class="ai-response hidden"></pre>
+                <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
+                <div id="ai-error-block" class="ai-error-block hidden">
+                  <div id="ai-error-message" class="ai-error-message"></div>
+                  <button id="ai-retry" class="ai-panel-btn" type="button">重新请求</button>
+                </div>
+                <div id="ai-config-block" class="ai-config-block hidden">
+                  <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+                  <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
+                </div>
+                <div id="ai-follow-up-error" class="ai-follow-up-error hidden">
+                  <div id="ai-follow-up-error-message" class="ai-error-message"></div>
+                  <div class="ai-follow-up-error-actions">
+                    <button id="ai-follow-up-retry" class="ai-panel-btn" type="button">原样重试</button>
+                    <button id="ai-follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
+                  </div>
+                </div>
+                <form id="ai-follow-up-form" class="ai-follow-up-form hidden">
+                  <label class="ai-follow-up-label" for="ai-follow-up-input">继续追问</label>
+                  <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
+                  <button id="ai-follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
+                </form>
               </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-line-height">行距</label>
-                <select id="select-line-height" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">默认</option>
-                  <option value="1.0">1.0</option>
-                  <option value="1.15">1.15</option>
-                  <option value="1.5">1.5</option>
-                  <option value="2.0">2.0</option>
-                  <option value="2.5">2.5</option>
-                  <option value="3.0">3.0</option>
-                </select>
+            </aside>
+
+            <aside id="format-drawer" class="format-drawer" aria-hidden="true" aria-label="格式面板">
+              <div class="format-drawer-header">
+                <span class="format-drawer-title">格式</span>
+                <button id="btn-format-drawer-close" class="ai-panel-btn" type="button">收起</button>
               </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-spacing-before">段前间距</label>
-                <select id="select-spacing-before" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">默认</option>
-                  <option value="0pt">0pt</option>
-                  <option value="6pt">6pt</option>
-                  <option value="12pt">12pt</option>
-                  <option value="18pt">18pt</option>
-                  <option value="24pt">24pt</option>
-                </select>
+              <div class="format-drawer-body">
+                <section class="drawer-group" aria-label="字符格式">
+                  <button id="btn-toggle-character-section" class="drawer-group-toggle" type="button" aria-expanded="true">
+                    <span class="drawer-group-title">字符</span>
+                    <span class="drawer-group-chevron" aria-hidden="true"></span>
+                  </button>
+                  <div class="drawer-group-content">
+                  <div class="drawer-inline">
+                    <button id="btn-underline" class="drawer-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">下划线</span></button>
+                    <button id="btn-strike" class="drawer-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">删除线</span></button>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-font-family">字体</label>
+                    <select id="select-font-family" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">默认字体</option>
+                      <option value="宋体" style="font-family: 宋体">宋体</option>
+                      <option value="黑体" style="font-family: 黑体">黑体</option>
+                      <option value="楷体" style="font-family: 楷体">楷体</option>
+                      <option value="仿宋" style="font-family: 仿宋">仿宋</option>
+                      <option value="微软雅黑" style="font-family: 微软雅黑">微软雅黑</option>
+                      <option value="Arial" style="font-family: Arial">Arial</option>
+                      <option value="Times New Roman" style="font-family: 'Times New Roman'">Times New Roman</option>
+                      <option value="Courier New" style="font-family: 'Courier New'">Courier New</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-font-size">字号</label>
+                    <select id="select-font-size" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">默认字号</option>
+                      <option value="10.5pt">10.5pt（五号）</option>
+                      <option value="12pt">12pt（小四）</option>
+                      <option value="14pt">14pt（四号）</option>
+                      <option value="16pt">16pt（三号）</option>
+                      <option value="18pt">18pt（小二）</option>
+                      <option value="24pt">24pt（小一）</option>
+                      <option value="36pt">36pt</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="input-text-color">文字颜色</label>
+                    <div class="drawer-inline">
+                      <input type="color" id="input-text-color" class="drawer-color" value="#000000" />
+                      <button id="btn-clear-text-color" class="drawer-btn" type="button">清除颜色</button>
+                    </div>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="input-highlight">背景高亮</label>
+                    <div class="drawer-inline">
+                      <input type="color" id="input-highlight" class="drawer-color" value="#ffffff" />
+                      <button id="btn-clear-highlight" class="drawer-btn" type="button">清除高亮</button>
+                    </div>
+                  </div>
+                  <button id="btn-clear-character-format" class="drawer-btn drawer-clear-btn" type="button">清除字符格式</button>
+                  </div>
+                </section>
+
+                <section class="drawer-group" aria-label="段落格式">
+                  <button id="btn-toggle-paragraph-section" class="drawer-group-toggle" type="button" aria-expanded="true">
+                    <span class="drawer-group-title">段落</span>
+                    <span class="drawer-group-chevron" aria-hidden="true"></span>
+                  </button>
+                  <div class="drawer-group-content">
+                  <div class="drawer-field">
+                    <span class="drawer-label">对齐</span>
+                    <div class="drawer-inline">
+                      <button id="btn-align-left" class="drawer-btn" type="button" aria-label="左对齐" aria-pressed="true">左</button>
+                      <button id="btn-align-center" class="drawer-btn" type="button" aria-label="居中对齐" aria-pressed="false">中</button>
+                      <button id="btn-align-right" class="drawer-btn" type="button" aria-label="右对齐" aria-pressed="false">右</button>
+                      <button id="btn-align-justify" class="drawer-btn" type="button" aria-label="两端对齐" aria-pressed="false">两端</button>
+                    </div>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-line-height">行距</label>
+                    <select id="select-line-height" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">默认</option>
+                      <option value="1.0">1.0</option>
+                      <option value="1.15">1.15</option>
+                      <option value="1.5">1.5</option>
+                      <option value="2.0">2.0</option>
+                      <option value="2.5">2.5</option>
+                      <option value="3.0">3.0</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-spacing-before">段前间距</label>
+                    <select id="select-spacing-before" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">默认</option>
+                      <option value="0pt">0pt</option>
+                      <option value="6pt">6pt</option>
+                      <option value="12pt">12pt</option>
+                      <option value="18pt">18pt</option>
+                      <option value="24pt">24pt</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-spacing-after">段后间距</label>
+                    <select id="select-spacing-after" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">默认</option>
+                      <option value="0pt">0pt</option>
+                      <option value="6pt">6pt</option>
+                      <option value="12pt">12pt</option>
+                      <option value="18pt">18pt</option>
+                      <option value="24pt">24pt</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-text-indent">首行缩进</label>
+                    <select id="select-text-indent" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">无</option>
+                      <option value="2em">2em</option>
+                      <option value="4em">4em</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-indent-left">左缩进</label>
+                    <select id="select-indent-left" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">无</option>
+                      <option value="1em">1em</option>
+                      <option value="2em">2em</option>
+                      <option value="3em">3em</option>
+                    </select>
+                  </div>
+                  <div class="drawer-field">
+                    <label class="drawer-label" for="select-indent-right">右缩进</label>
+                    <select id="select-indent-right" class="drawer-select">
+                      <option value="mixed" disabled>多种</option>
+                      <option value="">无</option>
+                      <option value="1em">1em</option>
+                      <option value="2em">2em</option>
+                      <option value="3em">3em</option>
+                    </select>
+                  </div>
+                  <button id="btn-clear-paragraph-format" class="drawer-btn drawer-clear-btn" type="button">清除段落格式</button>
+                  </div>
+                </section>
               </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-spacing-after">段后间距</label>
-                <select id="select-spacing-after" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">默认</option>
-                  <option value="0pt">0pt</option>
-                  <option value="6pt">6pt</option>
-                  <option value="12pt">12pt</option>
-                  <option value="18pt">18pt</option>
-                  <option value="24pt">24pt</option>
-                </select>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-text-indent">首行缩进</label>
-                <select id="select-text-indent" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">无</option>
-                  <option value="2em">2em</option>
-                  <option value="4em">4em</option>
-                </select>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-indent-left">左缩进</label>
-                <select id="select-indent-left" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">无</option>
-                  <option value="1em">1em</option>
-                  <option value="2em">2em</option>
-                  <option value="3em">3em</option>
-                </select>
-              </div>
-              <div class="drawer-field">
-                <label class="drawer-label" for="select-indent-right">右缩进</label>
-                <select id="select-indent-right" class="drawer-select">
-                  <option value="mixed" disabled>多种</option>
-                  <option value="">无</option>
-                  <option value="1em">1em</option>
-                  <option value="2em">2em</option>
-                  <option value="3em">3em</option>
-                </select>
-              </div>
-              <button id="btn-clear-paragraph-format" class="drawer-btn drawer-clear-btn" type="button">清除段落格式</button>
-              </div>
-            </section>
+            </aside>
           </div>
-        </aside>
         </div>
-      </div>
 
-      <div id="context-menu" class="context-menu hidden" role="menu" aria-label="编辑菜单">
-        <button id="ctx-cut" class="more-menu-btn" type="button" role="menuitem">剪切</button>
-        <button id="ctx-copy" class="more-menu-btn" type="button" role="menuitem">复制</button>
-        <button id="ctx-paste" class="more-menu-btn" type="button" role="menuitem">粘贴</button>
-        <button id="ctx-paste-plain" class="more-menu-btn" type="button" role="menuitem">粘贴为纯文本</button>
-        <div class="context-menu-separator" role="separator"></div>
-        <button id="ctx-link-create" class="more-menu-btn" type="button" role="menuitem">创建链接</button>
-        <div id="ctx-link-group" class="hidden">
+        <div id="context-menu" class="context-menu hidden" role="menu" aria-label="编辑菜单">
+          <button id="ctx-cut" class="more-menu-btn" type="button" role="menuitem">剪切</button>
+          <button id="ctx-copy" class="more-menu-btn" type="button" role="menuitem">复制</button>
+          <button id="ctx-paste" class="more-menu-btn" type="button" role="menuitem">粘贴</button>
+          <button id="ctx-paste-plain" class="more-menu-btn" type="button" role="menuitem">粘贴为纯文本</button>
           <div class="context-menu-separator" role="separator"></div>
-          <button id="ctx-link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
-          <button id="ctx-link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
-          <button id="ctx-link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
-        </div>
-      </div>
-
-      <div id="link-popover" class="link-popover hidden" role="menu" aria-label="链接操作">
-        <button id="link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
-        <button id="link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
-        <button id="link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
-      </div>
-    </main>
-
-    <!-- LLM Config Page -->
-    <main id="llm-config-page" class="container hidden">
-      <div class="form-container">
-        <h2 class="form-title">LLM 配置</h2>
-        <p class="config-warning">
-          提醒：API Key 会作为 Bearer 凭据发送到你填写的 API 地址，并保存在操作系统的凭据存储（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）中。只使用你信任的地址，请勿在公共或不信任的设备上使用。
-        </p>
-        <p class="config-warning">
-          测试连接只发送固定测试语句，不会发送用户剧本文字或临时对话。AI 生成会把冻结选区原文、思维扩展方向或当前临时对话发送给所选模型；第三方服务如何处理数据，取决于你和该服务的协议与设置。
-        </p>
-        <p class="config-warning">
-          AI 请求会把选区和追问发送到你配置的模型服务；回复只显示在 AI 面板，不会自动进入正文本或草稿本。
-        </p>
-
-        <div class="form-group">
-          <label class="form-label" for="api-base-url">OpenAI-compatible API 基础地址</label>
-          <input type="text" id="api-base-url" class="form-input" placeholder="例如 https://api.openai.com/v1" />
-          <p class="form-help">不要填写 /chat/completions。远程地址必须使用 HTTPS；本机 localhost 可使用 HTTP。</p>
-          <p id="api-base-url-error" class="error-message hidden"></p>
+          <button id="ctx-link-create" class="more-menu-btn" type="button" role="menuitem">创建链接</button>
+          <div id="ctx-link-group" class="hidden">
+            <div class="context-menu-separator" role="separator"></div>
+            <button id="ctx-link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
+            <button id="ctx-link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
+            <button id="ctx-link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="api-key">API Key</label>
-          <input type="password" id="api-key" class="form-input" placeholder="例如 sk-..." />
-          <p id="api-key-error" class="error-message hidden"></p>
+        <div id="link-popover" class="link-popover hidden" role="menu" aria-label="链接操作">
+          <button id="link-open" class="more-menu-btn" type="button" role="menuitem">打开链接</button>
+          <button id="link-edit" class="more-menu-btn" type="button" role="menuitem">编辑链接</button>
+          <button id="link-remove" class="more-menu-btn" type="button" role="menuitem">移除链接</button>
         </div>
+      </section>
 
-        <div class="form-group">
-          <label class="form-label" for="model-name">模型名</label>
-          <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
-          <p id="model-name-error" class="error-message hidden"></p>
+      <!-- 文件管理模块 -->
+      <section id="module-files" class="module-view hidden" aria-label="文件管理">
+        <div class="file-manager">
+          <div class="file-manager-toolbar">
+            <button id="fm-new-document" class="file-action-btn" type="button">新建文档</button>
+            <button id="fm-new-folder" class="file-action-btn" type="button">新建文件夹</button>
+            <span id="fm-status" class="fm-status" aria-live="polite"></span>
+          </div>
+          <div id="fm-file-tree" class="file-tree"></div>
+          <div class="file-manager-footer">
+            <button id="fm-open-recycle-bin" class="file-action-btn" type="button">回收站</button>
+          </div>
         </div>
-
-        <p id="llm-save-status" class="save-status">未保存</p>
-
-        <div class="form-actions">
-          <button id="btn-back-config" class="btn-secondary">返回</button>
-          <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
-          <button id="btn-save-config" class="btn-primary" disabled>保存</button>
+        <div id="fm-recycle-bin" class="file-manager hidden">
+          <div class="recycle-bin-header">
+            <button id="fm-back-from-recycle" class="file-action-btn" type="button">返回</button>
+            <span class="recycle-bin-title">回收站</span>
+          </div>
+          <div id="fm-recycle-list" class="file-tree"></div>
         </div>
-      </div>
+      </section>
+
+      <!-- 设置模块 -->
+      <section id="module-settings" class="module-view hidden" aria-label="设置">
+        <div class="form-container">
+          <h2 class="form-title">LLM 配置</h2>
+          <p class="config-warning">
+            提醒：API Key 会作为 Bearer 凭据发送到你填写的 API 地址，并保存在操作系统的凭据存储（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）中。只使用你信任的地址，请勿在公共或不信任的设备上使用。
+          </p>
+          <p class="config-warning">
+            测试连接只发送固定测试语句，不会发送用户剧本文字或临时对话。AI 生成会把冻结选区原文、思维扩展方向或当前临时对话发送给所选模型；第三方服务如何处理数据，取决于你和该服务的协议与设置。
+          </p>
+          <p class="config-warning">
+            AI 请求会把选区和追问发送到你配置的模型服务；回复只显示在 AI 面板，不会自动进入任何文档。
+          </p>
+
+          <div class="form-group">
+            <label class="form-label" for="api-base-url">OpenAI-compatible API 基础地址</label>
+            <input type="text" id="api-base-url" class="form-input" placeholder="例如 https://api.openai.com/v1" />
+            <p class="form-help">不要填写 /chat/completions。远程地址必须使用 HTTPS；本机 localhost 可使用 HTTP。</p>
+            <p id="api-base-url-error" class="error-message hidden"></p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="api-key">API Key</label>
+            <input type="password" id="api-key" class="form-input" placeholder="例如 sk-..." />
+            <p id="api-key-error" class="error-message hidden"></p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="model-name">模型名</label>
+            <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
+            <p id="model-name-error" class="error-message hidden"></p>
+          </div>
+
+          <p id="llm-save-status" class="save-status">未保存</p>
+
+          <div class="form-actions">
+            <button id="btn-back-config" class="btn-secondary">返回写作</button>
+            <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
+            <button id="btn-save-config" class="btn-primary" disabled>保存</button>
+          </div>
+        </div>
+      </section>
     </main>
 
     <dialog id="leave-dialog" class="leave-dialog" aria-labelledby="leave-dialog-title" aria-describedby="leave-dialog-description">
       <div class="leave-dialog-content">
         <h2 id="leave-dialog-title" class="form-title">有未保存修改</h2>
-        <p id="leave-dialog-description" class="leave-dialog-description">离开前是否保存草稿本和正文本的修改？</p>
+        <p id="leave-dialog-description" class="leave-dialog-description">离开前是否保存未保存的修改？</p>
         <div class="leave-dialog-actions">
           <button id="btn-save-and-leave" class="btn-primary">保存并离开</button>
           <button id="btn-discard-and-leave" class="btn-secondary danger">不保存并离开</button>

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use next_story_lib::project::{
-    create_new_project, open_existing_project, save_existing_project, validate_project_name,
+    create_new_project, open_existing_project, read_document, save_document, validate_project_name,
     CreateProjectParams, ProjectError,
 };
 use tempfile::TempDir;
@@ -102,6 +102,21 @@ fn root_doc_ids(project_root: &Path) -> Vec<String> {
     tree.root_children
 }
 
+/// 从打开结果返回的内容树里，按名称读取根级文档正文。
+fn read_named_doc_body(
+    root: &Path,
+    tree: &next_story_lib::project::ContentTree,
+    name: &str,
+) -> String {
+    let id = tree
+        .root_children
+        .iter()
+        .find(|id| tree.nodes[*id].name == name)
+        .unwrap_or_else(|| panic!("根级文档不存在: {name}"));
+    fs::read_to_string(root.join("作品文本").join("documents").join(format!("{id}.json")))
+        .expect("读取文档正文")
+}
+
 #[test]
 fn create_new_project_creates_expected_chinese_structure() {
     let temp = TempDir::new().expect("create temp dir");
@@ -139,7 +154,7 @@ fn create_new_project_writes_valid_blank_structured_notebooks() {
     .expect("create project");
 
     let doc_ids = root_doc_ids(&project_path);
-    assert_eq!(doc_ids.len(), 2, "根级应有两篇文档");
+    assert_eq!(doc_ids.len(), 1, "根级应有一篇文档");
 
     for id in doc_ids {
         let content = fs::read_to_string(
@@ -319,7 +334,7 @@ fn open_existing_project_rejects_oversized_metadata_before_opening() {
 }
 
 #[test]
-fn save_and_reopen_preserves_both_notebooks_through_production_api() {
+fn save_and_reopen_preserves_document_through_production_api() {
     let temp = TempDir::new().expect("create temp dir");
     let project_path = create_new_project(CreateProjectParams {
         name: "iris".to_string(),
@@ -327,17 +342,19 @@ fn save_and_reopen_preserves_both_notebooks_through_production_api() {
     })
     .expect("create project");
 
-    let draft_doc = valid_notebook_json("草稿第一行\n草稿第二行");
-    let main_doc = valid_notebook_json("正文第一行\n正文第二行");
+    let doc_ids = root_doc_ids(&project_path);
+    assert_eq!(doc_ids.len(), 1, "根级应有一篇文档");
+    let doc_id = doc_ids[0].clone();
 
-    save_existing_project(&project_path, draft_doc.clone(), main_doc.clone())
-        .expect("save both notebooks");
+    let draft_doc = valid_notebook_json("草稿第一行\n草稿第二行");
+
+    save_document(&project_path, &doc_id, &draft_doc).expect("save document");
 
     let reopened = open_existing_project(&project_path).expect("reopen saved project");
 
     assert_eq!(reopened.metadata.name, "iris");
-    assert_eq!(reopened.draft_content, draft_doc);
-    assert_eq!(reopened.main_content, main_doc);
+    let body = read_document(&project_path, &doc_id).expect("read saved document");
+    assert_eq!(body, draft_doc);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,35 +689,24 @@ fn save_rejects_invalid_notebook_payload_before_staging() {
     .expect("create project");
 
     let doc_ids = root_doc_ids(&project_path);
-    let draft_path = project_path
+    assert_eq!(doc_ids.len(), 1, "根级应有一篇文档");
+    let doc_id = doc_ids[0].clone();
+    let doc_path = project_path
         .join("作品文本")
         .join("documents")
-        .join(format!("{}.json", doc_ids[0]));
-    let main_path = project_path
-        .join("作品文本")
-        .join("documents")
-        .join(format!("{}.json", doc_ids[1]));
+        .join(format!("{doc_id}.json"));
     let metadata_path = project_path.join("next-story-system").join("project.json");
 
-    let before_draft = fs::read(&draft_path).expect("read draft before");
-    let before_main = fs::read(&main_path).expect("read main before");
+    let before_doc = fs::read(&doc_path).expect("read doc before");
     let before_metadata = fs::read(&metadata_path).expect("read metadata before");
 
-    // 非法草稿载荷（纯文本，非结构化 JSON）
-    let result = save_existing_project(
-        &project_path,
-        "纯文本草稿".to_string(),
-        valid_notebook_json("正文").to_string(),
-    );
+    // 非法文档载荷（纯文本，非结构化 JSON）
+    let result = save_document(&project_path, &doc_id, "纯文本草稿");
 
     assert!(matches!(result, Err(ProjectError::InvalidStructure(_))));
 
     // 可见文件保持原有完整世代
-    assert_eq!(
-        fs::read(&draft_path).expect("read draft after"),
-        before_draft
-    );
-    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
+    assert_eq!(fs::read(&doc_path).expect("read doc after"), before_doc);
     assert_eq!(
         fs::read(&metadata_path).expect("read metadata after"),
         before_metadata
@@ -750,77 +756,41 @@ fn open_rejects_unrecoverable_transaction_with_invalid_staged_notebook() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn save_rejects_oversized_draft_before_staging() {
+fn save_rejects_oversized_document_before_staging() {
     let temp = TempDir::new().expect("create temp dir");
     let project_path = create_new_project(CreateProjectParams {
-        name: "超限草稿".to_string(),
+        name: "超限文档".to_string(),
         save_location: temp.path().to_string_lossy().to_string(),
     })
     .expect("create project");
 
     let doc_ids = root_doc_ids(&project_path);
-    let draft_path = project_path
+    assert_eq!(doc_ids.len(), 1, "根级应有一篇文档");
+    let doc_id = doc_ids[0].clone();
+    let doc_path = project_path
         .join("作品文本")
         .join("documents")
-        .join(format!("{}.json", doc_ids[0]));
-    let main_path = project_path
-        .join("作品文本")
-        .join("documents")
-        .join(format!("{}.json", doc_ids[1]));
+        .join(format!("{doc_id}.json"));
     let metadata_path = project_path.join("next-story-system").join("project.json");
 
-    let before_draft = fs::read(&draft_path).expect("read draft before");
-    let before_main = fs::read(&main_path).expect("read main before");
+    let before_doc = fs::read(&doc_path).expect("read doc before");
     let before_metadata = fs::read(&metadata_path).expect("read metadata before");
 
-    // 草稿为超过上限但仍是合法结构化 JSON 的本子
-    let oversized_draft = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));
+    // 文档为超过上限但仍是合法结构化 JSON 的本子
+    let oversized = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));
 
-    let result = save_existing_project(&project_path, oversized_draft, valid_notebook_json("正文"));
+    let result = save_document(&project_path, &doc_id, &oversized);
 
     assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
 
     // 可见文件保持原有完整世代
-    assert_eq!(
-        fs::read(&draft_path).expect("read draft after"),
-        before_draft
-    );
-    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
+    assert_eq!(fs::read(&doc_path).expect("read doc after"), before_doc);
     assert_eq!(
         fs::read(&metadata_path).expect("read metadata after"),
         before_metadata
     );
 
     // 未创建事务暂存目录
-    let tx_dir = project_path
-        .join("next-story-system")
-        .join("save-transaction");
-    assert!(!tx_dir.exists(), "超限保存不应创建事务暂存目录");
-}
-
-#[test]
-fn save_rejects_oversized_main_before_staging() {
-    let temp = TempDir::new().expect("create temp dir");
-    let project_path = create_new_project(CreateProjectParams {
-        name: "超限正文".to_string(),
-        save_location: temp.path().to_string_lossy().to_string(),
-    })
-    .expect("create project");
-
-    let doc_ids = root_doc_ids(&project_path);
-    let main_path = project_path
-        .join("作品文本")
-        .join("documents")
-        .join(format!("{}.json", doc_ids[1]));
-    let before_main = fs::read(&main_path).expect("read main before");
-
-    let oversized_main = valid_notebook_json(&"x".repeat(11 * 1024 * 1024));
-
-    let result = save_existing_project(&project_path, valid_notebook_json("草稿"), oversized_main);
-
-    assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
-    assert_eq!(fs::read(&main_path).expect("read main after"), before_main);
-
     let tx_dir = project_path
         .join("next-story-system")
         .join("save-transaction");
@@ -855,8 +825,11 @@ fn open_discards_staged_oversized_transaction() {
     let opened = open_existing_project(&root).expect("open discards staged oversized transaction");
 
     assert!(!tx_dir.exists(), "Staged 超限事务目录应被丢弃");
-    assert!(opened.draft_content.contains("草稿"));
-    assert!(opened.main_content.contains("正文"));
+    // 迁移后树中含「草稿本」「正文本」两篇普通文档，正文保留旧世代内容。
+    let draft_body = read_named_doc_body(&root, &opened.tree, "草稿本");
+    let main_body = read_named_doc_body(&root, &opened.tree, "正文本");
+    assert!(draft_body.contains("草稿"));
+    assert!(main_body.contains("正文"));
 }
 
 #[test]

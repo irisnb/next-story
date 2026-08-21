@@ -1,12 +1,11 @@
 import type { AppDom } from "./dom.ts";
 import { LeaveCoordinator, type LeaveChoice } from "./leave-guard.ts";
-import { LlmConfigUiState, type LlmConfigReturnPage } from "./llm-config-state.ts";
+import { LlmConfigUiState } from "./llm-config-state.ts";
 import { loadLlmConfig, saveLlmConfig, testLlmConnection } from "./project-api.ts";
 import type { LlmConfig, LlmConfigSummary } from "./types.ts";
-import { showPage } from "./views.ts";
 
 export interface LlmConfigController {
-  open(returnPage: LlmConfigReturnPage): void;
+  open(): void;
   hasUnsavedChanges(): boolean;
   save(): Promise<boolean>;
   guardLeave(): Promise<boolean>;
@@ -14,6 +13,10 @@ export interface LlmConfigController {
 
 export interface LlmConfigFormServices {
   chooseLeave(): Promise<LeaveChoice>;
+  /** 进入设置模块（由导航层负责显示设置模块视图）。 */
+  showSettings(): void;
+  /** 离开设置模块，返回写作模块（保存/放弃/取消后）。 */
+  backToWriting(): void;
   loadConfig(): Promise<LlmConfigSummary | null>;
   saveConfig(config: LlmConfig): Promise<void>;
   testConnection(config: LlmConfig): Promise<void>;
@@ -27,11 +30,12 @@ export const KEY_MASK = "••••••••";
 
 export function setupLlmConfigForm(
   dom: AppDom,
-  pages: HTMLElement[],
   overrides: Partial<LlmConfigFormServices> = {},
 ): LlmConfigController {
   const services: LlmConfigFormServices = {
     chooseLeave: async () => "cancel",
+    showSettings: () => {},
+    backToWriting: () => {},
     loadConfig: loadLlmConfig,
     saveConfig: saveLlmConfig,
     testConnection: testLlmConnection,
@@ -216,9 +220,9 @@ export function setupLlmConfigForm(
     validateForm();
   }
 
-  function open(returnPage: LlmConfigReturnPage): void {
-    const generation = uiState.beginOpen(returnPage);
-    showPage(pages, "llm-config-page");
+  function open(): void {
+    const generation = uiState.beginOpen();
+    services.showSettings();
     setStatus("正在加载...", "saving");
     validateForm();
     void loadSaved(generation);
@@ -226,7 +230,7 @@ export function setupLlmConfigForm(
 
   async function handleBack(): Promise<void> {
     if (await leave.run()) {
-      showPage(pages, uiState.returnPage);
+      services.backToWriting();
     }
   }
 

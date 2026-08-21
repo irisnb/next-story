@@ -17,46 +17,43 @@ function deferred(): {
   return { promise, resolve, reject };
 }
 
-test("derives unsaved state from both notebook baselines and recognizes a full revert", () => {
-  const state = new EditorSaveState("draft saved", "main saved");
+test("derives unsaved state from the current document baseline and recognizes a full revert", () => {
+  const state = new EditorSaveState("saved");
 
-  state.setCurrent("draft edit", "main saved");
+  state.setCurrent("edit");
   assert.equal(state.hasUnsavedChanges, true);
   assert.equal(state.statusText, "有未保存修改");
 
-  state.setCurrent("draft saved", "main edit");
-  assert.equal(state.hasUnsavedChanges, true);
-
-  state.setCurrent("draft saved", "main saved");
+  state.setCurrent("saved");
   assert.equal(state.hasUnsavedChanges, false);
   assert.equal(state.statusText, "已保存");
 });
 
 test("freezes a save snapshot so edits made during saving remain unsaved", async () => {
   const pending = deferred();
-  const saved: Array<{ draft: string; main: string }> = [];
-  const state = new EditorSaveState("old draft", "old main");
-  state.setCurrent("snapshot draft", "snapshot main");
+  const saved: string[] = [];
+  const state = new EditorSaveState("old");
+  state.setCurrent("snapshot");
 
-  const saving = state.save(async (snapshot) => {
-    saved.push(snapshot);
+  const saving = state.save(async (content) => {
+    saved.push(content);
     await pending.promise;
   });
   assert.equal(state.statusText, "正在保存…");
 
-  state.setCurrent("later draft", "snapshot main");
+  state.setCurrent("later");
   pending.resolve();
   assert.equal(await saving, true);
-  assert.deepEqual(saved, [{ draft: "snapshot draft", main: "snapshot main" }]);
+  assert.deepEqual(saved, ["snapshot"]);
   assert.equal(state.hasUnsavedChanges, true);
   assert.equal(state.statusText, "有未保存修改");
 });
 
-test("shares one in-flight save and keeps baselines unchanged after failure", async () => {
+test("shares one in-flight save and keeps the baseline unchanged after failure", async () => {
   const pending = deferred();
   let calls = 0;
-  const state = new EditorSaveState("old draft", "old main");
-  state.setCurrent("new draft", "new main");
+  const state = new EditorSaveState("old");
+  state.setCurrent("new");
   const writer = async (): Promise<void> => {
     calls += 1;
     await pending.promise;
@@ -74,8 +71,8 @@ test("shares one in-flight save and keeps baselines unchanged after failure", as
 });
 
 test("keeps contents unsaved when a standalone backend save is rejected", async () => {
-  const state = new EditorSaveState("old draft", "old main");
-  state.setCurrent("new draft", "new main");
+  const state = new EditorSaveState("old");
+  state.setCurrent("new");
 
   const saved = await state.save(async () => {
     throw new Error("磁盘写入失败");
@@ -87,22 +84,20 @@ test("keeps contents unsaved when a standalone backend save is rejected", async 
   assert.equal(state.statusText, "保存失败：磁盘写入失败");
 });
 
-test("retries both current notebook strings after a failed save", async () => {
-  const state = new EditorSaveState("old draft", "old main");
-  state.setCurrent("current draft", "current main");
+test("retries the current document content after a failed save", async () => {
+  const state = new EditorSaveState("old");
+  state.setCurrent("current");
 
   const failed = await state.save(async () => {
     throw new Error("磁盘写入失败");
   });
-  const retriedSnapshots: Array<{ draft: string; main: string }> = [];
-  const retried = await state.save(async (snapshot) => {
-    retriedSnapshots.push(snapshot);
+  const retriedSnapshots: string[] = [];
+  const retried = await state.save(async (content) => {
+    retriedSnapshots.push(content);
   });
 
   assert.equal(failed, false);
   assert.equal(retried, true);
-  assert.deepEqual(retriedSnapshots, [
-    { draft: "current draft", main: "current main" },
-  ]);
+  assert.deepEqual(retriedSnapshots, ["current"]);
   assert.equal(state.hasUnsavedChanges, false);
 });

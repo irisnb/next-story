@@ -8,10 +8,10 @@ import {
   createRichTextEditor,
   type RichTextEditorAdapter,
 } from "./rich-text-editor.ts";
-import { saveProject, notebookSizeError, openUrl } from "./project-api.ts";
+import { saveDocument, readDocument, notebookSizeError, openUrl } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
 import type { SelectionEntryEditor } from "./selection-entry.ts";
-import type { NotebookTab, ProjectState } from "./types.ts";
+import type { ContentTree, ProjectTreeState } from "./types.ts";
 import { analyzeSelection, type FormatCommand, type TriState } from "./format-commands.ts";
 import {
   canonicalDoc,
@@ -19,6 +19,7 @@ import {
   serializeNotebookDocument,
   parseNotebookDocumentJson,
   validateNotebookDocument,
+  emptyNotebookDocument,
 } from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
 import {
@@ -29,6 +30,18 @@ import {
   type MarginPreset,
   type StorageLike,
 } from "./editor-margin.ts";
+import {
+  clearLastDocumentId,
+  readLastDocumentId,
+  writeLastDocumentId,
+  type MemoryStorage,
+} from "./document-memory.ts";
+import {
+  firstDocument,
+  flattenDocuments,
+  isDocumentInTree,
+  resolveCurrentDocument,
+} from "./content-tree.ts";
 
 const MARGIN_LABELS: Record<MarginPreset, string> = {
   compact: "紧凑",
@@ -36,17 +49,24 @@ const MARGIN_LABELS: Record<MarginPreset, string> = {
   loose: "宽松",
 };
 
+const EMPTY_STATE_TEXT = "这里还没有文档，去文件管理新建一篇吧";
+
 export interface EditorController {
-  showProject(projectState: ProjectState): void;
+  showProject(projectState: ProjectTreeState): Promise<void>;
   hasProject(): boolean;
   hasUnsavedChanges(): boolean;
   save(): Promise<boolean>;
   guardLeave(): Promise<boolean>;
   unload(): void;
   destroy(): void;
-  getCurrentTab(): NotebookTab;
+  getCurrentDocumentId(): string | null;
   getCurrentEditor(): SelectionEntryEditor | null;
   attachAi(ai: AiFeatureController): void;
+  /** 文件管理页读取当前作品路径与树（只读）。 */
+  getProjectPath(): string | null;
+  getTree(): ContentTree | null;
+  /** 文件管理操作后刷新树；当前文档被删除时回退到第一篇或空态。 */
+  applyTree(tree: ContentTree): void;
 }
 
 type EditorAdapter = Pick<
@@ -72,17 +92,15 @@ type EditorAdapter = Pick<
 
 interface EditorDependencies {
   createEditor(element: HTMLElement, initialDocument: JSONContent): EditorAdapter;
-}
-
-interface ProjectEditors {
-  draft: EditorAdapter;
-  main: EditorAdapter;
-  unsubscribeDraft: () => void;
-  unsubscribeMain: () => void;
+  readDocument(projectPath: string, documentId: string): Promise<string>;
+  saveDocument(projectPath: string, documentId: string, content: string): Promise<void>;
+  memoryStorage?: MemoryStorage | null;
 }
 
 const defaultDependencies: EditorDependencies = {
   createEditor: createRichTextEditor,
+  readDocument,
+  saveDocument,
 };
 
 /** 与 ProseMirror 一致的节点位置大小（和 format-commands 内部 nodeSize 同一位置模型）。 */
@@ -130,16 +148,40 @@ function linkHrefAt(doc: JSONContent, from: number, to: number): string | null {
   return found;
 }
 
+/** 与 localStorage 兼容、带 removeItem 的记忆存储；window 不可用时返回 null。 */
+function resolveMemoryStorage(): MemoryStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const storage = window.localStorage;
+    if (!storage) return null;
+    return {
+      getItem: (key) => storage.getItem(key),
+      setItem: (key, value) => storage.setItem(key, value),
+      removeItem: (key) => storage.removeItem(key),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function setupEditor(
   dom: AppDom,
   leaveDialog: LeaveDialogController,
   dependencies: EditorDependencies = defaultDependencies,
 ): EditorController {
-  const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage, dom.llmConfigPage];
-  let currentState: ProjectState | null = null;
+  const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage];
+  const memoryStorage: MemoryStorage | null =
+    dependencies.memoryStorage !== undefined
+      ? dependencies.memoryStorage
+      : resolveMemoryStorage();
+  let currentState: ProjectTreeState | null = null;
+  let currentDocumentId: string | null = null;
+  let editor: EditorAdapter | null = null;
+  let unsubscribeEdit: (() => void) | null = null;
+  let unsubscribeSelection: (() => void) | null = null;
   let saveState: EditorSaveState | null = null;
-  let projectEditors: ProjectEditors | null = null;
-  let currentTab: NotebookTab = "draft";
+  /** 打开作品或切换文档时递增，丢弃迟到的异步正文读取结果。 */
+  let loadGeneration = 0;
   let aiFeature: AiFeatureController | null = null;
   let findBarOpen = false;
   let findCount = 0;
@@ -151,18 +193,22 @@ export function setupEditor(
   const DRAWER_CLOSE_DELAY_MS = 350;
   let drawerCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function disposeProjectEditors(): void {
-    const editors = projectEditors;
-    projectEditors = null;
-    if (!editors) return;
-    editors.unsubscribeDraft();
-    editors.unsubscribeMain();
-    editors.draft.destroy();
-    editors.main.destroy();
+  function currentEditor(): EditorAdapter | null {
+    return editor;
+  }
+
+  function disposeEditor(): void {
+    const current = editor;
+    editor = null;
+    unsubscribeEdit?.();
+    unsubscribeSelection?.();
+    unsubscribeEdit = null;
+    unsubscribeSelection = null;
+    current?.destroy();
   }
 
   function unload(): void {
-    disposeProjectEditors();
+    disposeEditor();
     hideLinkPopover();
     closeContextMenu();
     if (drawerCloseTimer !== null) {
@@ -170,7 +216,9 @@ export function setupEditor(
       drawerCloseTimer = null;
     }
     currentState = null;
+    currentDocumentId = null;
     saveState = null;
+    loadGeneration += 1;
     aiFeature?.endProject();
   }
 
@@ -180,22 +228,58 @@ export function setupEditor(
     save,
   });
 
-  function switchTab(tab: NotebookTab): void {
-    const changedTab = currentTab !== tab;
-    currentTab = tab;
-    dom.tabDraft.classList.toggle("active", tab === "draft");
-    dom.tabMain.classList.toggle("active", tab === "main");
-    dom.draftTextarea.classList.toggle("hidden", tab !== "draft");
-    dom.mainTextarea.classList.toggle("hidden", tab !== "main");
-    if (changedTab) aiFeature?.resetSelectionEntry();
-    hideLinkPopover();
-    closeContextMenu();
-    renderToolbar();
-    if (findBarOpen) runFind();
+  // ---- 当前文档显示 + 扁平切换列表 ----
+
+  function renderDocumentList(): void {
+    if (!currentState) return;
+    dom.documentList.replaceChildren();
+    for (const doc of flattenDocuments(currentState.tree)) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "document-list-item";
+      if (doc.id === currentDocumentId) item.classList.add("active");
+      item.textContent = doc.name;
+      item.addEventListener("click", () => {
+        void switchDocument(doc.id);
+      });
+      dom.documentList.appendChild(item);
+    }
   }
 
+  function renderCurrentDocument(): void {
+    if (!currentState) return;
+    const current =
+      currentDocumentId !== null ? currentState.tree.nodes[currentDocumentId] : null;
+    dom.currentDocumentName.textContent = current?.name ?? "";
+    dom.editorTextarea.classList.toggle("hidden", currentDocumentId === null);
+    dom.writingEmptyState.classList.toggle("hidden", currentDocumentId !== null);
+    if (currentDocumentId === null) {
+      dom.writingEmptyState.textContent = EMPTY_STATE_TEXT;
+    }
+    renderDocumentList();
+  }
+
+  function closeDocumentList(): void {
+    dom.documentList.classList.add("hidden");
+    dom.currentDocToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleDocumentList(): void {
+    const open = dom.documentList.classList.contains("hidden");
+    dom.documentList.classList.toggle("hidden", !open);
+    dom.currentDocToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) renderDocumentList();
+  }
+
+  // ---- 保存状态 ----
+
   function renderSaveState(): void {
-    if (!saveState) return;
+    if (!saveState) {
+      dom.saveStatus.textContent = "已保存";
+      dom.saveStatus.className = "save-status";
+      dom.btnSave.disabled = true;
+      return;
+    }
     dom.saveStatus.textContent = saveState.statusText;
     dom.saveStatus.className = "save-status";
     if (saveState.isSaving) dom.saveStatus.classList.add("saving");
@@ -205,35 +289,70 @@ export function setupEditor(
   }
 
   function syncCurrent(): void {
-    const editors = projectEditors;
-    if (!editors) return;
-    saveState?.setCurrent(
-      canonicalNotebookJson(editors.draft.getDocument()),
-      canonicalNotebookJson(editors.main.getDocument()),
-    );
+    const current = currentEditor();
+    if (!current) return;
+    saveState?.setCurrent(canonicalNotebookJson(current.getDocument()));
     renderSaveState();
     renderToolbar();
     refreshFindAfterEdit();
   }
 
+  async function save(): Promise<boolean> {
+    if (!currentState || !saveState) return true;
+    if (currentDocumentId === null) return true;
+    const current = currentEditor();
+    if (!current) return true;
+    const path = currentState.projectPath;
+    const id = currentDocumentId;
+
+    // 先规范化为版本 2 规范形态，再严格校验与字节上限检查。
+    const document = serializeNotebookDocument(current.getDocument());
+    const validation = validateNotebookDocument(document);
+    if (!validation.ok) {
+      return rejectSave(`文档无法保存：${validation.error}`);
+    }
+    const sizeError = notebookSizeError(JSON.stringify(document));
+    if (sizeError) return rejectSave(`文档内容过大：${sizeError}`);
+
+    const state = saveState;
+    const result = state.save((content) => dependencies.saveDocument(path, id, content));
+    renderSaveState();
+    const succeeded = await result;
+    renderSaveState();
+    return succeeded;
+  }
+
+  /** 校验/上限未通过：以保存失败路径记录错误，基线不变，内容保持未保存，不调用写盘。 */
+  async function rejectSave(message: string): Promise<boolean> {
+    const state = saveState;
+    if (!state) return true;
+    const result = state.save(async () => {
+      throw new Error(message);
+    });
+    renderSaveState();
+    const succeeded = await result;
+    renderSaveState();
+    return succeeded;
+  }
+
   // ---- 工具栏 ----
 
   function runFormatCommand(command: FormatCommand): boolean {
-    const editors = projectEditors;
-    if (!editors) return false;
-    const result = editors[currentTab].runCommand(command);
+    const current = currentEditor();
+    if (!current) return false;
+    const result = current.runCommand(command);
     renderToolbar();
     return result;
   }
 
   function currentEditorAdapter(): EditorAdapter | null {
-    return projectEditors?.[currentTab] ?? null;
+    return currentEditor();
   }
 
   function currentHasSelection(): boolean {
-    const editors = projectEditors;
-    if (!editors) return false;
-    const selection = editors[currentTab].getSelection();
+    const current = currentEditor();
+    if (!current) return false;
+    const selection = current.getSelection();
     return selection.from < selection.to;
   }
 
@@ -247,7 +366,6 @@ export function setupEditor(
   }
 
   // 抽屉内所有格式控件：无文字选区时整体禁用。
-  // 开关按钮不在其中——抽屉随时可打开，只是内容不可用。
   const drawerControls: Array<HTMLButtonElement | HTMLSelectElement | HTMLInputElement> = [
     dom.btnUnderline,
     dom.btnStrike,
@@ -271,19 +389,34 @@ export function setupEditor(
     dom.btnClearParagraphFormat,
   ];
 
+  function disableToolbarControls(): void {
+    dom.paragraphStyle.disabled = true;
+    dom.btnBold.disabled = true;
+    dom.btnItalic.disabled = true;
+    dom.btnToolbarUnderline.disabled = true;
+    dom.btnToolbarStrike.disabled = true;
+    dom.btnBulletList.disabled = true;
+    dom.btnOrderedList.disabled = true;
+    dom.btnUndo.disabled = true;
+    dom.btnRedo.disabled = true;
+    for (const control of drawerControls) control.disabled = true;
+  }
+
   function renderToolbar(): void {
-    const editors = projectEditors;
-    if (!editors) return;
-    const editor = editors[currentTab];
-    const selection = editor.getSelection();
+    const current = currentEditor();
+    if (!current) {
+      disableToolbarControls();
+      return;
+    }
+    const selection = current.getSelection();
     const hasSelection = selection.from < selection.to;
     const format = analyzeSelection(
-      canonicalDoc(editor.getDocument()),
+      canonicalDoc(current.getDocument()),
       selection.from,
       selection.to,
     );
-    const canUndo = editor.canUndo();
-    const canRedo = editor.canRedo();
+    const canUndo = current.canUndo();
+    const canRedo = current.canRedo();
 
     dom.paragraphStyle.value =
       format.paragraphStyle === "mixed" ? "" : format.paragraphStyle;
@@ -299,7 +432,6 @@ export function setupEditor(
     dom.btnStrike.setAttribute("aria-pressed", pressedValue(format.strike));
     dom.selectFontFamily.value = drawerSelectValue(format.fontFamily);
     dom.selectFontSize.value = drawerSelectValue(format.fontSize);
-    // 取色控件只是取色入口：统一值时回显当前颜色；无或多种时回退默认色（不会因此下发命令）。
     dom.inputTextColor.value =
       format.textColor !== null && format.textColor !== "mixed" ? format.textColor : "#000000";
     dom.inputHighlight.value =
@@ -338,122 +470,139 @@ export function setupEditor(
     updateLinkPopover();
   }
 
-  async function save(): Promise<boolean> {
-    if (!currentState || !saveState) return true;
-    const editors = projectEditors;
-    if (!editors) return true;
-    const state = saveState;
-    const path = currentState.projectPath;
+  // ---- 文档加载与切换 ----
 
-    // 先把两份文档规范化为版本 2 规范形态（合并相邻文本、丢弃 null/默认属性、仅保留正式节点与标记），再严格校验。
-    const draftDocument = serializeNotebookDocument(editors.draft.getDocument());
-    const mainDocument = serializeNotebookDocument(editors.main.getDocument());
-    const draftValidation = validateNotebookDocument(draftDocument);
-    if (!draftValidation.ok) {
-      return rejectSave(`草稿本无法保存：${draftValidation.error}`);
-    }
-    const mainValidation = validateNotebookDocument(mainDocument);
-    if (!mainValidation.ok) {
-      return rejectSave(`正文本无法保存：${mainValidation.error}`);
-    }
-
-    // 与后端一致的字节上限检查：超限不调用写盘。
-    const draftSizeError = notebookSizeError(JSON.stringify(draftDocument));
-    if (draftSizeError) return rejectSave(`草稿本内容过大：${draftSizeError}`);
-    const mainSizeError = notebookSizeError(JSON.stringify(mainDocument));
-    if (mainSizeError) return rejectSave(`正文本内容过大：${mainSizeError}`);
-
-    const result = state.save((snapshot) => saveProject(path, snapshot.draft, snapshot.main));
+  async function loadDocument(documentId: string): Promise<void> {
+    if (!currentState) return;
+    const generation = ++loadGeneration;
+    const content = await dependencies.readDocument(currentState.projectPath, documentId);
+    if (generation !== loadGeneration || !currentState) return;
+    const document = parseNotebookDocumentJson(content).document;
+    const next = dependencies.createEditor(dom.editorTextarea, document);
+    disposeEditor();
+    editor = next;
+    currentDocumentId = documentId;
+    saveState = new EditorSaveState(canonicalNotebookJson(document));
+    unsubscribeEdit = next.onEdit(() => {
+      if (editor === next) syncCurrent();
+    });
+    unsubscribeSelection = next.onSelectionChange(() => {
+      if (editor === next) onEditorSelectionChange();
+    });
+    if (memoryStorage) writeLastDocumentId(memoryStorage, currentState.projectPath, documentId);
+    aiFeature?.resetSelectionEntry();
+    hideLinkPopover();
+    closeContextMenu();
+    renderCurrentDocument();
     renderSaveState();
-    const succeeded = await result;
-    renderSaveState();
-    return succeeded;
+    renderToolbar();
   }
 
-  /** 校验/上限未通过：以保存失败路径记录错误，基线不变，内容保持未保存，不调用写盘。 */
-  async function rejectSave(message: string): Promise<boolean> {
-    const state = saveState;
-    if (!state) return true;
-    const result = state.save(async () => {
-      throw new Error(message);
-    });
-    renderSaveState();
-    const succeeded = await result;
-    renderSaveState();
-    return succeeded;
+  /** 切换当前文档：先静默保存当前文档，保存失败阻止切换并提示。 */
+  async function switchDocument(documentId: string): Promise<void> {
+    if (documentId === currentDocumentId) {
+      closeDocumentList();
+      return;
+    }
+    if (!await save()) {
+      alert("保存失败，无法切换文档。请重试保存后再切换。");
+      return;
+    }
+    closeDocumentList();
+    await loadDocument(documentId);
   }
 
   async function guardCurrentLeave(): Promise<boolean> {
     const dirty = saveState?.hasUnsavedChanges ?? false;
     if (dirty) {
-      dom.draftTextarea.inert = true;
-      dom.mainTextarea.inert = true;
+      dom.editorTextarea.inert = true;
     }
     try {
       return await leave.run();
     } finally {
-      dom.draftTextarea.inert = false;
-      dom.mainTextarea.inert = false;
+      dom.editorTextarea.inert = false;
     }
   }
 
-  function showProject(projectState: ProjectState): void {
-    // 事务式替换：先解析两份文档并构造完整新编辑器组合，全部成功后一次性交换再销毁旧组合。
-    // 任一步失败（如本子内容非法）都不会破坏当前正在编辑的作品。
-    const draftDocument = parseNotebookDocumentJson(projectState.draftContent).document;
-    const mainDocument = parseNotebookDocumentJson(projectState.mainContent).document;
-    const nextSaveState = new EditorSaveState(
-      canonicalNotebookJson(draftDocument),
-      canonicalNotebookJson(mainDocument),
-    );
-    const draft = dependencies.createEditor(dom.draftTextarea, draftDocument);
-    let main: EditorAdapter;
-    try {
-      main = dependencies.createEditor(dom.mainTextarea, mainDocument);
-    } catch (error) {
-      // 构造新组合中途失败：销毁已创建的一半，保持旧组合完整可用。
-      draft.destroy();
-      throw error;
+  async function showProject(projectState: ProjectTreeState): Promise<void> {
+    const generation = ++loadGeneration;
+    const resolved = memoryStorage
+      ? resolveCurrentDocument(
+          projectState.tree,
+          readLastDocumentId(memoryStorage, projectState.projectPath),
+        )
+      : resolveCurrentDocument(projectState.tree, null);
+    if (memoryStorage && resolved.invalidMemory) {
+      clearLastDocumentId(memoryStorage, projectState.projectPath);
     }
-    const editors: ProjectEditors = {
-      draft,
-      main,
-      unsubscribeDraft: () => {},
-      unsubscribeMain: () => {},
-    };
-    editors.unsubscribeDraft = draft.onEdit(() => {
-      if (projectEditors === editors) syncCurrent();
-    });
-    editors.unsubscribeMain = main.onEdit(() => {
-      if (projectEditors === editors) syncCurrent();
-    });
-    // 用 Tiptap 自己的选区事件驱动工具栏状态，比 DOM 事件可靠、稳定。
-    draft.onSelectionChange(() => {
-      if (projectEditors === editors) onEditorSelectionChange();
-    });
-    main.onSelectionChange(() => {
-      if (projectEditors === editors) onEditorSelectionChange();
-    });
-    // 全部成功后一次性交换：旧组合销毁，新组合接管。
-    disposeProjectEditors();
+
+    const documentId = resolved.documentId;
+    let document: JSONContent;
+    if (documentId !== null) {
+      const content = await dependencies.readDocument(projectState.projectPath, documentId);
+      if (generation !== loadGeneration) return;
+      document = parseNotebookDocumentJson(content).document;
+    } else {
+      document = emptyNotebookDocument().document;
+    }
+
+    // 事务式替换：先读正文 + 构造新编辑器，成功后一次性交换再销毁旧组合。
+    const next = documentId !== null ? dependencies.createEditor(dom.editorTextarea, document) : null;
+    const nextSaveState = documentId !== null
+      ? new EditorSaveState(canonicalNotebookJson(document))
+      : null;
+
+    disposeEditor();
     currentState = projectState;
+    currentDocumentId = documentId;
+    editor = next;
     saveState = nextSaveState;
-    projectEditors = editors;
+    if (next) {
+      unsubscribeEdit = next.onEdit(() => {
+        if (editor === next) syncCurrent();
+      });
+      unsubscribeSelection = next.onSelectionChange(() => {
+        if (editor === next) onEditorSelectionChange();
+      });
+    }
     aiFeature?.beginProject();
     dom.currentProjectName.textContent = projectState.projectName;
+    renderCurrentDocument();
     renderSaveState();
-    switchTab("draft");
+    renderToolbar();
+    closeDocumentList();
     showPage(pages, "editor-page");
   }
 
-  dom.tabDraft.addEventListener("click", () => switchTab("draft"));
-  dom.tabMain.addEventListener("click", () => switchTab("main"));
-  dom.btnSave.addEventListener("click", () => { void save(); });
+  function applyTree(tree: ContentTree): void {
+    if (!currentState) return;
+    currentState.tree = tree;
+    if (currentDocumentId !== null && !isDocumentInTree(tree, currentDocumentId)) {
+      // 当前文档被删除：丢弃其未保存内容，回退到第一篇或空态。
+      if (memoryStorage) clearLastDocumentId(memoryStorage, currentState.projectPath);
+      const first = firstDocument(tree);
+      if (first) {
+        void loadDocument(first.id);
+      } else {
+        disposeEditor();
+        currentDocumentId = null;
+        saveState = null;
+        aiFeature?.resetSelectionEntry();
+        renderCurrentDocument();
+        renderSaveState();
+        renderToolbar();
+      }
+      return;
+    }
+    renderCurrentDocument();
+  }
 
-  // 工具栏按钮：mousedown 时阻止抢焦点，否则点击按钮会让编辑器失焦、选区丢失，
-  // 加粗/斜体等命令就会作用在空选区上（手感稀碎）。
-  // 抽屉里的按钮同理；下拉框与取色输入不在此列——它们必须拿到焦点才能展开，
-  // 且 ProseMirror 选区在失焦后仍保留（与现有 paragraphStyle 下拉同一处理方式）。
+  // ---- 事件绑定 ----
+
+  dom.btnSave.addEventListener("click", () => { void save(); });
+  dom.currentDocToggle.addEventListener("click", toggleDocumentList);
+
+  // 工具栏按钮：mousedown 时阻止抢焦点，否则点击按钮会让编辑器失焦、选区丢失。
   const toolbarButtons = [
     dom.btnBold,
     dom.btnItalic,
@@ -499,9 +648,7 @@ export function setupEditor(
   }
 
   // 编辑器区域 dragover 阻止默认，否则从文件管理器拖文件进来时 drop 事件不会触发。
-  for (const element of [dom.draftTextarea, dom.mainTextarea]) {
-    element.addEventListener("dragover", (event) => event.preventDefault());
-  }
+  dom.editorTextarea.addEventListener("dragover", (event) => event.preventDefault());
 
   // 工具栏命令
   dom.btnBold.addEventListener("click", () => runSelectionCommand({ kind: "bold" }));
@@ -551,7 +698,7 @@ export function setupEditor(
   setupDrawerToggle(dom.btnToggleCharacterSection);
   setupDrawerToggle(dom.btnToggleParagraphSection);
 
-  // ---- 抽屉自动隐藏：鼠标移出缓缓收起；有原生 select 下拉时防误关，用延迟收起 + 重新进入取消 ----
+  // ---- 抽屉自动隐藏 ----
   dom.formatDrawer.addEventListener("mouseleave", () => {
     if (typeof window === "undefined") return;
     if (drawerCloseTimer !== null) clearTimeout(drawerCloseTimer);
@@ -593,7 +740,7 @@ export function setupEditor(
     if (storage) writeMarginPreset(storage, next);
   });
 
-  // 抽屉：字符格式。命令只作用于当前选区，无选区时控件已被禁用，这里再经 runSelectionCommand 兜底。
+  // 抽屉：字符格式
   dom.btnUnderline.addEventListener("click", () => runSelectionCommand({ kind: "underline" }));
   dom.btnStrike.addEventListener("click", () => runSelectionCommand({ kind: "strike" }));
   dom.selectFontFamily.addEventListener("change", () => {
@@ -602,7 +749,6 @@ export function setupEditor(
   dom.selectFontSize.addEventListener("change", () => {
     runSelectionCommand({ kind: "fontSize", size: dom.selectFontSize.value || null });
   });
-  // input[type=color] 的值按 HTML 规范恒为小写 #rrggbb，可直接写入文档。
   dom.inputTextColor.addEventListener("change", () => {
     runSelectionCommand({ kind: "textColor", color: dom.inputTextColor.value });
   });
@@ -657,16 +803,14 @@ export function setupEditor(
     dom.btnReplaceAll.disabled = findCount === 0;
   }
 
-  /** 在当前编辑器上重跑查找。命中数与下标以 setFind 结果为准，插件侧 activeIndex 同时重置为 0。 */
   function runFind(): void {
-    const editor = currentEditorAdapter();
-    if (!editor) return;
-    findCount = editor.setFind(dom.findInput.value, dom.findCaseSensitive.checked);
+    const current = currentEditorAdapter();
+    if (!current) return;
+    findCount = current.setFind(dom.findInput.value, dom.findCaseSensitive.checked);
     findIndex = findCount > 0 ? 0 : -1;
     renderFindCount();
   }
 
-  /** 文档被编辑后刷新查找：计数可能变化，重新查找回到第一个命中（setFind 不移动可见选区）。 */
   function refreshFindAfterEdit(): void {
     if (!findBarOpen || dom.findInput.value === "") return;
     runFind();
@@ -688,21 +832,19 @@ export function setupEditor(
     if (!findBarOpen) return;
     findBarOpen = false;
     dom.findBar.classList.add("hidden");
-    // 关闭时清空高亮
-    const editor = currentEditorAdapter();
-    if (editor && dom.findInput.value !== "") editor.setFind("", dom.findCaseSensitive.checked);
+    const current = currentEditorAdapter();
+    if (current && dom.findInput.value !== "") current.setFind("", dom.findCaseSensitive.checked);
     findCount = 0;
     findIndex = -1;
     renderFindCount();
-    // 焦点可能停在已隐藏的输入框里，还给编辑器，避免后续打字落空。
-    editor?.focus();
+    current?.focus();
   }
 
   function stepFind(delta: 1 | -1): void {
-    const editor = currentEditorAdapter();
-    if (!editor || findCount === 0) return;
+    const current = currentEditorAdapter();
+    if (!current || findCount === 0) return;
     findIndex = (findIndex + delta + findCount) % findCount;
-    editor.activateMatch(findIndex);
+    current.activateMatch(findIndex);
     renderFindCount();
   }
 
@@ -711,15 +853,14 @@ export function setupEditor(
   dom.btnFindPrev.addEventListener("click", () => stepFind(-1));
   dom.btnFindNext.addEventListener("click", () => stepFind(1));
   dom.btnReplace.addEventListener("click", () => {
-    const editor = currentEditorAdapter();
-    if (!editor || findCount === 0) return;
-    // 替换会触发 onEdit → syncCurrent → refreshFindAfterEdit 重跑查找并刷新计数，这里不本地记账。
-    editor.replaceCurrent(dom.replaceInput.value);
+    const current = currentEditorAdapter();
+    if (!current || findCount === 0) return;
+    current.replaceCurrent(dom.replaceInput.value);
   });
   dom.btnReplaceAll.addEventListener("click", () => {
-    const editor = currentEditorAdapter();
-    if (!editor || findCount === 0) return;
-    editor.replaceAll(dom.replaceInput.value);
+    const current = currentEditorAdapter();
+    if (!current || findCount === 0) return;
+    current.replaceAll(dom.replaceInput.value);
   });
   dom.btnFindClose.addEventListener("click", closeFindBar);
 
@@ -761,21 +902,20 @@ export function setupEditor(
     dom.linkPopover.classList.add("hidden");
   }
 
-  /** 光标/选区落在链接上时，在链接附近浮出弹层；否则收起。 */
   function updateLinkPopover(): void {
-    const editor = currentEditorAdapter();
-    if (!editor) {
+    const current = currentEditorAdapter();
+    if (!current) {
       hideLinkPopover();
       return;
     }
-    const { from, to, head } = editor.getSelection();
-    const href = linkHrefAt(editor.getDocument(), from, to);
+    const { from, to, head } = current.getSelection();
+    const href = linkHrefAt(current.getDocument(), from, to);
     if (href === null) {
       hideLinkPopover();
       return;
     }
     popoverHref = href;
-    const coords = editor.coordinatesAt(head);
+    const coords = current.coordinatesAt(head);
     dom.linkPopover.classList.remove("hidden");
     const popoverWidth = dom.linkPopover.offsetWidth || 200;
     const viewWidth = window.innerWidth || 1024;
@@ -808,12 +948,12 @@ export function setupEditor(
 
   function openContextMenu(event: MouseEvent): void {
     event.preventDefault();
-    const editor = currentEditorAdapter();
-    if (!editor) return;
+    const current = currentEditorAdapter();
+    if (!current) return;
     hideLinkPopover();
-    const { from, to } = editor.getSelection();
+    const { from, to } = current.getSelection();
     const hasSelection = from < to;
-    contextMenuHref = linkHrefAt(editor.getDocument(), from, to);
+    contextMenuHref = linkHrefAt(current.getDocument(), from, to);
 
     dom.btnCtxCut.disabled = !hasSelection;
     dom.btnCtxCopy.disabled = !hasSelection;
@@ -831,40 +971,38 @@ export function setupEditor(
     dom.contextMenu.style.top = `${top}px`;
   }
 
-  for (const element of [dom.draftTextarea, dom.mainTextarea]) {
-    element.addEventListener("contextmenu", (event) => openContextMenu(event as MouseEvent));
-  }
+  dom.editorTextarea.addEventListener("contextmenu", (event) => openContextMenu(event as MouseEvent));
 
   dom.btnCtxCut.addEventListener("click", () => {
     closeContextMenu();
-    const editor = currentEditorAdapter();
-    if (!editor) return;
-    editor.focus();
-    void editor.cutSelection();
+    const current = currentEditorAdapter();
+    if (!current) return;
+    current.focus();
+    void current.cutSelection();
   });
   dom.btnCtxCopy.addEventListener("click", () => {
     closeContextMenu();
-    const editor = currentEditorAdapter();
-    if (!editor) return;
-    editor.focus();
-    void editor.copySelection().then((ok) => {
+    const current = currentEditorAdapter();
+    if (!current) return;
+    current.focus();
+    void current.copySelection().then((ok) => {
       if (!ok) alert("复制失败，请使用 Ctrl+C。");
     });
   });
   dom.btnCtxPaste.addEventListener("click", () => {
     closeContextMenu();
-    const editor = currentEditorAdapter();
-    if (!editor) return;
-    editor.focus();
+    const current = currentEditorAdapter();
+    if (!current) return;
+    current.focus();
     const ok = document.execCommand("paste");
     if (!ok) alert("无法直接读取剪贴板内容，请使用 Ctrl+V 粘贴。");
   });
   dom.btnCtxPastePlain.addEventListener("click", () => {
     closeContextMenu();
-    const editor = currentEditorAdapter();
-    if (!editor) return;
-    editor.focus();
-    void editor.pastePlainText();
+    const current = currentEditorAdapter();
+    if (!current) return;
+    current.focus();
+    void current.pastePlainText();
   });
   dom.btnCtxLinkCreate.addEventListener("click", () => {
     closeContextMenu();
@@ -893,17 +1031,17 @@ export function setupEditor(
     if (!dom.linkPopover.classList.contains("hidden") && !dom.linkPopover.contains(event.target as Node)) {
       hideLinkPopover();
     }
+    if (!dom.documentList.classList.contains("hidden") && !dom.documentList.contains(event.target as Node) &&
+        !dom.currentDocToggle.contains(event.target as Node)) {
+      closeDocumentList();
+    }
   });
   document.addEventListener("scroll", () => {
     closeContextMenu();
     hideLinkPopover();
   }, true);
 
-  // 选区变化已由编辑器 adapter 的 selectionUpdate 事件驱动（见 showProject），
-  // 这里不再监听 DOM 事件，避免 mouseup 等时机不可靠导致工具栏状态乱跳。
-
-  // 用捕获阶段监听，先于 ProseMirror 自带的快捷键（Bold/Italic/Underline/History 的
-  // Mod-b/Mod-i/Mod-u/Mod-z/Mod-y）处理；对冲突键 stopPropagation 避免被重复触发两次。
+  // 用捕获阶段监听，先于 ProseMirror 自带的快捷键处理；对冲突键 stopPropagation 避免被重复触发两次。
   document.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
@@ -911,6 +1049,7 @@ export function setupEditor(
       closeContextMenu();
       hideLinkPopover();
       closeFindBar();
+      closeDocumentList();
       return;
     }
     if (mod && key === "f") {
@@ -925,18 +1064,18 @@ export function setupEditor(
     }
     if (mod && event.shiftKey && key === "v") {
       event.preventDefault();
-      const editor = currentEditorAdapter();
-      if (editor) {
-        editor.focus();
-        void editor.pastePlainText();
+      const current = currentEditorAdapter();
+      if (current) {
+        current.focus();
+        void current.pastePlainText();
       }
       return;
     }
     if (mod && key === "k") {
-      const editor = currentEditorAdapter();
-      if (editor) {
-        const { from, to } = editor.getSelection();
-        const href = linkHrefAt(editor.getDocument(), from, to);
+      const current = currentEditorAdapter();
+      if (current) {
+        const { from, to } = current.getSelection();
+        const href = linkHrefAt(current.getDocument(), from, to);
         event.preventDefault();
         if (href !== null) {
           editLinkHref(href);
@@ -991,21 +1130,22 @@ export function setupEditor(
     guardLeave: guardCurrentLeave,
     unload,
     destroy: unload,
-    getCurrentTab: () => currentTab,
+    getCurrentDocumentId: () => currentDocumentId,
     getCurrentEditor: () => {
-      const editors = projectEditors;
-      if (editors === null) return null;
-      const editor = editors[currentTab];
-      const element = currentTab === "draft" ? dom.draftTextarea : dom.mainTextarea;
+      const current = currentEditor();
+      if (current === null) return null;
       return {
-        element,
-        getDocument: () => editor.getDocument(),
-        getSelection: () => editor.getSelection(),
-        coordinatesAt: (position) => editor.coordinatesAt(position),
+        element: dom.editorTextarea,
+        getDocument: () => current.getDocument(),
+        getSelection: () => current.getSelection(),
+        coordinatesAt: (position) => current.coordinatesAt(position),
       };
     },
     attachAi: (ai: AiFeatureController) => {
       aiFeature = ai;
     },
+    getProjectPath: () => currentState?.projectPath ?? null,
+    getTree: () => currentState?.tree ?? null,
+    applyTree,
   };
 }

@@ -3,8 +3,7 @@ import test from "node:test";
 
 import { guardLeave, LeaveCoordinator, type LeaveChoice } from "../src/leave-guard.ts";
 import { CloseCoordinator, composeCloseGuards, orchestrateCloseRequest } from "../src/close-guard.ts";
-import { EditorSaveState, type NotebookContents } from "../src/editor-save-state.ts";
-import { NotebookMemory } from "../src/notebook-memory.ts";
+import { EditorSaveState } from "../src/editor-save-state.ts";
 
 function deferredSave(): {
   promise: Promise<void>;
@@ -19,21 +18,6 @@ function deferredSave(): {
   });
   return { promise, resolve, reject };
 }
-
-test("switching notebooks retains both values without asking or saving", () => {
-  let prompts = 0;
-  let saves = 0;
-  const notebooks = new NotebookMemory("draft", "main");
-  notebooks.update("draft", "draft edit");
-  notebooks.switchTo("main");
-  notebooks.update("main", "main edit");
-  notebooks.switchTo("draft");
-
-  assert.equal(notebooks.value("draft"), "draft edit");
-  assert.equal(notebooks.value("main"), "main edit");
-  assert.equal(prompts, 0);
-  assert.equal(saves, 0);
-});
 
 for (const [choice, expected] of [
   ["save-and-leave", true],
@@ -83,28 +67,26 @@ test("discard authorization stays valid without mutating project state", async (
   assert.equal(prompts, 1);
 });
 
-test("cancelled leave retains both current notebook strings for a later save", async () => {
-  const state = new EditorSaveState("saved draft", "saved main");
-  state.setCurrent("current draft", "current main");
-  const snapshots: NotebookContents[] = [];
+test("cancelled leave retains the current document content for a later save", async () => {
+  const state = new EditorSaveState("saved");
+  state.setCurrent("current");
+  const snapshots: string[] = [];
   const leave = new LeaveCoordinator({
     isDirty: () => state.hasUnsavedChanges,
     choose: async () => "cancel",
-    save: () => state.save(async (snapshot) => {
-      snapshots.push(snapshot);
+    save: () => state.save(async (content) => {
+      snapshots.push(content);
     }),
   });
 
   const canLeave = await leave.run();
-  const saved = await state.save(async (snapshot) => {
-    snapshots.push(snapshot);
+  const saved = await state.save(async (content) => {
+    snapshots.push(content);
   });
 
   assert.equal(canLeave, false);
   assert.equal(saved, true);
-  assert.deepEqual(snapshots, [
-    { draft: "current draft", main: "current main" },
-  ]);
+  assert.deepEqual(snapshots, ["current"]);
   assert.equal(state.hasUnsavedChanges, false);
 });
 
@@ -128,15 +110,15 @@ test("duplicate leave requests share one pending authorization", async () => {
 
 test("save-and-leave waits for an in-flight A save then saves current B before unloading", async () => {
   const firstWrite = deferredSave();
-  const snapshots: NotebookContents[] = [];
-  const state = new EditorSaveState("saved", "main");
-  state.setCurrent("A", "main");
-  const writer = async (snapshot: NotebookContents): Promise<void> => {
-    snapshots.push(snapshot);
+  const snapshots: string[] = [];
+  const state = new EditorSaveState("saved");
+  state.setCurrent("A");
+  const writer = async (content: string): Promise<void> => {
+    snapshots.push(content);
     if (snapshots.length === 1) await firstWrite.promise;
   };
   const savingA = state.save(writer);
-  state.setCurrent("B", "main");
+  state.setCurrent("B");
   const leave = new LeaveCoordinator({
     isDirty: () => state.hasUnsavedChanges,
     choose: async () => "save-and-leave",
@@ -147,25 +129,22 @@ test("save-and-leave waits for an in-flight A save then saves current B before u
   firstWrite.resolve();
   assert.equal(await savingA, true);
   assert.equal(await leaving, true);
-  assert.deepEqual(snapshots, [
-    { draft: "A", main: "main" },
-    { draft: "B", main: "main" },
-  ]);
+  assert.deepEqual(snapshots, ["A", "B"]);
   assert.equal(state.hasUnsavedChanges, false);
 });
 
 test("save-and-leave keeps the project loaded when the follow-up B save fails", async () => {
   const firstWrite = deferredSave();
-  const snapshots: NotebookContents[] = [];
-  const state = new EditorSaveState("saved", "main");
-  state.setCurrent("A", "main");
-  const writer = async (snapshot: NotebookContents): Promise<void> => {
-    snapshots.push(snapshot);
+  const snapshots: string[] = [];
+  const state = new EditorSaveState("saved");
+  state.setCurrent("A");
+  const writer = async (content: string): Promise<void> => {
+    snapshots.push(content);
     if (snapshots.length === 1) await firstWrite.promise;
     else throw new Error("B 写入失败");
   };
   const savingA = state.save(writer);
-  state.setCurrent("B", "main");
+  state.setCurrent("B");
   const leave = new LeaveCoordinator({
     isDirty: () => state.hasUnsavedChanges,
     choose: async () => "save-and-leave",

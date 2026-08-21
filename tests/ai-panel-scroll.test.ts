@@ -8,10 +8,10 @@ import { AiPanelState } from "../src/ai-panel-state.ts";
 
 function snapshot(
   selectedText: string,
-  notebook: SelectionSnapshot["notebook"] = "draft",
+  documentId: SelectionSnapshot["documentId"] = "draft",
   from = 0,
 ): SelectionSnapshot {
-  return { notebook, selectedText, from, to: from + selectedText.length };
+  return { documentId, selectedText, from, to: from + selectedText.length };
 }
 
 function loading(value: SelectionSnapshot): PanelRequestState {

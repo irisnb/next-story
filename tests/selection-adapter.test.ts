@@ -27,7 +27,7 @@ test("captures a structured selection as a plain-text slice with Tiptap position
   );
 
   assert.deepEqual(snapshot, {
-    notebook: "draft",
+    documentId: "draft",
     selectedText: "你好",
     from: 1,
     to: 3,
@@ -78,7 +78,7 @@ test("freezes the snapshot when the editor later changes", () => {
   selection = { from: 1, to: 5, head: 5 };
 
   assert.deepEqual(snapshot, {
-    notebook: "draft",
+    documentId: "draft",
     selectedText: "原始文字",
     from: 1,
     to: 5,

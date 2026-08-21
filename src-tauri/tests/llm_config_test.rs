@@ -14,7 +14,7 @@ use next_story_lib::llm_config::{
     LlmConfigError, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
 };
 use next_story_lib::project::{
-    create_new_project, save_existing_project, CreateProjectParams, ProjectPaths,
+    create_new_project, save_document, CreateProjectParams, ProjectPaths,
 };
 use tempfile::TempDir;
 
@@ -743,17 +743,12 @@ async fn generate_rejects_illegal_follow_up_role_order_and_messages_after_pendin
 async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     let temp = TempDir::new().expect("create temp dir");
 
-    // 1. 用公开 API 创建真实作品；先用户保存写入已知内容，再记录三份文件字节快照。
+    // 1. 用公开 API 创建真实作品；先用户保存写入已知内容，再记录文件字节快照。
     let project_root = create_new_project(CreateProjectParams {
         name: "零写回作品".to_string(),
         save_location: temp.path().to_string_lossy().to_string(),
     })
     .expect("create project");
-
-    let draft_doc = notebook_json("草稿第一行\n草稿第二行");
-    let main_doc = notebook_json("正文第一行\n正文第二行");
-    save_existing_project(&project_root, draft_doc.clone(), main_doc.clone())
-        .expect("user save writes known notebook content");
 
     let paths = ProjectPaths::new(project_root.clone());
     let tree: next_story_lib::project::ContentTree = serde_json::from_str(
@@ -761,24 +756,26 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
     )
     .expect("parse content tree");
     let doc_ids: Vec<String> = tree.root_children.clone();
-    let snapshot = || -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    assert_eq!(doc_ids.len(), 1, "根级应有一篇文档");
+    let doc_id = doc_ids[0].clone();
+
+    let draft_doc = notebook_json("草稿第一行\n草稿第二行");
+    save_document(&project_root, &doc_id, &draft_doc)
+        .expect("user save writes known notebook content");
+
+    let snapshot = || -> (Vec<u8>, Vec<u8>) {
         (
-            std::fs::read(paths.document_file(&doc_ids[0])).expect("read draft doc"),
-            std::fs::read(paths.document_file(&doc_ids[1])).expect("read main doc"),
+            std::fs::read(paths.document_file(&doc_id)).expect("read document"),
             std::fs::read(&paths.metadata_file).expect("read metadata"),
         )
     };
     let before = snapshot();
-    assert!(
-        !before.0.is_empty() && !before.1.is_empty(),
-        "本子内容不能为空"
-    );
+    assert!(!before.0.is_empty(), "本子内容不能为空");
 
     let assert_snapshot_unchanged = |label: &str| {
         let now = snapshot();
-        assert_eq!(now.0, before.0, "{label} 后草稿本字节必须完全不变");
-        assert_eq!(now.1, before.1, "{label} 后正文本字节必须完全不变");
-        assert_eq!(now.2, before.2, "{label} 后 project.json 字节必须完全不变");
+        assert_eq!(now.0, before.0, "{label} 后文档字节必须完全不变");
+        assert_eq!(now.1, before.1, "{label} 后 project.json 字节必须完全不变");
     };
 
     // 2. 生成命令（应用数据目录无配置 → 稳定失败）不改作品字节。
@@ -839,21 +836,19 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
         "作品文本文件夹不应多出任何文件: {text_entries:?}"
     );
 
-    // 5. 正对照：用户保存确实改变草稿本字节（证明本测试能检测到写入，
+    // 5. 正对照：用户保存确实改变文档字节（证明本测试能检测到写入，
     //    不是「永远相等的空断言」）。
-    let new_draft = notebook_json("用户改写的草稿内容");
-    save_existing_project(&project_root, new_draft.clone(), main_doc.clone())
-        .expect("user save changes draft");
+    let new_draft = notebook_json("用户改写的内容");
+    save_document(&project_root, &doc_id, &new_draft).expect("user save changes document");
     let after_save = snapshot();
     assert_ne!(
         after_save.0, before.0,
-        "用户保存必须真实改变草稿本字节（正对照）"
+        "用户保存必须真实改变文档字节（正对照）"
     );
-    assert_eq!(after_save.1, before.1, "只保存草稿，正文本字节应保持");
-    assert_ne!(after_save.2, before.2, "用户保存会更新元信息 updated_at");
+    assert_ne!(after_save.1, before.1, "用户保存会更新元信息 updated_at");
     assert_eq!(
-        std::fs::read_to_string(paths.document_file(&doc_ids[0])).expect("read draft after save"),
+        std::fs::read_to_string(paths.document_file(&doc_id)).expect("read document after save"),
         new_draft,
-        "保存后的草稿本内容应等于新内容"
+        "保存后的文档内容应等于新内容"
     );
 }

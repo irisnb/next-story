@@ -1,12 +1,11 @@
 import type { AppDom } from "./dom.ts";
-import { createProject, openProject, selectDirectory } from "./project-api.ts";
+import { createProject, openContentTree, openProject, selectDirectory } from "./project-api.ts";
 import { openProjectAfterAuthorization } from "./project-leave-flow.ts";
-import { emptyNotebookDocument } from "./structured-notebook.ts";
-import type { ProjectState } from "./types.ts";
+import type { ProjectTreeState } from "./types.ts";
 import { showPage } from "./views.ts";
 
 interface ProjectFlowOptions {
-  onProjectReady(projectState: ProjectState): void;
+  onProjectReady(projectState: ProjectTreeState): Promise<void> | void;
   guardLeave(): Promise<boolean>;
 }
 
@@ -94,13 +93,14 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
       dom.btnCreateProject.disabled = true;
       const projectPath = await createProject(name, saveLocation);
       if (!isLatest(operation)) return;
-      const blank = JSON.stringify(emptyNotebookDocument());
+      // 新建作品默认一篇文档；读取整棵内容树供前端确定当前文档。
+      const tree = await openContentTree(projectPath);
+      if (!isLatest(operation)) return;
 
-      options.onProjectReady({
+      await options.onProjectReady({
         projectPath,
         projectName: name,
-        draftContent: blank,
-        mainContent: blank,
+        tree,
       });
     } catch (error) {
       if (!isLatest(operation)) return;
@@ -121,7 +121,7 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): void
         replaceProject: (projectState) => {
           // 只允许最新一次打开操作提交，避免迟到的旧结果覆盖更新的作品。
           if (!isLatest(operation)) return;
-          options.onProjectReady(projectState);
+          return options.onProjectReady(projectState);
         },
         reportError: (error) => {
           if (!isLatest(operation)) return;

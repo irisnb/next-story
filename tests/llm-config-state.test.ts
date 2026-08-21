@@ -21,19 +21,9 @@ function withoutKey(config: LlmConfig): LlmConfig {
   return { api_base_url: config.api_base_url, model: config.model };
 }
 
-test("returns to the page that opened LLM configuration", () => {
-  const state = new LlmConfigUiState();
-
-  state.beginOpen("editor-page");
-  assert.equal(state.returnPage, "editor-page");
-
-  state.beginOpen("welcome-page");
-  assert.equal(state.returnPage, "welcome-page");
-});
-
 test("keeps controls disabled while an operation is busy", () => {
   const state = new LlmConfigUiState();
-  const generation = state.beginOpen("welcome-page");
+  const generation = state.beginOpen();
   state.completeRefresh(generation);
 
   assert.equal(state.beginOperation(true), true);
@@ -51,8 +41,8 @@ test("keeps controls disabled while an operation is busy", () => {
 
 test("ignores stale refreshes and does not overwrite dirty input", () => {
   const state = new LlmConfigUiState();
-  const first = state.beginOpen("welcome-page");
-  const second = state.beginOpen("editor-page");
+  const first = state.beginOpen();
+  const second = state.beginOpen();
 
   assert.deepEqual(state.completeRefresh(first), {
     isCurrent: false,
@@ -69,7 +59,7 @@ test("ignores stale refreshes and does not overwrite dirty input", () => {
 
 test("loaded and saved LLM config values become the clean baseline", () => {
   const state = new LlmConfigUiState();
-  const generation = state.beginOpen("welcome-page");
+  const generation = state.beginOpen();
   state.completeRefresh(generation);
 
   // 基线只记非敏感字段与 hasApiKey；携带 api_key 的配置视为“用户输入了新密钥”→ 未保存。

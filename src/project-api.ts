@@ -52,30 +52,10 @@ export async function createProject(name: string, saveLocation: string): Promise
   });
 }
 
+/** 打开作品：返回元信息与整棵内容树（正文随后按文档 ID 用 `readDocument` 按需读取）。 */
 export async function openProject(projectPath: string): Promise<ProjectOpenResult> {
   return tauriInvoke<ProjectOpenResult>("open_project", {
     projectPath,
-  });
-}
-
-export async function saveProject(
-  projectPath: string,
-  draftContent: string,
-  mainContent: string,
-): Promise<void> {
-  // 与后端一致的字节上限检查：超限不调用写盘（纵深防御，正常路径在编辑器已检查）。
-  const draftError = notebookSizeError(draftContent);
-  if (draftError) {
-    throw new Error(`草稿本内容过大：${draftError}`);
-  }
-  const mainError = notebookSizeError(mainContent);
-  if (mainError) {
-    throw new Error(`正文本内容过大：${mainError}`);
-  }
-  await tauriInvoke("save_project", {
-    projectPath,
-    draftContent,
-    mainContent,
   });
 }
 

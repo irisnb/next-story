@@ -61,7 +61,7 @@ test("LLM config page distinguishes connection test data from AI generation data
   assert.match(html, /思维扩展方向/);
   assert.match(html, /当前临时对话/);
   assert.match(html, /回复只显示在 AI 面板/);
-  assert.match(html, /不会自动进入正文本或草稿本/);
+  assert.match(html, /不会自动进入任何文档/);
   assert.match(html, /第三方服务如何处理数据/);
 });
 
@@ -77,11 +77,11 @@ function makeHarness(options: {
   readonly elements: ReadonlyMap<string, FakeElement>;
   readonly saved: LlmConfig[];
   readonly controller: ReturnType<typeof setupLlmConfigForm>;
+  module(): string;
   flush(): Promise<void>;
   restore(): void;
 } {
   const ids = [
-    "welcome-page", "new-project-page", "editor-page", "llm-config-page",
     "api-base-url", "api-base-url-error", "api-key", "api-key-error",
     "model-name", "model-name-error", "llm-save-status", "btn-save-config",
     "btn-test-config", "btn-back-config",
@@ -92,19 +92,10 @@ function makeHarness(options: {
     getElementById: (id: string) => elements.get(id) ?? null,
   } as unknown as Document;
 
-  const pages = [
-    elements.get("welcome-page"),
-    elements.get("new-project-page"),
-    elements.get("editor-page"),
-    elements.get("llm-config-page"),
-  ];
   const choices = [...(options.choices ?? [])];
   const saved: LlmConfig[] = [];
+  let currentModule = "writing";
   const dom = {
-    welcomePage: elements.get("welcome-page"),
-    newProjectPage: elements.get("new-project-page"),
-    editorPage: elements.get("editor-page"),
-    llmConfigPage: elements.get("llm-config-page"),
     apiBaseUrlInput: elements.get("api-base-url"),
     apiBaseUrlError: elements.get("api-base-url-error"),
     apiKeyInput: elements.get("api-key"),
@@ -117,8 +108,10 @@ function makeHarness(options: {
     btnBackConfig: elements.get("btn-back-config"),
   } as unknown as AppDom;
 
-  const controller = setupLlmConfigForm(dom, pages as unknown as HTMLElement[], {
+  const controller = setupLlmConfigForm(dom, {
     chooseLeave: async () => choices.shift() ?? "cancel",
+    showSettings: () => { currentModule = "settings"; },
+    backToWriting: () => { currentModule = "writing"; },
     loadConfig: async () => ({
       api_base_url: savedConfig.api_base_url,
       model: savedConfig.model,
@@ -136,6 +129,7 @@ function makeHarness(options: {
     elements,
     saved,
     controller,
+    module: () => currentModule,
     flush: async () => {
       for (let i = 0; i < 8; i += 1) {
         await Promise.resolve();
@@ -145,10 +139,10 @@ function makeHarness(options: {
   };
 }
 
-test("LLM config back cancel keeps dirty input on the configuration page", async () => {
+test("LLM config back cancel keeps dirty input in the settings module", async () => {
   const ui = makeHarness({ choices: ["cancel"] });
   try {
-    ui.controller.open("editor-page");
+    ui.controller.open();
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
     ui.elements.get("api-key")!.dispatch("input");
@@ -157,17 +151,16 @@ test("LLM config back cancel keeps dirty input on the configuration page", async
     await ui.flush();
 
     assert.equal(ui.dom.apiKeyInput.value, "edited-key");
-    assert.equal(ui.dom.llmConfigPage.classList.contains("hidden"), false);
-    assert.equal(ui.dom.editorPage.classList.contains("hidden"), true);
+    assert.equal(ui.module(), "settings");
   } finally {
     ui.restore();
   }
 });
 
-test("LLM config back save failure keeps dirty input on the configuration page", async () => {
+test("LLM config back save failure keeps dirty input in the settings module", async () => {
   const ui = makeHarness({ choices: ["save-and-leave"], saveFails: true });
   try {
-    ui.controller.open("editor-page");
+    ui.controller.open();
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
     ui.elements.get("api-key")!.dispatch("input");
@@ -177,8 +170,7 @@ test("LLM config back save failure keeps dirty input on the configuration page",
 
     assert.equal(ui.dom.apiKeyInput.value, "edited-key");
     assert.equal(ui.controller.hasUnsavedChanges(), true);
-    assert.equal(ui.dom.llmConfigPage.classList.contains("hidden"), false);
-    assert.equal(ui.dom.editorPage.classList.contains("hidden"), true);
+    assert.equal(ui.module(), "settings");
   } finally {
     ui.restore();
   }
@@ -187,7 +179,7 @@ test("LLM config back save failure keeps dirty input on the configuration page",
 test("LLM config back save success leaves and records the new clean baseline", async () => {
   const ui = makeHarness({ choices: ["save-and-leave"] });
   try {
-    ui.controller.open("editor-page");
+    ui.controller.open();
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
     ui.elements.get("api-key")!.dispatch("input");
@@ -197,8 +189,7 @@ test("LLM config back save success leaves and records the new clean baseline", a
 
     assert.deepEqual(ui.saved, [{ ...savedConfig, api_key: "edited-key" }]);
     assert.equal(ui.controller.hasUnsavedChanges(), false);
-    assert.equal(ui.dom.llmConfigPage.classList.contains("hidden"), true);
-    assert.equal(ui.dom.editorPage.classList.contains("hidden"), false);
+    assert.equal(ui.module(), "writing");
   } finally {
     ui.restore();
   }
@@ -207,7 +198,7 @@ test("LLM config back save success leaves and records the new clean baseline", a
 test("LLM config back discard leaves without saving current input", async () => {
   const ui = makeHarness({ choices: ["discard-and-leave"] });
   try {
-    ui.controller.open("editor-page");
+    ui.controller.open();
     await ui.flush();
     ui.dom.apiKeyInput.value = "edited-key";
     ui.elements.get("api-key")!.dispatch("input");
@@ -217,8 +208,7 @@ test("LLM config back discard leaves without saving current input", async () => 
 
     assert.deepEqual(ui.saved, []);
     assert.equal(ui.controller.hasUnsavedChanges(), false);
-    assert.equal(ui.dom.llmConfigPage.classList.contains("hidden"), true);
-    assert.equal(ui.dom.editorPage.classList.contains("hidden"), false);
+    assert.equal(ui.module(), "writing");
   } finally {
     ui.restore();
   }

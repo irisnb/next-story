@@ -6,7 +6,7 @@ import type { GenerateAiError, GenerateAiResult, SelectionSnapshot } from "../sr
 import type { GenerateAiRequest } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
+  return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 const authError: GenerateAiError = { code: "authentication", message: "认证失败" };

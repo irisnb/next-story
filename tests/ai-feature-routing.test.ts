@@ -25,7 +25,7 @@ import type {
 } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
+  return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 test("routes configuration_required to the configuration panel state", () => {
@@ -195,7 +195,7 @@ test("first request keeps the submitted snapshot after the editor selection chan
   }), true);
 
   currentEditorSelection = {
-    notebook: "main",
+    documentId: "main",
     selectedText: "后来选中的正文本",
     from: 20,
     to: 28,
@@ -218,7 +218,7 @@ test("thinking expansion keeps its prestate snapshot after editing and switching
   state.beginThinkingExpansion(submitted);
 
   currentEditorSelection = {
-    notebook: "main",
+    documentId: "main",
     selectedText: "正文本当前选区",
     from: 9,
     to: 16,
@@ -226,7 +226,7 @@ test("thinking expansion keeps its prestate snapshot after editing and switching
 
   const request = state.view.request;
   assert.equal(request.kind, "thinking_expansion");
-  assert.equal(currentEditorSelection.notebook, "main");
+  assert.equal(currentEditorSelection.documentId, "main");
   assert.deepEqual(request.snapshot, submitted);
   assert.deepEqual(buildThinkingExpansionRequest(request.snapshot, "追人物选择"), {
     kind: "first",
@@ -282,7 +282,7 @@ test("first retry uses the failed request snapshot instead of the current editor
   state.fail(submitted, { code: "network", message: "网络失败" });
 
   currentEditorSelection = {
-    notebook: "main",
+    documentId: "main",
     selectedText: "重试时的新选区",
     from: 30,
     to: 38,
@@ -292,7 +292,7 @@ test("first retry uses the failed request snapshot instead of the current editor
     return Promise.resolve();
   }), true);
 
-  assert.equal(currentEditorSelection.notebook, "main");
+  assert.equal(currentEditorSelection.documentId, "main");
   assert.deepEqual(retriedSnapshot, submitted);
 });
 
@@ -326,7 +326,7 @@ test("follow-up and its retry keep the conversation anchor after later editor ch
   state.succeed(submitted, "首答");
 
   currentEditorSelection = {
-    notebook: "main",
+    documentId: "main",
     selectedText: "追问时的新选区",
     from: 40,
     to: 48,
@@ -441,8 +441,7 @@ test("opening configuration preserves conversation and never auto-fires a reques
   const before = state.conversation;
   let opened = 0;
 
-  openAiConfiguration((returnPage) => {
-    assert.equal(returnPage, "editor-page");
+  openAiConfiguration(() => {
     opened += 1;
   });
 

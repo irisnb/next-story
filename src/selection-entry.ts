@@ -6,7 +6,7 @@ import type {
   RichTextEditorCoordinates,
   RichTextEditorSelection,
 } from "./rich-text-editor.ts";
-import type { NotebookTab, SelectionSnapshot } from "./types.ts";
+import type { SelectionSnapshot } from "./types.ts";
 
 /** Selection entry trigger width (CSS px). */
 export const SELECTION_ENTRY_TRIGGER_WIDTH_PX = 44;
@@ -83,7 +83,7 @@ export function renderSelectionEntryActions<TNode extends SelectionEntryActionNo
 
 export function isSameSummonedSelection(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
   return (
-    a.notebook === b.notebook &&
+    a.documentId === b.documentId &&
     a.from === b.from &&
     a.to === b.to &&
     a.selectedText === b.selectedText
@@ -236,7 +236,7 @@ export interface SelectionEntryEditor {
 
 export interface SelectionEntryOptions {
   dom: AppDom;
-  getCurrentNotebook: () => NotebookTab;
+  getCurrentDocumentId: () => string | null;
   getCurrentEditor: () => SelectionEntryEditor | null;
   isRequestInFlight: () => boolean;
   onSummon: (snapshot: SelectionSnapshot) => void;
@@ -253,13 +253,13 @@ export interface SelectionEntryOptions {
 export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEntryController {
   const {
     dom,
-    getCurrentNotebook,
+    getCurrentDocumentId,
     getCurrentEditor,
     isRequestInFlight,
     onSummon,
     onThinkingExpansion,
   } = options;
-  const editorElements = [dom.draftTextarea, dom.mainTextarea];
+  const editorElements = [dom.editorTextarea];
   const editorEventTypes = ["mouseup", "keyup", "select", "focus", "click", "scroll", "input"] as const;
   const captureEditorEvents = true;
 
@@ -374,7 +374,12 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       return;
     }
     const selection = editor.getSelection();
-    const snapshot = captureSelection(getCurrentNotebook(), editor);
+    const documentId = getCurrentDocumentId();
+    if (documentId === null) {
+      hideEntry();
+      return;
+    }
+    const snapshot = captureSelection(documentId, editor);
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
     if (frozen && snapshot && isSameSummonedSelection(snapshot, frozen)) {

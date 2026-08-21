@@ -768,6 +768,18 @@ mod tests {
         .expect("写入元信息");
     }
 
+    /// 从打开结果返回的内容树里，按名称读取根级文档正文（迁移后「草稿本」「正文本」
+    /// 是普通文档，正文按稳定 ID 存放在 `作品文本/documents/<id>.json`）。
+    fn root_doc_body(root: &Path, tree: &ContentTree, name: &str) -> String {
+        let id = tree
+            .root_children
+            .iter()
+            .find(|id| tree.nodes[*id].name == name)
+            .unwrap_or_else(|| panic!("根级文档不存在: {name}"));
+        fs::read_to_string(root.join("作品文本").join("documents").join(format!("{id}.json")))
+            .expect("读取文档正文")
+    }
+
     #[test]
     fn migrate_v2_to_v3_converts_dual_notebooks_to_two_root_docs() {
         let temp = TempDir::new().expect("创建临时目录");
@@ -779,8 +791,16 @@ mod tests {
         let opened = crate::project::open_existing_project(&root).expect("迁移并打开");
 
         assert_eq!(opened.metadata.version, 3);
-        assert_eq!(opened.draft_content, draft, "草稿文字与格式保留");
-        assert_eq!(opened.main_content, main, "正文文字与格式保留");
+        assert_eq!(
+            root_doc_body(&root, &opened.tree, "草稿本"),
+            draft,
+            "草稿文字与格式保留"
+        );
+        assert_eq!(
+            root_doc_body(&root, &opened.tree, "正文本"),
+            main,
+            "正文文字与格式保留"
+        );
 
         // 旧双本子文件已移除，新布局就位
         assert!(!root.join("作品文本").join("草稿本.json").exists());
@@ -848,8 +868,8 @@ mod tests {
         // 再次打开：版本仍是 2，重跑迁移（幂等），最终一致有效。
         let opened = crate::project::open_existing_project(&root).expect("崩溃后再次打开");
         assert_eq!(opened.metadata.version, 3);
-        assert_eq!(opened.draft_content, draft);
-        assert_eq!(opened.main_content, main);
+        assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
+        assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!root.join("作品文本").join("草稿本.json").exists());
         assert!(!root.join("作品文本").join("正文本.json").exists());
     }
@@ -869,8 +889,8 @@ mod tests {
 
         let opened = crate::project::open_existing_project(&root).expect("残留旧文件时打开");
         assert_eq!(opened.metadata.version, 3);
-        assert_eq!(opened.draft_content, draft);
-        assert_eq!(opened.main_content, main);
+        assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
+        assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
     }
 
     #[test]
@@ -909,8 +929,16 @@ mod tests {
 
         // 打开：先按旧事务恢复（新世代），再迁移，打开返回恢复后的内容。
         let opened = crate::project::open_existing_project(&root).expect("恢复旧事务后迁移打开");
-        assert_eq!(opened.draft_content, new_draft, "应先恢复旧事务的新草稿");
-        assert_eq!(opened.main_content, new_main, "应先恢复旧事务的新正文");
+        assert_eq!(
+            root_doc_body(&root, &opened.tree, "草稿本"),
+            new_draft,
+            "应先恢复旧事务的新草稿"
+        );
+        assert_eq!(
+            root_doc_body(&root, &opened.tree, "正文本"),
+            new_main,
+            "应先恢复旧事务的新正文"
+        );
         assert_eq!(opened.metadata.version, 3);
         assert!(!tx_dir.exists(), "恢复后事务目录应被清理");
     }
@@ -1006,8 +1034,8 @@ mod tests {
         // 再次打开：前滚剩余动作，到达一致有效的版本 3。
         let opened = crate::project::open_existing_project(&root).expect("崩溃后前滚打开");
         assert_eq!(opened.metadata.version, 3);
-        assert_eq!(opened.draft_content, draft);
-        assert_eq!(opened.main_content, main);
+        assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
+        assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!paths.draft_file.exists(), "旧草稿本应已被删除");
         assert!(!paths.main_file.exists(), "旧正文本应已被删除");
         assert!(paths.document_file(&draft_id).is_file(), "新草稿正文应就位");
@@ -1042,8 +1070,8 @@ mod tests {
         // 再次打开：前滚元信息完成迁移。
         let opened = crate::project::open_existing_project(&root).expect("前滚元信息完成迁移");
         assert_eq!(opened.metadata.version, 3);
-        assert_eq!(opened.draft_content, draft);
-        assert_eq!(opened.main_content, main);
+        assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
+        assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!paths.draft_file.exists());
         assert!(!paths.main_file.exists());
         assert!(!tx_dir.exists(), "前滚后事务目录应被清理");

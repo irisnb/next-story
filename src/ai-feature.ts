@@ -21,7 +21,6 @@ import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
   GenerateAiRequest,
-  NotebookTab,
   SelectionSnapshot,
 } from "./types.ts";
 
@@ -52,15 +51,15 @@ export function retryAcceptedRequest(
 }
 
 export function openAiConfiguration(
-  openConfigPage: (returnPage: "editor-page") => void,
+  openConfigPage: () => void,
 ): void {
-  openConfigPage("editor-page");
+  openConfigPage();
 }
 
 export interface AiFeatureHooks {
-  getCurrentNotebook: () => NotebookTab;
+  getCurrentDocumentId: () => string | null;
   getCurrentEditor: () => SelectionEntryEditor | null;
-  openConfigPage: (returnPage: "editor-page") => void;
+  openConfigPage: () => void;
 }
 
 export interface AiFeatureController {
@@ -100,7 +99,7 @@ interface AiPanelWiring {
 
 interface SelectionEntryWiring {
   readonly dom: AppDom;
-  readonly getCurrentNotebook: AiFeatureHooks["getCurrentNotebook"];
+  readonly getCurrentDocumentId: AiFeatureHooks["getCurrentDocumentId"];
   readonly getCurrentEditor: AiFeatureHooks["getCurrentEditor"];
   readonly coordinator: AiRequestCoordinator;
   readonly state: AiPanelState;
@@ -141,11 +140,11 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
 }
 
 function setupSelectionEntryCallbacks(wiring: SelectionEntryWiring): SelectionEntryController {
-  const { dom, getCurrentNotebook, getCurrentEditor, coordinator, state, requestFirst, setupEntry } = wiring;
+  const { dom, getCurrentDocumentId, getCurrentEditor, coordinator, state, requestFirst, setupEntry } = wiring;
 
   return setupEntry({
     dom,
-    getCurrentNotebook,
+    getCurrentDocumentId,
     getCurrentEditor,
     isRequestInFlight: () => coordinator.busy,
     onSummon: (snapshot: SelectionSnapshot) => {
@@ -262,7 +261,7 @@ export function setupAiFeature(
 
   const selectionEntry = setupSelectionEntryCallbacks({
     dom,
-    getCurrentNotebook: hooks.getCurrentNotebook,
+    getCurrentDocumentId: hooks.getCurrentDocumentId,
     getCurrentEditor: hooks.getCurrentEditor,
     coordinator,
     state,

@@ -37,15 +37,14 @@ impl ProjectMetadata {
     pub const CURRENT_VERSION: u32 = 3;
 }
 
-/// 项目打开结果
+/// 项目打开结果：元信息 + 整棵内容树。前端据此确定当前文档，再用
+/// `read_document` 按需读取正文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectOpenResult {
     /// 项目元信息
     pub metadata: ProjectMetadata,
-    /// 草稿本内容
-    pub draft_content: String,
-    /// 正文本内容
-    pub main_content: String,
+    /// 整棵内容树结构
+    pub tree: ContentTree,
 }
 
 /// 创建项目参数
@@ -191,7 +190,7 @@ pub fn create_new_project(params: CreateProjectParams) -> Result<PathBuf, Projec
 }
 
 /// 打开已有作品：版本不符先走迁移框架（旧双本子 → 内容树，版本 1 继续拒绝），
-/// 迁移前恢复遗留事务，再严格校验结构，最后读取内容。
+/// 迁移前恢复遗留事务，再严格校验结构，最后读取内容树。
 pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectError> {
     migration::migrate_project(
         project_root,
@@ -200,15 +199,4 @@ pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, P
     )?;
     operations::validate_project_structure(project_root)?;
     operations::open_project(project_root)
-}
-
-/// 保存已有作品：先确认仍是有效作品（版本 3 内容树），再事务写入
-/// 「草稿本」「正文本」两篇文档的正文文件与元信息（元信息是完成标记）。
-pub fn save_existing_project(
-    project_root: &Path,
-    draft_content: String,
-    main_content: String,
-) -> Result<(), ProjectError> {
-    operations::validate_project_structure(project_root)?;
-    operations::save_project(project_root, draft_content, main_content)
 }

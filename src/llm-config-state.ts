@@ -1,7 +1,5 @@
 import type { LlmConfig } from "./types.ts";
 
-export type LlmConfigReturnPage = "welcome-page" | "editor-page";
-
 export interface RefreshCompletion {
   isCurrent: boolean;
   shouldApply: boolean;
@@ -18,8 +16,6 @@ export interface LlmConfigBaseline {
 }
 
 export class LlmConfigUiState {
-  returnPage: LlmConfigReturnPage = "welcome-page";
-
   private refreshGeneration = 0;
   private loading = false;
   private busy = false;
@@ -27,8 +23,7 @@ export class LlmConfigUiState {
   private discardAuthorized = false;
   private baseline: LlmConfigBaseline | null = null;
 
-  beginOpen(returnPage: LlmConfigReturnPage): number {
-    this.returnPage = returnPage;
+  beginOpen(): number {
     this.refreshGeneration += 1;
     this.loading = true;
     this.dirty = false;

@@ -110,18 +110,19 @@ mod tests {
             .expect("create project");
 
         let paths = super::project::ProjectPaths::new(project_root);
-        // 版本 3 布局：内容树元数据 + 两篇根级文档正文 + 作品元信息。
+        // 版本 3 布局：内容树元数据 + 根级文档正文 + 作品元信息。
         let tree: super::project::ContentTree = serde_json::from_str(
             &std::fs::read_to_string(&paths.content_tree_file).expect("read content tree"),
         )
         .expect("parse content tree");
         let doc_ids: Vec<String> = tree.root_children.clone();
-        let files = [
+        let mut files = vec![
             paths.content_tree_file.clone(),
             paths.metadata_file.clone(),
-            paths.document_file(&doc_ids[0]),
-            paths.document_file(&doc_ids[1]),
         ];
+        for id in &doc_ids {
+            files.push(paths.document_file(id));
+        }
         let before: Vec<Vec<u8>> = files
             .iter()
             .map(|path| std::fs::read(path).expect("read project file before"))
@@ -188,7 +189,7 @@ async fn create_project(params: CreateProjectParams) -> Result<String, String> {
 }
 
 /// 打开作品：在阻塞线程内取作品锁并覆盖整个「迁移 + 校验 + 读取」流程，
-/// 同一作品的打开/保存/迁移在进程内串行化。
+/// 返回整棵内容树结构；同一作品的打开/保存/迁移在进程内串行化。
 #[tauri::command]
 async fn open_project(
     app: tauri::AppHandle,
@@ -203,27 +204,6 @@ async fn open_project(
     })
     .await
     .map_err(|e| format!("打开作品任务执行失败: {e}"))?
-    .map_err(|e| e.to_string())
-}
-
-/// 保存作品：在阻塞线程内取作品锁并覆盖整个保存事务，
-/// 同一作品的并发保存被串行化，杜绝混合世代。
-#[tauri::command]
-async fn save_project(
-    app: tauri::AppHandle,
-    project_path: String,
-    draft_content: String,
-    main_content: String,
-) -> Result<(), String> {
-    let project_root = PathBuf::from(&project_path);
-    let locks = app.state::<ProjectLocks>().inner().clone();
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = locks.acquire(&project_root)?;
-        project::save_existing_project(&project_root, draft_content, main_content)
-    })
-    .await
-    .map_err(|e| format!("保存作品任务执行失败: {e}"))?
     .map_err(|e| e.to_string())
 }
 
@@ -528,7 +508,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             create_project,
             open_project,
-            save_project,
             open_content_tree,
             read_document,
             save_document,

@@ -25,7 +25,7 @@ const SAVE_MANIFEST_FILE: &str = "manifest.json";
 const METADATA_TARGET: &str = "next-story-system/project.json";
 
 /// 创建新作品：版本 3 内容树布局。
-/// 根级创建两篇普通文档「草稿本」「正文本」，正文文件按稳定 ID 命名放在
+/// 根级创建一篇默认文档，正文文件按稳定 ID 命名放在
 /// `作品文本/documents/`，树元数据放在 `next-story-system/content-tree.json`。
 pub fn create_project(name: String, save_location: PathBuf) -> Result<PathBuf, ProjectError> {
     let project_root = save_location.join(&name);
@@ -44,26 +44,17 @@ pub fn create_project(name: String, save_location: PathBuf) -> Result<PathBuf, P
         fs::create_dir(&paths.system_dir).map_err(|e| ProjectError::WriteError(e.to_string()))?;
         created_paths.push(paths.system_dir.clone());
 
-        // 内容树：根级两篇普通文档「草稿本」「正文本」，分配稳定 ID。
+        // 内容树：根级一篇默认文档（默认名「未命名文档」），分配稳定 ID。
         let mut tree = ContentTree::new();
-        let draft_id = tree
+        let document_id = tree
             .create_document(None)
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
-        tree.rename(&draft_id, "草稿本")
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
-        let main_id = tree
-            .create_document(None)
-            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
-        tree.rename(&main_id, "正文本")
             .map_err(|e| ProjectError::WriteError(e.to_string()))?;
 
         // 创建包含有效空白格式版本 2 文档的正文文件
         let empty_notebook_json = serde_json::to_string_pretty(&empty_notebook_value())
             .map_err(|e| ProjectError::WriteError(e.to_string()))?;
-        write_file_atomically(&paths.document_file(&draft_id), &empty_notebook_json)?;
-        created_paths.push(paths.document_file(&draft_id));
-        write_file_atomically(&paths.document_file(&main_id), &empty_notebook_json)?;
-        created_paths.push(paths.document_file(&main_id));
+        write_file_atomically(&paths.document_file(&document_id), &empty_notebook_json)?;
+        created_paths.push(paths.document_file(&document_id));
 
         // 写入树元数据与作品元信息
         write_content_tree(&paths, &tree)?;
@@ -163,9 +154,9 @@ pub(crate) fn read_and_validate_notebook(path: &Path, label: &str) -> Result<Str
     Ok(content)
 }
 
-/// 打开作品（版本 3 内容树）：恢复中断事务后，校验内容树结构、
-/// 所有被引用正文文件存在且为合法 Tiptap JSON，并把根级文档
-/// 「草稿本」「正文本」映射到对外契约的 `draft_content` / `main_content`。
+/// 打开作品（版本 3 内容树）：恢复中断事务后，校验内容树结构与
+/// 所有被引用正文文件存在且为合法 Tiptap JSON，并把整棵内容树返回给前端，
+/// 由前端据此确定当前文档。
 pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
 
@@ -180,18 +171,9 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
     // 读取并校验内容树结构
     let tree = read_content_tree(&paths)?;
 
-    // 根级文档「草稿本」「正文本」是前端契约的两个槽位，缺失即拒绝打开，
-    // 不用空白或默认结构替代。
-    let draft_id = root_document_id(&tree, "草稿本").ok_or_else(|| {
-        ProjectError::InvalidStructure("内容树缺少根级文档「草稿本」".to_string())
-    })?;
-    let main_id = root_document_id(&tree, "正文本").ok_or_else(|| {
-        ProjectError::InvalidStructure("内容树缺少根级文档「正文本」".to_string())
-    })?;
-
     // 校验树中所有被引用的正文文件（含回收站内文档）存在且为合法 Tiptap JSON。
     for node in tree.nodes.values() {
-        if node.kind == NodeKind::Document && node.id != draft_id && node.id != main_id {
+        if node.kind == NodeKind::Document {
             read_and_validate_notebook(&paths.document_file(&node.id), &node.name)?;
         }
     }
@@ -203,14 +185,7 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
         }
     }
 
-    let draft_content = read_and_validate_notebook(&paths.document_file(&draft_id), "草稿本")?;
-    let main_content = read_and_validate_notebook(&paths.document_file(&main_id), "正文本")?;
-
-    Ok(ProjectOpenResult {
-        metadata,
-        draft_content,
-        main_content,
-    })
+    Ok(ProjectOpenResult { metadata, tree })
 }
 
 /// 读取并校验内容树元数据文件。
@@ -261,7 +236,8 @@ pub(crate) fn write_content_tree(
     write_file_atomically(&paths.content_tree_file, &json)
 }
 
-/// 在根级查找指定名称的文档节点 ID。
+/// 在根级查找指定名称的文档节点 ID。仅测试专用路径（`run_save_transaction`）使用。
+#[cfg(test)]
 fn root_document_id(tree: &ContentTree, name: &str) -> Option<String> {
     tree.root_children.iter().find_map(|id| {
         let node = tree.nodes.get(id)?;
@@ -500,6 +476,8 @@ pub(crate) fn validate_migration_source_files(project_root: &Path) -> Result<(),
 
 /// 保存事务的阶段边界。无故障路径会经过每个边界但不做任何事；
 /// 测试通过故障钩子在指定边界中断。此类型是项目领域内部私有，不暴露给 Tauri 或前端。
+/// 仅测试专用路径（`run_save_transaction`）使用。
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)] // After* 前缀是故障注入阶段边界的语义，非冗余
 enum SavePhase {
@@ -623,19 +601,12 @@ impl TransactionLayout {
     }
 }
 
-/// 保存作品：把一次手动保存当作一个完整世代，先整体暂存到事务目录，
-/// 再按 草稿文档 → 正文本文档 → 元信息 的顺序替换可见文件，元信息是最后的完成标记。
-///
-/// 这是对外的无故障路径；测试通过 `save_project_with_fault` 在各阶段之间注入中断。
-pub fn save_project(
-    project_root: &Path,
-    draft_content: String,
-    main_content: String,
-) -> Result<(), ProjectError> {
-    run_save_transaction(project_root, draft_content, main_content, |_| Ok(()))
-}
-
 /// 保存事务核心流程。`checkpoint` 在每个阶段之间被调用，无故障路径传入恒成功闭包。
+///
+/// 这是双槽位保存事务的测试专用路径：`save_document` 走 `transactional_write_mapped`，
+/// 但本函数及其故障注入测试覆盖「保存事务在 Staged / Committing 各阶段中断后
+/// 由 `recover_interrupted_save` 恢复」的通用能力，故保留供测试使用，不对外暴露。
+#[cfg(test)]
 fn run_save_transaction(
     project_root: &Path,
     draft_content: String,
@@ -738,6 +709,8 @@ fn run_save_transaction(
 }
 
 /// 把下一世代的一组文件（映射清单 + 内容）与清单写入事务目录。
+/// 仅测试专用路径（`run_save_transaction`）使用。
+#[cfg(test)]
 fn stage_transaction_v3(
     layout: &TransactionLayout,
     staged_writes: &[(StagedFile, String)],
@@ -1187,6 +1160,8 @@ fn validate_staged_metadata(path: &Path, target_updated_at: &str) -> Result<(), 
     Ok(())
 }
 
+/// 仅测试专用路径（`run_save_transaction`）使用。
+#[cfg(test)]
 fn write_manifest_phase(
     layout: &TransactionLayout,
     target_updated_at: &str,
@@ -1447,15 +1422,20 @@ mod tests {
     const NEW_MAIN: &str = r#"{"format":"next-story-tiptap","version":1,"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"新正文内容"}]}]}}"#;
 
     /// 建立一个版本 3 作品，并把两篇文档正文与元信息写成彼此不同、可辨认的“旧世代”值。
+    /// `create_project` 现在只建一篇默认文档，这里把它重命名为「草稿本」并补一篇
+    /// 「正文本」，构成双槽位保存事务测试所需的两篇根级文档。
     fn seed_project_with_old_generation(temp: &tempfile::TempDir, name: &str) -> PathBuf {
         create_project(name.to_string(), temp.path().to_path_buf())
             .expect("create project skeleton");
 
         let project_root = temp.path().join(name);
         let paths = ProjectPaths::new(project_root.clone());
+
         let tree = read_content_tree(&paths).expect("read content tree");
-        let draft_id = root_document_id(&tree, "草稿本").expect("draft doc id");
-        let main_id = root_document_id(&tree, "正文本").expect("main doc id");
+        let draft_id = tree.root_children[0].clone();
+        rename_node(&project_root, &draft_id, "草稿本").expect("rename first to draft");
+        let main_id = create_document(&project_root, None).expect("create main doc");
+        rename_node(&project_root, &main_id, "正文本").expect("rename main doc");
 
         fs::write(paths.document_file(&draft_id), OLD_DRAFT).expect("seed old draft");
         fs::write(paths.document_file(&main_id), OLD_MAIN).expect("seed old main");
@@ -1495,13 +1475,21 @@ mod tests {
 
     fn assert_opened_generation(
         result: &ProjectOpenResult,
+        paths: &ProjectPaths,
         draft: &str,
         main: &str,
-        updated_at: &str,
     ) {
-        assert_eq!(result.draft_content, draft);
-        assert_eq!(result.main_content, main);
-        assert_eq!(result.metadata.updated_at, updated_at);
+        // open_project 现在返回整棵树，不再返回正文；从树中定位两篇文档再读文件断言。
+        let draft_id = root_document_id(&result.tree, "草稿本").expect("draft doc id");
+        let main_id = root_document_id(&result.tree, "正文本").expect("main doc id");
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&draft_id)).expect("read draft"),
+            draft
+        );
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&main_id)).expect("read main"),
+            main
+        );
     }
 
     #[test]
@@ -1639,7 +1627,8 @@ mod tests {
 
         let opened = open_project(&project_root).expect("open recovers staged transaction");
 
-        assert_opened_generation(&opened, OLD_DRAFT, OLD_MAIN, OLD_UPDATED_AT);
+        assert_opened_generation(&opened, &paths, OLD_DRAFT, OLD_MAIN);
+        assert_eq!(opened.metadata.updated_at, OLD_UPDATED_AT);
         assert!(!TransactionLayout::new(&paths).dir.exists());
     }
 
@@ -1647,6 +1636,7 @@ mod tests {
     fn open_after_draft_replace_fault_rolls_forward_to_new_generation() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
         let project_root = seed_project_with_old_generation(&temp, "草稿中断后打开");
+        let paths = ProjectPaths::new(project_root.clone());
 
         save_project_with_fault(
             &project_root,
@@ -1658,8 +1648,7 @@ mod tests {
 
         let opened = open_project(&project_root).expect("open rolls transaction forward");
 
-        assert_eq!(opened.draft_content, NEW_DRAFT);
-        assert_eq!(opened.main_content, NEW_MAIN);
+        assert_opened_generation(&opened, &paths, NEW_DRAFT, NEW_MAIN);
         assert_ne!(opened.metadata.updated_at, OLD_UPDATED_AT);
     }
 
@@ -1667,6 +1656,7 @@ mod tests {
     fn open_after_main_replace_fault_rolls_forward_metadata() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
         let project_root = seed_project_with_old_generation(&temp, "正文中断后打开");
+        let paths = ProjectPaths::new(project_root.clone());
 
         save_project_with_fault(
             &project_root,
@@ -1678,8 +1668,7 @@ mod tests {
 
         let opened = open_project(&project_root).expect("open commits staged metadata");
 
-        assert_eq!(opened.draft_content, NEW_DRAFT);
-        assert_eq!(opened.main_content, NEW_MAIN);
+        assert_opened_generation(&opened, &paths, NEW_DRAFT, NEW_MAIN);
         assert_ne!(opened.metadata.updated_at, OLD_UPDATED_AT);
     }
 
@@ -1720,7 +1709,12 @@ mod tests {
         .expect_err("injected draft replace fault");
         fs::write(&layout.manifest, "不是 JSON").expect("corrupt manifest");
 
-        let result = save_project(&project_root, NEW_DRAFT.to_string(), NEW_MAIN.to_string());
+        let result = save_project_with_fault(
+            &project_root,
+            NEW_DRAFT.to_string(),
+            NEW_MAIN.to_string(),
+            None,
+        );
 
         assert!(matches!(result, Err(ProjectError::ReadError(_))));
         assert!(layout.dir.exists());
@@ -2257,7 +2251,7 @@ mod tests {
         // 打开：前滚元信息，完成结构变更世代。
         let opened = open_project(&project_root).expect("open rolls forward structure change");
         let tree_after = read_tree(&paths);
-        assert_eq!(tree_after.root_children.len(), 3, "新世代树应含新增文件夹");
+        assert_eq!(tree_after.root_children.len(), 2, "新世代树应含新增文件夹");
         assert_ne!(
             fs::read(&paths.metadata_file).expect("read metadata after"),
             metadata_before,
@@ -2480,7 +2474,7 @@ mod tests {
         let paths = ProjectPaths::new(project_root.clone());
 
         let tree = open_content_tree(&project_root).expect("open content tree");
-        assert_eq!(tree.root_children.len(), 2);
+        assert_eq!(tree.root_children.len(), 1);
         assert!(tree.recycle_bin.is_empty());
 
         let doc_id = any_document_id(&paths);

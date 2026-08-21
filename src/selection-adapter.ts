@@ -2,7 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import type { RichTextEditorSelection } from "./rich-text-editor.ts";
 import { canonicalDoc, serializeSelectionToPlainText } from "./structured-notebook.ts";
-import type { NotebookTab, SelectionSnapshot } from "./types";
+import type { SelectionSnapshot } from "./types";
 
 export interface SelectionEditor {
   readonly getDocument: () => JSONContent;
@@ -18,7 +18,7 @@ export interface SelectionEditor {
  * 锚定，不持久化，也不用于请求时重新读取当前编辑器。
  */
 export function captureSelection(
-  notebook: NotebookTab,
+  documentId: string,
   source: SelectionEditor,
 ): SelectionSnapshot | null {
   const selection = source.getSelection();
@@ -35,7 +35,7 @@ export function captureSelection(
     to,
   );
 
-  return { notebook, selectedText, from, to };
+  return { documentId, selectedText, from, to };
 }
 
 /**

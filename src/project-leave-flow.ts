@@ -1,10 +1,10 @@
-import type { ProjectOpenResult, ProjectState } from "./types";
+import type { ProjectOpenResult, ProjectTreeState } from "./types";
 
 export interface AuthorizedOpenOptions {
   authorize(): Promise<boolean>;
   selectDirectory(): Promise<string | null>;
   openProject(projectPath: string): Promise<ProjectOpenResult>;
-  replaceProject(projectState: ProjectState): void;
+  replaceProject(projectState: ProjectTreeState): Promise<void> | void;
   reportError?(error: unknown): void;
 }
 
@@ -25,11 +25,10 @@ export async function openProjectAfterAuthorization(
     const result = await options.openProject(selected);
     if (!await options.authorize()) return;
 
-    options.replaceProject({
+    await options.replaceProject({
       projectPath: selected,
       projectName: result.metadata.name,
-      draftContent: result.draft_content,
-      mainContent: result.main_content,
+      tree: result.tree,
     });
   } catch (error: unknown) {
     options.reportError?.(error);

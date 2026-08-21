@@ -5,7 +5,7 @@ import { TemporaryConversationState, frozenSnapshot } from "../src/ai-panel-conv
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
+  return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 const authError: GenerateAiError = {

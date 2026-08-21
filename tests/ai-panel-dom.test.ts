@@ -92,7 +92,7 @@ class FakeElement {
 }
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
+  return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 function deferredGenerateResult(): {
@@ -156,12 +156,9 @@ function harness(): {
     selector === ".ai-panel-body" ? panelBody as T : null;
   const toggle = new FakeElement("btn-toggle-ai");
   const response = new FakeElement("ai-response", ["hidden"]);
-  const draft = new FakeElement("draft-textarea");
-  const main = new FakeElement("main-textarea");
-  draft.value = "用户草稿";
-  main.value = "用户正文";
-  elements.set("draft-textarea", draft);
-  elements.set("main-textarea", main);
+  const editor = new FakeElement("editor-textarea");
+  editor.value = "用户正文";
+  elements.set("editor-textarea", editor);
   elements.set("ai-panel", panel);
   elements.set("ai-response", response);
   elements.set("btn-toggle-ai", toggle);
@@ -215,7 +212,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   requests: GenerateAiRequest[];
   summon(snap: SelectionSnapshot): void;
   thinkingExpansion(snap: SelectionSnapshot): void;
-  setCurrentNotebook(notebook: "draft" | "main"): void;
+  setCurrentDocumentId(documentId: string): void;
   openedConfig: string[];
   restore(): void;
 } {
@@ -238,15 +235,12 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     selector === ".ai-panel-body" ? panelBody as T : null;
   const toggle = new FakeElement("btn-toggle-ai");
   const response = new FakeElement("ai-response", ["hidden"]);
-  const draft = new FakeElement("draft-textarea");
-  const main = new FakeElement("main-textarea");
-  draft.value = "用户草稿";
-  main.value = "用户正文";
+  const editor = new FakeElement("editor-textarea");
+  editor.value = "用户正文";
   elements.set("ai-panel", panel);
   elements.set("ai-response", response);
   elements.set("btn-toggle-ai", toggle);
-  elements.set("draft-textarea", draft);
-  elements.set("main-textarea", main);
+  elements.set("editor-textarea", editor);
 
   const previousDocument = globalThis.document;
   globalThis.document = {
@@ -260,18 +254,17 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   const openedConfig: string[] = [];
   const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
   const loadConfigResult = options.loadConfigResult;
-  let currentNotebook: "draft" | "main" = "draft";
+  let currentDocumentId = "doc-1";
 
   const controller = setupAiFeature({
     aiPanel: panel,
     aiResponse: response,
     btnToggleAi: toggle,
-    draftTextarea: draft,
-    mainTextarea: main,
+    editorTextarea: editor,
   } as unknown as AppDom, {
-    getCurrentNotebook: () => currentNotebook,
+    getCurrentDocumentId: () => currentDocumentId,
     getCurrentEditor: () => null,
-    openConfigPage: (returnPage) => { openedConfig.push(returnPage); },
+    openConfigPage: () => { openedConfig.push("settings"); },
   }, {
     generate: async (request) => {
       requests.push(request);
@@ -308,7 +301,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
       if (!onThinkingExpansion) throw new Error("thinking expansion callback missing");
       onThinkingExpansion(snap);
     },
-    setCurrentNotebook: (notebook) => { currentNotebook = notebook; },
+    setCurrentDocumentId: (documentId) => { currentDocumentId = documentId; },
     openedConfig,
     restore: () => { globalThis.document = previousDocument; },
   };
@@ -317,8 +310,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
 test("first summon sends directly without creative-content confirmation", async () => {
   const ui = featureHarness([{ ok: true, content: "首答" }]);
   try {
-    const draft = ui.elements.get("draft-textarea")!;
-    const main = ui.elements.get("main-textarea")!;
+    const editor = ui.elements.get("editor-textarea")!;
 
     ui.summon(snapshot("冻结选区"));
     await flushAiFeatureFlow();
@@ -326,8 +318,7 @@ test("first summon sends directly without creative-content confirmation", async 
     assert.deepEqual(ui.requests, [{ kind: "first", selected_text: "冻结选区" }]);
     assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区");
-    assert.equal(draft.value, "用户草稿");
-    assert.equal(main.value, "用户正文");
+    assert.equal(editor.value, "用户正文");
     assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
     assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), true);
     assert.deepEqual(conversationText(ui), ["首答"]);
@@ -488,8 +479,7 @@ test("thinking expansion prestate renders the approved form and starts from the 
     ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
 
     assert.deepEqual(ui.startedThinkingExpansions, ["想追的方向"]);
-    assert.equal((ui.elements.get("draft-textarea")?.value ?? "用户草稿"), "用户草稿");
-    assert.equal((ui.elements.get("main-textarea")?.value ?? "用户正文"), "用户正文");
+    assert.equal((ui.elements.get("editor-textarea")?.value ?? "用户正文"), "用户正文");
   } finally {
     ui.restore();
   }
@@ -543,8 +533,7 @@ test("submits nonblank text with Enter, keeps Shift+Enter, and never writes to n
     const entered = input.dispatch("keydown", { key: "Enter" });
     assert.equal(entered.defaultPrevented, true);
     assert.deepEqual(ui.submitted, ["继续问"]);
-    assert.equal((ui.elements.get("draft-textarea")?.value ?? "用户草稿"), "用户草稿");
-    assert.equal((ui.elements.get("main-textarea")?.value ?? "用户正文"), "用户正文");
+    assert.equal((ui.elements.get("editor-textarea")?.value ?? "用户正文"), "用户正文");
   } finally {
     ui.restore();
   }
@@ -710,9 +699,8 @@ test("real AI feature flow never writes notebooks across success, failure, retry
     { ok: true, content: "编辑后的回答" },
   ]);
   try {
-    const draft = ui.elements.get("draft-textarea")!;
-    const main = ui.elements.get("main-textarea")!;
-    const original = [draft.value, main.value];
+    const editor = ui.elements.get("editor-textarea")!;
+    const original = editor.value;
     ui.summon(snapshot("冻结选区"));
     await flushAiFeatureFlow();
     assert.equal(await ui.controller.submitFollowUp("失败问题"), true);
@@ -722,7 +710,7 @@ test("real AI feature flow never writes notebooks across success, failure, retry
     assert.equal(await ui.controller.editFollowUp("编辑问题"), true);
     await flushAiFeatureFlow();
 
-    assert.deepEqual([draft.value, main.value], original);
+    assert.equal(editor.value, original);
     assert.equal(ui.requests.length, 4);
   } finally {
     ui.restore();
@@ -742,14 +730,12 @@ test("first request, retry, and follow-up keep the clicked snapshot after editor
     { ok: true, content: "追问回答" },
   ], { loadConfigPromise: configPromise });
   try {
-    const draft = fixtureElement(ui.elements, "draft-textarea");
-    const main = fixtureElement(ui.elements, "main-textarea");
+    const editor = fixtureElement(ui.elements, "editor-textarea");
     const retry = fixtureElement(ui.elements, "ai-retry");
 
     ui.summon(snapshot("点击时冻结选区"));
-    draft.value = "点击后改写的草稿与新选区";
-    main.value = "点击后切换到的正文与新选区";
-    ui.setCurrentNotebook("main");
+    editor.value = "点击后改写的内容与新选区";
+    ui.setCurrentDocumentId("doc-2");
     configDeferred.resolve?.({
       api_base_url: "https://api.example.com/v1",
       model: "saved-model",
@@ -757,13 +743,11 @@ test("first request, retry, and follow-up keep the clicked snapshot after editor
     });
     await flushAiFeatureFlow();
 
-    draft.value = "重试前再次改写草稿";
-    main.value = "重试前再次改变正文选区";
+    editor.value = "重试前再次改写内容";
     retry.dispatch("click");
     await flushAiFeatureFlow();
 
-    draft.value = "追问前继续编辑草稿";
-    main.value = "追问前继续编辑正文";
+    editor.value = "追问前继续编辑内容";
     assert.equal(await ui.controller.submitFollowUp("继续追问"), true);
     await flushAiFeatureFlow();
 
@@ -779,10 +763,7 @@ test("first request, retry, and follow-up keep the clicked snapshot after editor
         ],
       },
     ]);
-    assert.deepEqual(
-      [draft.value, main.value],
-      ["追问前继续编辑草稿", "追问前继续编辑正文"],
-    );
+    assert.equal(editor.value, "追问前继续编辑内容");
   } finally {
     ui.restore();
   }
@@ -791,15 +772,13 @@ test("first request, retry, and follow-up keep the clicked snapshot after editor
 test("thinking expansion keeps the clicked snapshot after editor context changes", async () => {
   const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
   try {
-    const draft = fixtureElement(ui.elements, "draft-textarea");
-    const main = fixtureElement(ui.elements, "main-textarea");
+    const editor = fixtureElement(ui.elements, "editor-textarea");
     const direction = fixtureElement(ui.elements, "ai-thinking-expansion-input");
     const form = fixtureElement(ui.elements, "ai-thinking-expansion-form");
 
     ui.thinkingExpansion(snapshot("思维扩展冻结选区"));
-    draft.value = "点击后改写的草稿与新选区";
-    main.value = "点击后切换到的正文与新选区";
-    ui.setCurrentNotebook("main");
+    editor.value = "点击后改写的内容与新选区";
+    ui.setCurrentDocumentId("doc-2");
     direction.value = "追人物的犹豫";
     direction.dispatch("input");
     form.dispatch("submit");
@@ -810,10 +789,7 @@ test("thinking expansion keeps the clicked snapshot after editor context changes
       selected_text: "思维扩展冻结选区",
       thinking_direction: "追人物的犹豫",
     }]);
-    assert.deepEqual(
-      [draft.value, main.value],
-      ["点击后改写的草稿与新选区", "点击后切换到的正文与新选区"],
-    );
+    assert.equal(editor.value, "点击后改写的内容与新选区");
   } finally {
     ui.restore();
   }
@@ -822,9 +798,8 @@ test("thinking expansion keeps the clicked snapshot after editor context changes
 test("real AI feature flow opens thinking expansion prestate and waits for Start before generating", async () => {
   const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
   try {
-    const draft = ui.elements.get("draft-textarea")!;
-    const main = ui.elements.get("main-textarea")!;
-    const original = [draft.value, main.value];
+    const editor = ui.elements.get("editor-textarea")!;
+    const original = editor.value;
     const input = ui.elements.get("ai-thinking-expansion-input")!;
 
     ui.thinkingExpansion(snapshot("冻结选区"));
@@ -843,7 +818,7 @@ test("real AI feature flow opens thinking expansion prestate and waits for Start
       selected_text: "冻结选区",
       thinking_direction: "想追的方向",
     }]);
-    assert.deepEqual([draft.value, main.value], original);
+    assert.equal(editor.value, original);
   } finally {
     ui.restore();
   }
@@ -933,7 +908,7 @@ test("configuration navigation preserves the live feature and never starts gener
     ui.summon(snapshot("锚点"));
     await flushAiFeatureFlow();
     ui.elements.get("ai-go-config")!.dispatch("click");
-    assert.deepEqual(ui.openedConfig, ["editor-page"]);
+    assert.deepEqual(ui.openedConfig, ["settings"]);
     assert.equal(ui.requests.length, 1);
     assert.equal(await ui.controller.submitFollowUp("回来后追问"), true);
     await flushAiFeatureFlow();

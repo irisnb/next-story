@@ -205,9 +205,10 @@ type SelectionEntryFixture = Readonly<{
   editorPage: FakeElement;
   btnToggleAi: FakeElement;
   draft: FakeSelectionEditor;
-  main: FakeSelectionEditor;
   dispatchDocument: (type: string) => void;
   setActiveElement: (element: FakeElement | null) => void;
+  getCurrentDocumentId: () => string | null;
+  setCurrentDocumentId: (documentId: string) => void;
   restore: () => void;
 }>;
 
@@ -216,11 +217,10 @@ function installSelectionEntryDom(): SelectionEntryFixture {
   const editorPage = new FakeElement();
   const btnToggleAi = new FakeElement();
   const draftElement = new FakeEditorElement();
-  const mainElement = new FakeEditorElement(["hidden"]);
   const draft = new FakeSelectionEditor(draftElement);
-  const main = new FakeSelectionEditor(mainElement);
   const documentListeners = new Map<string, Listener[]>();
   let activeElement: FakeElement | null = draftElement;
+  let currentDocumentId: string | null = "doc-1";
 
   globalThis.document = {
     activeElement,
@@ -240,13 +240,11 @@ function installSelectionEntryDom(): SelectionEntryFixture {
     dom: {
       editorPage,
       btnToggleAi,
-      draftTextarea: draftElement,
-      mainTextarea: mainElement,
+      editorTextarea: draftElement,
     } as unknown as AppDom,
     editorPage,
     btnToggleAi,
     draft,
-    main,
     dispatchDocument: (type: string) => {
       const event = new FakeEvent();
       for (const listener of documentListeners.get(type) ?? []) listener(event);
@@ -258,6 +256,8 @@ function installSelectionEntryDom(): SelectionEntryFixture {
         value: activeElement,
       });
     },
+    getCurrentDocumentId: () => currentDocumentId,
+    setCurrentDocumentId: (documentId) => { currentDocumentId = documentId; },
     restore: () => {
       globalThis.document = previousDocument;
     },
@@ -274,8 +274,8 @@ function setupEditorSelectionEntry(
 ) {
   const options = {
     dom: ui.dom,
-    getCurrentNotebook: () => ui.main.element.classList.contains("hidden") ? "draft" as const : "main" as const,
-    getCurrentEditor: () => ui.main.element.classList.contains("hidden") ? asEditor(ui.draft) : asEditor(ui.main),
+    getCurrentDocumentId: ui.getCurrentDocumentId,
+    getCurrentEditor: () => asEditor(ui.draft),
     isRequestInFlight: callbacks.isRequestInFlight ?? (() => false),
     onSummon: callbacks.onSummon ?? (() => {}),
     onThinkingExpansion: callbacks.onThinkingExpansion ?? (() => {}),
@@ -351,7 +351,7 @@ function installAnimationFrameQueue(): { flush: () => void; restore: () => void 
 }
 
 function snapshot(text: string): SelectionSnapshot {
-  return { notebook: "draft", selectedText: text, from: 0, to: text.length };
+  return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
 test("shows the entry for a meaningful selection whose focus end is visible", () => {
@@ -417,14 +417,14 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
     assert.ok(summonButton);
     summonButton.dispatch("click");
 
-    assert.deepEqual(summons, [{ notebook: "draft", selectedText: "冻结选区", from: 3, to: 7 }]);
+    assert.deepEqual(summons, [{ documentId: "doc-1", selectedText: "冻结选区", from: 3, to: 7 }]);
     assert.equal(entry.classList.contains("hidden"), true);
   } finally {
     ui.restore();
   }
 });
 
-test("submitted summon snapshot survives later edits, selection changes, and notebook switches", () => {
+test("submitted summon snapshot survives later edits, selection changes, and document switches", () => {
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
@@ -440,16 +440,13 @@ test("submitted summon snapshot survives later edits, selection changes, and not
     assert.ok(summonButton);
     summonButton.dispatch("click");
 
-    ui.draft.text = "草稿本已经被用户改写";
+    ui.draft.text = "文档内容已经被用户改写";
     ui.draft.selection = { from: 1, to: 4, head: 4 };
-    ui.draft.element.classList.add("hidden");
-    ui.main.element.classList.remove("hidden");
-    ui.main.text = "正文本的新选区";
-    ui.main.selection = { from: 1, to: 5, head: 5 };
-    ui.main.dispatch("select");
+    ui.setCurrentDocumentId("doc-2");
+    ui.draft.dispatch("select");
 
     assert.deepEqual(submitted, {
-      notebook: "draft",
+      documentId: "doc-1",
       selectedText: "冻结选区",
       from: 3,
       to: 7,
@@ -462,14 +459,13 @@ test("submitted summon snapshot survives later edits, selection changes, and not
 test("thinking expansion submits the click-time snapshot before later editor changes", () => {
   const ui = installSelectionEntryDom();
   try {
-    ui.main.element.classList.remove("hidden");
-    ui.draft.element.classList.add("hidden");
-    ui.main.text = "正文本原始片段";
-    ui.main.selection = { from: 4, to: 8, head: 8 };
+    ui.setCurrentDocumentId("doc-2");
+    ui.draft.text = "正文本原始片段";
+    ui.draft.selection = { from: 4, to: 8, head: 8 };
     let submitted: SelectionSnapshot | null = null;
 
     setupEditorSelectionEntry(ui, { onThinkingExpansion: (snap) => { submitted = snap; } });
-    ui.main.dispatch("select");
+    ui.draft.dispatch("select");
 
     const entry = visibleEntry(ui);
     entryTrigger(entry).dispatch("click");
@@ -479,16 +475,13 @@ test("thinking expansion submits the click-time snapshot before later editor cha
     assert.ok(thinkingButton);
     thinkingButton.dispatch("click");
 
-    ui.main.text = "正文本已改变";
-    ui.main.selection = { from: 1, to: 3, head: 3 };
-    ui.main.element.classList.add("hidden");
-    ui.draft.element.classList.remove("hidden");
-    ui.draft.text = "草稿本新选区";
-    ui.draft.selection = { from: 1, to: 4, head: 4 };
+    ui.draft.text = "正文本已改变";
+    ui.draft.selection = { from: 1, to: 3, head: 3 };
+    ui.setCurrentDocumentId("doc-1");
     ui.draft.dispatch("select");
 
     assert.deepEqual(submitted, {
-      notebook: "main",
+      documentId: "doc-2",
       selectedText: "原始片段",
       from: 4,
       to: 8,
@@ -517,7 +510,7 @@ test("selection entry supports forward and backward editor selections", () => {
     summonButton.dispatch("click");
     assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
     assert.deepEqual(summons, [
-      { notebook: "draft", selectedText: "bcd", from: 2, to: 5 },
+      { documentId: "doc-1", selectedText: "bcd", from: 2, to: 5 },
     ]);
   } finally {
     ui.restore();
@@ -600,7 +593,7 @@ test("destroy removes editor listeners so stale selection events do not update",
     let notebookReads = 0;
     const controller = setupSelectionEntry({
       dom: ui.dom,
-      getCurrentNotebook: () => { notebookReads += 1; return "draft"; },
+      getCurrentDocumentId: () => { notebookReads += 1; return "draft"; },
       getCurrentEditor: () => asEditor(ui.draft),
       isRequestInFlight: () => false,
       onSummon: () => {},

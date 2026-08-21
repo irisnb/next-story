@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import type { JSONContent } from "@tiptap/core";
 
 import type { AiFeatureController } from "../src/ai-feature.ts";
@@ -13,11 +12,10 @@ import type {
   RichTextEditorCoordinates,
   RichTextEditorSelection,
 } from "../src/rich-text-editor.ts";
-import { openProject } from "../src/project-api.ts";
-import { openProjectAfterAuthorization } from "../src/project-leave-flow.ts";
-import type { ProjectOpenResult } from "../src/types.ts";
+import type { ContentTree, ContentTreeNode, ProjectTreeState } from "../src/types.ts";
+import type { MemoryStorage } from "../src/document-memory.ts";
 
-type Listener = () => void;
+type Listener = (event?: unknown) => void;
 
 function paragraphDoc(text: string): JSONContent {
   return {
@@ -61,10 +59,15 @@ class FakeElement {
   readonly classList = new FakeClassList();
   private readonly listeners = new Map<string, Listener[]>();
   private readonly attributes = new Map<string, string>();
+  readonly children: FakeElement[] = [];
+  readonly style: Record<string, string> = {};
+  readonly dataset: Record<string, string> = {};
   textContent = "";
   className = "";
   value = "";
   disabled = false;
+  inert = false;
+  type = "";
 
   addEventListener(type: string, listener: Listener): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -83,6 +86,27 @@ class FakeElement {
   click(): void {
     for (const listener of this.listeners.get("click") ?? []) listener();
   }
+
+  appendChild(child: FakeElement): FakeElement {
+    this.children.push(child);
+    return child;
+  }
+
+  replaceChildren(...children: FakeElement[]): void {
+    this.children.length = 0;
+    this.children.push(...children);
+  }
+
+  querySelector<T>(_selector: string): T | null {
+    return null;
+  }
+
+  contains(target: unknown): boolean {
+    return target === this || this.children.some((child) => child.contains(target));
+  }
+
+  focus(): void {}
+  select(): void {}
 }
 
 class FakeRichTextEditor {
@@ -168,18 +192,180 @@ class FakeRichTextEditor {
   }
 }
 
-function project(projectPath: string, draftText: string, mainText: string) {
+function docNode(id: string, name: string): ContentTreeNode {
+  return { id, name, kind: "Document", children: [] };
+}
+
+function treeFrom(docs: ContentTreeNode[], folders: ContentTreeNode[] = []): ContentTree {
+  const nodes: Record<string, ContentTreeNode> = {};
+  for (const node of [...folders, ...docs]) nodes[node.id] = node;
   return {
-    projectPath,
-    projectName: projectPath,
-    draftContent: notebookJson(draftText),
-    mainContent: notebookJson(mainText),
+    root_children: [...folders, ...docs].map((node) => node.id),
+    nodes,
+    recycle_bin: [],
   };
 }
 
-function editorFixture() {
+function projectState(
+  projectPath: string,
+  tree: ContentTree,
+): ProjectTreeState {
+  return { projectPath, projectName: projectPath, tree };
+}
+
+const EDITOR_DOM_IDS = [
+  "welcome-page", "new-project-page", "editor-page", "current-project-name",
+  "save-status", "btn-save", "btn-back-welcome", "tab-writing", "tab-files",
+  "tab-settings", "module-writing", "module-files", "module-settings",
+  "editor-textarea", "current-doc-toggle", "current-document-name",
+  "document-list", "writing-empty-state", "paragraph-style", "btn-bold",
+  "btn-italic", "btn-bullet-list", "btn-ordered-list", "btn-toolbar-underline",
+  "btn-toolbar-strike", "btn-undo", "btn-redo", "btn-find", "btn-margin",
+  "btn-format-drawer", "format-toolbar", "format-drawer", "btn-format-drawer-close",
+  "btn-underline", "btn-strike", "btn-toggle-character-section",
+  "btn-toggle-paragraph-section", "select-font-family", "select-font-size",
+  "input-text-color", "btn-clear-text-color", "input-highlight",
+  "btn-clear-highlight", "btn-clear-character-format", "btn-align-left",
+  "btn-align-center", "btn-align-right", "btn-align-justify",
+  "select-line-height", "select-spacing-before", "select-spacing-after",
+  "select-text-indent", "select-indent-left", "select-indent-right",
+  "btn-clear-paragraph-format", "find-bar", "find-input", "find-case-sensitive",
+  "btn-find-prev", "btn-find-next", "find-count", "replace-input", "btn-replace",
+  "btn-replace-all", "btn-find-close", "context-menu", "ctx-cut", "ctx-copy",
+  "ctx-paste", "ctx-paste-plain", "ctx-link-create", "ctx-link-group",
+  "ctx-link-open", "ctx-link-edit", "ctx-link-remove", "link-popover", "link-open",
+  "link-edit", "link-remove", "leave-dialog", "btn-save-and-leave",
+  "btn-discard-and-leave", "btn-cancel-leave",
+];
+
+function fakeDom(): { dom: AppDom; elements: Map<string, FakeElement>; restore(): void } {
+  const elements = new Map<string, FakeElement>();
+  for (const id of EDITOR_DOM_IDS) elements.set(id, new FakeElement());
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    addEventListener: () => {},
+    getElementById: (id: string) => elements.get(id) ?? null,
+    createElement: () => new FakeElement(),
+  } as unknown as Document;
+
+  return {
+    dom: {
+      welcomePage: elements.get("welcome-page") as unknown as HTMLElement,
+      newProjectPage: elements.get("new-project-page") as unknown as HTMLElement,
+      editorPage: elements.get("editor-page") as unknown as HTMLElement,
+      currentProjectName: elements.get("current-project-name") as unknown as HTMLElement,
+      saveStatus: elements.get("save-status") as unknown as HTMLElement,
+      btnSave: elements.get("btn-save") as unknown as HTMLButtonElement,
+      btnBackWelcome: elements.get("btn-back-welcome") as unknown as HTMLButtonElement,
+      editorTextarea: elements.get("editor-textarea") as unknown as HTMLElement,
+      currentDocToggle: elements.get("current-doc-toggle") as unknown as HTMLButtonElement,
+      currentDocumentName: elements.get("current-document-name") as unknown as HTMLElement,
+      documentList: elements.get("document-list") as unknown as HTMLElement,
+      writingEmptyState: elements.get("writing-empty-state") as unknown as HTMLElement,
+      paragraphStyle: elements.get("paragraph-style") as unknown as HTMLSelectElement,
+      btnBold: elements.get("btn-bold") as unknown as HTMLButtonElement,
+      btnItalic: elements.get("btn-italic") as unknown as HTMLButtonElement,
+      btnBulletList: elements.get("btn-bullet-list") as unknown as HTMLButtonElement,
+      btnOrderedList: elements.get("btn-ordered-list") as unknown as HTMLButtonElement,
+      btnToolbarUnderline: elements.get("btn-toolbar-underline") as unknown as HTMLButtonElement,
+      btnToolbarStrike: elements.get("btn-toolbar-strike") as unknown as HTMLButtonElement,
+      btnUndo: elements.get("btn-undo") as unknown as HTMLButtonElement,
+      btnRedo: elements.get("btn-redo") as unknown as HTMLButtonElement,
+      btnFind: elements.get("btn-find") as unknown as HTMLButtonElement,
+      btnMargin: elements.get("btn-margin") as unknown as HTMLButtonElement,
+      btnFormatDrawer: elements.get("btn-format-drawer") as unknown as HTMLButtonElement,
+      formatToolbar: elements.get("format-toolbar") as unknown as HTMLElement,
+      formatDrawer: elements.get("format-drawer") as unknown as HTMLElement,
+      btnFormatDrawerClose: elements.get("btn-format-drawer-close") as unknown as HTMLButtonElement,
+      btnUnderline: elements.get("btn-underline") as unknown as HTMLButtonElement,
+      btnStrike: elements.get("btn-strike") as unknown as HTMLButtonElement,
+      btnToggleCharacterSection: elements.get("btn-toggle-character-section") as unknown as HTMLButtonElement,
+      btnToggleParagraphSection: elements.get("btn-toggle-paragraph-section") as unknown as HTMLButtonElement,
+      selectFontFamily: elements.get("select-font-family") as unknown as HTMLSelectElement,
+      selectFontSize: elements.get("select-font-size") as unknown as HTMLSelectElement,
+      inputTextColor: elements.get("input-text-color") as unknown as HTMLInputElement,
+      btnClearTextColor: elements.get("btn-clear-text-color") as unknown as HTMLButtonElement,
+      inputHighlight: elements.get("input-highlight") as unknown as HTMLInputElement,
+      btnClearHighlight: elements.get("btn-clear-highlight") as unknown as HTMLButtonElement,
+      btnClearCharacterFormat: elements.get("btn-clear-character-format") as unknown as HTMLButtonElement,
+      btnAlignLeft: elements.get("btn-align-left") as unknown as HTMLButtonElement,
+      btnAlignCenter: elements.get("btn-align-center") as unknown as HTMLButtonElement,
+      btnAlignRight: elements.get("btn-align-right") as unknown as HTMLButtonElement,
+      btnAlignJustify: elements.get("btn-align-justify") as unknown as HTMLButtonElement,
+      selectLineHeight: elements.get("select-line-height") as unknown as HTMLSelectElement,
+      selectSpacingBefore: elements.get("select-spacing-before") as unknown as HTMLSelectElement,
+      selectSpacingAfter: elements.get("select-spacing-after") as unknown as HTMLSelectElement,
+      selectTextIndent: elements.get("select-text-indent") as unknown as HTMLSelectElement,
+      selectIndentLeft: elements.get("select-indent-left") as unknown as HTMLSelectElement,
+      selectIndentRight: elements.get("select-indent-right") as unknown as HTMLSelectElement,
+      btnClearParagraphFormat: elements.get("btn-clear-paragraph-format") as unknown as HTMLButtonElement,
+      findBar: elements.get("find-bar") as unknown as HTMLElement,
+      findInput: elements.get("find-input") as unknown as HTMLInputElement,
+      findCaseSensitive: elements.get("find-case-sensitive") as unknown as HTMLInputElement,
+      btnFindPrev: elements.get("btn-find-prev") as unknown as HTMLButtonElement,
+      btnFindNext: elements.get("btn-find-next") as unknown as HTMLButtonElement,
+      findCount: elements.get("find-count") as unknown as HTMLElement,
+      replaceInput: elements.get("replace-input") as unknown as HTMLInputElement,
+      btnReplace: elements.get("btn-replace") as unknown as HTMLButtonElement,
+      btnReplaceAll: elements.get("btn-replace-all") as unknown as HTMLButtonElement,
+      btnFindClose: elements.get("btn-find-close") as unknown as HTMLButtonElement,
+      contextMenu: elements.get("context-menu") as unknown as HTMLElement,
+      btnCtxCut: elements.get("ctx-cut") as unknown as HTMLButtonElement,
+      btnCtxCopy: elements.get("ctx-copy") as unknown as HTMLButtonElement,
+      btnCtxPaste: elements.get("ctx-paste") as unknown as HTMLButtonElement,
+      btnCtxPastePlain: elements.get("ctx-paste-plain") as unknown as HTMLButtonElement,
+      btnCtxLinkCreate: elements.get("ctx-link-create") as unknown as HTMLButtonElement,
+      ctxLinkGroup: elements.get("ctx-link-group") as unknown as HTMLElement,
+      btnCtxLinkOpen: elements.get("ctx-link-open") as unknown as HTMLButtonElement,
+      btnCtxLinkEdit: elements.get("ctx-link-edit") as unknown as HTMLButtonElement,
+      btnCtxLinkRemove: elements.get("ctx-link-remove") as unknown as HTMLButtonElement,
+      linkPopover: elements.get("link-popover") as unknown as HTMLElement,
+      btnLinkOpen: elements.get("link-open") as unknown as HTMLButtonElement,
+      btnLinkEdit: elements.get("link-edit") as unknown as HTMLButtonElement,
+      btnLinkRemove: elements.get("link-remove") as unknown as HTMLButtonElement,
+      leaveDialog: elements.get("leave-dialog") as unknown as HTMLDialogElement,
+      btnSaveAndLeave: elements.get("btn-save-and-leave") as unknown as HTMLButtonElement,
+      btnDiscardAndLeave: elements.get("btn-discard-and-leave") as unknown as HTMLButtonElement,
+      btnCancelLeave: elements.get("btn-cancel-leave") as unknown as HTMLButtonElement,
+    } as unknown as AppDom,
+    elements,
+    restore: () => { globalThis.document = previousDocument; },
+  };
+}
+
+function memoryFixture(): MemoryStorage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => { store.set(key, value); },
+    removeItem: (key) => { store.delete(key); },
+  };
+}
+
+/** 等待可观察状态出现；切换文档的异步链跨越多个微任务，不能靠固定次数的硬等。 */
+async function flushUntil(predicate: () => boolean, maxTicks = 60): Promise<void> {
+  for (let i = 0; i < maxTicks; i += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  throw new Error("flushUntil timed out");
+}
+
+interface Fixture {
+  ui: { dom: AppDom; elements: Map<string, FakeElement>; restore(): void };
+  editor: ReturnType<typeof setupEditor>;
+  editors: FakeRichTextEditor[];
+  contents: Map<string, string>;
+  saved: Map<string, string>;
+  memory: MemoryStorage;
+}
+
+function editorFixture(initialContents: Record<string, string> = {}): Fixture {
   const ui = fakeDom();
   const editors: FakeRichTextEditor[] = [];
+  const contents = new Map<string, string>(Object.entries(initialContents));
+  const saved = new Map<string, string>();
+  const memory = memoryFixture();
   const leaveDialog: LeaveDialogController = { choose: async () => "cancel" };
   const editor = setupEditor(ui.dom, leaveDialog, {
     createEditor: (element: HTMLElement, initialDocument: JSONContent) => {
@@ -187,173 +373,22 @@ function editorFixture() {
       editors.push(created);
       return created;
     },
-  });
-  return { ...ui, editor, editors };
-}
-
-function fakeDom(): { readonly dom: AppDom; restore(): void } {
-  const elements = new Map<string, FakeElement>();
-  const element = <T extends HTMLElement>(id: string): T => {
-    const existing = elements.get(id);
-    if (existing) return existing as unknown as T;
-    const created = new FakeElement();
-    elements.set(id, created);
-    return created as unknown as T;
-  };
-
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    addEventListener: () => {},
-    getElementById: (id: string) => elements.get(id) ?? null,
-  } as unknown as Document;
-
-  return {
-    dom: {
-      welcomePage: element("welcome-page"),
-      newProjectPage: element("new-project-page"),
-      editorPage: element("editor-page"),
-      btnNewProject: element("btn-new-project"),
-      btnOpenProject: element("btn-open-project"),
-      projectNameInput: element("project-name"),
-      saveLocationInput: element("save-location"),
-      btnBrowse: element("btn-browse"),
-      btnCancelNew: element("btn-cancel-new"),
-      btnCreateProject: element("btn-create-project"),
-      nameError: element("name-error"),
-      locationError: element("location-error"),
-      currentProjectName: element("current-project-name"),
-      saveStatus: element("save-status"),
-      btnSave: element("btn-save"),
-      btnBackWelcome: element("btn-back-welcome"),
-      tabDraft: element("tab-draft"),
-      tabMain: element("tab-main"),
-      draftTextarea: element("draft-textarea"),
-      mainTextarea: element("main-textarea"),
-      paragraphStyle: element("paragraph-style"),
-      btnBold: element("btn-bold"),
-      btnItalic: element("btn-italic"),
-      btnBulletList: element("btn-bullet-list"),
-      btnOrderedList: element("btn-ordered-list"),
-      btnToolbarUnderline: element("btn-toolbar-underline"),
-      btnToolbarStrike: element("btn-toolbar-strike"),
-      btnUndo: element("btn-undo"),
-      btnRedo: element("btn-redo"),
-      btnFind: element("btn-find"),
-      btnMargin: element("btn-margin"),
-      btnFormatDrawer: element("btn-format-drawer"),
-      formatToolbar: element("format-toolbar"),
-      formatDrawer: element("format-drawer"),
-      btnFormatDrawerClose: element("btn-format-drawer-close"),
-      btnUnderline: element("btn-underline"),
-      btnStrike: element("btn-strike"),
-      btnToggleCharacterSection: element("btn-toggle-character-section"),
-      btnToggleParagraphSection: element("btn-toggle-paragraph-section"),
-      selectFontFamily: element("select-font-family"),
-      selectFontSize: element("select-font-size"),
-      inputTextColor: element("input-text-color"),
-      btnClearTextColor: element("btn-clear-text-color"),
-      inputHighlight: element("input-highlight"),
-      btnClearHighlight: element("btn-clear-highlight"),
-      btnClearCharacterFormat: element("btn-clear-character-format"),
-      btnAlignLeft: element("btn-align-left"),
-      btnAlignCenter: element("btn-align-center"),
-      btnAlignRight: element("btn-align-right"),
-      btnAlignJustify: element("btn-align-justify"),
-      selectLineHeight: element("select-line-height"),
-      selectSpacingBefore: element("select-spacing-before"),
-      selectSpacingAfter: element("select-spacing-after"),
-      selectTextIndent: element("select-text-indent"),
-      selectIndentLeft: element("select-indent-left"),
-      selectIndentRight: element("select-indent-right"),
-      btnClearParagraphFormat: element("btn-clear-paragraph-format"),
-      findBar: element("find-bar"),
-      findInput: element("find-input"),
-      findCaseSensitive: element("find-case-sensitive"),
-      btnFindPrev: element("btn-find-prev"),
-      btnFindNext: element("btn-find-next"),
-      findCount: element("find-count"),
-      replaceInput: element("replace-input"),
-      btnReplace: element("btn-replace"),
-      btnReplaceAll: element("btn-replace-all"),
-      btnFindClose: element("btn-find-close"),
-      contextMenu: element("context-menu"),
-      btnCtxCut: element("ctx-cut"),
-      btnCtxCopy: element("ctx-copy"),
-      btnCtxPaste: element("ctx-paste"),
-      btnCtxPastePlain: element("ctx-paste-plain"),
-      btnCtxLinkCreate: element("ctx-link-create"),
-      ctxLinkGroup: element("ctx-link-group"),
-      btnCtxLinkOpen: element("ctx-link-open"),
-      btnCtxLinkEdit: element("ctx-link-edit"),
-      btnCtxLinkRemove: element("ctx-link-remove"),
-      linkPopover: element("link-popover"),
-      btnLinkOpen: element("link-open"),
-      btnLinkEdit: element("link-edit"),
-      btnLinkRemove: element("link-remove"),
-      llmConfigPage: element("llm-config-page"),
-      btnLlmConfig: element("btn-llm-config"),
-      btnSettings: element("btn-settings"),
-      apiBaseUrlInput: element("api-base-url"),
-      apiBaseUrlError: element("api-base-url-error"),
-      apiKeyInput: element("api-key"),
-      apiKeyError: element("api-key-error"),
-      modelNameInput: element("model-name"),
-      modelNameError: element("model-name-error"),
-      llmSaveStatus: element("llm-save-status"),
-      btnSaveConfig: element("btn-save-config"),
-      btnTestConfig: element("btn-test-config"),
-      btnBackConfig: element("btn-back-config"),
-      btnToggleAi: element("btn-toggle-ai"),
-      aiPanel: element("ai-panel"),
-      aiResponse: element("ai-response"),
-      aiConversation: element("ai-conversation"),
-      aiFollowUpForm: element("ai-follow-up-form"),
-      aiFollowUpInput: element("ai-follow-up-input"),
-      aiFollowUpSend: element("ai-follow-up-send"),
-      leaveDialog: element("leave-dialog"),
-      btnSaveAndLeave: element("btn-save-and-leave"),
-      btnDiscardAndLeave: element("btn-discard-and-leave"),
-      btnCancelLeave: element("btn-cancel-leave"),
+    readDocument: async (_projectPath, documentId) => {
+      const content = contents.get(documentId);
+      if (content === undefined) throw new Error(`missing content: ${documentId}`);
+      return content;
     },
-    restore: () => { globalThis.document = previousDocument; },
-  };
+    saveDocument: async (_projectPath, documentId, content) => {
+      saved.set(documentId, content);
+      contents.set(documentId, content);
+    },
+    memoryStorage: memory,
+  });
+  return { ui, editor, editors, contents, saved, memory };
 }
 
-test("resets only the AI selection entry when switching notebook tabs", () => {
-  const fixture = editorFixture();
-  try {
-    let entryResets = 0;
-    let projectBegins = 0;
-    let projectEnds = 0;
-    const ai: AiFeatureController = {
-      beginProject: () => { projectBegins += 1; },
-      endProject: () => { projectEnds += 1; },
-      resetSelectionEntry: () => { entryResets += 1; },
-      submitFollowUp: () => Promise.resolve(false),
-      retryFollowUp: () => Promise.resolve(false),
-      editFollowUp: () => Promise.resolve(false),
-    };
-    const editor = fixture.editor;
-
-    editor.attachAi(ai);
-    editor.showProject(project("project-path", "草稿", "正文"));
-    entryResets = 0;
-    projectBegins = 0;
-    projectEnds = 0;
-
-    fixture.dom.tabMain.click();
-
-    assert.equal(editor.getCurrentTab(), "main");
-    assert.equal(entryResets, 1);
-    assert.equal(projectBegins, 0);
-    assert.equal(projectEnds, 0);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("showProject begins the AI project and unload ends it", () => {
-  const fixture = editorFixture();
+test("showProject begins the AI project and unload ends it", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("未命名文档") });
   try {
     let begins = 0;
     let ends = 0;
@@ -365,142 +400,43 @@ test("showProject begins the AI project and unload ends it", () => {
       retryFollowUp: () => Promise.resolve(false),
       editFollowUp: () => Promise.resolve(false),
     };
-    const editor = fixture.editor;
-    editor.attachAi(ai);
+    fixture.editor.attachAi(ai);
 
-    editor.showProject(project("作品一", "草稿", "正文"));
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品一", tree));
     assert.equal(begins, 1);
     assert.equal(ends, 0);
 
-    editor.unload();
-    assert.equal(ends, 1);
-
-    // 新作品就绪会再次 beginProject，旧作品结束不重复触发。
-    editor.showProject(project("作品二", "草稿二", "正文二"));
-    assert.equal(begins, 2);
-    assert.equal(ends, 1);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("creates two persistent independent editors without dirtying initialization", () => {
-  const fixture = editorFixture();
-  try {
-    fixture.editor.showProject(project("作品一", "草稿初稿", "正文初稿"));
-
-    assert.equal(fixture.editors.length, 2);
-    assert.notEqual(fixture.editors[0], fixture.editors[1]);
-    assert.equal(fixture.editors[0]?.element, fixture.dom.draftTextarea);
-    assert.equal(fixture.editors[1]?.element, fixture.dom.mainTextarea);
-    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("草稿初稿"));
-    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("正文初稿"));
-    assert.equal(fixture.editor.hasUnsavedChanges(), false);
-
-    fixture.editors[0]?.edit(paragraphDoc("未保存草稿"));
-    fixture.dom.tabMain.click();
-    fixture.editors[1]?.edit(paragraphDoc("未保存正文"));
-    fixture.dom.tabDraft.click();
-
-    assert.equal(fixture.editors.length, 2);
-    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("未保存草稿"));
-    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("未保存正文"));
-    assert.equal(fixture.editor.hasUnsavedChanges(), true);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("replacing a project destroys both old editors and ignores their late edits", () => {
-  const fixture = editorFixture();
-  try {
-    fixture.editor.showProject(project("作品一", "旧草稿", "旧正文"));
-    const oldDraft = fixture.editors[0];
-    const oldMain = fixture.editors[1];
-    const lateDraftEdit = oldDraft?.capturedListeners[0];
-
-    fixture.editor.showProject(project("作品二", "新草稿", "新正文"));
-
-    assert.equal(oldDraft?.destroyed, true);
-    assert.equal(oldMain?.destroyed, true);
-    assert.equal(fixture.editors.length, 4);
-    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
-    assert.deepEqual(fixture.editors[3]?.getDocument(), paragraphDoc("新正文"));
-    assert.equal(fixture.editor.hasUnsavedChanges(), false);
-
-    lateDraftEdit?.(paragraphDoc("迟到的旧草稿"));
-
-    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
-    assert.equal(fixture.editor.hasUnsavedChanges(), false);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("unloading destroys both editors and ignores their late edits", () => {
-  const fixture = editorFixture();
-  try {
-    fixture.editor.showProject(project("作品一", "草稿", "正文"));
-    const draft = fixture.editors[0];
-    const main = fixture.editors[1];
-    const lateMainEdit = main?.capturedListeners[0];
-
     fixture.editor.unload();
+    assert.equal(ends, 1);
+  } finally {
+    fixture.ui.restore();
+  }
+});
 
-    assert.equal(draft?.destroyed, true);
-    assert.equal(main?.destroyed, true);
-    assert.equal(fixture.editor.hasProject(), false);
+test("creates a single editor for the current document without dirtying initialization", async () => {
+  const fixture = editorFixture({
+    "doc-1": notebookJson("初稿"),
+  });
+  try {
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品一", tree));
+
+    assert.equal(fixture.editors.length, 1);
+    assert.equal(fixture.editors[0]?.element, fixture.ui.dom.editorTextarea);
+    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("初稿"));
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
-
-    lateMainEdit?.(paragraphDoc("迟到的旧正文"));
-
-    assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
-    fixture.restore();
+    fixture.ui.restore();
   }
 });
 
-test("destroying the controller destroys both editors", () => {
-  const fixture = editorFixture();
+test("detects a format-only change as unsaved and a full revert clears it", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") });
   try {
-    fixture.editor.showProject(project("作品一", "草稿", "正文"));
-    const draft = fixture.editors[0];
-    const main = fixture.editors[1];
-
-    fixture.editor.destroy();
-
-    assert.equal(draft?.destroyed, true);
-    assert.equal(main?.destroyed, true);
-    assert.equal(fixture.editor.hasProject(), false);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("detects a format-only change as unsaved", () => {
-  const fixture = editorFixture();
-  try {
-    fixture.editor.showProject(project("作品", "正文", "正文"));
-
-    // 只加粗，可见文字不变
-    const boldDoc: JSONContent = {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "正文", marks: [{ type: "bold" }] }] },
-      ],
-    };
-    fixture.editors[0]?.edit(boldDoc);
-
-    assert.equal(fixture.editor.hasUnsavedChanges(), true);
-  } finally {
-    fixture.restore();
-  }
-});
-
-test("reverting format to the saved baseline clears unsaved", () => {
-  const fixture = editorFixture();
-  try {
-    fixture.editor.showProject(project("作品", "正文", "正文"));
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
 
     const boldDoc: JSONContent = {
       type: "doc",
@@ -512,77 +448,148 @@ test("reverting format to the saved baseline clears unsaved", () => {
     assert.equal(fixture.editor.hasUnsavedChanges(), true);
 
     fixture.editors[0]?.edit(paragraphDoc("正文"));
-
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
-    fixture.restore();
+    fixture.ui.restore();
   }
 });
 
-test("opens existing notebooks, saves exact edits, unloads, and reopens the saved snapshot", async () => {
-  const fixture = editorFixture();
-  const projectPath = "D:\\作品\\保留结构化";
-  let storedDraft = notebookJson("旧草稿");
-  let storedMain = notebookJson("旧正文");
-  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: globalThis,
-  });
-
-  mockIPC((command, payload) => {
-    if (command === "open_project") {
-      const result: ProjectOpenResult = {
-        metadata: { name: "保留结构化" },
-        draft_content: storedDraft,
-        main_content: storedMain,
-      };
-      return result;
-    }
-    if (command === "save_project") {
-      const args = payload as { projectPath: string; draftContent: string; mainContent: string };
-      assert.equal(args.projectPath, projectPath);
-      assert.equal(typeof args.draftContent, "string");
-      assert.equal(typeof args.mainContent, "string");
-      storedDraft = args.draftContent;
-      storedMain = args.mainContent;
-      return null;
-    }
-    throw new Error(`Unexpected IPC command: ${command}`);
-  });
-
-  const openIntoEditor = async (): Promise<void> => {
-    await openProjectAfterAuthorization({
-      authorize: async () => true,
-      selectDirectory: async () => projectPath,
-      openProject,
-      replaceProject: fixture.editor.showProject,
-    });
-  };
-
+test("saves exact edits to the current document", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("旧稿") });
   try {
-    await openIntoEditor();
-    assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("旧草稿"));
-    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("旧正文"));
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
 
-    fixture.editors[0]?.edit(paragraphDoc("新草稿"));
-    fixture.editors[1]?.edit(paragraphDoc("新正文"));
-
+    fixture.editors[0]?.edit(paragraphDoc("新稿"));
     assert.equal(await fixture.editor.save(), true);
-    assert.equal(storedDraft, notebookJsonCurrent("新草稿"));
-    assert.equal(storedMain, notebookJsonCurrent("新正文"));
-
-    fixture.editor.unload();
-    await openIntoEditor();
-
-    assert.deepEqual(fixture.editors[2]?.getDocument(), paragraphDoc("新草稿"));
-    assert.deepEqual(fixture.editors[3]?.getDocument(), paragraphDoc("新正文"));
+    assert.equal(fixture.saved.get("doc-1"), notebookJsonCurrent("新稿"));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
   } finally {
-    fixture.editor.destroy();
-    clearMocks();
-    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
-    else Reflect.deleteProperty(globalThis, "window");
-    fixture.restore();
+    fixture.ui.restore();
+  }
+});
+
+test("replacing a project destroys the old editor and ignores its late edits", async () => {
+  const fixture = editorFixture({
+    "doc-a": notebookJson("旧稿"),
+    "doc-b": notebookJson("新稿"),
+  });
+  try {
+    await fixture.editor.showProject(projectState("作品一", treeFrom([docNode("doc-a", "旧文档")])));
+    const oldEditor = fixture.editors[0];
+    const lateEdit = oldEditor?.capturedListeners[0];
+
+    await fixture.editor.showProject(projectState("作品二", treeFrom([docNode("doc-b", "新文档")])));
+
+    assert.equal(oldEditor?.destroyed, true);
+    assert.equal(fixture.editors.length, 2);
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-b");
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("新稿"));
+
+    lateEdit?.(paragraphDoc("迟到的旧稿"));
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("新稿"));
+    assert.equal(fixture.editor.hasUnsavedChanges(), false);
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("unloading destroys the editor and ignores late edits", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("稿") });
+  try {
+    await fixture.editor.showProject(projectState("作品一", treeFrom([docNode("doc-1", "文档")])));
+    const editor = fixture.editors[0];
+    const lateEdit = editor?.capturedListeners[0];
+
+    fixture.editor.unload();
+    assert.equal(editor?.destroyed, true);
+    assert.equal(fixture.editor.hasProject(), false);
+
+    lateEdit?.(paragraphDoc("迟到"));
+    assert.equal(fixture.editor.hasUnsavedChanges(), false);
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("switching documents silently saves the current document then loads the target", async () => {
+  const fixture = editorFixture({
+    "doc-1": notebookJson("第一篇"),
+    "doc-2": notebookJson("第二篇"),
+  });
+  try {
+    const tree = treeFrom([docNode("doc-1", "第一篇"), docNode("doc-2", "第二篇")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+
+    fixture.editors[0]?.edit(paragraphDoc("第一篇改"));
+
+    // 通过扁平列表点击切换到 doc-2。
+    const listItem = fixture.ui.elements.get("document-list")!.children[1];
+    assert.ok(listItem);
+    listItem.click();
+    await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
+
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
+    assert.equal(fixture.saved.get("doc-1"), notebookJsonCurrent("第一篇改"));
+    assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("第二篇"));
+    assert.equal(fixture.editor.hasUnsavedChanges(), false);
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("reopening a project returns to the remembered document", async () => {
+  const fixture = editorFixture({
+    "doc-1": notebookJson("第一篇"),
+    "doc-2": notebookJson("第二篇"),
+  });
+  try {
+    const tree = treeFrom([docNode("doc-1", "第一篇"), docNode("doc-2", "第二篇")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    // 切到第二篇，记忆应写入 localStorage。
+    fixture.ui.elements.get("document-list")!.children[1]!.click();
+    await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
+
+    // 卸载后重新打开：应回到第二篇。
+    fixture.editor.unload();
+    await fixture.editor.showProject(projectState("作品", tree));
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("falls back to the first document when the remembered document was deleted", async () => {
+  const fixture = editorFixture({
+    "doc-1": notebookJson("第一篇"),
+    "doc-2": notebookJson("第二篇"),
+  });
+  try {
+    const tree = treeFrom([docNode("doc-1", "第一篇"), docNode("doc-2", "第二篇")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    fixture.ui.elements.get("document-list")!.children[1]!.click();
+    await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
+    fixture.editor.unload();
+
+    // 记忆指向 doc-2，但 doc-2 已被删除（不在树中）。
+    const reduced = treeFrom([docNode("doc-1", "第一篇")]);
+    await fixture.editor.showProject(projectState("作品", reduced));
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("shows the empty state when the project has no documents", async () => {
+  const fixture = editorFixture();
+  try {
+    await fixture.editor.showProject(projectState("空作品", treeFrom([])));
+    assert.equal(fixture.editor.getCurrentDocumentId(), null);
+    assert.equal(fixture.editor.hasUnsavedChanges(), false);
+    assert.equal(fixture.ui.elements.get("writing-empty-state")!.classList.contains("hidden"), false);
+    assert.equal(fixture.ui.elements.get("editor-textarea")!.classList.contains("hidden"), true);
+  } finally {
+    fixture.ui.restore();
   }
 });

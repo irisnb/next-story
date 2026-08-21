@@ -1,11 +1,13 @@
 export interface ProjectMetadata {
   name: string;
+  created_at: string;
+  updated_at: string;
+  version: number;
 }
 
 export interface ProjectOpenResult {
   metadata: ProjectMetadata;
-  draft_content: string;
-  main_content: string;
+  tree: ContentTree;
 }
 
 export interface LlmConfig {
@@ -28,11 +30,11 @@ export interface LlmConfigSummary {
   has_api_key: boolean;
 }
 
-export interface ProjectState {
+/** 作品打开后就绪的前端状态：路径、名称与整棵内容树。正文按需用 `read_document` 读取。 */
+export interface ProjectTreeState {
   projectPath: string;
   projectName: string;
-  draftContent: string;
-  mainContent: string;
+  tree: ContentTree;
 }
 
 /** 内容树节点类型：文件夹只负责组织，文档只负责写作。 */
@@ -63,22 +65,12 @@ export interface ContentTree {
 }
 
 /**
- * 两个用户文本本子的唯一代码标识。
- * - `draft` 对应草稿本
- * - `main` 对应正文本
- *
- * 标签页、本子内存状态与选区快照共用这套值。
- * 注意：这是本子标识，与 Tauri 窗口 id、入口文件 `main.ts` / `main.rs` 无关。
- */
-export type NotebookTab = "draft" | "main";
-
-/**
  * 与具体编辑器控件解耦的选区快照。
  * 点击“召唤 AI”时冻结；`from/to` 为 Tiptap 有序选区位置，仅用于本次来源
- * 标识与界面锚定，不发送给模型、不持久化。`notebook` 与标签页共用 `draft | main`。
+ * 标识与界面锚定，不发送给模型、不持久化。`documentId` 是选区来源的文档 ID。
  */
 export interface SelectionSnapshot {
-  notebook: NotebookTab;
+  documentId: string;
   selectedText: string;
   from: number;
   to: number;

@@ -1,26 +1,22 @@
-export interface NotebookContents {
-  draft: string;
-  main: string;
-}
+export type SaveWriter = (content: string) => Promise<void>;
 
-export type SaveWriter = (snapshot: NotebookContents) => Promise<void>;
-
+/**
+ * 单个当前文档的保存状态：跟踪「当前规范化内容」与「已保存基线」，
+ * 未保存判定只针对当前正在编辑的文档。保存中冻结快照，保存失败保留失败提示。
+ */
 export class EditorSaveState {
-  private current: NotebookContents;
-  private baseline: NotebookContents;
+  private current: string;
+  private baseline: string;
   private savePromise: Promise<boolean> | null = null;
   private failureMessage: string | null = null;
 
-  constructor(draft: string, main: string) {
-    this.current = { draft, main };
-    this.baseline = { draft, main };
+  constructor(content: string) {
+    this.current = content;
+    this.baseline = content;
   }
 
   get hasUnsavedChanges(): boolean {
-    return (
-      this.current.draft !== this.baseline.draft ||
-      this.current.main !== this.baseline.main
-    );
+    return this.current !== this.baseline;
   }
 
   get isSaving(): boolean {
@@ -37,8 +33,8 @@ export class EditorSaveState {
     return this.hasUnsavedChanges ? "有未保存修改" : "已保存";
   }
 
-  setCurrent(draft: string, main: string): void {
-    this.current = { draft, main };
+  setCurrent(content: string): void {
+    this.current = content;
     this.failureMessage = null;
   }
 
@@ -47,7 +43,7 @@ export class EditorSaveState {
       return this.savePromise;
     }
 
-    const snapshot = { ...this.current };
+    const snapshot = this.current;
     this.failureMessage = null;
     this.savePromise = writer(snapshot).then(
       () => {

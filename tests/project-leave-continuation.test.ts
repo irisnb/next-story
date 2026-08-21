@@ -5,7 +5,33 @@ import { orchestrateCloseRequest } from "../src/close-guard.ts";
 import { EditorSaveState } from "../src/editor-save-state.ts";
 import { LeaveCoordinator } from "../src/leave-guard.ts";
 import { openProjectAfterAuthorization } from "../src/project-leave-flow.ts";
-import type { ProjectOpenResult, ProjectState } from "../src/types.ts";
+import type {
+  ContentTree,
+  ProjectMetadata,
+  ProjectOpenResult,
+  ProjectTreeState,
+} from "../src/types.ts";
+
+const TREE: ContentTree = {
+  root_children: ["doc-1"],
+  nodes: {
+    "doc-1": { id: "doc-1", name: "未命名文档", kind: "Document", children: [] },
+  },
+  recycle_bin: [],
+};
+
+function metadata(name = "候选作品"): ProjectMetadata {
+  return {
+    name,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    version: 3,
+  };
+}
+
+function openResult(name = "候选作品"): ProjectOpenResult {
+  return { metadata: metadata(name), tree: TREE };
+}
 
 function oldProjectHarness(): {
   authorize(): Promise<boolean>;
@@ -14,8 +40,8 @@ function oldProjectHarness(): {
   save(): Promise<boolean>;
 } {
   let loaded = true;
-  const state = new EditorSaveState("saved", "main");
-  state.setCurrent("edited", "main");
+  const state = new EditorSaveState("saved");
+  state.setCurrent("edited");
   const leave = new LeaveCoordinator({
     isDirty: () => state.hasUnsavedChanges,
     choose: async () => "discard-and-leave",
@@ -56,7 +82,7 @@ test("open failure retains the old project state and save ability", async () => 
     authorize: async () => { authorizations += 1; return true; },
     selectDirectory: async () => "broken-project",
     openProject: async () => { throw new Error("invalid project"); },
-    replaceProject: (_state: ProjectState) => {},
+    replaceProject: (_state: ProjectTreeState) => {},
     reportError: (error) => { reported = error; },
   });
 
@@ -76,11 +102,7 @@ test("authorization runs only after the candidate project is read, immediately b
     selectDirectory: async () => { calls.push("select"); return "候选作品"; },
     openProject: async () => {
       calls.push("open");
-      return {
-        metadata: { name: "候选作品" },
-        draft_content: "draft",
-        main_content: "main",
-      };
+      return openResult();
     },
     replaceProject: () => { calls.push("replace"); },
   });
@@ -114,15 +136,11 @@ test("edits made while the candidate is being read are covered by the final leav
   assert.equal(authorizations, 0, "读取候选作品期间不提前授权");
 
   // 读取期间用户继续编辑旧作品（新的未保存修改，旧实现会在这里丢失）
-  const state = new EditorSaveState("saved", "main");
-  state.setCurrent("读取期间的新编辑", "main");
+  const state = new EditorSaveState("saved");
+  state.setCurrent("读取期间的新编辑");
   assert.equal(state.hasUnsavedChanges, true);
 
-  openDeferred.resolve({
-    metadata: { name: "候选作品" },
-    draft_content: "draft",
-    main_content: "main",
-  });
+  openDeferred.resolve(openResult());
   await flow;
 
   assert.equal(authorizations, 1);
@@ -151,11 +169,7 @@ test("cancelled final authorization keeps the read candidate unapplied", async (
   await Promise.resolve();
   await Promise.resolve();
 
-  openDeferred.resolve({
-    metadata: { name: "候选作品" },
-    draft_content: "draft",
-    main_content: "main",
-  });
+  openDeferred.resolve(openResult());
   await flow;
 
   assert.deepEqual(calls, ["select", "open", "authorize"]);

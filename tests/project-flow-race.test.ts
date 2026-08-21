@@ -5,7 +5,7 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 
 import type { AppDom } from "../src/dom.ts";
 import { setupProjectFlow } from "../src/new-project-form.ts";
-import type { ProjectOpenResult, ProjectState } from "../src/types.ts";
+import type { ContentTree, ProjectMetadata, ProjectOpenResult, ProjectTreeState } from "../src/types.ts";
 
 type Listener = () => void;
 
@@ -35,6 +35,27 @@ class FakeElement {
   }
 }
 
+const TREE: ContentTree = {
+  root_children: ["doc-1"],
+  nodes: {
+    "doc-1": { id: "doc-1", name: "未命名文档", kind: "Document", children: [] },
+  },
+  recycle_bin: [],
+};
+
+function metadata(name: string): ProjectMetadata {
+  return {
+    name,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    version: 3,
+  };
+}
+
+function openResult(name: string): ProjectOpenResult {
+  return { metadata: metadata(name), tree: TREE };
+}
+
 /** 等待可观察状态出现；async 链的微任务数量不固定，不能靠固定次数的硬等。 */
 async function flushUntil(predicate: () => boolean, maxTicks = 60): Promise<void> {
   for (let i = 0; i < maxTicks; i += 1) {
@@ -44,7 +65,7 @@ async function flushUntil(predicate: () => boolean, maxTicks = 60): Promise<void
   throw new Error("flushUntil timed out");
 }
 
-function projectFlowFixture(onProjectReady: (state: ProjectState) => void): {
+function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): {
   readonly dom: AppDom;
   restore(): void;
 } {
@@ -127,7 +148,7 @@ test("open project is single-flight: a second click during an in-flight open is 
     openDeferred.resolve = resolve;
   });
   let openCalls = 0;
-  const ready: ProjectState[] = [];
+  const ready: ProjectTreeState[] = [];
 
   installWindow();
   mockIPC((command, _payload) => {
@@ -148,13 +169,10 @@ test("open project is single-flight: a second click during an in-flight open is 
 
     assert.equal(openCalls, 1, "忙碌锁只允许一个打开流程");
 
-    openDeferred.resolve({
-      metadata: { name: "候选作品" },
-      draft_content: "draft",
-      main_content: "main",
-    });
+    openDeferred.resolve(openResult("候选作品"));
     await flushUntil(() => ready.length === 1);
     assert.equal(ready[0]?.projectName, "候选作品");
+    assert.deepEqual(ready[0]?.tree, TREE);
     // 让 handleOpenProject 的 finally（释放忙碌锁）跑完，避免测试结束后残留异步活动。
     await flushUntil(() => openCalls === 1 && ready.length === 1);
   } finally {
@@ -171,13 +189,14 @@ test("a newer project operation supersedes a stale in-flight open result", async
   const openPromise = new Promise<ProjectOpenResult>((resolve) => {
     openDeferred.resolve = resolve;
   });
-  const ready: ProjectState[] = [];
+  const ready: ProjectTreeState[] = [];
 
   installWindow();
   mockIPC((command, _payload) => {
     if (command === "plugin:dialog|open") return "候选作品路径";
     if (command === "open_project") return openPromise;
     if (command === "create_project") return "D:\\新作品";
+    if (command === "open_content_tree") return TREE;
     throw new Error(`Unexpected IPC command: ${command}`);
   });
 
@@ -196,11 +215,7 @@ test("a newer project operation supersedes a stale in-flight open result", async
     assert.equal(ready[0]?.projectName, "新作品");
 
     // 迟到的打开结果到达：操作序号已过期，不得覆盖新建的作品。
-    openDeferred.resolve({
-      metadata: { name: "候选作品" },
-      draft_content: "draft",
-      main_content: "main",
-    });
+    openDeferred.resolve(openResult("候选作品"));
     await flushUntil(() => true);
     await flushUntil(() => true);
     await flushUntil(() => true);

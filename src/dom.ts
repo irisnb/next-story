@@ -15,10 +15,25 @@ export interface AppDom {
   saveStatus: HTMLElement;
   btnSave: HTMLButtonElement;
   btnBackWelcome: HTMLButtonElement;
-  tabDraft: HTMLButtonElement;
-  tabMain: HTMLButtonElement;
-  draftTextarea: HTMLElement;
-  mainTextarea: HTMLElement;
+  tabWriting: HTMLButtonElement;
+  tabFiles: HTMLButtonElement;
+  tabSettings: HTMLButtonElement;
+  moduleWriting: HTMLElement;
+  moduleFiles: HTMLElement;
+  moduleSettings: HTMLElement;
+  editorTextarea: HTMLElement;
+  currentDocToggle: HTMLButtonElement;
+  currentDocumentName: HTMLElement;
+  documentList: HTMLElement;
+  writingEmptyState: HTMLElement;
+  fmNewDocument: HTMLButtonElement;
+  fmNewFolder: HTMLButtonElement;
+  fmStatus: HTMLElement;
+  fmFileTree: HTMLElement;
+  fmOpenRecycleBin: HTMLButtonElement;
+  fmRecycleBin: HTMLElement;
+  fmBackFromRecycle: HTMLButtonElement;
+  fmRecycleList: HTMLElement;
   paragraphStyle: HTMLSelectElement;
   btnBold: HTMLButtonElement;
   btnItalic: HTMLButtonElement;
@@ -80,9 +95,6 @@ export interface AppDom {
   btnLinkOpen: HTMLButtonElement;
   btnLinkEdit: HTMLButtonElement;
   btnLinkRemove: HTMLButtonElement;
-  llmConfigPage: HTMLElement;
-  btnLlmConfig: HTMLButtonElement;
-  btnSettings: HTMLButtonElement;
   apiBaseUrlInput: HTMLInputElement;
   apiBaseUrlError: HTMLElement;
   apiKeyInput: HTMLInputElement;
@@ -134,10 +146,25 @@ export function getAppDom(): AppDom {
     saveStatus: requireElement("save-status"),
     btnSave: requireElement("btn-save"),
     btnBackWelcome: requireElement("btn-back-welcome"),
-    tabDraft: requireElement("tab-draft"),
-    tabMain: requireElement("tab-main"),
-    draftTextarea: requireElement("draft-textarea"),
-    mainTextarea: requireElement("main-textarea"),
+    tabWriting: requireElement("tab-writing"),
+    tabFiles: requireElement("tab-files"),
+    tabSettings: requireElement("tab-settings"),
+    moduleWriting: requireElement("module-writing"),
+    moduleFiles: requireElement("module-files"),
+    moduleSettings: requireElement("module-settings"),
+    editorTextarea: requireElement("editor-textarea"),
+    currentDocToggle: requireElement("current-doc-toggle"),
+    currentDocumentName: requireElement("current-document-name"),
+    documentList: requireElement("document-list"),
+    writingEmptyState: requireElement("writing-empty-state"),
+    fmNewDocument: requireElement("fm-new-document"),
+    fmNewFolder: requireElement("fm-new-folder"),
+    fmStatus: requireElement("fm-status"),
+    fmFileTree: requireElement("fm-file-tree"),
+    fmOpenRecycleBin: requireElement("fm-open-recycle-bin"),
+    fmRecycleBin: requireElement("fm-recycle-bin"),
+    fmBackFromRecycle: requireElement("fm-back-from-recycle"),
+    fmRecycleList: requireElement("fm-recycle-list"),
     paragraphStyle: requireElement("paragraph-style"),
     btnBold: requireElement("btn-bold"),
     btnItalic: requireElement("btn-italic"),
@@ -199,9 +226,6 @@ export function getAppDom(): AppDom {
     btnLinkOpen: requireElement("link-open"),
     btnLinkEdit: requireElement("link-edit"),
     btnLinkRemove: requireElement("link-remove"),
-    llmConfigPage: requireElement("llm-config-page"),
-    btnLlmConfig: requireElement("btn-llm-config"),
-    btnSettings: requireElement("btn-settings"),
     apiBaseUrlInput: requireElement("api-base-url"),
     apiBaseUrlError: requireElement("api-base-url-error"),
     apiKeyInput: requireElement("api-key"),

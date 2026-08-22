@@ -1,9 +1,7 @@
-/** 与 localStorage 兼容的最小存储接口，便于在 node 测试里注入假存储。 */
-export interface MemoryStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
+import type { StorageLike } from "./shared-storage-and-selection-identity.ts";
+
+/** 兼容别名：与共享 StorageLike 完全一致，保持既有调用方不变。 */
+export type MemoryStorage = StorageLike;
 
 const MEMORY_KEY_PREFIX = "next-story.last-document.";
 
@@ -14,7 +12,7 @@ export function lastDocumentKey(projectPath: string): string {
 
 /** 读取某个作品的上次编辑文档 ID；缺失或空值返回 null。 */
 export function readLastDocumentId(
-  storage: MemoryStorage,
+  storage: StorageLike,
   projectPath: string,
 ): string | null {
   const raw = storage.getItem(lastDocumentKey(projectPath));
@@ -23,7 +21,7 @@ export function readLastDocumentId(
 
 /** 记录某个作品的上次编辑文档 ID。 */
 export function writeLastDocumentId(
-  storage: MemoryStorage,
+  storage: StorageLike,
   projectPath: string,
   documentId: string,
 ): void {
@@ -32,7 +30,7 @@ export function writeLastDocumentId(
 
 /** 清除某个作品的上次编辑文档记忆（记忆指向的文档已失效时调用）。 */
 export function clearLastDocumentId(
-  storage: MemoryStorage,
+  storage: StorageLike,
   projectPath: string,
 ): void {
   storage.removeItem(lastDocumentKey(projectPath));

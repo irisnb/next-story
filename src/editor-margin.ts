@@ -1,18 +1,14 @@
 // 编辑器「留白」：正文四周显示留白的预设档位与持久化。
 // 纯显示偏好：只影响内容区 padding，不写入草稿本/正文本 JSON，也不进入 AI 选区快照。
 
+import type { StorageLike } from "./shared-storage-and-selection-identity.ts";
+
 export type MarginPreset = "compact" | "standard" | "loose";
 
 export const MARGIN_STORAGE_KEY = "next-story.margin-preset";
 export const DEFAULT_MARGIN_PRESET: MarginPreset = "standard";
 
 const MARGIN_PRESETS: readonly MarginPreset[] = ["compact", "standard", "loose"];
-
-/** 与 localStorage 兼容的最小存储接口，便于在 node 测试里注入假存储。 */
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
 
 function isMarginPreset(value: string): value is MarginPreset {
   return (MARGIN_PRESETS as readonly string[]).includes(value);

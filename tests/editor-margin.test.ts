@@ -9,21 +9,8 @@ import {
   readMarginPreset,
   writeMarginPreset,
   type MarginPreset,
-  type StorageLike,
 } from "../src/editor-margin.ts";
-
-function fakeStorage(initial: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
-  const data: Record<string, string> = { ...initial };
-  return {
-    data,
-    getItem(key: string) {
-      return key in data ? data[key] : null;
-    },
-    setItem(key: string, value: string) {
-      data[key] = value;
-    },
-  };
-}
+import { memoryStorageFixture } from "./memory-storage-fixture.ts";
 
 test("parseMarginPreset 缺失回退默认档位", () => {
   assert.equal(parseMarginPreset(null), DEFAULT_MARGIN_PRESET);
@@ -49,22 +36,22 @@ test("nextMarginPreset 三档循环", () => {
 });
 
 test("readMarginPreset 无键时回退默认", () => {
-  const storage = fakeStorage();
+  const storage = memoryStorageFixture();
   assert.equal(readMarginPreset(storage), DEFAULT_MARGIN_PRESET);
 });
 
 test("readMarginPreset 读取已保存档位", () => {
-  const storage = fakeStorage({ [MARGIN_STORAGE_KEY]: "loose" });
+  const storage = memoryStorageFixture({ [MARGIN_STORAGE_KEY]: "loose" });
   assert.equal(readMarginPreset(storage), "loose");
 });
 
 test("readMarginPreset 非法保存值回退默认", () => {
-  const storage = fakeStorage({ [MARGIN_STORAGE_KEY]: "bogus" });
+  const storage = memoryStorageFixture({ [MARGIN_STORAGE_KEY]: "bogus" });
   assert.equal(readMarginPreset(storage), DEFAULT_MARGIN_PRESET);
 });
 
 test("writeMarginPreset 写入指定键", () => {
-  const storage = fakeStorage();
+  const storage = memoryStorageFixture();
   writeMarginPreset(storage, "compact");
   assert.equal(storage.data[MARGIN_STORAGE_KEY], "compact");
 
@@ -73,7 +60,7 @@ test("writeMarginPreset 写入指定键", () => {
 });
 
 test("write 后 read 恢复同一档位（往返一致）", () => {
-  const storage = fakeStorage();
+  const storage = memoryStorageFixture();
   const presets: MarginPreset[] = ["compact", "standard", "loose"];
   for (const preset of presets) {
     writeMarginPreset(storage, preset);

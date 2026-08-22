@@ -14,6 +14,8 @@ export const NOTEBOOK_VERSION = 2;
 /** JavaScript 安全整数上限 2^53 - 1。 */
 export const MAX_SAFE_INTEGER = 9007199254740991;
 
+import { collectSharedBlocks } from "./shared-document-models.ts";
+
 // ---------------------------------------------------------------------------
 // 类型（格式版本 2 grammar 的精确形状）
 // ---------------------------------------------------------------------------
@@ -757,21 +759,6 @@ export function parseNotebookDocumentJson(json: string): NotebookDocument {
 // 结构化选区 → 纯文本切片（AI 冻结快照的唯一序列化规则）
 // ---------------------------------------------------------------------------
 
-/** 计算一个节点的 ProseMirror 尺寸（text 为文字长度，其余为 2 + 子内容长度）。 */
-function nodeSize(node: unknown): number {
-  const n = node as { type?: string; text?: string; content?: unknown[] };
-  if (n.type === "text") return (n.text ?? "").length;
-  let size = 2;
-  for (const child of n.content ?? []) {
-    size += nodeSize(child);
-  }
-  return size;
-}
-
-function inlineText(content: TextNode[] | undefined): string {
-  return (content ?? []).map((textNode) => textNode.text).join("");
-}
-
 interface SelectionLine {
   /** 该块（或列表项）的起止位置。 */
   start: number;
@@ -788,66 +775,15 @@ interface SelectionLine {
 }
 
 function collectLines(doc: DocNode): SelectionLine[] {
-  const lines: SelectionLine[] = [];
-
-  function visitList(
-    list: BulletListNode | OrderedListNode,
-    listPos: number,
-    depth: number,
-  ): void {
-    const isOrdered = list.type === "orderedList";
-    let itemPos = listPos + 1;
-    let index = 0;
-    for (const item of list.content) {
-      const itemEnd = itemPos + nodeSize(item);
-      const paragraph = item.content[0];
-      const paragraphPos = itemPos + 1;
-      const paragraphSize = nodeSize(paragraph);
-      const text = inlineText(paragraph.content);
-      const textStart = paragraphPos + 1;
-      const prefix = isOrdered ? `${list.attrs.start + index}. ` : "- ";
-      lines.push({
-        // 行范围用列表项自身段落范围，不含嵌套子列表，避免选中子列表时父项被误判相交。
-        start: paragraphPos,
-        end: paragraphPos + paragraphSize,
-        textStart,
-        textEnd: textStart + text.length,
-        text,
-        prefix,
-        depth,
-      });
-      if (item.content.length === 2) {
-        const nested = item.content[1];
-        visitList(nested, paragraphPos + paragraphSize, depth + 1);
-      }
-      itemPos = itemEnd;
-      index += 1;
-    }
-  }
-
-  // ProseMirror 位置模型：doc 节点的开/闭 token 不计入位置，第一个 block 从 0 开始。
-  let pos = 0;
-  for (const block of doc.content) {
-    const blockStart = pos;
-    const blockEnd = pos + nodeSize(block);
-    if (block.type === "paragraph" || block.type === "heading") {
-      const text = inlineText(block.content);
-      const textStart = blockStart + 1;
-      lines.push({
-        start: blockStart,
-        end: blockEnd,
-        textStart,
-        textEnd: textStart + text.length,
-        text,
-        prefix: null,
-        depth: 0,
-      });
-    } else {
-      visitList(block, blockStart, 0);
-    }
-    pos = blockEnd;
-  }
-  return lines;
+  return collectSharedBlocks(doc).map((record) => ({
+    start: record.start,
+    end: record.end,
+    textStart: record.textStart,
+    textEnd: record.textEnd,
+    text: record.text,
+    prefix: record.list?.prefix ?? null,
+    depth: record.depth,
+  }));
 }
 
 /**

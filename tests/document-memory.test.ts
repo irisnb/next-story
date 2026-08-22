@@ -6,20 +6,11 @@ import {
   lastDocumentKey,
   readLastDocumentId,
   writeLastDocumentId,
-  type MemoryStorage,
 } from "../src/document-memory.ts";
-
-function memoryFixture(): MemoryStorage {
-  const store = new Map<string, string>();
-  return {
-    getItem: (key) => store.get(key) ?? null,
-    setItem: (key, value) => { store.set(key, value); },
-    removeItem: (key) => { store.delete(key); },
-  };
-}
+import { memoryStorageFixture } from "./memory-storage-fixture.ts";
 
 test("last document memory is keyed per project path", () => {
-  const storage = memoryFixture();
+  const storage = memoryStorageFixture();
   writeLastDocumentId(storage, "D:\\作品A", "doc-1");
   writeLastDocumentId(storage, "D:\\作品B", "doc-2");
 
@@ -29,7 +20,7 @@ test("last document memory is keyed per project path", () => {
 });
 
 test("clearLastDocumentId removes the memory for a project", () => {
-  const storage = memoryFixture();
+  const storage = memoryStorageFixture();
   writeLastDocumentId(storage, "D:\\作品A", "doc-1");
   clearLastDocumentId(storage, "D:\\作品A");
 

@@ -1,12 +1,11 @@
 import type {
-  BulletListNode,
   DocNode,
   Mark,
-  OrderedListNode,
   ParagraphAttrs,
   ParagraphNode,
   HeadingNode,
 } from "./structured-notebook.ts";
+import { collectSharedBlocks } from "./shared-document-models.ts";
 
 export type FormatCommand =
   | { kind: "paragraph" }
@@ -97,14 +96,6 @@ interface BlockInfo {
   textNodes: TextNodeInfo[];
 }
 
-function nodeSize(node: unknown): number {
-  const n = node as { type?: string; text?: string; content?: unknown[] };
-  if (n.type === "text") return (n.text ?? "").length;
-  let size = 2;
-  for (const child of n.content ?? []) size += nodeSize(child);
-  return size;
-}
-
 function textNodes(content: unknown): TextNodeInfo[] {
   if (!Array.isArray(content)) return [];
   return content
@@ -113,10 +104,6 @@ function textNodes(content: unknown): TextNodeInfo[] {
       const n = node as { text?: string; marks?: Mark[] };
       return { text: n.text ?? "", marks: n.marks };
     });
-}
-
-function inlineText(content: { text: string }[] | undefined): string {
-  return (content ?? []).map((node) => node.text).join("");
 }
 
 function paragraphAttrsOf(node: { attrs?: ParagraphAttrs }): {
@@ -143,77 +130,30 @@ function paragraphAttrsOf(node: { attrs?: ParagraphAttrs }): {
 /**
  * 展开文档为扁平的块信息，递归展开嵌套列表并记录深度。
  * 位置模型与 ProseMirror 一致：doc 开/闭 token 不计入位置，第一个 block 从 0 开始。
+ * 遍历与位置计算复用共享块遍历器，这里只把共享记录映射为 BlockInfo。
  */
 function collectBlocks(doc: DocNode): BlockInfo[] {
-  const blocks: BlockInfo[] = [];
-
-  function pushParagraph(
-    block: ParagraphNode | HeadingNode,
-    blockStart: number,
-    kind: BlockInfo["kind"],
-    depth: number,
-  ): number {
-    const size = nodeSize(block);
+  return collectSharedBlocks(doc).map((record) => {
+    const block = record.node as ParagraphNode | HeadingNode;
     const nodes = textNodes(block.content);
-    const text = inlineText(nodes);
-    blocks.push({
-      start: blockStart,
-      end: blockStart + size,
-      textStart: blockStart + 1,
-      textEnd: blockStart + 1 + text.length,
+    const kind: BlockInfo["kind"] = record.list
+      ? record.list.kind === "bullet"
+        ? "bulletItem"
+        : "orderedItem"
+      : block.type === "heading"
+        ? `heading${block.attrs.level}`
+        : "paragraph";
+    return {
+      start: record.start,
+      end: record.end,
+      textStart: record.textStart,
+      textEnd: record.textEnd,
       kind,
-      depth,
+      depth: record.depth,
       ...paragraphAttrsOf(block),
       textNodes: nodes,
-    });
-    return blockStart + size;
-  }
-
-  function visitList(
-    list: BulletListNode | OrderedListNode,
-    listPos: number,
-    depth: number,
-  ): number {
-    const listKind = list.type === "bulletList" ? "bulletItem" : "orderedItem";
-    let itemPos = listPos + 1;
-    for (const item of list.content) {
-      const itemEnd = itemPos + nodeSize(item);
-      const paragraph = item.content[0];
-      const paragraphPos = itemPos + 1;
-      const paragraphSize = nodeSize(paragraph);
-      const nodes = textNodes(paragraph.content);
-      const text = inlineText(nodes);
-      blocks.push({
-        // 块范围用列表项自身段落范围，不含嵌套子列表，避免选中子列表时父项被误判触及。
-        start: paragraphPos,
-        end: paragraphPos + paragraphSize,
-        textStart: paragraphPos + 1,
-        textEnd: paragraphPos + 1 + text.length,
-        kind: listKind,
-        depth,
-        ...paragraphAttrsOf(paragraph),
-        textNodes: nodes,
-      });
-      if (item.content.length === 2) {
-        const nested = item.content[1];
-        visitList(nested, paragraphPos + paragraphSize, depth + 1);
-      }
-      itemPos = itemEnd;
-    }
-    return itemPos + 1;
-  }
-
-  let pos = 0;
-  for (const block of doc.content) {
-    if (block.type === "paragraph") {
-      pos = pushParagraph(block, pos, "paragraph", 0);
-    } else if (block.type === "heading") {
-      pos = pushParagraph(block, pos, `heading${block.attrs.level}`, 0);
-    } else {
-      pos = visitList(block, pos, 0);
-    }
-  }
-  return blocks;
+    };
+  });
 }
 
 function intersects(block: BlockInfo, from: number, to: number): boolean {

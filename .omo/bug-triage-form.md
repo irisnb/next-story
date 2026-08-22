@@ -1,6 +1,6 @@
 # Next Story 审查 Bug 台账
 
-更新时间：2026-07-26
+更新时间：2026-08-23
 
 来源：OpenCode 会话 `ses_0663080adffesohY4wrb6vSdwj` 中用户消息 `msg_f99cfc9c90015jM6PzId5juRqh`，标题为 `irisnb/next-story 审查结果与 Issue 草稿`。
 
@@ -32,6 +32,8 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 | 12 | OpenAI-compatible content 数组只返回第一段文本，后续内容被静默截断 | 已修并归档 | `normalize-llm-multipart-response` |
 | 13 | 配置页只提示 API Key 会发送，未告知选区、方向和完整临时对话会发送给该服务 | 已修并归档 | `sync-ai-privacy-and-docs` |
 | 14 | README 与 AGENTS 把已经实现的“思维扩展”仍描述为未来功能 | 已修并归档 | `sync-ai-privacy-and-docs` |
+
+> 2026-08-23 状态补充：原始审查中的 14 个 issue 均已有对应的已归档 OpenSpec change。第二批 2.1–2.5 已全部完成：新增并归档 `harden-project-reliability-boundaries`、`extract-shared-document-models`、`unify-storage-and-snapshot-equality`、`unify-ai-panel-dom-contract`，并同步相应主规格。`unify-ai-panel-dom-contract` 的最终前端测试为 431/431，类型检查、lint、build、OpenSpec 全规格严格验证 36/36 通过；该 change 已归档为 `2026-08-22-unify-ai-panel-dom-contract`。
 
 ## 建议后续顺序
 
@@ -269,8 +271,48 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 - UI 里能选的每个模型，后端必须真实可调用。
 - 代码写出来之前，用户必须先确认“要做什么”。
 
-## 下一个建议动作
+## 当前状态与下一个建议动作
 
-当前台账中的 14 个原始 issue 都已有对应处理记录，并且相关 OpenSpec change 均已归档。
+当前台账中的 14 个原始 issue 都已有对应处理记录，并且相关 OpenSpec change 均已归档。路线图第三批 3.1–3.6 已完成，`split-editor-controller-modules` 已实现、验证并归档。下一步不自动扩大范围；如发现新的问题，应先新增台账条目，再按项目规则一次只开一个 OpenSpec change。
+
+## 下一项修复：统一 AI 面板与主界面的 DOM 查询契约（路线图 2.5）
+
+### 当前发现
+
+- `src/ai-panel.ts` 通过 `document.getElementById` 逐个查找面板内部控件，同时又通过 `dom.aiPanel` 查找 `.ai-panel-body`。
+- `src/dom.ts` 已经负责构造 `AppDom`，但 AI 面板内部的必需节点没有进入同一个依赖边界。
+- 生产代码因而同时依赖全局 ID 查询和局部根节点查询；测试需要搭建完整全局文档，DOM 结构小改时容易出现“入口对象已更新但内部查询仍指向旧节点”的契约分裂。
+- 本项只处理 DOM 查询与依赖注入边界，不改变 AI 面板状态机、请求流程、显示文字、AI 输出临时材料边界或任何作品写回行为。
+
+### 建议的 OpenSpec 范围
+
+创建的唯一 active change：`unify-ai-panel-dom-contract`。
+
+1. 为 AI 面板定义集中、可测试的 DOM 契约，由 `src/dom.ts` 负责组装，`setupAiPanel` 接收明确的面板 DOM 依赖，不再在模块内部散落全局 ID 查询。
+2. 保留现有 HTML ID、class 和用户可见行为，先做依赖组织收敛，不顺便重构 UI 或改变布局。
+3. 为必需节点缺失、面板根节点局部查询和事件绑定增加契约测试，覆盖初始化失败信息和现有交互行为。
+4. 严格保持 AI 不写入作品文档的边界，并运行面板、选择入口、编辑器和完整前端验证。
+
+### 完成证据
+
+- `src/dom.ts` 新增 `AiPanelDom` 类型和集中解析/缺失校验。
+- `src/ai-panel.ts` 改为只消费显式契约，不再执行全局 `getElementById` 或内部 `querySelector`。
+- `src/ai-feature.ts` 已接入 `dom.aiPanelDom`。
+- 新增共享 AI 面板 DOM fixture 与契约测试，保留 AI 输出不写回作品文档的断言。
+- `npm run test:frontend`：431/431 通过；类型检查、lint、build 通过。
+- 已完成 OpenSpec 严格验证并归档 `unify-ai-panel-dom-contract`。
+
+### 已完成：拆分前端编辑器控制器（路线图 3.1–3.6）
+
+`split-editor-controller-modules` 已完成并归档至 `openspec/changes/archive/2026-08-22-split-editor-controller-modules/`：查找替换、工具栏/格式抽屉、链接弹层、右键菜单和全局快捷键均已拆出为独立模块。
+
+- 保留 `EditorController` 对外接口和 `EditorAdapter` 的窄能力边界。
+- 先冻结现有编辑器行为测试，再按职责抽出快捷键、工具栏/格式抽屉、查找替换、链接弹层和右键菜单模块。
+- 通过显式服务接口或窄依赖注入连接模块，禁止新模块反向依赖完整 `editor.ts`，禁止循环依赖。
+- 生命周期、文档切换、保存和 AI 接线继续由控制器门面负责；不改变保存语义、快捷键行为、作品格式或 AI 零写回边界。
+- 不触碰 Rust、DSH、AI 面板功能和已独立的编辑器模块。
+- `editor-module-boundaries` delta spec 已同步至主规格 `openspec/specs/editor-module-boundaries/spec.md`。
+- 验证结果：`npm run test:frontend` 471/471 通过；`npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` 全部通过。
+- OpenSpec 全规格严格验证：37/37 通过。
 
 后续如果发现新问题，应先新增台账条目，再按项目规则一次只开一个 OpenSpec change：`propose -> 用户确认 -> apply -> archive`。

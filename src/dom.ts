@@ -1,3 +1,40 @@
+/**
+ * AI 面板的显式 DOM 依赖契约：面板渲染、折叠、思维扩展、错误恢复与临时追问
+ * 所需的全部节点，由 `getAppDom()` 在应用启动接线处集中解析和校验。
+ *
+ * 面板模块只消费本契约，不再执行散落的全局节点查询；契约不包含任何向作品
+ * 文档写入、插入、替换或删除的接口（AI 输出只落在面板临时显示区域）。
+ */
+export interface AiPanelDom {
+  panel: HTMLElement;
+  panelBody: HTMLElement;
+  snapshotBlock: HTMLElement;
+  snapshotText: HTMLPreElement;
+  loading: HTMLElement;
+  response: HTMLPreElement;
+  thinkingExpansionPrestate: HTMLElement;
+  thinkingExpansionTitle: HTMLElement;
+  thinkingExpansionCount: HTMLElement;
+  thinkingExpansionForm: HTMLFormElement;
+  thinkingExpansionInput: HTMLTextAreaElement;
+  thinkingExpansionStart: HTMLButtonElement;
+  errorBlock: HTMLElement;
+  errorMessage: HTMLElement;
+  retryBtn: HTMLButtonElement;
+  configBlock: HTMLElement;
+  goConfigBtn: HTMLButtonElement;
+  collapseBtn: HTMLButtonElement;
+  toggleBtn: HTMLButtonElement;
+  conversation: HTMLElement;
+  followUpForm: HTMLFormElement;
+  followUpInput: HTMLTextAreaElement;
+  followUpSend: HTMLButtonElement;
+  followUpError: HTMLElement;
+  followUpErrorMessage: HTMLElement;
+  followUpRetry: HTMLButtonElement;
+  followUpEdit: HTMLButtonElement;
+}
+
 export interface AppDom {
   welcomePage: HTMLElement;
   newProjectPage: HTMLElement;
@@ -112,6 +149,7 @@ export interface AppDom {
   aiFollowUpForm: HTMLFormElement;
   aiFollowUpInput: HTMLTextAreaElement;
   aiFollowUpSend: HTMLButtonElement;
+  aiPanelDom: AiPanelDom;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -128,7 +166,25 @@ function requireElement<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 
+function requirePanelBody(panel: HTMLElement): HTMLElement {
+  const body = panel.querySelector<HTMLElement>(".ai-panel-body");
+
+  if (!body) {
+    throw new Error("Missing required element: .ai-panel-body");
+  }
+
+  return body;
+}
+
 export function getAppDom(): AppDom {
+  const aiPanel = requireElement("ai-panel");
+  const aiResponse = requireElement<HTMLPreElement>("ai-response");
+  const btnToggleAi = requireElement<HTMLButtonElement>("btn-toggle-ai");
+  const aiConversation = requireElement("ai-conversation");
+  const aiFollowUpForm = requireElement<HTMLFormElement>("ai-follow-up-form");
+  const aiFollowUpInput = requireElement<HTMLTextAreaElement>("ai-follow-up-input");
+  const aiFollowUpSend = requireElement<HTMLButtonElement>("ai-follow-up-send");
+
   return {
     welcomePage: requireElement("welcome-page"),
     newProjectPage: requireElement("new-project-page"),
@@ -236,13 +292,42 @@ export function getAppDom(): AppDom {
     btnSaveConfig: requireElement("btn-save-config"),
     btnTestConfig: requireElement("btn-test-config"),
     btnBackConfig: requireElement("btn-back-config"),
-    btnToggleAi: requireElement("btn-toggle-ai"),
-    aiPanel: requireElement("ai-panel"),
-    aiResponse: requireElement("ai-response"),
-    aiConversation: requireElement("ai-conversation"),
-    aiFollowUpForm: requireElement("ai-follow-up-form"),
-    aiFollowUpInput: requireElement("ai-follow-up-input"),
-    aiFollowUpSend: requireElement("ai-follow-up-send"),
+    btnToggleAi,
+    aiPanel,
+    aiResponse,
+    aiConversation,
+    aiFollowUpForm,
+    aiFollowUpInput,
+    aiFollowUpSend,
+    aiPanelDom: {
+      panel: aiPanel,
+      panelBody: requirePanelBody(aiPanel),
+      snapshotBlock: requireElement("ai-snapshot-block"),
+      snapshotText: requireElement<HTMLPreElement>("ai-snapshot-text"),
+      loading: requireElement("ai-loading"),
+      response: aiResponse,
+      thinkingExpansionPrestate: requireElement("ai-thinking-expansion-prestate"),
+      thinkingExpansionTitle: requireElement("ai-thinking-expansion-title"),
+      thinkingExpansionCount: requireElement("ai-thinking-expansion-count"),
+      thinkingExpansionForm: requireElement<HTMLFormElement>("ai-thinking-expansion-form"),
+      thinkingExpansionInput: requireElement<HTMLTextAreaElement>("ai-thinking-expansion-input"),
+      thinkingExpansionStart: requireElement<HTMLButtonElement>("ai-thinking-expansion-start"),
+      errorBlock: requireElement("ai-error-block"),
+      errorMessage: requireElement("ai-error-message"),
+      retryBtn: requireElement<HTMLButtonElement>("ai-retry"),
+      configBlock: requireElement("ai-config-block"),
+      goConfigBtn: requireElement<HTMLButtonElement>("ai-go-config"),
+      collapseBtn: requireElement<HTMLButtonElement>("ai-panel-collapse"),
+      toggleBtn: btnToggleAi,
+      conversation: aiConversation,
+      followUpForm: aiFollowUpForm,
+      followUpInput: aiFollowUpInput,
+      followUpSend: aiFollowUpSend,
+      followUpError: requireElement("ai-follow-up-error"),
+      followUpErrorMessage: requireElement("ai-follow-up-error-message"),
+      followUpRetry: requireElement<HTMLButtonElement>("ai-follow-up-retry"),
+      followUpEdit: requireElement<HTMLButtonElement>("ai-follow-up-edit"),
+    },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),
     btnDiscardAndLeave: requireElement("btn-discard-and-leave"),

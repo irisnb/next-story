@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
 import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
+import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
 import type {
   RichTextEditorCoordinates,
   RichTextEditorSelection,
@@ -79,15 +80,6 @@ export function renderSelectionEntryActions<TNode extends SelectionEntryActionNo
     button.textContent = action.label;
     domMenu.appendChild(button);
   }
-}
-
-export function isSameSummonedSelection(a: SelectionSnapshot, b: SelectionSnapshot): boolean {
-  return (
-    a.documentId === b.documentId &&
-    a.from === b.from &&
-    a.to === b.to &&
-    a.selectedText === b.selectedText
-  );
 }
 
 export type TriggerPlacementMode = "right-of-focus" | "left-of-focus" | "below-line" | "above-line" | "clamped";
@@ -382,7 +374,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     const snapshot = captureSelection(documentId, editor);
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
-    if (frozen && snapshot && isSameSummonedSelection(snapshot, frozen)) {
+    if (frozen && snapshot && sameSelectionSnapshot(snapshot, frozen)) {
       hideEntry();
       return;
     }

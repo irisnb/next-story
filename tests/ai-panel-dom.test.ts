@@ -12,84 +12,12 @@ import type {
   LlmConfigSummary,
   SelectionSnapshot,
 } from "../src/types.ts";
+import {
+  createAiPanelDomFixture,
+  FakeElement,
+} from "./ai-panel-dom-fixture.ts";
 
-type Listener = (event: FakeEvent) => void;
 type GenerateAiResultSource = GenerateAiResult | Promise<GenerateAiResult>;
-
-class FakeClassList {
-  private readonly values = new Set<string>();
-
-  constructor(initial: string[] = []) {
-    for (const value of initial) this.values.add(value);
-  }
-
-  add(value: string): void { this.values.add(value); }
-  remove(value: string): void { this.values.delete(value); }
-  contains(value: string): boolean { return this.values.has(value); }
-  toggle(value: string, force?: boolean): boolean {
-    const enabled = force ?? !this.values.has(value);
-    if (enabled) this.values.add(value);
-    else this.values.delete(value);
-    return enabled;
-  }
-}
-
-class FakeEvent {
-  defaultPrevented = false;
-  readonly type: string;
-  readonly key: string;
-  readonly shiftKey: boolean;
-  readonly isComposing: boolean;
-
-  constructor(type: string, key = "", shiftKey = false, isComposing = false) {
-    this.type = type;
-    this.key = key;
-    this.shiftKey = shiftKey;
-    this.isComposing = isComposing;
-  }
-
-  preventDefault(): void { this.defaultPrevented = true; }
-}
-
-class FakeElement {
-  readonly classList: FakeClassList;
-  readonly children: FakeElement[] = [];
-  readonly listeners = new Map<string, Listener[]>();
-  textContent = "";
-  value = "";
-  disabled = false;
-  focusCount = 0;
-  scrollTop = 0;
-  readonly id: string;
-
-  constructor(id: string, classes: string[] = []) {
-    this.id = id;
-    this.classList = new FakeClassList(classes);
-  }
-
-  addEventListener(type: string, listener: Listener): void {
-    const listeners = this.listeners.get(type) ?? [];
-    listeners.push(listener);
-    this.listeners.set(type, listeners);
-  }
-
-  dispatch(
-    type: string,
-    options: { key?: string; shiftKey?: boolean; isComposing?: boolean } = {},
-  ): FakeEvent {
-    const event = new FakeEvent(type, options.key, options.shiftKey, options.isComposing);
-    for (const listener of this.listeners.get(type) ?? []) listener(event);
-    return event;
-  }
-
-  append(...children: FakeElement[]): void { this.children.push(...children); }
-  replaceChildren(...children: FakeElement[]): void {
-    this.children.length = 0;
-    this.children.push(...children);
-  }
-  focus(): void { this.focusCount += 1; }
-  querySelector<T>(_selector: string): T | null { return null; }
-}
 
 function snapshot(text: string): SelectionSnapshot {
   return { documentId: "draft", selectedText: text, from: 0, to: text.length };
@@ -139,29 +67,10 @@ function harness(): {
   firstRetries: number;
   restore(): void;
 } {
-	  const ids = [
-	    "ai-snapshot-block", "ai-snapshot-text", "ai-loading", "ai-error-block",
-	    "ai-error-message", "ai-retry", "ai-config-block", "ai-go-config",
-	    "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
-	    "ai-thinking-expansion-count", "ai-thinking-expansion-form",
-	    "ai-thinking-expansion-input", "ai-thinking-expansion-start",
-	    "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
-    "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
-    "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
-  ];
-  const elements = new Map(ids.map((id) => [id, new FakeElement(id, ["hidden"])]));
-  const panelBody = new FakeElement("panel-body", ["ai-panel-body"]);
-  const panel = new FakeElement("ai-panel", ["hidden"]);
-  panel.querySelector = <T>(selector: string): T | null =>
-    selector === ".ai-panel-body" ? panelBody as T : null;
-  const toggle = new FakeElement("btn-toggle-ai");
-  const response = new FakeElement("ai-response", ["hidden"]);
+  const { elements, dom } = createAiPanelDomFixture();
   const editor = new FakeElement("editor-textarea");
   editor.value = "用户正文";
   elements.set("editor-textarea", editor);
-  elements.set("ai-panel", panel);
-  elements.set("ai-response", response);
-  elements.set("btn-toggle-ai", toggle);
 
   const previousDocument = globalThis.document;
   globalThis.document = {
@@ -175,11 +84,7 @@ function harness(): {
 	  const edited: string[] = [];
   let retried = 0;
   let firstRetries = 0;
-  setupAiPanel({
-    aiPanel: panel as unknown as HTMLElement,
-    aiResponse: response as unknown as HTMLPreElement,
-    btnToggleAi: toggle as unknown as HTMLButtonElement,
-  }, state, {
+  setupAiPanel(dom, state, {
     onRetry: () => { firstRetries += 1; },
     onGoToConfig: () => {},
 	    onSubmitFollowUp: (question) => { submitted.push(question); return Promise.resolve(true); },
@@ -218,28 +123,9 @@ function featureHarness(results: GenerateAiResultSource[], options: {
 } {
   // Build an independent DOM fixture so setupAiFeature's setupAiPanel
   // does not double-subscribe on top of a harness() panel.
-  const allIds = [
-    "ai-snapshot-block", "ai-snapshot-text", "ai-loading", "ai-error-block",
-    "ai-error-message", "ai-retry", "ai-config-block", "ai-go-config",
-    "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
-    "ai-thinking-expansion-count", "ai-thinking-expansion-form",
-    "ai-thinking-expansion-input", "ai-thinking-expansion-start",
-    "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
-    "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
-    "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
-  ];
-  const elements = new Map(allIds.map((id) => [id, new FakeElement(id, ["hidden"])]));
-  const panelBody = new FakeElement("panel-body", ["ai-panel-body"]);
-  const panel = new FakeElement("ai-panel", ["hidden"]);
-  panel.querySelector = <T>(selector: string): T | null =>
-    selector === ".ai-panel-body" ? panelBody as T : null;
-  const toggle = new FakeElement("btn-toggle-ai");
-  const response = new FakeElement("ai-response", ["hidden"]);
+  const { elements, dom } = createAiPanelDomFixture();
   const editor = new FakeElement("editor-textarea");
   editor.value = "用户正文";
-  elements.set("ai-panel", panel);
-  elements.set("ai-response", response);
-  elements.set("btn-toggle-ai", toggle);
   elements.set("editor-textarea", editor);
 
   const previousDocument = globalThis.document;
@@ -257,9 +143,10 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   let currentDocumentId = "doc-1";
 
   const controller = setupAiFeature({
-    aiPanel: panel,
-    aiResponse: response,
-    btnToggleAi: toggle,
+    aiPanelDom: dom,
+    aiPanel: dom.panel,
+    aiResponse: dom.response,
+    btnToggleAi: dom.toggleBtn,
     editorTextarea: editor,
   } as unknown as AppDom, {
     getCurrentDocumentId: () => currentDocumentId,
@@ -601,11 +488,13 @@ test("configuration-required first summon keeps an explicit retry action", () =>
 test("AI panel exposes no apply, insert, replace, or notebook writeback callback", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const panelSource = readFileSync(new URL("../src/ai-panel.ts", import.meta.url), "utf8");
+  const domSource = readFileSync(new URL("../src/dom.ts", import.meta.url), "utf8");
   assert.doesNotMatch(html, /应用到正文|插入正文|替换正文|写入草稿|写入正文/);
-  assert.match(
-    panelSource,
-    /type AiPanelDom = Pick<AppDom, "aiPanel" \| "aiResponse" \| "btnToggleAi">;/,
-  );
+  // 契约收敛到 dom.ts 的显式类型；面板模块只消费契约，不再做全局节点查询。
+  assert.match(panelSource, /import type \{ AiPanelDom \} from "\.\/dom\.ts";/);
+  assert.doesNotMatch(panelSource, /document\.getElementById/);
+  assert.doesNotMatch(panelSource, /querySelector/);
+  assert.match(domSource, /export interface AiPanelDom/);
 });
 
 test("collapse and reopen preserve conversation and draft without submitting", () => {

@@ -1,4 +1,4 @@
-import type { AppDom } from "./dom.ts";
+import type { AiPanelDom } from "./dom.ts";
 import { AiPanelScrollResetController } from "./ai-panel-scroll.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
 import { buildAiPanelView, type ConversationView } from "./ai-panel-view-model.ts";
@@ -12,58 +12,49 @@ export interface AiPanelActions {
   onEditFollowUp: (question: string) => Promise<boolean>;
 }
 
-type AiPanelDom = Pick<AppDom, "aiPanel" | "aiResponse" | "btnToggleAi">;
-
-function requireEl<T extends HTMLElement>(id: string): T {
-  const el = document.getElementById(id);
-  if (!el) {
-    throw new Error(`Missing required AI panel element: #${id}`);
-  }
-  return el as T;
-}
-
 /**
  * 把面板状态渲染到右侧 AI 面板的 DOM。
  *
  * 所有回复、错误与选区文字都通过 `textContent` / `<pre>` 纯文本绑定，绝不解析 HTML 或
  * Markdown；面板不持有任何写入草稿本或正文本的回调。状态变化时由 `AiPanelState` 订阅触发重绘。
+ *
+ * 所需节点全部来自显式 `AiPanelDom` 契约（由 `getAppDom()` 集中解析），本模块不再执行
+ * 全局节点查找或面板内部选择器查询。
  */
 export function setupAiPanel(
   dom: AiPanelDom,
   state: AiPanelState,
   actions: AiPanelActions,
 ): void {
-  const panel = dom.aiPanel;
-  const panelBodyElement = panel.querySelector<HTMLElement>(".ai-panel-body");
-  if (!panelBodyElement) {
-    throw new Error("Missing required AI panel element: .ai-panel-body");
-  }
-  const panelBody: HTMLElement = panelBodyElement;
-  const snapshotBlock = requireEl("ai-snapshot-block");
-  const snapshotText = requireEl<HTMLPreElement>("ai-snapshot-text");
-  const loading = requireEl("ai-loading");
-  const response = dom.aiResponse;
-  const thinkingExpansionPrestate = requireEl("ai-thinking-expansion-prestate");
-  const thinkingExpansionTitle = requireEl("ai-thinking-expansion-title");
-  const thinkingExpansionCount = requireEl("ai-thinking-expansion-count");
-  const thinkingExpansionForm = requireEl<HTMLFormElement>("ai-thinking-expansion-form");
-  const thinkingExpansionInput = requireEl<HTMLTextAreaElement>("ai-thinking-expansion-input");
-  const thinkingExpansionStart = requireEl<HTMLButtonElement>("ai-thinking-expansion-start");
-  const errorBlock = requireEl("ai-error-block");
-  const errorMessage = requireEl("ai-error-message");
-  const retryBtn = requireEl<HTMLButtonElement>("ai-retry");
-  const configBlock = requireEl("ai-config-block");
-  const goConfigBtn = requireEl<HTMLButtonElement>("ai-go-config");
-  const collapseBtn = requireEl<HTMLButtonElement>("ai-panel-collapse");
-  const toggleBtn = dom.btnToggleAi;
-  const conversationElement = requireEl("ai-conversation");
-  const followUpForm = requireEl<HTMLFormElement>("ai-follow-up-form");
-  const followUpInput = requireEl<HTMLTextAreaElement>("ai-follow-up-input");
-  const followUpSend = requireEl<HTMLButtonElement>("ai-follow-up-send");
-  const followUpError = requireEl("ai-follow-up-error");
-  const followUpErrorMessage = requireEl("ai-follow-up-error-message");
-  const followUpRetry = requireEl<HTMLButtonElement>("ai-follow-up-retry");
-  const followUpEdit = requireEl<HTMLButtonElement>("ai-follow-up-edit");
+  const {
+    panel,
+    panelBody,
+    snapshotBlock,
+    snapshotText,
+    loading,
+    response,
+    thinkingExpansionPrestate,
+    thinkingExpansionTitle,
+    thinkingExpansionCount,
+    thinkingExpansionForm,
+    thinkingExpansionInput,
+    thinkingExpansionStart,
+    errorBlock,
+    errorMessage,
+    retryBtn,
+    configBlock,
+    goConfigBtn,
+    collapseBtn,
+    toggleBtn,
+    conversation: conversationElement,
+    followUpForm,
+    followUpInput,
+    followUpSend,
+    followUpError,
+    followUpErrorMessage,
+    followUpRetry,
+    followUpEdit,
+  } = dom;
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
   let thinkingExpansionFocused = false;

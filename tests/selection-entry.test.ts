@@ -5,7 +5,6 @@ import {
   decideSelectionEntryActions,
   decideSummonVisibility,
   decideTriggerPlacement,
-  isSameSummonedSelection,
   renderSelectionEntryActions,
   setupSelectionEntry,
   SELECTION_ENTRY_GAP_PX,
@@ -13,6 +12,7 @@ import {
   SELECTION_ENTRY_TRIGGER_WIDTH_PX,
   type SelectionEntryEditor,
 } from "../src/selection-entry.ts";
+import { sameSelectionSnapshot } from "../src/shared-storage-and-selection-identity.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { JSONContent } from "@tiptap/core";
 import type {
@@ -756,12 +756,12 @@ test("hides when both selection is empty and focus end is out of view", () => {
 test("same coordinates with different text are a new selection", () => {
   const previous = snapshot("旧字");
   const current = snapshot("新字");
-  assert.equal(isSameSummonedSelection(previous, current), false);
+  assert.equal(sameSelectionSnapshot(previous, current), false);
 });
 
 test("same notebook range and text remain the summoned selection", () => {
   const previous = snapshot("相同");
-  assert.equal(isSameSummonedSelection(previous, { ...previous }), true);
+  assert.equal(sameSelectionSnapshot(previous, { ...previous }), true);
 });
 
 test("places the trigger to the right of the focus end when right-side space is enough", () => {

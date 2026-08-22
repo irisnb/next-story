@@ -805,6 +805,14 @@ pub(crate) fn recover_interrupted_save(paths: &ProjectPaths) -> Result<(), Proje
         return Ok(());
     }
 
+    // 所有事务都先写入暂存文件，再原子写入 manifest；因此目录存在但 manifest
+    // 尚未出现时，尚未触碰可见世代，安全丢弃暂存现场。manifest 一旦存在却损坏，
+    // 则无法判断是否已经进入提交阶段，下面的错误路径会保留现场并拒绝打开。
+    if !layout.manifest.exists() {
+        cleanup_transaction(&layout);
+        return Ok(());
+    }
+
     let manifest = read_transaction_manifest(&layout)?;
 
     match manifest.phase {
@@ -1630,6 +1638,59 @@ mod tests {
         assert_opened_generation(&opened, &paths, OLD_DRAFT, OLD_MAIN);
         assert_eq!(opened.metadata.updated_at, OLD_UPDATED_AT);
         assert!(!TransactionLayout::new(&paths).dir.exists());
+    }
+
+    #[test]
+    fn open_discards_transaction_without_manifest_and_keeps_visible_generation() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = seed_project_with_old_generation(&temp, "缺失清单打开");
+        let paths = ProjectPaths::new(project_root.clone());
+        let layout = TransactionLayout::new(&paths);
+        let old_draft = fs::read(paths.document_file(
+            &root_document_id(&read_content_tree(&paths).unwrap(), "草稿本").unwrap(),
+        ))
+        .unwrap();
+        let old_main = fs::read(paths.document_file(
+            &root_document_id(&read_content_tree(&paths).unwrap(), "正文本").unwrap(),
+        ))
+        .unwrap();
+
+        fs::create_dir_all(&layout.dir).expect("create incomplete transaction");
+        fs::write(&layout.staged_draft, NEW_DRAFT).expect("write staged draft");
+        fs::write(&layout.staged_main, NEW_MAIN).expect("write staged main");
+
+        let opened = open_project(&project_root).expect("open discards manifest-less staging");
+
+        assert_opened_generation(&opened, &paths, OLD_DRAFT, OLD_MAIN);
+        assert_eq!(fs::read(paths.document_file(
+            &root_document_id(&opened.tree, "草稿本").unwrap(),
+        )).unwrap(), old_draft);
+        assert_eq!(fs::read(paths.document_file(
+            &root_document_id(&opened.tree, "正文本").unwrap(),
+        )).unwrap(), old_main);
+        assert!(!layout.dir.exists());
+    }
+
+    #[test]
+    fn save_proceeds_after_manifestless_transaction_is_discarded() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = seed_project_with_old_generation(&temp, "缺失清单保存");
+        let paths = ProjectPaths::new(project_root.clone());
+        let layout = TransactionLayout::new(&paths);
+        fs::create_dir_all(&layout.dir).expect("create incomplete transaction");
+        fs::write(&layout.staged_draft, "未完成暂存").expect("write staged draft");
+
+        save_project_with_fault(
+            &project_root,
+            NEW_DRAFT.to_string(),
+            NEW_MAIN.to_string(),
+            None,
+        )
+        .expect("save after discarding manifest-less transaction");
+
+        assert_eq!(read_draft_doc(&paths), NEW_DRAFT);
+        assert_eq!(read_main_doc(&paths), NEW_MAIN);
+        assert!(!layout.dir.exists());
     }
 
     #[test]

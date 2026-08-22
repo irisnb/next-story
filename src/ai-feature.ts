@@ -252,7 +252,7 @@ export function setupAiFeature(
     });
   }
 
-  setupAiPanel(dom, state, buildAiPanelActions({
+  setupAiPanel(dom.aiPanelDom, state, buildAiPanelActions({
     state,
     openConfigPage: hooks.openConfigPage,
     requestFirst,

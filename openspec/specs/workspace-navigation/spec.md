@@ -42,7 +42,7 @@ TBD - created by archiving change frontend-modular-ui. Update Purpose after arch
 - **AND** 列表收起
 
 ### Requirement: 记住上次编辑的文档
-系统 SHALL 在本地记住每个作品「上次正在编辑的文档 ID」，并在重新打开该作品时默认回到那篇文档。记忆按作品路径区分，存于本地（localStorage）。若记忆指向的文档已不存在（如已被删除进回收站），系统 SHALL 回退到内容树中的第一篇文档。
+系统 SHALL 在本地记住每个作品「上次正在编辑的文档 ID」，并在重新打开该作品时默认回到那篇文档。记忆按作品路径区分，存于本地（localStorage）或其共享存储适配器。若记忆指向的文档已不存在（如已被删除进回收站），系统 SHALL 回退到内容树中的第一篇文档。
 
 #### Scenario: 重新打开作品回到上次文档
 - **WHEN** 用户关闭作品前正在编辑某篇文档

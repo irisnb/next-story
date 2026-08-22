@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+const MAX_CONTENT_TREE_DEPTH: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeKind {
@@ -396,47 +397,57 @@ fn validate_subtree(
     seen: &mut HashSet<String>,
     all_ids: &mut HashSet<String>,
 ) -> Result<(), ContentTreeError> {
-    if !seen.insert(id.to_owned()) {
-        return Err(ContentTreeError::InvalidStructure("内容树存在循环".into()));
-    }
-    // 节点 ID 用于正文文件寻址（documents/<id>.json），必须是非空且不含路径分隔符的
-    // 普通文件名，防止恶意树元数据把正文读取/写入指向作品文件夹外部。
-    if id.is_empty() || id.contains('/') || id.contains('\\') {
-        return Err(ContentTreeError::InvalidStructure(
-            "节点 ID 包含非法字符".into(),
-        ));
-    }
-    let node = nodes
-        .get(id)
-        .ok_or_else(|| ContentTreeError::InvalidStructure("子节点引用不存在".into()))?;
-    if node.id != id || !all_ids.insert(id.to_owned()) {
-        return Err(ContentTreeError::InvalidStructure(
-            "节点 ID 不唯一或与索引不一致".into(),
-        ));
-    }
-    validate_name(&node.name)?;
-    if node.kind == NodeKind::Document && !node.children.is_empty() {
-        return Err(ContentTreeError::InvalidStructure(
-            "文档不能包含子节点".into(),
-        ));
-    }
-    let mut children = HashSet::new();
-    let mut child_names = HashSet::new();
-    for child in &node.children {
-        if !children.insert(child) {
+    let mut stack = vec![(id.to_owned(), 0usize)];
+    while let Some((current_id, depth)) = stack.pop() {
+        if depth > MAX_CONTENT_TREE_DEPTH {
+            return Err(ContentTreeError::InvalidStructure(format!(
+                "内容树层级超过上限 {MAX_CONTENT_TREE_DEPTH}"
+            )));
+        }
+        if !seen.insert(current_id.clone()) {
+            return Err(ContentTreeError::InvalidStructure("内容树存在循环".into()));
+        }
+        // 节点 ID 用于正文文件寻址（documents/<id>.json），必须是非空且不含路径分隔符的
+        // 普通文件名，防止恶意树元数据把正文读取/写入指向作品文件夹外部。
+        if current_id.is_empty() || current_id.contains('/') || current_id.contains('\\') {
             return Err(ContentTreeError::InvalidStructure(
-                "同一父级存在重复子节点".into(),
+                "节点 ID 包含非法字符".into(),
             ));
         }
-        let child_node = nodes
-            .get(child)
+        let node = nodes
+            .get(&current_id)
             .ok_or_else(|| ContentTreeError::InvalidStructure("子节点引用不存在".into()))?;
-        if !child_names.insert(&child_node.name) {
+        if node.id != current_id || !all_ids.insert(current_id.clone()) {
             return Err(ContentTreeError::InvalidStructure(
-                "同一父级存在重复名称".into(),
+                "节点 ID 不唯一或与索引不一致".into(),
             ));
         }
-        validate_subtree(nodes, child, seen, all_ids)?;
+        validate_name(&node.name)?;
+        if node.kind == NodeKind::Document && !node.children.is_empty() {
+            return Err(ContentTreeError::InvalidStructure(
+                "文档不能包含子节点".into(),
+            ));
+        }
+        let mut children = HashSet::new();
+        let mut child_names = HashSet::new();
+        for child in &node.children {
+            if !children.insert(child) {
+                return Err(ContentTreeError::InvalidStructure(
+                    "同一父级存在重复子节点".into(),
+                ));
+            }
+            let child_node = nodes
+                .get(child)
+                .ok_or_else(|| ContentTreeError::InvalidStructure("子节点引用不存在".into()))?;
+            if !child_names.insert(&child_node.name) {
+                return Err(ContentTreeError::InvalidStructure(
+                    "同一父级存在重复名称".into(),
+                ));
+            }
+        }
+        for child in node.children.iter().rev() {
+            stack.push((child.clone(), depth + 1));
+        }
     }
     Ok(())
 }
@@ -446,14 +457,22 @@ fn collect_subtree(
     id: &str,
     output: &mut HashMap<String, ContentTreeNode>,
 ) -> Result<(), ContentTreeError> {
-    let node = nodes
-        .get(id)
-        .ok_or_else(|| ContentTreeError::NotFound(id.into()))?
-        .clone();
-    for child in &node.children {
-        collect_subtree(nodes, child, output)?;
+    let mut stack = vec![(id.to_owned(), 0usize)];
+    while let Some((current_id, depth)) = stack.pop() {
+        if depth > MAX_CONTENT_TREE_DEPTH {
+            return Err(ContentTreeError::InvalidStructure(format!(
+                "内容树层级超过上限 {MAX_CONTENT_TREE_DEPTH}"
+            )));
+        }
+        let node = nodes
+            .get(&current_id)
+            .ok_or_else(|| ContentTreeError::NotFound(current_id.clone()))?
+            .clone();
+        output.insert(current_id, node.clone());
+        for child in node.children.iter().rev() {
+            stack.push((child.clone(), depth + 1));
+        }
     }
-    output.insert(id.into(), node);
     Ok(())
 }
 
@@ -518,5 +537,21 @@ mod tests {
         let json = serde_json::to_string(&tree).unwrap();
         assert!(!json.contains("reference"));
         assert!(!json.contains("参考"));
+    }
+
+    #[test]
+    fn rejects_content_tree_that_exceeds_maximum_depth() {
+        let mut tree = ContentTree::new();
+        let mut parent = None;
+        for _ in 0..=MAX_CONTENT_TREE_DEPTH + 1 {
+            let id = tree.create_folder(parent.as_deref()).unwrap();
+            parent = Some(id);
+        }
+
+        assert!(matches!(
+            tree.validate(),
+            Err(ContentTreeError::InvalidStructure(message))
+                if message.contains("层级超过上限")
+        ));
     }
 }

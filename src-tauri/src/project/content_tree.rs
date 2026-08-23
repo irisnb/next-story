@@ -97,9 +97,17 @@ impl ContentTree {
             }
             let mut subtree_seen = HashSet::new();
             if let Some(parent) = &entry.original_parent {
-                let parent_node = self.nodes.get(parent).ok_or_else(|| {
-                    ContentTreeError::InvalidStructure("回收站原父级不存在".into())
-                })?;
+                let parent_node = self
+                    .nodes
+                    .get(parent)
+                    .or_else(|| {
+                        self.recycle_bin
+                            .iter()
+                            .find_map(|other_entry| other_entry.nodes.get(parent))
+                    })
+                    .ok_or_else(|| {
+                        ContentTreeError::InvalidStructure("回收站原父级不存在".into())
+                    })?;
                 if parent_node.kind != NodeKind::Folder {
                     return Err(ContentTreeError::InvalidStructure(
                         "回收站原父级不是文件夹".into(),
@@ -529,6 +537,43 @@ mod tests {
         assert!(tree.nodes.contains_key(&doc));
         assert_eq!(ContentTree::document_path(Path::new("作品"), &doc), path);
         tree.validate().unwrap();
+    }
+
+    #[test]
+    fn validates_child_deleted_before_parent_folder() {
+        let mut tree = ContentTree::new();
+        let folder = tree.create_folder(None).unwrap();
+        let child = tree.create_document(Some(&folder)).unwrap();
+
+        tree.delete_to_recycle_bin(&child).unwrap();
+        tree.delete_to_recycle_bin(&folder).unwrap();
+
+        tree.validate().unwrap();
+        assert_eq!(tree.recycle_bin.len(), 2);
+    }
+
+    #[test]
+    fn rejects_missing_or_non_folder_recycle_bin_parent() {
+        let mut missing_parent = ContentTree::new();
+        let child = missing_parent.create_document(None).unwrap();
+        missing_parent.delete_to_recycle_bin(&child).unwrap();
+        missing_parent.recycle_bin[0].original_parent = Some("missing-parent".into());
+        assert!(matches!(
+            missing_parent.validate(),
+            Err(ContentTreeError::InvalidStructure(message))
+                if message == "回收站原父级不存在"
+        ));
+
+        let mut non_folder_parent = ContentTree::new();
+        let parent = non_folder_parent.create_document(None).unwrap();
+        let child = non_folder_parent.create_document(None).unwrap();
+        non_folder_parent.delete_to_recycle_bin(&child).unwrap();
+        non_folder_parent.recycle_bin[0].original_parent = Some(parent);
+        assert!(matches!(
+            non_folder_parent.validate(),
+            Err(ContentTreeError::InvalidStructure(message))
+                if message == "回收站原父级不是文件夹"
+        ));
     }
 
     #[test]

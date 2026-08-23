@@ -1,8 +1,11 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
-import { EditorSaveState } from "./editor-save-state.ts";
 import { createEditorFind, type EditorFind } from "./editor-find.ts";
+import { createEditorDocumentView } from "./editor-document-view.ts";
+import { createEditorDocumentSession } from "./editor-document-session.ts";
+import type { EditorDocumentSession } from "./editor-document-session.ts";
+import { createEditorPersistence } from "./editor-persistence.ts";
 import { createEditorToolbar, type EditorToolbar } from "./editor-toolbar.ts";
 import { createLinkPopover, type LinkPopover } from "./editor-link-popover.ts";
 import { createEditorContextMenu, type EditorContextMenu } from "./editor-context-menu.ts";
@@ -16,17 +19,10 @@ import {
   createRichTextEditor,
   type RichTextEditorAdapter,
 } from "./rich-text-editor.ts";
-import { saveDocument, readDocument, notebookSizeError, openUrl } from "./project-api.ts";
+import { saveDocument, readDocument, openUrl } from "./project-api.ts";
 import type { AiFeatureController } from "./ai-feature.ts";
 import type { SelectionEntryEditor } from "./selection-entry.ts";
 import type { ContentTree, ProjectTreeState } from "./types.ts";
-import {
-  canonicalNotebookJson,
-  serializeNotebookDocument,
-  parseNotebookDocumentJson,
-  validateNotebookDocument,
-  emptyNotebookDocument,
-} from "./structured-notebook.ts";
 import { showPage } from "./views.ts";
 import {
   clearLastDocumentId,
@@ -39,7 +35,6 @@ import {
 } from "./shared-storage-and-selection-identity.ts";
 import {
   firstDocument,
-  flattenDocuments,
   isDocumentInTree,
   resolveCurrentDocument,
 } from "./content-tree.ts";
@@ -124,15 +119,14 @@ export function setupEditor(
   let editor: EditorAdapter | null = null;
   let unsubscribeEdit: (() => void) | null = null;
   let unsubscribeSelection: (() => void) | null = null;
-  let saveState: EditorSaveState | null = null;
   /** 打开作品或切换文档时递增，丢弃迟到的异步正文读取结果。 */
-  let loadGeneration = 0;
   let aiFeature: AiFeatureController | null = null;
   let find: EditorFind | null = null;
   let toolbar: EditorToolbar | null = null;
   let linkPopover: LinkPopover | null = null;
   let contextMenu: EditorContextMenu | null = null;
   let disposeKeyboard: (() => void) | null = null;
+  let session: EditorDocumentSession | null = null;
 
   function currentEditor(): EditorAdapter | null {
     return editor;
@@ -162,123 +156,46 @@ export function setupEditor(
     toolbar = null;
     currentState = null;
     currentDocumentId = null;
-    saveState = null;
-    loadGeneration += 1;
+    persistence.clear();
+    session?.invalidate();
     aiFeature?.endProject();
   }
 
   const leave = new LeaveCoordinator({
-    isDirty: () => saveState?.hasUnsavedChanges ?? false,
+    isDirty: () => persistence.hasUnsavedChanges(),
     choose: leaveDialog.choose,
     save,
   });
 
-  // ---- 当前文档显示 + 扁平切换列表 ----
-
-  function renderDocumentList(): void {
-    if (!currentState) return;
-    dom.documentList.replaceChildren();
-    for (const doc of flattenDocuments(currentState.tree)) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "document-list-item";
-      if (doc.id === currentDocumentId) item.classList.add("active");
-      item.textContent = doc.name;
-      item.addEventListener("click", () => {
-        void switchDocument(doc.id);
-      });
-      dom.documentList.appendChild(item);
-    }
-  }
-
-  function renderCurrentDocument(): void {
-    if (!currentState) return;
-    const current =
-      currentDocumentId !== null ? currentState.tree.nodes[currentDocumentId] : null;
-    dom.currentDocumentName.textContent = current?.name ?? "";
-    dom.editorTextarea.classList.toggle("hidden", currentDocumentId === null);
-    dom.writingEmptyState.classList.toggle("hidden", currentDocumentId !== null);
-    if (currentDocumentId === null) {
-      dom.writingEmptyState.textContent = EMPTY_STATE_TEXT;
-    }
-    renderDocumentList();
-  }
-
-  function closeDocumentList(): void {
-    dom.documentList.classList.add("hidden");
-    dom.currentDocToggle.setAttribute("aria-expanded", "false");
-  }
-
-  function toggleDocumentList(): void {
-    const open = dom.documentList.classList.contains("hidden");
-    dom.documentList.classList.toggle("hidden", !open);
-    dom.currentDocToggle.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) renderDocumentList();
-  }
-
-  // ---- 保存状态 ----
-
-  function renderSaveState(): void {
-    if (!saveState) {
-      dom.saveStatus.textContent = "已保存";
-      dom.saveStatus.className = "save-status";
-      dom.btnSave.disabled = true;
-      return;
-    }
-    dom.saveStatus.textContent = saveState.statusText;
-    dom.saveStatus.className = "save-status";
-    if (saveState.isSaving) dom.saveStatus.classList.add("saving");
-    else if (saveState.statusText.startsWith("保存失败")) dom.saveStatus.classList.add("error");
-    else if (saveState.hasUnsavedChanges) dom.saveStatus.classList.add("unsaved");
-    dom.btnSave.disabled = saveState.isSaving || !saveState.hasUnsavedChanges;
-  }
-
   function syncCurrent(): void {
     const current = currentEditor();
     if (!current) return;
-    saveState?.setCurrent(canonicalNotebookJson(current.getDocument()));
-    renderSaveState();
+    persistence.setCurrent(current.getDocument());
     toolbar?.render();
     find?.refreshFindAfterEdit();
   }
 
   async function save(): Promise<boolean> {
-    if (!currentState || !saveState) return true;
-    if (currentDocumentId === null) return true;
-    const current = currentEditor();
-    if (!current) return true;
-    const path = currentState.projectPath;
-    const id = currentDocumentId;
-
-    // 先规范化为版本 2 规范形态，再严格校验与字节上限检查。
-    const document = serializeNotebookDocument(current.getDocument());
-    const validation = validateNotebookDocument(document);
-    if (!validation.ok) {
-      return rejectSave(`文档无法保存：${validation.error}`);
-    }
-    const sizeError = notebookSizeError(JSON.stringify(document));
-    if (sizeError) return rejectSave(`文档内容过大：${sizeError}`);
-
-    const state = saveState;
-    const result = state.save((content) => dependencies.saveDocument(path, id, content));
-    renderSaveState();
-    const succeeded = await result;
-    renderSaveState();
-    return succeeded;
+    return persistence.save();
   }
 
-  /** 校验/上限未通过：以保存失败路径记录错误，基线不变，内容保持未保存，不调用写盘。 */
-  async function rejectSave(message: string): Promise<boolean> {
-    const state = saveState;
-    if (!state) return true;
-    const result = state.save(async () => {
-      throw new Error(message);
-    });
-    renderSaveState();
-    const succeeded = await result;
-    renderSaveState();
-    return succeeded;
-  }
+  const persistence = createEditorPersistence({
+    saveStatus: dom.saveStatus,
+    saveButton: dom.btnSave,
+    getEditor: currentEditor,
+    getProject: () => currentState && currentDocumentId !== null
+      ? { projectPath: currentState.projectPath, documentId: currentDocumentId }
+      : null,
+    write: dependencies.saveDocument,
+  });
+
+  const documentView = createEditorDocumentView({
+    dom,
+    getTree: () => currentState?.tree ?? null,
+    getCurrentDocumentId: () => currentDocumentId,
+    onSwitchDocument: (documentId) => { void switchDocument(documentId); },
+    emptyStateText: EMPTY_STATE_TEXT,
+  });
 
   // ---- 工具栏与格式抽屉（独立模块：工具栏/抽屉 DOM + 编辑器窄能力） ----
 
@@ -302,62 +219,86 @@ export function setupEditor(
 
   // ---- 文档加载与切换 ----
 
+  session = createEditorDocumentSession({
+    dom,
+    readDocument: dependencies.readDocument,
+    createEditor: dependencies.createEditor,
+    getProject: () => currentState,
+    getDocumentId: () => currentDocumentId,
+    setProject: (project) => { currentState = project; },
+    setDocumentId: (documentId) => { currentDocumentId = documentId; },
+    setEditor: (next) => { editor = next as EditorAdapter | null; },
+    disposeEditor,
+    setBaseline: (document) => persistence.setBaseline(document),
+    clearBaseline: () => persistence.clear(),
+    onEdit: (next) => {
+      unsubscribeEdit?.();
+      unsubscribeEdit = next.onEdit(() => {
+        if (editor === next) syncCurrent();
+      });
+      return unsubscribeEdit;
+    },
+    onSelectionChange: (next) => {
+      unsubscribeSelection?.();
+      unsubscribeSelection = next.onSelectionChange(() => {
+        if (editor === next) onEditorSelectionChange();
+      });
+      return unsubscribeSelection;
+    },
+    onLoaded: (project, documentId) => {
+      if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
+      aiFeature?.resetSelectionEntry();
+      aiFeature?.beginProject();
+      dom.currentProjectName.textContent = project.projectName;
+      linkPopover?.hide();
+      contextMenu?.close();
+      documentView.render();
+      toolbar?.render();
+      documentView.closeList();
+      showPage(pages, "editor-page");
+    },
+    beforeLoadProject: (_project) => {
+      setupFindModule();
+      setupToolbarModule();
+      setupLinkPopover();
+    },
+    resolveDocumentId: (project) => {
+      const resolved = resolveCurrentDocument(
+        project.tree,
+        memoryStorage ? readLastDocumentId(memoryStorage, project.projectPath) : null,
+      );
+      if (memoryStorage && resolved.invalidMemory) clearLastDocumentId(memoryStorage, project.projectPath);
+      return resolved.documentId;
+    },
+    isDocumentInTree,
+    firstDocument,
+    hasUnsavedChanges: () => persistence.hasUnsavedChanges(),
+    confirmDiscard: confirmDiscardingCurrentDocument,
+    clearRememberedDocument: (projectPath) => {
+      if (memoryStorage) clearLastDocumentId(memoryStorage, projectPath);
+    },
+  });
+
   async function loadDocument(documentId: string): Promise<void> {
-    if (!currentState) return;
-    const generation = ++loadGeneration;
-    let content: string;
-    try {
-      content = await dependencies.readDocument(currentState.projectPath, documentId);
-    } catch (error) {
-      if (generation !== loadGeneration || !currentState) return;
-      alert(`读取文档失败：${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    if (generation !== loadGeneration || !currentState) return;
-    let document: JSONContent;
-    try {
-      document = parseNotebookDocumentJson(content).document;
-    } catch (error) {
-      if (generation !== loadGeneration || !currentState) return;
-      alert(`解析文档失败：${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    const next = dependencies.createEditor(dom.editorTextarea, document);
-    disposeEditor();
-    editor = next;
-    currentDocumentId = documentId;
-    saveState = new EditorSaveState(canonicalNotebookJson(document));
-    unsubscribeEdit = next.onEdit(() => {
-      if (editor === next) syncCurrent();
-    });
-    unsubscribeSelection = next.onSelectionChange(() => {
-      if (editor === next) onEditorSelectionChange();
-    });
-    if (memoryStorage) writeLastDocumentId(memoryStorage, currentState.projectPath, documentId);
-    aiFeature?.resetSelectionEntry();
-    linkPopover?.hide();
-    contextMenu?.close();
-    renderCurrentDocument();
-    renderSaveState();
-    toolbar?.render();
+    await session!.loadDocument(documentId);
   }
 
   /** 切换当前文档：先静默保存当前文档，保存失败阻止切换并提示。 */
   async function switchDocument(documentId: string): Promise<void> {
     if (documentId === currentDocumentId) {
-      closeDocumentList();
+      documentView.closeList();
       return;
     }
     if (!await save()) {
       alert("保存失败，无法切换文档。请重试保存后再切换。");
       return;
     }
-    closeDocumentList();
+    documentView.closeList();
     await loadDocument(documentId);
   }
 
   async function guardCurrentLeave(): Promise<boolean> {
-    const dirty = saveState?.hasUnsavedChanges ?? false;
+    const dirty = persistence.hasUnsavedChanges();
     if (dirty) {
       dom.editorTextarea.inert = true;
     }
@@ -369,103 +310,17 @@ export function setupEditor(
   }
 
   async function showProject(projectState: ProjectTreeState): Promise<void> {
-    const generation = ++loadGeneration;
-    // 重新接线交互模块：unload 已销毁旧模块，这里重建以恢复查找栏、工具栏等监听。
-    setupFindModule();
-    setupToolbarModule();
-    setupLinkPopover();
-    const resolved = memoryStorage
-      ? resolveCurrentDocument(
-          projectState.tree,
-          readLastDocumentId(memoryStorage, projectState.projectPath),
-        )
-      : resolveCurrentDocument(projectState.tree, null);
-    if (memoryStorage && resolved.invalidMemory) {
-      clearLastDocumentId(memoryStorage, projectState.projectPath);
-    }
-
-    const documentId = resolved.documentId;
-    let document: JSONContent;
-    if (documentId !== null) {
-      let content: string;
-      try {
-        content = await dependencies.readDocument(projectState.projectPath, documentId);
-      } catch (error) {
-        if (generation === loadGeneration) {
-          alert(`读取文档失败：${error instanceof Error ? error.message : String(error)}`);
-        }
-        return;
-      }
-      if (generation !== loadGeneration) return;
-      try {
-        document = parseNotebookDocumentJson(content).document;
-      } catch (error) {
-        if (generation === loadGeneration) {
-          alert(`解析文档失败：${error instanceof Error ? error.message : String(error)}`);
-        }
-        return;
-      }
-    } else {
-      document = emptyNotebookDocument().document;
-    }
-
-    // 事务式替换：先读正文 + 构造新编辑器，成功后一次性交换再销毁旧组合。
-    const next = documentId !== null ? dependencies.createEditor(dom.editorTextarea, document) : null;
-    const nextSaveState = documentId !== null
-      ? new EditorSaveState(canonicalNotebookJson(document))
-      : null;
-
-    disposeEditor();
-    currentState = projectState;
-    currentDocumentId = documentId;
-    editor = next;
-    saveState = nextSaveState;
-    if (next) {
-      unsubscribeEdit = next.onEdit(() => {
-        if (editor === next) syncCurrent();
-      });
-      unsubscribeSelection = next.onSelectionChange(() => {
-        if (editor === next) onEditorSelectionChange();
-      });
-    }
-    aiFeature?.beginProject();
-    dom.currentProjectName.textContent = projectState.projectName;
-    renderCurrentDocument();
-    renderSaveState();
-    toolbar?.render();
-    closeDocumentList();
-    showPage(pages, "editor-page");
+    await session!.showProject(projectState);
   }
 
   function applyTree(tree: ContentTree): void {
-    if (!currentState) return;
-    if (currentDocumentId !== null && !isDocumentInTree(tree, currentDocumentId)) {
-      if (saveState?.hasUnsavedChanges && !confirmDiscardingCurrentDocument()) return;
-      currentState.tree = tree;
-      // 当前文档被删除：在用户确认后丢弃其未保存内容，回退到第一篇或空态。
-      if (memoryStorage) clearLastDocumentId(memoryStorage, currentState.projectPath);
-      const first = firstDocument(tree);
-      if (first) {
-        void loadDocument(first.id);
-      } else {
-        disposeEditor();
-        currentDocumentId = null;
-        saveState = null;
-        aiFeature?.resetSelectionEntry();
-        renderCurrentDocument();
-        renderSaveState();
-        toolbar?.render();
-      }
-      return;
-    }
-    currentState.tree = tree;
-    renderCurrentDocument();
+    session!.applyTree(tree);
   }
 
   // ---- 事件绑定 ----
 
   dom.btnSave.addEventListener("click", () => { void save(); });
-  dom.currentDocToggle.addEventListener("click", toggleDocumentList);
+  dom.currentDocToggle.addEventListener("click", documentView.toggleList);
 
   // 工具栏按钮：mousedown 时阻止抢焦点，否则点击按钮会让编辑器失焦、选区丢失。
   const toolbarButtons = [
@@ -561,7 +416,7 @@ export function setupEditor(
       closeFind: () => find?.closeFindBar(),
       openFind: (mode) => find?.openFindBar(mode),
       save: () => { void save(); },
-      hasUnsavedChanges: () => saveState?.hasUnsavedChanges ?? false,
+      hasUnsavedChanges: () => persistence.hasUnsavedChanges(),
       format: (command) => { toolbar?.runFormatCommand(command); },
       linkActions: createLinkActions({
         runFormatCommand: (command) => toolbar?.runFormatCommand(command) ?? false,
@@ -572,7 +427,7 @@ export function setupEditor(
 
   document.addEventListener("mousedown", (event) => {
     if (!dom.linkPopover.classList.contains("hidden") && !dom.linkPopover.contains(event.target as Node)) linkPopover?.hide();
-    if (!dom.documentList.classList.contains("hidden") && !dom.documentList.contains(event.target as Node) && !dom.currentDocToggle.contains(event.target as Node)) closeDocumentList();
+    if (!dom.documentList.classList.contains("hidden") && !dom.documentList.contains(event.target as Node) && !dom.currentDocToggle.contains(event.target as Node)) documentView.closeList();
   });
   document.addEventListener("scroll", () => { contextMenu?.close(); linkPopover?.hide(); }, true);
 
@@ -585,7 +440,7 @@ export function setupEditor(
   return {
     showProject,
     hasProject: () => currentState !== null,
-    hasUnsavedChanges: () => saveState?.hasUnsavedChanges ?? false,
+    hasUnsavedChanges: () => persistence.hasUnsavedChanges(),
     save,
     guardLeave: guardCurrentLeave,
     unload,

@@ -116,10 +116,7 @@ mod tests {
         )
         .expect("parse content tree");
         let doc_ids: Vec<String> = tree.root_children.clone();
-        let mut files = vec![
-            paths.content_tree_file.clone(),
-            paths.metadata_file.clone(),
-        ];
+        let mut files = vec![paths.content_tree_file.clone(), paths.metadata_file.clone()];
         for id in &doc_ids {
             files.push(paths.document_file(id));
         }

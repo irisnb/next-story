@@ -2143,6 +2143,21 @@ mod tests {
     }
 
     #[test]
+    fn delete_child_then_parent_reopens_with_nested_recycle_bin_entries() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("嵌套回收站测试".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+
+        let folder = create_folder(&project_root, None).expect("create folder");
+        let child = create_document(&project_root, Some(&folder)).expect("create child doc");
+        delete_node(&project_root, &child).expect("delete child");
+        delete_node(&project_root, &folder).expect("delete parent folder");
+
+        let opened = open_project(&project_root).expect("reopen after nested deletion");
+        assert_eq!(opened.tree.recycle_bin.len(), 2);
+    }
+
+    #[test]
     fn rename_move_reorder_persist_across_reopen() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
         let project_root = create_project("结构操作".to_string(), temp.path().to_path_buf())

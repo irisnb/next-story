@@ -776,8 +776,12 @@ mod tests {
             .iter()
             .find(|id| tree.nodes[*id].name == name)
             .unwrap_or_else(|| panic!("根级文档不存在: {name}"));
-        fs::read_to_string(root.join("作品文本").join("documents").join(format!("{id}.json")))
-            .expect("读取文档正文")
+        fs::read_to_string(
+            root.join("作品文本")
+                .join("documents")
+                .join(format!("{id}.json")),
+        )
+        .expect("读取文档正文")
     }
 
     #[test]

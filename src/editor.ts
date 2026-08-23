@@ -441,6 +441,7 @@ export function setupEditor(
     if (!currentState) return;
     if (currentDocumentId !== null && !isDocumentInTree(tree, currentDocumentId)) {
       if (saveState?.hasUnsavedChanges && !confirmDiscardingCurrentDocument()) return;
+      currentState.tree = tree;
       // 当前文档被删除：在用户确认后丢弃其未保存内容，回退到第一篇或空态。
       if (memoryStorage) clearLastDocumentId(memoryStorage, currentState.projectPath);
       const first = firstDocument(tree);

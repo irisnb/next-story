@@ -1,6 +1,6 @@
 # Next Story 审查 Bug 台账
 
-更新时间：2026-08-23
+更新时间：2026-08-23（归档与复核后）
 
 来源：OpenCode 会话 `ses_0663080adffesohY4wrb6vSdwj` 中用户消息 `msg_f99cfc9c90015jM6PzId5juRqh`，标题为 `irisnb/next-story 审查结果与 Issue 草稿`。
 
@@ -32,8 +32,10 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 | 12 | OpenAI-compatible content 数组只返回第一段文本，后续内容被静默截断 | 已修并归档 | `normalize-llm-multipart-response` |
 | 13 | 配置页只提示 API Key 会发送，未告知选区、方向和完整临时对话会发送给该服务 | 已修并归档 | `sync-ai-privacy-and-docs` |
 | 14 | README 与 AGENTS 把已经实现的“思维扩展”仍描述为未来功能 | 已修并归档 | `sync-ai-privacy-and-docs` |
+| 15 | 删除当前文档后编辑器内部内容树未同步，写作空间仍可能保留已删除节点 | 已修并归档 | `sync-editor-tree-after-current-document-deletion` |
 
 > 2026-08-23 状态补充：原始审查中的 14 个 issue 均已有对应的已归档 OpenSpec change。第二批 2.1–2.5 已全部完成：新增并归档 `harden-project-reliability-boundaries`、`extract-shared-document-models`、`unify-storage-and-snapshot-equality`、`unify-ai-panel-dom-contract`，并同步相应主规格。`unify-ai-panel-dom-contract` 的最终前端测试为 431/431，类型检查、lint、build、OpenSpec 全规格严格验证 36/36 通过；该 change 已归档为 `2026-08-22-unify-ai-panel-dom-contract`。
+> 2026-08-23 状态补充：原始审查中的 14 个 issue 均已有对应的已归档 OpenSpec change。第二批 2.1–2.5 已全部完成：新增并归档 `harden-project-reliability-boundaries`、`extract-shared-document-models`、`unify-storage-and-snapshot-equality`、`unify-ai-panel-dom-contract`，并同步相应主规格。`unify-ai-panel-dom-contract` 的最终前端测试为 431/431，类型检查、lint、build、OpenSpec 全规格严格验证 36/36 通过；该 change 已归档为 `2026-08-22-unify-ai-panel-dom-contract`。本轮新增的 Issue 15 已完成并归档为 `2026-08-23-sync-editor-tree-after-current-document-deletion`，同步主规格 `editor-tree-synchronization`；相关前端测试 28/28、类型检查和 lint 均通过。
 
 ## 建议后续顺序
 
@@ -236,6 +238,18 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 
 当前记录：已处理。README 和 AGENTS 已把选区 `AI 及时召唤`、选区 `思维扩展` 可选方向输入、首次回应后的单条线性临时追问写入当前已实现摘要，同时继续把多个临时对话、历史、持久化、附近上下文、完整作品认知、AI 内容库、思考收束和安全返回写作标为未实现或未来方向。
 
+### Issue 15: [Bug] 删除当前文档后编辑器内部内容树未同步
+
+状态：已修并归档。关联 change：`sync-editor-tree-after-current-document-deletion`。
+
+原始问题：文件管理器删除当前文档后，编辑器 `applyTree()` 在切换到第一篇剩余文档或进入空态的分支中提前返回，没有把已接受的新内容树写回 `currentState.tree`。文件管理器显示的是新树，但写作空间的文档列表、`getTree()` 和后续树判断仍可能使用旧树。
+
+风险：已删除文档可能继续出现在写作空间的内部状态中，导致文件管理视图与写作空间状态不一致；后续依赖内容树的操作也可能基于已经失效的节点。
+
+最小复现：打开包含两篇文档的作品并选中第一篇；从文件管理器删除当前文档并确认丢弃未保存内容；等待编辑器切换到第二篇；此时旧实现的 `editor.getTree()` 仍包含已删除的第一篇文档。删除最后一篇文档时，旧实现仍返回包含已删除节点的树。
+
+当前记录：已处理。编辑器在接受删除后的新树时先同步 `currentState.tree`，再切换剩余文档或进入空态；用户取消丢弃未保存修改时仍保留旧树和当前编辑内容。已增加两条回归断言，覆盖有剩余文档与空树路径。
+
 ## 历史分组记录
 
 最早复核后曾建议这样拆分：
@@ -251,7 +265,7 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 3. `fix-ai-session-and-transcript-boundaries`
    - 原计划覆盖 issue 5、6、12、13。
    - 后来 issue 5 已被拆出为 `reset-ai-request-on-project-change` 并归档。
-   - 剩余 issue 6、12、13 仍可按 AI 数据/转录边界继续处理，但也可以拆成更小 change。
+   - 剩余 issue 6、12、13 后续已分别由对应 change 处理并归档。
 
 4. `fix-selection-entry-geometry-and-performance`
     - 覆盖 issue 8、9、10、11。
@@ -259,7 +273,7 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 
 5. `guard-llm-config-unsaved-and-sync-docs`
    - 覆盖 issue 7、14。
-   - 仍未处理。后续也可以把 issue 14 并入 AI 隐私/文档同步 change。
+   - 后续实际拆分为 `guard-llm-config-unsaved` 与 `sync-ai-privacy-and-docs`，均已完成并归档。
 
 ## 不要忘的项目红线
 
@@ -273,7 +287,15 @@ GitHub 状态：当时连接对仓库只有读取权限，创建 issue 返回 `4
 
 ## 当前状态与下一个建议动作
 
-当前台账中的 14 个原始 issue 都已有对应处理记录，并且相关 OpenSpec change 均已归档。路线图第三批 3.1–3.6 已完成，`split-editor-controller-modules` 已实现、验证并归档。下一步不自动扩大范围；如发现新的问题，应先新增台账条目，再按项目规则一次只开一个 OpenSpec change。
+当前台账中的 15 个 issue 都已有对应处理记录，并且相关 OpenSpec change 均已归档。路线图第三批 3.1–3.6 已完成，`split-editor-controller-modules` 已实现、验证并归档。下一步不自动扩大范围；如发现新的问题，应先新增台账条目，再按项目规则一次只开一个 OpenSpec change。
+
+### 2026-08-23 归档后复核
+
+- active OpenSpec change：无；`openspec list --json` 返回空列表。
+- 已知未修复 bug：无确定性问题。
+- 本轮复核检查了未归档 change、代码中的 TODO/FIXME、台账状态、规格与实现的一致性，以及当前前端回归测试。
+- 验证结果：`npm run test:frontend` 471/471 通过，`npm run typecheck` 通过，`npm run lint` 通过，`openspec validate --all` 38/38 通过，`git diff --check` 通过。
+- 发现并修正一处台账过期描述和一处主规格格式问题；两者均不是产品运行时 bug。
 
 ## 下一项修复：统一 AI 面板与主界面的 DOM 查询契约（路线图 2.5）
 

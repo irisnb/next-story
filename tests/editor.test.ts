@@ -820,6 +820,7 @@ test("applyTree switches to the first remaining document when deletion is confir
     await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
     assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
+    assert.deepEqual(fixture.editor.getTree(), treeFrom([docNode("doc-2", "第二篇")]));
     assert.deepEqual(fixture.editors[1]?.getDocument(), paragraphDoc("第二篇"));
     assert.equal(fixture.editors[0]?.destroyed, true);
   } finally {
@@ -844,6 +845,7 @@ test("applyTree shows the empty state when deletion is confirmed and no document
 
     assert.equal(fixture.editor.getCurrentDocumentId(), null);
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
+    assert.deepEqual(fixture.editor.getTree(), treeFrom([]));
     assert.equal(fixture.editors[0]?.destroyed, true);
     assert.equal(fixture.ui.elements.get("writing-empty-state")!.classList.contains("hidden"), false);
   } finally {

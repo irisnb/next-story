@@ -1,10 +1,17 @@
 mod content_tree;
+mod docx_export;
+mod export;
 mod migration;
 mod notebook;
 mod operations;
 mod validation;
 
 pub use content_tree::*;
+pub use docx_export::render_docx;
+pub use export::{
+    build_export_project, export_project_to_word, ExportBlock, ExportListItem, ExportMark,
+    ExportNode, ExportProject, ExportText, ExportWordResult,
+};
 pub use notebook::*;
 pub use operations::{
     create_document, create_folder, delete_node, move_node, open_content_tree, read_document,

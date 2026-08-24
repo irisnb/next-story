@@ -21,6 +21,10 @@ test("writing module exposes a lightweight document switcher and empty state", (
   assert.match(html, /<div\b[^>]*\bid="writing-empty-state"[^>]*>[^<]*去文件管理新建一篇/);
 });
 
+test("writing module exposes a Word export entry", () => {
+  assert.match(html, /<button\b[^>]*\bid="btn-export-word"[^>]*>导出 Word<\/button>/);
+});
+
 test("LLM config lives inside the settings module, not a standalone page", () => {
   assert.doesNotMatch(html, /\bid="llm-config-page"/);
   assert.match(html, /<section\b[^>]*\bid="module-settings"/);

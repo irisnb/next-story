@@ -24,9 +24,20 @@ tempfile = "3"
 reqwest = { version = "0.12", features = ["json"] }
 keyring = { version = "~3.6.3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "tokio"] }
 open = "5"
+# 生成真正的 Office Open XML `.docx`（MIT 许可，见 design.md 决策 1）。
+docx = "1.1.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# 测试中解包生成的 .docx（zip 容器）以校验内容；docx 依赖已引入同版本 zip。
+zip = "0.5"
+
+# docx 1.1.2 经 strong-xml 0.5.0 依赖 jetscii 0.4.4，该版本在较新 Rust 上因
+# const 泛型限制无法编译。此处用本地 vendored 副本打补丁覆盖：内容为 jetscii
+# 0.5.3（已修复该问题且 API 与 strong-xml 用法兼容），仅把版本号标为 0.4.4 以
+# 满足 strong-xml 的精确版本要求。避免依赖网络 git 源。
+[patch.crates-io]
+jetscii = { path = "C:/Users/Administrator/AppData/Local/Temp/opencode/jetscii-0.4.4-compat" }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

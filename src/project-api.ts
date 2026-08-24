@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import type {
   ContentTree,
@@ -41,6 +41,39 @@ export async function selectDirectory(title: string): Promise<string | null> {
   });
 
   return typeof selected === "string" ? selected : null;
+}
+
+/**
+ * 导出命令的稳定返回契约（后端 `ExportWordResult` 的 serde 序列化）。
+ * `cancelled` 仅由前端在用户关闭保存对话框时设置，后端不返回该字段。
+ */
+export interface ExportWordResult {
+  ok: boolean;
+  cancelled?: boolean;
+  path: string | null;
+  message: string | null;
+}
+
+/**
+ * 导出当前作品为 Word 文档：先弹出保存对话框（默认建议作品名称 `.docx`），
+ * 用户取消时返回 `{ ok: false, cancelled: true }` 且不产生文件；确认后调用
+ * 后端只读导出命令，返回稳定成功/失败结果（中文说明）。
+ */
+export async function exportProjectToWord(
+  projectPath: string,
+  projectName: string,
+): Promise<ExportWordResult> {
+  const target = await save({
+    defaultPath: `${projectName}.docx`,
+    filters: [{ name: "Word 文档", extensions: ["docx"] }],
+  });
+  if (target === null) {
+    return { ok: false, cancelled: true, path: null, message: null };
+  }
+  return tauriInvoke<ExportWordResult>("export_project_to_word", {
+    projectPath,
+    targetPath: target,
+  });
 }
 
 export async function createProject(name: string, saveLocation: string): Promise<string> {

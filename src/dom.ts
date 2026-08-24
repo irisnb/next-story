@@ -63,6 +63,7 @@ export interface AppDom {
   currentDocumentName: HTMLElement;
   documentList: HTMLElement;
   writingEmptyState: HTMLElement;
+  btnExportWord: HTMLButtonElement;
   fmNewDocument: HTMLButtonElement;
   fmNewFolder: HTMLButtonElement;
   fmStatus: HTMLElement;
@@ -213,6 +214,7 @@ export function getAppDom(): AppDom {
     currentDocumentName: requireElement("current-document-name"),
     documentList: requireElement("document-list"),
     writingEmptyState: requireElement("writing-empty-state"),
+    btnExportWord: requireElement("btn-export-word"),
     fmNewDocument: requireElement("fm-new-document"),
     fmNewFolder: requireElement("fm-new-folder"),
     fmStatus: requireElement("fm-status"),

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 use llm_config::{GenerateAiResult, LlmConfig, LlmConfigSummary};
-use project::{ContentTree, CreateProjectParams, ProjectLocks, ProjectOpenResult};
+use project::{ContentTree, CreateProjectParams, ExportWordResult, ProjectLocks, ProjectOpenResult};
 
 #[cfg(test)]
 mod tests {
@@ -399,6 +399,32 @@ async fn restore_node(
     .map_err(|e| e.to_string())
 }
 
+/// 导出当前作品为 Word 文档：只读取已保存内容，生成真正的 `.docx` 并写入
+/// 用户选择的目标路径。命令始终返回稳定的 `ExportWordResult`（成功 / 失败
+/// 都带中文说明），前端据此区分结果，不依赖 Tauri 错误序列化细节。
+#[tauri::command]
+async fn export_project_to_word(
+    app: tauri::AppHandle,
+    project_path: String,
+    target_path: String,
+) -> Result<ExportWordResult, String> {
+    let project_root = PathBuf::from(&project_path);
+    let target = PathBuf::from(&target_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::export_project_to_word(&project_root, &target)
+    })
+    .await
+    .map_err(|e| format!("导出作品任务执行失败: {e}"))?;
+
+    Ok(match result {
+        Ok(success) => success,
+        Err(error) => ExportWordResult::failure(error.to_string()),
+    })
+}
+
 // ========== LLM 配置命令 ==========
 
 /// 在系统默认浏览器中打开 http/https 链接；其它地址拒绝。
@@ -515,6 +541,7 @@ pub fn run() {
             reorder_children,
             delete_node,
             restore_node,
+            export_project_to_word,
             open_url,
             save_llm_config,
             load_llm_config,

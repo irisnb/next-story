@@ -1263,6 +1263,11 @@
   flex: none;
 }
 
+.export-word-btn {
+  margin-left: auto;
+  flex: none;
+}
+
 .current-doc-toggle {
   display: inline-flex;
   align-items: center;

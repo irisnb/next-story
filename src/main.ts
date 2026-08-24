@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CloseCoordinator, composeCloseGuards } from "./close-guard";
 import { getAppDom } from "./dom";
 import { setupEditor } from "./editor";
+import { setupExportWord } from "./export-word";
 import { setupFileManagement } from "./file-management";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
@@ -34,6 +35,15 @@ window.addEventListener("DOMContentLoaded", () => {
   const editor = setupEditor(dom, leaveDialog);
   const fileManagement = setupFileManagement(dom, {
     onTreeChanged: (tree) => editor.applyTree(tree),
+  });
+
+  const exportWord = setupExportWord(dom, {
+    getProjectPath: () => editor.getProjectPath(),
+    getProjectName: () => {
+      const state = editor.getTree();
+      return state === null ? null : dom.currentProjectName.textContent;
+    },
+    hasUnsavedChanges: () => editor.hasUnsavedChanges(),
   });
 
   const llmConfig = setupLlmConfigForm(dom, {
@@ -76,6 +86,7 @@ window.addEventListener("DOMContentLoaded", () => {
       showPage(pages, "welcome-page");
       editor.unload();
       fileManagement.unload();
+      exportWord.unload();
     }
   });
 

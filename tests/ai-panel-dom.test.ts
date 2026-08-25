@@ -5,6 +5,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiPanel } from "../src/ai-panel.ts";
+import type { SelectionEntryEditor } from "../src/selection-entry.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
   GenerateAiRequest,
@@ -91,6 +92,10 @@ function harness(): {
 	    onRetryFollowUp: () => { retried += 1; return Promise.resolve(true); },
 	    onEditFollowUp: (question) => { edited.push(question); return Promise.resolve(true); },
 	    onStartThinkingExpansion: (direction) => { startedThinkingExpansions.push(direction); return true; },
+    onSubmitDirectQuestion: () => Promise.resolve(true),
+    onRemoveDirectQuestionSelection: () => state.setPendingSelection(null),
+    onDirectQuestionFocus: () => {},
+    onOpenPanel: () => {},
 	  });
 
   return {
@@ -111,6 +116,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   readonly loadConfigError?: unknown;
   readonly loadConfigResult?: LlmConfigSummary | null;
   readonly loadConfigPromise?: Promise<LlmConfigSummary | null>;
+  readonly currentEditor?: SelectionEntryEditor | null;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
@@ -141,6 +147,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
   const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
   const loadConfigResult = options.loadConfigResult;
   let currentDocumentId = "doc-1";
+  const currentEditor = options.currentEditor ?? null;
 
   const controller = setupAiFeature({
     aiPanelDom: dom,
@@ -150,7 +157,7 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     editorTextarea: editor,
   } as unknown as AppDom, {
     getCurrentDocumentId: () => currentDocumentId,
-    getCurrentEditor: () => null,
+    getCurrentEditor: () => currentEditor,
     openConfigPage: () => { openedConfig.push("settings"); },
   }, {
     generate: async (request) => {
@@ -885,6 +892,227 @@ test("project replacement releases a stale follow-up request so the new project 
     stale.resolve({ ok: false, error: { code: "network", message: "迟到旧作品失败" } });
     await flushAiFeatureFlow();
     assert.deepEqual(conversationText(ui), ["新作品首答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("idle open panel shows the direct question form with submit disabled", () => {
+  const ui = harness();
+  try {
+    const form = ui.elements.get("ai-direct-question")!;
+    assert.equal(form.classList.contains("hidden"), true);
+
+    ui.state.open();
+    assert.equal(form.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-direct-question-send")!.disabled, true);
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question draft enables submit and Enter submits the question", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这个角色为什么犹豫？";
+    input.dispatch("input");
+    assert.equal(ui.elements.get("ai-direct-question-send")!.disabled, false);
+
+    const entered = input.dispatch("keydown", { key: "Enter" });
+    assert.equal(entered.defaultPrevented, true);
+    assert.equal((ui.elements.get("editor-textarea")?.value ?? "用户正文"), "用户正文");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question selection hint shows the attached selection and remove clears it", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.setPendingSelection(snapshot("林站在天台边。"));
+
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-direct-question-selection-text")!.textContent, "林站在天台边。");
+
+    ui.elements.get("ai-direct-question-selection-remove")!.dispatch("click");
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), true);
+    assert.equal(ui.state.view.pendingSelection, null);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("collapse and reopen preserve the direct question draft and pending selection", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "未发送的问题";
+    input.dispatch("input");
+    ui.state.setPendingSelection(snapshot("选区"));
+
+    ui.state.close();
+    ui.state.open();
+
+    assert.equal(input.value, "未发送的问题");
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("project lifecycle reset clears direct question draft and pending selection", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "旧作品问题";
+    input.dispatch("input");
+    ui.state.setPendingSelection(snapshot("旧作品选区"));
+
+    ui.state.reset();
+
+    assert.equal(input.value, "");
+    assert.equal(ui.state.view.directQuestionDraft, "");
+    assert.equal(ui.state.view.pendingSelection, null);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question success renders the unified conversation and hides the direct question form", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.beginDirectQuestion("问题", null);
+    ui.state.succeedDirectQuestion("回答");
+
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["问题", "回答"]);
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
+    assert.equal((ui.elements.get("editor-textarea")?.value ?? "用户正文"), "用户正文");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question success keeps the conversation and unsent follow-up draft across collapse", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.beginDirectQuestion("问题", null);
+    ui.state.succeedDirectQuestion("回答");
+    const input = ui.elements.get("ai-follow-up-input")!;
+    input.value = "未发送的追问";
+    input.dispatch("input");
+
+    ui.state.close();
+    ui.state.open();
+
+    assert.deepEqual(conversationText(ui), ["问题", "回答"]);
+    assert.equal(input.value, "未发送的追问");
+    assert.deepEqual(ui.submitted, []);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question success submits a follow-up through the unified conversation", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.beginDirectQuestion("问题", null);
+    ui.state.succeedDirectQuestion("回答");
+    const input = ui.elements.get("ai-follow-up-input")!;
+    input.value = "继续追问";
+    input.dispatch("input");
+    ui.elements.get("ai-follow-up-form")!.dispatch("submit");
+
+    assert.deepEqual(ui.submitted, ["继续追问"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question error renders the error message and keeps the draft", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "问题";
+    input.dispatch("input");
+    ui.state.beginDirectQuestion("问题", null);
+    ui.state.failDirectQuestion({ code: "network", message: "网络失败" });
+
+    assert.equal(ui.elements.get("ai-direct-question-error")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-direct-question-error-message")!.textContent, "网络失败");
+    assert.equal(input.value, "问题");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("real AI feature flow submits a direct question and renders the unified conversation without writing notebooks", async () => {
+  const ui = featureHarness([{ ok: true, content: "直接提问回答" }]);
+  try {
+    const editor = ui.elements.get("editor-textarea")!;
+    const original = editor.value;
+    const toggle = ui.elements.get("btn-toggle-ai")!;
+    toggle.dispatch("click");
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这个角色为什么犹豫？";
+    input.dispatch("input");
+    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [{
+      kind: "direct_question",
+      question: "这个角色为什么犹豫？",
+    }]);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "直接提问回答"]);
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
+    assert.equal(editor.value, original);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("real AI feature flow direct question with pending selection sends question and selection", async () => {
+  const fakeEditor: SelectionEntryEditor = {
+    element: new FakeElement("editor-textarea") as unknown as HTMLElement,
+    getDocument: () => ({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "林站在天台边。" }] }],
+    }),
+    getSelection: () => ({ from: 1, to: 8, head: 8 }),
+    coordinatesAt: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  };
+  const ui = featureHarness([{ ok: true, content: "回答" }], { currentEditor: fakeEditor });
+  try {
+    const toggle = ui.elements.get("btn-toggle-ai")!;
+    toggle.dispatch("click");
+    // 面板打开时同步编辑器选区为待附带重点材料
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), false);
+
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这段里人物在隐瞒什么？";
+    input.dispatch("input");
+    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
+    await flushAiFeatureFlow();
+
+    assert.deepEqual(ui.requests, [{
+      kind: "direct_question",
+      question: "这段里人物在隐瞒什么？",
+      selected_text: "林站在天台边。",
+    }]);
   } finally {
     ui.restore();
   }

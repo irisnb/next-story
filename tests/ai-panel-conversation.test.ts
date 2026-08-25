@@ -19,6 +19,36 @@ function firstRequest(text: string, direction?: string): Extract<GenerateAiReque
     : { kind: "first", selected_text: text };
 }
 
+function directQuestionRequest(
+  question: string,
+  selectedText?: string,
+): Extract<GenerateAiRequest, { kind: "direct_question" }> {
+  return selectedText
+    ? { kind: "direct_question", question, selected_text: selectedText }
+    : { kind: "direct_question", question };
+}
+
+test("createFromFirstSuccess accepts direct_question material with a null anchor", () => {
+  const state = new TemporaryConversationState();
+  const material = directQuestionRequest("这个角色为什么犹豫？");
+  const conversation = state.createFromFirstSuccess(1, null, material, "首轮回应");
+
+  assert.equal(conversation.id, 1);
+  assert.equal(conversation.anchor, null);
+  assert.equal(conversation.initialUserMaterial.kind, "direct_question");
+  assert.equal(conversation.firstResponse, "首轮回应");
+  assert.equal(conversation.pending, null);
+  assert.deepEqual(conversation.turns, []);
+});
+
+test("readonlyView handles a null anchor without throwing", () => {
+  const state = new TemporaryConversationState();
+  state.createFromFirstSuccess(1, null, directQuestionRequest("问题"), "首轮");
+  const view = state.readonlyView();
+  assert.ok(view);
+  assert.equal(view.anchor, null);
+});
+
 test("createFromFirstSuccess freezes the anchor and rejects external mutation", () => {
   const state = new TemporaryConversationState();
   const original = snapshot("背叛");
@@ -33,6 +63,7 @@ test("createFromFirstSuccess freezes the anchor and rejects external mutation", 
 
   // 返回的 anchor 是冻结快照，外部改原对象不影响对话
   original.selectedText = "被改写";
+  assert.ok(conversation.anchor);
   assert.equal(conversation.anchor.selectedText, "背叛");
   assert.throws(() => {
     (conversation.anchor as { selectedText: string }).selectedText = "再改";
@@ -113,6 +144,44 @@ test("edit failed question and cancel restore prior response without touching su
   assert.equal(state.current?.turns[0].response, "第一答");
 });
 
+test("direct-question-origin follow-up request carries the full Q&A with origin", () => {
+  const state = new TemporaryConversationState();
+  const anchor = snapshot("冻结选区");
+  state.createFromFirstSuccess(1, anchor, directQuestionRequest("原问题", "冻结选区"), "首轮回应");
+  const turnId = state.beginFollowUp("第一问")!;
+  state.succeedFollowUp(turnId, "第一答");
+  state.beginFollowUp("当前追问");
+
+  const request = state.followUpRequest();
+  assert.ok(request);
+  assert.equal(request.kind, "follow_up");
+  if (request.kind === "follow_up") {
+    assert.equal(request.origin, "direct_question");
+    assert.equal(request.selected_text, "冻结选区");
+    assert.deepEqual(request.messages, [
+      { role: "user", content: "原问题" },
+      { role: "assistant", content: "首轮回应" },
+      { role: "user", content: "第一问" },
+      { role: "assistant", content: "第一答" },
+      { role: "user", content: "当前追问" },
+    ]);
+  }
+});
+
+test("direct-question follow-up without a selection uses an empty selected_text", () => {
+  const state = new TemporaryConversationState();
+  state.createFromFirstSuccess(1, null, directQuestionRequest("原问题"), "首轮回应");
+  state.beginFollowUp("追问");
+
+  const request = state.followUpRequest();
+  assert.ok(request);
+  assert.equal(request.kind, "follow_up");
+  if (request.kind === "follow_up") {
+    assert.equal(request.origin, "direct_question");
+    assert.equal(request.selected_text, "");
+  }
+});
+
 test("follow-up request uses frozen selected text and successful turns only", () => {
   const state = new TemporaryConversationState();
   const anchor = snapshot("原选区");
@@ -132,6 +201,7 @@ test("follow-up request uses frozen selected text and successful turns only", ()
       { role: "user", content: "当前追问" },
     ],
   });
+  assert.equal(request?.origin, undefined, "first 来源的追问不携带 origin");
 
   // 编辑预览：失败轮次存在时可用新问题构造请求，但不改已成功轮次
   state.failFollowUp(state.current!.pending!.id, authError);
@@ -163,7 +233,12 @@ test("readonlyView cannot mutate internal conversation state", () => {
     (view!.initialUserMaterial as { thinking_direction: string }).thinking_direction = "被改写";
   });
   assert.equal(state.current?.pending?.question, "为什么？");
-  assert.equal(state.current?.initialUserMaterial.thinking_direction, "追方向");
+  assert.equal(
+    state.current?.initialUserMaterial.kind === "first"
+      ? state.current.initialUserMaterial.thinking_direction
+      : undefined,
+    "追方向",
+  );
   assert.equal(state.current?.turns.length, 0);
 });
 

@@ -77,7 +77,12 @@ export class AiPanelState {
   }
 
   get view(): PanelStateView {
-    return { visibility: this.state.visibility, request: this.state.request };
+    return {
+      visibility: this.state.visibility,
+      request: this.state.request,
+      directQuestionDraft: this.state.directQuestionDraft,
+      pendingSelection: this.state.pendingSelection,
+    };
   }
 
   get conversation(): ReadonlyTemporaryConversation | null {
@@ -223,5 +228,37 @@ export class AiPanelState {
   /** 作品卸载或替换后清空面板状态，避免旧内容污染新作品。 */
   reset(): void {
     this.dispatch({ type: "reset" });
+  }
+
+  /** 更新直接提问的未发送草稿。 */
+  updateDirectQuestionDraft(question: string): void {
+    this.dispatch({ type: "update_direct_question_draft", question });
+  }
+
+  /** 替换或清除当前待附带的选区重点材料。 */
+  setPendingSelection(snapshot: SelectionSnapshot | null): void {
+    this.dispatch({ type: "set_pending_selection", snapshot });
+  }
+
+  /** 用户主动移除待附带选区：记录其身份，使同一选区在 focus sync 时保持忽略。 */
+  removePendingSelection(): void {
+    this.dispatch({ type: "remove_pending_selection" });
+  }
+
+  /** 提交直接提问：冻结问题与选区并进入 loading。空问题被拒绝。 */
+  beginDirectQuestion(question: string, selection: SelectionSnapshot | null): boolean {
+    return this.dispatch({ type: "begin_direct_question", question, selection });
+  }
+
+  succeedDirectQuestion(response: string): boolean {
+    return this.dispatch({ type: "succeed_direct_question", response });
+  }
+
+  failDirectQuestion(error: GenerateAiError): boolean {
+    return this.dispatch({ type: "fail_direct_question", error });
+  }
+
+  requireDirectQuestionConfiguration(): boolean {
+    return this.dispatch({ type: "require_direct_question_configuration" });
   }
 }

@@ -46,6 +46,14 @@ export interface FollowUpFormView {
   readonly inputEnabled: boolean;
 }
 
+export interface DirectQuestionView {
+  readonly draft: string;
+  readonly pendingSelection: SnapshotView | null;
+  readonly status: "idle" | "loading" | "error" | "configuration_required";
+  readonly errorMessage: string | null;
+  readonly submitEnabled: boolean;
+}
+
 export interface AiPanelView {
   readonly panelVisible: boolean;
   readonly snapshot: SnapshotView | null;
@@ -58,6 +66,7 @@ export interface AiPanelView {
   readonly followUpError: FollowUpErrorView | null;
   readonly followUpForm: FollowUpFormView | null;
   readonly retryAvailable: boolean;
+  readonly directQuestion: DirectQuestionView | null;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -90,46 +99,54 @@ function requestFacts(request: PanelRequestState): RequestDisplayFacts {
     case "idle":
       return EMPTY_FACTS;
     case "first_preview":
-      return { ...EMPTY_FACTS, snapshot: { text: request.snapshot.selectedText } };
+      return {
+        ...EMPTY_FACTS,
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
+      };
     case "first_blocked":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         blockedMessage: request.message,
       };
     case "thinking_expansion":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
-        thinkingExpansion: {
-          selectionLength: request.snapshot.selectedText.length,
-          direction: request.direction,
-        },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
+        thinkingExpansion: request.snapshot
+          ? {
+              selectionLength: request.snapshot.selectedText.length,
+              direction: request.direction,
+            }
+          : null,
       };
     case "loading":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         loadingVisible: request.phase !== "follow_up",
       };
     case "success":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         successResponse: request.response,
       };
     case "error":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         errorMessage: request.error.message,
       };
     case "configuration_required":
       return {
         ...EMPTY_FACTS,
-        snapshot: { text: request.snapshot.selectedText },
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         configRequired: true,
       };
+    case "direct_question":
+      // 直接提问的状态由 DirectQuestionView 单独呈现，不占用旧请求区。
+      return EMPTY_FACTS;
     default:
       return assertNever(request);
   }
@@ -139,9 +156,13 @@ function buildConversationView(
   conversation: ReadonlyTemporaryConversation | null,
 ): ConversationView | null {
   if (!conversation) return null;
-  const messages: ConversationMessageView[] = [
-    { role: "assistant", text: conversation.firstResponse },
-  ];
+  const messages: ConversationMessageView[] = [];
+  const material = conversation.initialUserMaterial;
+  // 直接提问来源：首轮用户原问题先于 AI 首轮回答显示；选区召唤/思维扩展保持原顺序。
+  if (material.kind === "direct_question") {
+    messages.push({ role: "user", text: material.question });
+  }
+  messages.push({ role: "assistant", text: conversation.firstResponse });
   for (const turn of conversation.turns) {
     messages.push({ role: "user", text: turn.question });
     messages.push({ role: "assistant", text: turn.response });
@@ -155,6 +176,33 @@ function buildConversationView(
   return { messages };
 }
 
+/**
+ * 直接提问入口的纯显示决策：面板打开且处于空闲或直接提问请求时可见。
+ * 空闲时展示草稿与待附带选区；请求中禁用重复提交；成功/失败/配置缺失分别呈现。
+ */
+function buildDirectQuestionView(panelState: PanelStateView): DirectQuestionView | null {
+  const request = panelState.request;
+  const isDirectQuestion = request.kind === "direct_question";
+  if (panelState.visibility !== "open" || (request.kind !== "idle" && !isDirectQuestion)) {
+    return null;
+  }
+
+  const status = isDirectQuestion ? request.status : "idle";
+  const errorMessage =
+    isDirectQuestion && request.status === "error" ? (request.error?.message ?? null) : null;
+  const pendingSelection = panelState.pendingSelection
+    ? { text: panelState.pendingSelection.selectedText }
+    : null;
+
+  return {
+    draft: panelState.directQuestionDraft,
+    pendingSelection,
+    status,
+    errorMessage,
+    submitEnabled: panelState.directQuestionDraft.trim().length > 0 && status !== "loading",
+  };
+}
+
 export function buildAiPanelView(
   panelState: PanelStateView,
   conversation: ReadonlyTemporaryConversation | null,
@@ -162,6 +210,7 @@ export function buildAiPanelView(
   const facts = requestFacts(panelState.request);
   const conversationView = buildConversationView(conversation);
   const hasConversation = conversation !== null;
+  const directQuestion = buildDirectQuestionView(panelState);
 
   const pendingError = conversation?.pending?.error;
   const isFollowUpFailure = pendingError !== undefined;
@@ -198,5 +247,6 @@ export function buildAiPanelView(
     followUpError,
     followUpForm,
     retryAvailable,
+    directQuestion,
   };
 }

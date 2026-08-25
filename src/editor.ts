@@ -175,6 +175,17 @@ export function setupEditor(
     find?.refreshFindAfterEdit();
   }
 
+  /** 打开作品、切换文档或树刷新后统一刷新编辑器视图（不触碰 AI 生命周期）。 */
+  function refreshEditorView(project: ProjectTreeState): void {
+    dom.currentProjectName.textContent = project.projectName;
+    linkPopover?.hide();
+    contextMenu?.close();
+    documentView.render();
+    toolbar?.render();
+    documentView.closeList();
+    showPage(pages, "editor-page");
+  }
+
   async function save(): Promise<boolean> {
     return persistence.save();
   }
@@ -249,13 +260,12 @@ export function setupEditor(
       if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
       aiFeature?.resetSelectionEntry();
       aiFeature?.beginProject();
-      dom.currentProjectName.textContent = project.projectName;
-      linkPopover?.hide();
-      contextMenu?.close();
-      documentView.render();
-      toolbar?.render();
-      documentView.closeList();
-      showPage(pages, "editor-page");
+      refreshEditorView(project);
+    },
+    onTreeRefreshed: (project, documentId) => {
+      // 树刷新（作品与文档身份未变化）：只更新视图，不重置 AI 面板或在途请求。
+      if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
+      refreshEditorView(project);
     },
     beforeLoadProject: (_project) => {
       setupFindModule();

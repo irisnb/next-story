@@ -19,7 +19,7 @@ type Equal<Left, Right> =
   (<Value>() => Value extends Right ? 1 : 2) ? true : false;
 type Assert<Condition extends true> = Condition;
 export type _ConversationAnchorIsReadonly = Assert<
-  Equal<ReadonlyTemporaryConversation["anchor"], Readonly<SelectionSnapshot>>
+  Equal<ReadonlyTemporaryConversation["anchor"], Readonly<SelectionSnapshot> | null>
 >;
 export type _ConversationTurnsAreReadonly = Assert<
   Equal<ReadonlyTemporaryConversation["turns"], ReadonlyArray<Readonly<import("../src/ai-panel-state.ts").SuccessfulFollowUpTurn>>>
@@ -92,6 +92,7 @@ test("failure keeps the original snapshot and does not auto-expand a collapsed p
   assert.equal(state.isOpen, false);
   assert.equal(state.view.request.kind, "error");
   if (state.view.request.kind === "error") {
+    assert.ok(state.view.request.snapshot);
     assert.equal(state.view.request.snapshot.selectedText, "a");
     assert.equal(state.view.request.error.code, "authentication");
   }
@@ -106,6 +107,7 @@ test("configuration_required preserves the snapshot and stays collapsed", () => 
   assert.equal(state.isOpen, false);
   assert.equal(state.view.request.kind, "configuration_required");
   if (state.view.request.kind === "configuration_required") {
+    assert.ok(state.view.request.snapshot);
     assert.equal(state.view.request.snapshot.selectedText, "a");
   }
 });
@@ -288,6 +290,7 @@ test("returns a defensive conversation view that cannot mutate payload state", (
   assert.equal(Object.isFrozen(view.turns), true);
   assert.equal(Object.isFrozen(view.pending), true);
 
+  assert.ok(view.anchor);
   assert.equal(Reflect.set(view.anchor, "selectedText", "篡改"), false);
   assert.equal(Reflect.set(view.pending!, "question", "篡改问题"), false);
   assert.equal(state.followUpRequest()?.selected_text, "不可变锚点");
@@ -316,4 +319,279 @@ test("beginThinkingExpansion opens a prestate anchored to the frozen selection",
     assert.equal(state.view.request.snapshot.selectedText, "冻结选区");
     assert.notDeepEqual(state.view.request.snapshot, changedSelection);
   }
+});
+
+test("direct question draft updates and notifies once", () => {
+  const state = new AiPanelState();
+  let calls = 0;
+  const tracked = new AiPanelState(() => { calls += 1; });
+
+  tracked.updateDirectQuestionDraft("这个角色为什么犹豫？");
+  assert.equal(tracked.view.directQuestionDraft, "这个角色为什么犹豫？");
+  assert.equal(calls, 1);
+  assert.equal(state.view.directQuestionDraft, "");
+});
+
+test("pending selection is replaced by a new meaningful selection and cleared when empty", () => {
+  const state = new AiPanelState();
+  const first = snapshot("第一段选区");
+  const second = snapshot("第二段选区");
+
+  state.setPendingSelection(first);
+  assert.deepEqual(state.view.pendingSelection, first);
+
+  // 新选区替换旧选区
+  state.setPendingSelection(second);
+  assert.deepEqual(state.view.pendingSelection, second);
+
+  // 清除选区移除待附带材料
+  state.setPendingSelection(null);
+  assert.equal(state.view.pendingSelection, null);
+});
+
+test("beginDirectQuestion freezes question and selection into loading and clears pending selection", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("待附带选区");
+  state.setPendingSelection(selection);
+  state.updateDirectQuestionDraft("问题");
+
+  assert.equal(state.beginDirectQuestion("问题", selection), true);
+  assert.equal(state.isOpen, true);
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "问题",
+    selection,
+    status: "loading",
+  });
+  assert.equal(state.view.pendingSelection, null, "发送后待附带选区被消费");
+});
+
+test("empty direct question is rejected without entering loading", () => {
+  const state = new AiPanelState();
+  state.updateDirectQuestionDraft("   ");
+  assert.equal(state.beginDirectQuestion("   \n", null), false);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("beginDirectQuestion freezes the selection so later mutation of the original object is inert", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("待附带选区");
+  state.beginDirectQuestion("问题", selection);
+
+  // 调用后修改原对象：不应影响已冻结的请求选区
+  selection.selectedText = "篡改后的选区";
+  selection.from = 99;
+  selection.to = 100;
+
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "问题",
+    selection: { documentId: "draft", selectedText: "待附带选区", from: 0, to: 5 },
+    status: "loading",
+  });
+
+  // 成功进入统一对话后，对话锚点也不受原对象后续修改影响
+  state.succeedDirectQuestion("回答");
+  assert.deepEqual(state.conversation?.anchor, {
+    documentId: "draft",
+    selectedText: "待附带选区",
+    from: 0,
+    to: 5,
+  });
+});
+
+test("direct question success enters the unified conversation and clears the draft", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("选区");
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", selection);
+
+  assert.equal(state.succeedDirectQuestion("回答"), true);
+  assert.equal(state.view.directQuestionDraft, "", "成功后清空未发送草稿");
+  assert.deepEqual(state.view.request, {
+    kind: "success",
+    snapshot: selection,
+    response: "回答",
+    conversationId: 1,
+    phase: "first",
+  });
+  assert.ok(state.conversation);
+  assert.equal(state.conversation?.initialUserMaterial.kind, "direct_question");
+  assert.deepEqual(state.conversation?.anchor, selection, "首轮选区作为对话锚点冻结");
+  assert.equal(state.conversation?.firstResponse, "回答");
+  assert.equal(state.followUpAvailable, true);
+});
+
+test("direct question without selection succeeds with a null anchor and null snapshot", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+
+  assert.equal(state.succeedDirectQuestion("回答"), true);
+  assert.equal(state.conversation?.anchor, null);
+  assert.equal(state.view.request.kind, "success");
+  if (state.view.request.kind === "success") {
+    assert.equal(state.view.request.snapshot, null);
+  }
+});
+
+test("direct question success enables follow-up turns in the unified conversation", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("首答");
+
+  const turnId = state.beginFollowUp("追问");
+  assert.equal(turnId, 1);
+  assert.equal(state.followUpAvailable, false);
+  assert.deepEqual(state.view.request, {
+    kind: "loading",
+    snapshot: null,
+    conversationId: 1,
+    phase: "follow_up",
+    turnId: 1,
+  });
+  assert.equal(state.conversation?.pending?.question, "追问");
+
+  state.succeedFollowUp(1, "追问回答");
+  assert.deepEqual(state.conversation?.turns, [
+    { id: 1, question: "追问", response: "追问回答" },
+  ]);
+  assert.equal(state.followUpAvailable, true);
+});
+
+test("direct question failure keeps the draft for retry", () => {
+  const state = new AiPanelState();
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", null);
+
+  assert.equal(state.failDirectQuestion(authError), true);
+  assert.equal(state.view.directQuestionDraft, "问题", "失败后保留草稿便于重试");
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "问题",
+    selection: null,
+    status: "error",
+    error: authError,
+  });
+});
+
+test("direct question configuration-required keeps the draft and question", () => {
+  const state = new AiPanelState();
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", null);
+
+  assert.equal(state.requireDirectQuestionConfiguration(), true);
+  assert.equal(state.view.directQuestionDraft, "问题");
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "问题",
+    selection: null,
+    status: "configuration_required",
+  });
+});
+
+test("direct question transitions are inert outside loading", () => {
+  const state = new AiPanelState();
+  assert.equal(state.succeedDirectQuestion("x"), false);
+  assert.equal(state.failDirectQuestion(authError), false);
+  assert.equal(state.requireDirectQuestionConfiguration(), false);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("collapse and reopen preserve direct question draft and pending selection", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("选区");
+  state.updateDirectQuestionDraft("未发送的问题");
+  state.setPendingSelection(selection);
+  state.open();
+
+  state.close();
+  assert.equal(state.isOpen, false);
+  assert.equal(state.view.directQuestionDraft, "未发送的问题");
+  assert.deepEqual(state.view.pendingSelection, selection);
+
+  state.open();
+  assert.equal(state.isOpen, true);
+  assert.equal(state.view.directQuestionDraft, "未发送的问题");
+  assert.deepEqual(state.view.pendingSelection, selection);
+});
+
+test("reset clears direct question draft and pending selection", () => {
+  const state = new AiPanelState();
+  state.updateDirectQuestionDraft("问题");
+  state.setPendingSelection(snapshot("选区"));
+  state.beginDirectQuestion("问题", snapshot("选区"));
+  state.succeedDirectQuestion("回答");
+  assert.ok(state.conversation, "成功后进入统一对话");
+
+  state.reset();
+  assert.equal(state.view.directQuestionDraft, "");
+  assert.equal(state.view.pendingSelection, null);
+  assert.equal(state.conversation, null, "切换作品/文档后统一对话被清空");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.isOpen, false);
+});
+
+test("beginDirectQuestion replaces a prior conversation as a fresh first-round entry", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("旧选区");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "旧首答");
+  assert.equal(state.followUpAvailable, true);
+
+  state.beginDirectQuestion("新问题", null);
+  assert.equal(state.conversation, null);
+  assert.equal(state.followUpAvailable, false);
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "新问题",
+    selection: null,
+    status: "loading",
+  });
+});
+
+test("removing the pending selection keeps the same selection ignored on re-sync", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("林站在天台边。");
+
+  state.setPendingSelection(selection);
+  assert.deepEqual(state.view.pendingSelection, selection);
+
+  // 用户主动移除待附带选区
+  state.removePendingSelection();
+  assert.equal(state.view.pendingSelection, null);
+
+  // 同一选区在 focus sync 时保持忽略，不重新附加
+  state.setPendingSelection(selection);
+  assert.equal(state.view.pendingSelection, null, "被忽略的同一选区不应重新附加");
+
+  // 新选区才重新附加
+  const newSelection = snapshot("新的选区");
+  state.setPendingSelection(newSelection);
+  assert.deepEqual(state.view.pendingSelection, newSelection);
+});
+
+test("clearing the editor selection does not mark it as ignored", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("林站在天台边。");
+
+  state.setPendingSelection(selection);
+  // 编辑器选区被清空（非用户主动移除）
+  state.setPendingSelection(null);
+  assert.equal(state.view.pendingSelection, null);
+
+  // 重新选择同一段文字应重新附加（因为不是主动移除）
+  state.setPendingSelection(selection);
+  assert.deepEqual(state.view.pendingSelection, selection);
+});
+
+test("reset clears the ignored selection marker", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("旧作品选区");
+  state.setPendingSelection(selection);
+  state.removePendingSelection();
+
+  state.reset();
+  // 重置后同一选区可重新附加（新作品范围）
+  state.setPendingSelection(selection);
+  assert.deepEqual(state.view.pendingSelection, selection);
 });

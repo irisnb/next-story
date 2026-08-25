@@ -13,8 +13,8 @@ import {
 } from "../src/ai-feature-follow-up.ts";
 import {
   buildThinkingExpansionRequest,
+  createPreflightGate,
   startFirstRequest,
-  type FirstRequestPreflightState,
 } from "../src/ai-feature-first-request.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type {
@@ -108,7 +108,7 @@ test("discards the preflight result when the project changes during config loadi
   const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
     configDeferred.resolve = resolve;
   });
-  const preflight: FirstRequestPreflightState = { pending: false };
+  const preflight = createPreflightGate();
   let requestedSnapshot: SelectionSnapshot | null = null;
 
   assert.equal(startFirstRequest({
@@ -122,7 +122,7 @@ test("discards the preflight result when the project changes during config loadi
     preflight,
     getProjectToken: () => projectToken,
   }), true);
-  assert.equal(preflight.pending, true, "预检进行中应锁定单飞");
+  assert.equal(preflight.owner, 1, "预检进行中应锁定单飞");
 
   // 预检期间切换到作品 B：令牌变化后，迟到的配置结果必须被丢弃。
   projectToken = 2;
@@ -132,7 +132,7 @@ test("discards the preflight result when the project changes during config loadi
   await Promise.resolve();
 
   assert.equal(requestedSnapshot, null, "不得把旧作品的冻结选区作为请求发出");
-  assert.equal(preflight.pending, false);
+  assert.equal(preflight.owner, null);
   // 预检结果被丢弃：面板停留在预览态（作品切换后由应用层 reset），不进入 loading/error。
   assert.deepEqual(state.view.request, { kind: "first_preview", snapshot: snap });
 });
@@ -429,6 +429,56 @@ test("accepted edit-resend sends the edited payload then commits question and lo
   assert.equal(state.conversation?.pending?.question, "新问题");
   assert.equal(state.conversation?.pending?.error, undefined);
   assert.equal(state.view.request.kind, "loading");
+});
+
+test("direct question origin follow-up sends the full Q&A payload with origin", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("原问题", snapshot("冻结选区"));
+  state.succeedDirectQuestion("首答");
+  const payloads: GenerateAiRequest[] = [];
+
+  assert.equal(followUpAcceptedRequest(state, "继续追问", (payload) => {
+    payloads.push(payload);
+    return Promise.resolve();
+  }), true);
+
+  assert.deepEqual(payloads, [{
+    kind: "follow_up",
+    selected_text: "冻结选区",
+    origin: "direct_question",
+    messages: [
+      { role: "user", content: "原问题" },
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "继续追问" },
+    ],
+  }]);
+});
+
+test("direct question origin follow-up retry preserves the failed question", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("原问题", null);
+  state.succeedDirectQuestion("首答");
+  state.beginFollowUp("失败问题");
+  state.failFollowUp(1, { code: "network", message: "网络失败" });
+
+  assert.equal(state.retryFollowUpQuestion(), "失败问题", "失败后保留原问题供重试");
+
+  const payloads: GenerateAiRequest[] = [];
+  assert.equal(retryFollowUpAcceptedRequest(state, (payload) => {
+    payloads.push(payload);
+    return Promise.resolve();
+  }), true);
+
+  assert.deepEqual(payloads, [{
+    kind: "follow_up",
+    selected_text: "",
+    origin: "direct_question",
+    messages: [
+      { role: "user", content: "原问题" },
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "失败问题" },
+    ],
+  }]);
 });
 
 test("opening configuration preserves conversation and never auto-fires a request", () => {

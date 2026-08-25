@@ -10,8 +10,11 @@ use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
     load_llm_config_summary_with_store, load_llm_config_with_store, save_llm_config_with_store,
     save_llm_config_with_store_checked, test_llm_connection, validate_llm_config, ConfigSavePhase,
-    GenerateAiErrorCode, GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
-    LlmConfigError, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
+    GenerateAiErrorCode, GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, FollowUpOrigin,
+    LlmConfig, LlmConfigError, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
+};
+use next_story_lib::llm_config::generate::{
+    build_task_string, validate_generate_ai_request,
 };
 use next_story_lib::project::{
     create_new_project, save_document, CreateProjectParams, ProjectPaths,
@@ -85,6 +88,19 @@ fn follow_up_request(
     GenerateAiRequest::FollowUp {
         selected_text: selected_text.into(),
         thinking_direction: None,
+        origin: None,
+        messages,
+    }
+}
+
+fn direct_question_follow_up_request(
+    selected_text: impl Into<String>,
+    messages: Vec<GenerateAiMessage>,
+) -> GenerateAiRequest {
+    GenerateAiRequest::FollowUp {
+        selected_text: selected_text.into(),
+        thinking_direction: None,
+        origin: Some(FollowUpOrigin::DirectQuestion),
         messages,
     }
 }
@@ -731,6 +747,78 @@ async fn generate_rejects_illegal_follow_up_role_order_and_messages_after_pendin
         assert_eq!(error.code, GenerateAiErrorCode::InvalidResponse);
         assert_eq!(error.message, "AI 请求内容无效，请重试");
     }
+}
+
+/// direct_question origin 的 follow_up 允许空 selected_text，且 messages 以 user 原问题开头。
+#[test]
+fn direct_question_origin_follow_up_allows_empty_selection_and_user_first_messages() {
+    let request = direct_question_follow_up_request(
+        "",
+        vec![
+            message(GenerateAiMessageRole::User, "这个角色为什么犹豫？"),
+            message(GenerateAiMessageRole::Assistant, "他可能害怕承诺。"),
+            message(GenerateAiMessageRole::User, "那他为什么还站在这里？"),
+        ],
+    );
+    assert!(
+        validate_generate_ai_request(&request).is_ok(),
+        "direct_question 来源允许空 selected_text 与 user 开头"
+    );
+}
+
+/// direct_question origin 的 follow_up 任务使用 DIRECT_QUESTION_SYSTEM_PROMPT，
+/// 包含原问题、可选重点材料与后续轮次。
+#[test]
+fn direct_question_origin_follow_up_task_uses_direct_question_prompt_and_full_qa() {
+    let request = direct_question_follow_up_request(
+        "林站在天台边。",
+        vec![
+            message(GenerateAiMessageRole::User, "这个角色为什么犹豫？"),
+            message(GenerateAiMessageRole::Assistant, "他可能害怕承诺。"),
+            message(GenerateAiMessageRole::User, "那他为什么还站在这里？"),
+        ],
+    );
+    let task = build_task_string(&request).expect("build task");
+    assert!(
+        task.contains("用户直接提出的问题"),
+        "必须使用直接提问系统提示词，实际任务: {task}"
+    );
+    assert!(task.contains("用户问题：\n这个角色为什么犹豫？"), "必须包含原问题");
+    assert!(
+        task.contains("重点参考材料（可选）：\n林站在天台边。"),
+        "必须包含可选重点材料"
+    );
+    assert!(task.contains("你的上一次回应：他可能害怕承诺。"), "必须包含 assistant 轮次");
+    assert!(task.contains("用户追问：那他为什么还站在这里？"), "必须包含 user 追问");
+}
+
+/// selection origin（无 origin）仍拒绝空 selected_text，并要求 messages 以 assistant 开头。
+#[test]
+fn selection_origin_follow_up_still_rejects_empty_selection_and_requires_assistant_first() {
+    let empty_selection = follow_up_request(
+        "",
+        vec![
+            message(GenerateAiMessageRole::Assistant, "首轮回应"),
+            message(GenerateAiMessageRole::User, "追问"),
+        ],
+    );
+    assert!(
+        validate_generate_ai_request(&empty_selection).is_err(),
+        "selection 来源仍拒绝空 selected_text"
+    );
+
+    let user_first = follow_up_request(
+        "冻结选区",
+        vec![
+            message(GenerateAiMessageRole::User, "用户问题"),
+            message(GenerateAiMessageRole::Assistant, "首轮回应"),
+            message(GenerateAiMessageRole::User, "追问"),
+        ],
+    );
+    assert!(
+        validate_generate_ai_request(&user_first).is_err(),
+        "selection 来源仍要求 messages 以 assistant 开头"
+    );
 }
 
 // ========== AI 零写回端到端 ==========

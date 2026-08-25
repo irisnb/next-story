@@ -33,6 +33,19 @@ export interface AiPanelDom {
   followUpErrorMessage: HTMLElement;
   followUpRetry: HTMLButtonElement;
   followUpEdit: HTMLButtonElement;
+  directQuestion: HTMLElement;
+  directQuestionSelection: HTMLElement;
+  directQuestionSelectionText: HTMLPreElement;
+  directQuestionSelectionRemove: HTMLButtonElement;
+  directQuestionForm: HTMLFormElement;
+  directQuestionInput: HTMLTextAreaElement;
+  directQuestionSend: HTMLButtonElement;
+  directQuestionLoading: HTMLElement;
+  directQuestionResponse: HTMLPreElement;
+  directQuestionError: HTMLElement;
+  directQuestionErrorMessage: HTMLElement;
+  directQuestionConfig: HTMLElement;
+  directQuestionGoConfig: HTMLButtonElement;
 }
 
 export interface AppDom {
@@ -329,6 +342,19 @@ export function getAppDom(): AppDom {
       followUpErrorMessage: requireElement("ai-follow-up-error-message"),
       followUpRetry: requireElement<HTMLButtonElement>("ai-follow-up-retry"),
       followUpEdit: requireElement<HTMLButtonElement>("ai-follow-up-edit"),
+      directQuestion: requireElement("ai-direct-question"),
+      directQuestionSelection: requireElement("ai-direct-question-selection"),
+      directQuestionSelectionText: requireElement<HTMLPreElement>("ai-direct-question-selection-text"),
+      directQuestionSelectionRemove: requireElement<HTMLButtonElement>("ai-direct-question-selection-remove"),
+      directQuestionForm: requireElement<HTMLFormElement>("ai-direct-question-form"),
+      directQuestionInput: requireElement<HTMLTextAreaElement>("ai-direct-question-input"),
+      directQuestionSend: requireElement<HTMLButtonElement>("ai-direct-question-send"),
+      directQuestionLoading: requireElement("ai-direct-question-loading"),
+      directQuestionResponse: requireElement<HTMLPreElement>("ai-direct-question-response"),
+      directQuestionError: requireElement("ai-direct-question-error"),
+      directQuestionErrorMessage: requireElement("ai-direct-question-error-message"),
+      directQuestionConfig: requireElement("ai-direct-question-config"),
+      directQuestionGoConfig: requireElement<HTMLButtonElement>("ai-direct-question-go-config"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

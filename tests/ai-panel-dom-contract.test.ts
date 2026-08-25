@@ -43,6 +43,19 @@ test("complete page assembly returns a valid AI panel DOM contract", () => {
     assert.ok(contract.followUpErrorMessage);
     assert.ok(contract.followUpRetry);
     assert.ok(contract.followUpEdit);
+    assert.ok(contract.directQuestion);
+    assert.ok(contract.directQuestionSelection);
+    assert.ok(contract.directQuestionSelectionText);
+    assert.ok(contract.directQuestionSelectionRemove);
+    assert.ok(contract.directQuestionForm);
+    assert.ok(contract.directQuestionInput);
+    assert.ok(contract.directQuestionSend);
+    assert.ok(contract.directQuestionLoading);
+    assert.ok(contract.directQuestionResponse);
+    assert.ok(contract.directQuestionError);
+    assert.ok(contract.directQuestionErrorMessage);
+    assert.ok(contract.directQuestionConfig);
+    assert.ok(contract.directQuestionGoConfig);
 
     // 共享节点与 AppDom 公共字段指向同一元素，避免接线漂移。
     assert.equal(contract.panel, dom.aiPanel);
@@ -96,6 +109,10 @@ test("setupAiPanel initializes purely from the explicit contract without global 
       onSubmitFollowUp: () => Promise.resolve(true),
       onRetryFollowUp: () => Promise.resolve(true),
       onEditFollowUp: () => Promise.resolve(true),
+      onSubmitDirectQuestion: () => Promise.resolve(true),
+      onRemoveDirectQuestionSelection: () => {},
+      onDirectQuestionFocus: () => {},
+      onOpenPanel: () => {},
     });
 
     assert.equal(getElementByIdCalls, 0);

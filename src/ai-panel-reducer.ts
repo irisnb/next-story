@@ -15,6 +15,7 @@ import {
 import {
   cancelFollowUpSuccessRequest,
   configurationRequiredRequest,
+  directQuestionLoadingRequest,
   firstBlockedRequest,
   firstErrorRequest,
   firstLoadingRequest,
@@ -30,6 +31,7 @@ import {
   type PanelVisibility,
 } from "./ai-panel-request-state.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
+import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
 
 /**
  * AI 面板核心状态的显式数据模型（reducer 的输入 / 输出）。
@@ -47,6 +49,12 @@ export interface AiPanelCoreState {
   readonly conversationContext: TemporaryConversationContext;
   readonly pendingFirstConversationId: number | null;
   readonly pendingFirstRequest: Extract<GenerateAiRequest, { kind: "first" }> | null;
+  /** 直接提问的未发送草稿。 */
+  readonly directQuestionDraft: string;
+  /** 当前待附带的选区重点材料；无选区时为 null。 */
+  readonly pendingSelection: SelectionSnapshot | null;
+  /** 用户主动移除后应保持忽略的选区身份；新选区出现时清除。 */
+  readonly ignoredSelection: SelectionSnapshot | null;
 }
 
 export function initialAiPanelCoreState(): AiPanelCoreState {
@@ -56,6 +64,9 @@ export function initialAiPanelCoreState(): AiPanelCoreState {
     conversationContext: emptyConversationContext(),
     pendingFirstConversationId: null,
     pendingFirstRequest: null,
+    directQuestionDraft: "",
+    pendingSelection: null,
+    ignoredSelection: null,
   };
 }
 
@@ -88,6 +99,17 @@ export type AiPanelEvent =
   | { readonly type: "cancel_follow_up"; readonly turnId: number }
   | { readonly type: "accept_follow_up_retry" }
   | { readonly type: "accept_first_retry" }
+  | { readonly type: "update_direct_question_draft"; readonly question: string }
+  | { readonly type: "set_pending_selection"; readonly snapshot: SelectionSnapshot | null }
+  | { readonly type: "remove_pending_selection" }
+  | {
+      readonly type: "begin_direct_question";
+      readonly question: string;
+      readonly selection: SelectionSnapshot | null;
+    }
+  | { readonly type: "succeed_direct_question"; readonly response: string }
+  | { readonly type: "fail_direct_question"; readonly error: GenerateAiError }
+  | { readonly type: "require_direct_question_configuration" }
   | { readonly type: "close" }
   | { readonly type: "open" }
   | { readonly type: "reset" };
@@ -297,6 +319,92 @@ export function reduceAiPanelState(
         request: firstRetryLoadingRequest(request.snapshot, request.conversationId),
       };
     }
+    case "update_direct_question_draft":
+      return { ...state, directQuestionDraft: event.question };
+    case "set_pending_selection": {
+      if (event.snapshot === null) {
+        // 编辑器选区被清空：移除待附带材料，但不标记为「主动忽略」。
+        return { ...state, pendingSelection: null };
+      }
+      // 用户主动移除过的同一选区在 focus sync 时保持忽略，不重新附加。
+      if (
+        state.ignoredSelection !== null &&
+        sameSelectionSnapshot(event.snapshot, state.ignoredSelection)
+      ) {
+        return { ...state, pendingSelection: null };
+      }
+      // 新选区：附加并清除忽略标记。
+      return {
+        ...state,
+        pendingSelection: frozenSnapshot(event.snapshot),
+        ignoredSelection: null,
+      };
+    }
+    case "remove_pending_selection": {
+      if (state.pendingSelection === null) return state;
+      return {
+        ...state,
+        pendingSelection: null,
+        ignoredSelection: frozenSnapshot(state.pendingSelection),
+      };
+    }
+    case "begin_direct_question": {
+      if (!event.question.trim()) return state;
+      const allocation = allocateConversationId(state.conversationContext);
+      // 自行冻结选区：不依赖调用方复制，调用后修改原对象不影响状态/请求/对话锚点。
+      const frozenSelection = event.selection ? frozenSnapshot(event.selection) : null;
+      return {
+        ...state,
+        visibility: "open",
+        request: directQuestionLoadingRequest(event.question, frozenSelection),
+        conversationContext: clearConversationContext(allocation.context),
+        pendingFirstConversationId: allocation.conversationId,
+        pendingFirstRequest: null,
+        pendingSelection: null,
+      };
+    }
+    case "succeed_direct_question": {
+      const request = state.request;
+      if (request.kind !== "direct_question" || request.status !== "loading") return state;
+      let nextContext = state.conversationContext;
+      let conversationId: number;
+      if (state.pendingFirstConversationId === null) {
+        conversationId = nextContext.nextConversationId;
+        nextContext = { ...nextContext, nextConversationId: nextContext.nextConversationId + 1 };
+      } else {
+        conversationId = state.pendingFirstConversationId;
+      }
+      const material: Extract<GenerateAiRequest, { kind: "direct_question" }> = {
+        kind: "direct_question",
+        question: request.question,
+        ...(request.selection ? { selected_text: request.selection.selectedText } : {}),
+      };
+      const anchor = request.selection ? frozenSnapshot(request.selection) : null;
+      const created = createConversationFromFirstSuccess(
+        nextContext,
+        conversationId,
+        anchor,
+        material,
+        event.response,
+      );
+      return {
+        ...state,
+        request: firstSuccessRequest(created.conversation.anchor, event.response, conversationId),
+        conversationContext: created.context,
+        pendingFirstConversationId: null,
+        directQuestionDraft: "",
+      };
+    }
+    case "fail_direct_question": {
+      const request = state.request;
+      if (request.kind !== "direct_question" || request.status !== "loading") return state;
+      return { ...state, request: { ...request, status: "error", error: event.error } };
+    }
+    case "require_direct_question_configuration": {
+      const request = state.request;
+      if (request.kind !== "direct_question" || request.status !== "loading") return state;
+      return { ...state, request: { ...request, status: "configuration_required" } };
+    }
     case "close":
       return state.visibility === "closed" ? state : { ...state, visibility: "closed" };
     case "open":
@@ -310,6 +418,9 @@ export function reduceAiPanelState(
         conversationContext: clearConversationContext(state.conversationContext),
         pendingFirstConversationId: null,
         pendingFirstRequest: null,
+        directQuestionDraft: "",
+        pendingSelection: null,
+        ignoredSelection: null,
       };
   }
 }

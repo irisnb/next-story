@@ -56,6 +56,10 @@ mod tests {
                     {"role": "tool", "content": "不能进入请求"}
                 ]
             }),
+            serde_json::json!({
+                "kind": "direct_question",
+                "question": "   \n"
+            }),
         ];
 
         for request in cases {

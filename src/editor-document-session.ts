@@ -25,6 +25,8 @@ export interface EditorDocumentSessionOptions {
   onEdit: (editor: EditorDocumentSessionEditor) => () => void;
   onSelectionChange: (editor: EditorDocumentSessionEditor) => () => void;
   onLoaded: (project: ProjectTreeState, documentId: string | null) => void;
+  /** 树刷新（当前作品与文档身份未变化）时调用，用于更新视图而不触发完整生命周期。 */
+  onTreeRefreshed: (project: ProjectTreeState, documentId: string | null) => void;
   beforeLoadProject: (project: ProjectTreeState) => void;
   resolveDocumentId: (project: ProjectTreeState) => string | null;
   isDocumentInTree: (tree: ContentTree, documentId: string) => boolean;
@@ -125,7 +127,7 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
       return;
     }
     project.tree = tree;
-    options.onLoaded(project, currentDocumentId);
+    options.onTreeRefreshed(project, currentDocumentId);
   }
 
   return { loadDocument, showProject, applyTree, invalidate };

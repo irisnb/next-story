@@ -92,6 +92,12 @@ export const AI_PANEL_NODE_IDS = [
   "ai-go-config", "ai-panel-collapse", "ai-conversation", "ai-follow-up-form",
   "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
   "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
+  "ai-direct-question", "ai-direct-question-selection",
+  "ai-direct-question-selection-text", "ai-direct-question-selection-remove",
+  "ai-direct-question-form", "ai-direct-question-input", "ai-direct-question-send",
+  "ai-direct-question-loading", "ai-direct-question-response",
+  "ai-direct-question-error", "ai-direct-question-error-message",
+  "ai-direct-question-config", "ai-direct-question-go-config",
   "btn-toggle-ai",
 ] as const;
 
@@ -142,6 +148,19 @@ export function createAiPanelDomFixture(): {
     followUpErrorMessage: elements.get("ai-follow-up-error-message")!,
     followUpRetry: elements.get("ai-follow-up-retry")!,
     followUpEdit: elements.get("ai-follow-up-edit")!,
+    directQuestion: elements.get("ai-direct-question")!,
+    directQuestionSelection: elements.get("ai-direct-question-selection")!,
+    directQuestionSelectionText: elements.get("ai-direct-question-selection-text")!,
+    directQuestionSelectionRemove: elements.get("ai-direct-question-selection-remove")!,
+    directQuestionForm: elements.get("ai-direct-question-form")!,
+    directQuestionInput: elements.get("ai-direct-question-input")!,
+    directQuestionSend: elements.get("ai-direct-question-send")!,
+    directQuestionLoading: elements.get("ai-direct-question-loading")!,
+    directQuestionResponse: elements.get("ai-direct-question-response")!,
+    directQuestionError: elements.get("ai-direct-question-error")!,
+    directQuestionErrorMessage: elements.get("ai-direct-question-error-message")!,
+    directQuestionConfig: elements.get("ai-direct-question-config")!,
+    directQuestionGoConfig: elements.get("ai-direct-question-go-config")!,
   } as unknown as AiPanelDom;
 
   return { elements, dom };

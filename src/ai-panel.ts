@@ -10,6 +10,10 @@ export interface AiPanelActions {
   onSubmitFollowUp: (question: string) => Promise<boolean>;
   onRetryFollowUp: () => Promise<boolean>;
   onEditFollowUp: (question: string) => Promise<boolean>;
+  onSubmitDirectQuestion: (question: string) => Promise<boolean>;
+  onRemoveDirectQuestionSelection: () => void;
+  onDirectQuestionFocus: () => void;
+  onOpenPanel: () => void;
 }
 
 /**
@@ -54,6 +58,18 @@ export function setupAiPanel(
     followUpErrorMessage,
     followUpRetry,
     followUpEdit,
+    directQuestion,
+    directQuestionSelection,
+    directQuestionSelectionText,
+    directQuestionSelectionRemove,
+    directQuestionForm,
+    directQuestionInput,
+    directQuestionSend,
+    directQuestionLoading,
+    directQuestionError,
+    directQuestionErrorMessage,
+    directQuestionConfig,
+    directQuestionGoConfig,
   } = dom;
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
@@ -67,6 +83,7 @@ export function setupAiPanel(
       state.close();
     } else {
       state.open();
+      actions.onOpenPanel();
     }
   });
   followUpInput.addEventListener("input", updateFollowUpSendState);
@@ -102,6 +119,34 @@ export function setupAiPanel(
     updateFollowUpSendState();
     followUpInput.focus();
   });
+
+  directQuestionInput.addEventListener("input", () => {
+    state.updateDirectQuestionDraft(directQuestionInput.value);
+  });
+  directQuestionInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      submitDirectQuestion();
+    }
+  });
+  directQuestionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitDirectQuestion();
+  });
+  directQuestionSelectionRemove.addEventListener("click", () => {
+    actions.onRemoveDirectQuestionSelection();
+  });
+  directQuestionGoConfig.addEventListener("click", () => actions.onGoToConfig());
+  // 聚焦输入前同步保存最新有效选区快照，避免失焦清空浏览器 Selection。
+  directQuestionInput.addEventListener("mousedown", () => actions.onDirectQuestionFocus());
+  directQuestionInput.addEventListener("focus", () => actions.onDirectQuestionFocus());
+
+  async function submitDirectQuestion(): Promise<void> {
+    const question = directQuestionInput.value;
+    if (directQuestionSend.disabled || !question.trim()) return;
+    const accepted = await actions.onSubmitDirectQuestion(question);
+    if (!accepted) return;
+  }
 
   function updateFollowUpSendState(): void {
     followUpSend.disabled = followUpInput.disabled || !followUpInput.value.trim();
@@ -212,6 +257,44 @@ export function setupAiPanel(
       followUpSend.textContent = "发送";
     }
     updateFollowUpSendState();
+
+    // 直接提问入口：空闲或直接提问请求时可见，其余状态隐藏。
+    const directQuestionView = view.directQuestion;
+    directQuestion.classList.toggle("hidden", directQuestionView === null);
+    if (directQuestionView) {
+      if (directQuestionInput.value !== directQuestionView.draft) {
+        directQuestionInput.value = directQuestionView.draft;
+      }
+      directQuestionSelection.classList.toggle(
+        "hidden",
+        directQuestionView.pendingSelection === null,
+      );
+      if (directQuestionView.pendingSelection) {
+        directQuestionSelectionText.textContent = directQuestionView.pendingSelection.text;
+      }
+      directQuestionLoading.classList.toggle(
+        "hidden",
+        directQuestionView.status !== "loading",
+      );
+      directQuestionError.classList.toggle(
+        "hidden",
+        directQuestionView.errorMessage === null,
+      );
+      if (directQuestionView.errorMessage !== null) {
+        directQuestionErrorMessage.textContent = directQuestionView.errorMessage;
+      }
+      directQuestionConfig.classList.toggle(
+        "hidden",
+        directQuestionView.status !== "configuration_required",
+      );
+      directQuestionSend.disabled = !directQuestionView.submitEnabled;
+    } else {
+      directQuestionInput.value = "";
+      directQuestionSelection.classList.add("hidden");
+      directQuestionLoading.classList.add("hidden");
+      directQuestionError.classList.add("hidden");
+      directQuestionConfig.classList.add("hidden");
+    }
 
     // 面板展开时，header 的“收起”可用；可在任意状态下收起
     toggleBtn.textContent = state.isOpen ? "收起 AI" : "AI 面板";

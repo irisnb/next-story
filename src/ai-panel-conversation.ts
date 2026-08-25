@@ -12,10 +12,19 @@ export interface PendingFollowUpTurn {
   error?: GenerateAiError;
 }
 
+/**
+ * 三个首轮入口（AI 及时召唤 / 思维扩展 / 直接提问）统一进入同一临时对话，
+ * 因此首轮材料是 `first` 与 `direct_question` 请求的联合。
+ */
+export type FirstRoundMaterial =
+  | Extract<GenerateAiRequest, { kind: "first" }>
+  | Extract<GenerateAiRequest, { kind: "direct_question" }>;
+
 export interface TemporaryConversation {
   id: number;
-  anchor: SelectionSnapshot;
-  initialUserMaterial: Readonly<Extract<GenerateAiRequest, { kind: "first" }>>;
+  /** 首轮冻结选区锚点；直接提问无选区时为 null。 */
+  anchor: SelectionSnapshot | null;
+  initialUserMaterial: Readonly<FirstRoundMaterial>;
   firstResponse: string;
   turns: SuccessfulFollowUpTurn[];
   pending: PendingFollowUpTurn | null;
@@ -23,8 +32,8 @@ export interface TemporaryConversation {
 
 export type ReadonlyTemporaryConversation = Readonly<{
   id: number;
-  anchor: Readonly<SelectionSnapshot>;
-  initialUserMaterial: Readonly<Extract<GenerateAiRequest, { kind: "first" }>>;
+  anchor: Readonly<SelectionSnapshot> | null;
+  initialUserMaterial: Readonly<FirstRoundMaterial>;
   firstResponse: string;
   turns: ReadonlyArray<Readonly<SuccessfulFollowUpTurn>>;
   pending: Readonly<PendingFollowUpTurn> | null;
@@ -70,11 +79,11 @@ export function allocateConversationId(
 export function createConversationFromFirstSuccess(
   context: TemporaryConversationContext,
   conversationId: number,
-  snapshot: SelectionSnapshot,
-  firstRequest: Extract<GenerateAiRequest, { kind: "first" }>,
+  snapshot: SelectionSnapshot | null,
+  firstRequest: FirstRoundMaterial,
   response: string,
 ): { context: TemporaryConversationContext; conversation: TemporaryConversation } {
-  const anchor = frozenSnapshot(snapshot);
+  const anchor = snapshot ? frozenSnapshot(snapshot) : null;
   const conversation: TemporaryConversation = {
     id: conversationId,
     anchor,
@@ -214,9 +223,13 @@ export function buildFollowUpRequest(
   conversation: TemporaryConversation,
   question: string,
 ): Extract<GenerateAiRequest, { kind: "follow_up" }> {
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-    { role: "assistant", content: conversation.firstResponse },
-  ];
+  const material = conversation.initialUserMaterial;
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  if (material.kind === "direct_question") {
+    // 直接提问来源：messages 以用户原问题开头，再接 assistant 首轮回应与后续轮次。
+    messages.push({ role: "user", content: material.question });
+  }
+  messages.push({ role: "assistant", content: conversation.firstResponse });
   for (const turn of conversation.turns) {
     messages.push({ role: "user" as const, content: turn.question });
     messages.push({ role: "assistant" as const, content: turn.response });
@@ -224,9 +237,12 @@ export function buildFollowUpRequest(
   messages.push({ role: "user", content: question });
   return {
     kind: "follow_up",
-    selected_text: conversation.initialUserMaterial.selected_text,
-    ...(conversation.initialUserMaterial.thinking_direction
-      ? { thinking_direction: conversation.initialUserMaterial.thinking_direction }
+    selected_text: material.selected_text ?? "",
+    ...(material.kind === "direct_question"
+      ? { origin: "direct_question" as const }
+      : {}),
+    ...(material.kind === "first" && material.thinking_direction
+      ? { thinking_direction: material.thinking_direction }
       : {}),
     messages,
   };
@@ -280,7 +296,7 @@ export function readonlyConversationView(
     : null;
   return Object.freeze({
     id: conversation.id,
-    anchor: Object.freeze({ ...conversation.anchor }),
+    anchor: conversation.anchor ? Object.freeze({ ...conversation.anchor }) : null,
     initialUserMaterial: Object.freeze({ ...conversation.initialUserMaterial }),
     firstResponse: conversation.firstResponse,
     turns: Object.freeze(turns),
@@ -325,8 +341,8 @@ export class TemporaryConversationState {
 
   createFromFirstSuccess(
     conversationId: number,
-    snapshot: SelectionSnapshot,
-    firstRequest: Extract<GenerateAiRequest, { kind: "first" }>,
+    snapshot: SelectionSnapshot | null,
+    firstRequest: FirstRoundMaterial,
     response: string,
   ): TemporaryConversation {
     const created = createConversationFromFirstSuccess(

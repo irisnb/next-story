@@ -487,6 +487,32 @@ test("showProject begins the AI project and unload ends it", async () => {
   }
 });
 
+test("applyTree with the same document does not reset the AI project", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") });
+  try {
+    let begins = 0;
+    const ai: AiFeatureController = {
+      beginProject: () => { begins += 1; },
+      endProject: () => {},
+      resetSelectionEntry: () => {},
+      submitFollowUp: () => Promise.resolve(false),
+      retryFollowUp: () => Promise.resolve(false),
+      editFollowUp: () => Promise.resolve(false),
+    };
+    fixture.editor.attachAi(ai);
+
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    assert.equal(begins, 1);
+
+    // 树刷新（同一文档仍在树中，仅重命名）：不应重置 AI 项目
+    fixture.editor.applyTree(treeFrom([docNode("doc-1", "重命名后的文档")]));
+    assert.equal(begins, 1, "同一文档的树刷新不应触发 beginProject");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
 test("creates a single editor for the current document without dirtying initialization", async () => {
   const fixture = editorFixture({
     "doc-1": notebookJson("初稿"),

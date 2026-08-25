@@ -347,3 +347,92 @@ test("new accepted summon replacement invalidates an old structured follow-up re
   assert.equal(state.view.request.kind, "loading");
   assert.notEqual(state.view.request.conversationId, oldIdentity.conversationId);
 });
+
+test("direct question request routes success to the direct question callback", async () => {
+  const events: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async () => ({ ok: true, content: "first" }),
+    {
+      onSuccess: () => {},
+      onError: () => {},
+      onDirectQuestionSuccess: (content) => events.push(`dq:${content}`),
+    },
+    () => 1,
+    async () => ({ ok: true, content: "直接提问回答" }),
+  );
+
+  await coordinator.requestDirectQuestion({
+    kind: "direct_question",
+    question: "问题",
+  })!;
+  assert.deepEqual(events, ["dq:直接提问回答"]);
+  assert.equal(coordinator.busy, false);
+});
+
+test("direct question request routes failure to the direct question callback", async () => {
+  const events: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async () => ({ ok: true, content: "first" }),
+    {
+      onSuccess: () => {},
+      onError: () => {},
+      onDirectQuestionError: (error) => events.push(`dq:${error.code}`),
+    },
+    () => 1,
+    async () => ({ ok: false, error: authError }),
+  );
+
+  await coordinator.requestDirectQuestion({
+    kind: "direct_question",
+    question: "问题",
+  })!;
+  assert.deepEqual(events, ["dq:authentication"]);
+  assert.equal(coordinator.busy, false);
+});
+
+test("direct question result is discarded after the project token changes", async () => {
+  let token = 1;
+  let resolve!: (value: GenerateAiResult) => void;
+  const events: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async () => ({ ok: true, content: "first" }),
+    {
+      onSuccess: () => {},
+      onError: () => {},
+      onDirectQuestionSuccess: () => events.push("stale-applied"),
+    },
+    () => token,
+    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
+  );
+
+  const pending = coordinator.requestDirectQuestion({
+    kind: "direct_question",
+    question: "旧作品问题",
+  })!;
+  token = 2;
+  resolve({ ok: true, content: "迟到旧作品回答" });
+  await pending;
+
+  assert.deepEqual(events, []);
+  assert.equal(coordinator.busy, false);
+});
+
+test("direct question request shares the single-flight lock with other requests", async () => {
+  let resolve!: (value: GenerateAiResult) => void;
+  const coordinator = new AiRequestCoordinator(
+    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
+    { onSuccess: () => {}, onError: () => {} },
+    () => 1,
+    async () => ({ ok: true, content: "x" }),
+  );
+
+  const first = coordinator.request(snapshot("a"))!;
+  const blocked = coordinator.requestDirectQuestion({
+    kind: "direct_question",
+    question: "问题",
+  });
+  assert.equal(blocked, null, "已有请求进行中，直接提问应被单飞拒绝");
+  resolve({ ok: true, content: "r" });
+  await first;
+  assert.equal(coordinator.busy, false);
+});

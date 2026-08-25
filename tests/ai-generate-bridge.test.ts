@@ -108,3 +108,33 @@ test("propagates a structured failure without leaking notebooks or save calls", 
   }
   assert.equal(saveProjectSeen, false, "生成链路不得调用保存命令");
 });
+
+test("sends a direct question with optional selection and no notebook write args", async () => {
+  const { invoke, calls } = fakeInvoke();
+  const request: GenerateAiRequest = {
+    kind: "direct_question",
+    question: "这个角色为什么犹豫？",
+    selected_text: "林站在天台边。",
+  };
+  const result = await generateAiThinking(request, invoke);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].cmd, "generate_ai_thinking");
+  assert.deepEqual(calls[0].args.request, request);
+  assert.equal("draftContent" in calls[0].args, false);
+  assert.equal("saveProject" in calls[0].args, false);
+  assert.equal("api_key" in calls[0].args, false);
+  assert.deepEqual(result, { ok: true, content: "思考" });
+});
+
+test("sends a direct question without selection as question-only", async () => {
+  const { invoke, calls } = fakeInvoke();
+  await generateAiThinking(
+    { kind: "direct_question", question: "只问问题" },
+    invoke,
+  );
+  assert.deepEqual(calls[0].args.request, {
+    kind: "direct_question",
+    question: "只问问题",
+  });
+});

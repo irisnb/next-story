@@ -147,6 +147,15 @@ pub enum GenerateAiMessageRole {
     Assistant,
 }
 
+/// 追问来源：`selection`（AI 及时召唤 / 思维扩展）或 `direct_question`（直接提问）。
+/// 缺省视为 `selection`，维持既有校验与提示词语义。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FollowUpOrigin {
+    Selection,
+    DirectQuestion,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateAiMessage {
@@ -168,7 +177,17 @@ pub enum GenerateAiRequest {
         /// 追问复用首次思维扩展方向；缺省或空白表示普通召唤或空方向开始。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
+        /// 追问来源；缺省视为 `selection`（AI 及时召唤 / 思维扩展）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<FollowUpOrigin>,
         messages: Vec<GenerateAiMessage>,
+    },
+    /// 常驻面板直接提问：必填问题 + 可选选区重点材料。
+    DirectQuestion {
+        question: String,
+        /// 可选选区重点材料；缺省或空白表示无选区直接提问。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected_text: Option<String>,
     },
 }
 

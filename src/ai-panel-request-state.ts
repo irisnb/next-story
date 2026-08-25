@@ -6,28 +6,28 @@ export type PanelRequestState =
   | { kind: "idle" }
   | {
       kind: "first_preview";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
     }
   | {
       kind: "first_blocked";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       message: string;
     }
   | {
       kind: "thinking_expansion";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       direction: string;
     }
   | {
       kind: "loading";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       conversationId?: number;
       phase?: "first" | "follow_up";
       turnId?: number;
     }
   | {
       kind: "success";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       response: string;
       conversationId?: number;
       phase?: "first" | "follow_up";
@@ -35,7 +35,7 @@ export type PanelRequestState =
     }
   | {
       kind: "error";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       error: GenerateAiError;
       conversationId?: number;
       phase?: "first" | "follow_up";
@@ -43,44 +43,55 @@ export type PanelRequestState =
     }
   | {
       kind: "configuration_required";
-      snapshot: SelectionSnapshot;
+      snapshot: SelectionSnapshot | null;
       conversationId?: number;
       turnId?: number;
+    }
+  | {
+      kind: "direct_question";
+      question: string;
+      selection: SelectionSnapshot | null;
+      status: "loading" | "error" | "configuration_required";
+      error?: GenerateAiError;
     };
 
 export interface PanelStateView {
   visibility: PanelVisibility;
   request: PanelRequestState;
+  /** 直接提问的未发送草稿。 */
+  directQuestionDraft: string;
+  /** 当前待附带的选区重点材料；无选区时为 null。 */
+  pendingSelection: SelectionSnapshot | null;
 }
 
 export function idleRequest(): PanelRequestState {
   return { kind: "idle" };
 }
 
-export function firstPreviewRequest(snapshot: SelectionSnapshot): PanelRequestState {
+export function firstPreviewRequest(snapshot: SelectionSnapshot | null): PanelRequestState {
   return { kind: "first_preview", snapshot };
 }
 
-export function firstBlockedRequest(snapshot: SelectionSnapshot): PanelRequestState {
+export function firstBlockedRequest(snapshot: SelectionSnapshot | null): PanelRequestState {
   return { kind: "first_blocked", snapshot, message: "已有 AI 请求正在进行，本次请求没有发出。" };
 }
 
 export function thinkingExpansionRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   direction: string,
 ): PanelRequestState {
   return { kind: "thinking_expansion", snapshot, direction };
 }
 
 export function firstLoadingRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   conversationId: number,
 ): PanelRequestState {
   return { kind: "loading", snapshot, conversationId, phase: "first" };
 }
 
 export function firstSuccessRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   response: string,
   conversationId: number,
 ): PanelRequestState {
@@ -88,7 +99,7 @@ export function firstSuccessRequest(
 }
 
 export function firstErrorRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   error: GenerateAiError,
   identity: { conversationId?: number; phase?: "first" | "follow_up" } | null,
 ): PanelRequestState {
@@ -105,7 +116,7 @@ export function firstErrorRequest(
 }
 
 export function configurationRequiredRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   conversationId?: number,
   turnId?: number,
 ): PanelRequestState {
@@ -119,7 +130,7 @@ export function configurationRequiredRequest(
 }
 
 export function followUpLoadingRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   conversationId: number,
   turnId: number,
 ): PanelRequestState {
@@ -133,7 +144,7 @@ export function followUpLoadingRequest(
 }
 
 export function followUpSuccessRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   response: string,
   conversationId: number,
   turnId: number,
@@ -149,7 +160,7 @@ export function followUpSuccessRequest(
 }
 
 export function followUpErrorRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   error: GenerateAiError,
   conversationId: number,
   turnId: number,
@@ -165,14 +176,14 @@ export function followUpErrorRequest(
 }
 
 export function cancelFollowUpSuccessRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   response: string,
 ): PanelRequestState {
   return { kind: "success", snapshot, response };
 }
 
 export function firstRetryLoadingRequest(
-  snapshot: SelectionSnapshot,
+  snapshot: SelectionSnapshot | null,
   conversationId: number,
 ): PanelRequestState {
   return {
@@ -181,4 +192,11 @@ export function firstRetryLoadingRequest(
     conversationId,
     phase: "first",
   };
+}
+
+export function directQuestionLoadingRequest(
+  question: string,
+  selection: SelectionSnapshot | null,
+): PanelRequestState {
+  return { kind: "direct_question", question, selection, status: "loading" };
 }

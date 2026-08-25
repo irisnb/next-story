@@ -1,6 +1,7 @@
 import type { AppDom } from "./dom.ts";
 import {
   buildThinkingExpansionRequest,
+  createPreflightGate,
   startFirstRequest,
   type FirstRequestPreflightState,
 } from "./ai-feature-first-request.ts";
@@ -9,6 +10,7 @@ import {
   followUpAcceptedRequest,
   retryFollowUpAcceptedRequest,
 } from "./ai-feature-follow-up.ts";
+import { startDirectQuestion } from "./ai-feature-direct-question.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
@@ -17,6 +19,7 @@ import {
   type SelectionEntryController,
   type SelectionEntryEditor,
 } from "./selection-entry.ts";
+import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
 import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
@@ -95,6 +98,8 @@ interface AiPanelWiring {
   readonly openConfigPage: AiFeatureHooks["openConfigPage"];
   readonly requestFirst: FirstRequestStarter;
   readonly requestStructured: StructuredRequestSender;
+  readonly submitDirectQuestion: (question: string) => boolean;
+  readonly syncPendingSelection: () => void;
 }
 
 interface SelectionEntryWiring {
@@ -116,7 +121,7 @@ interface ProjectLifecycleWiring {
 }
 
 function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
-  const { state, openConfigPage, requestFirst, requestStructured } = wiring;
+  const { state, openConfigPage, requestFirst, requestStructured, submitDirectQuestion, syncPendingSelection } = wiring;
 
   return {
     onRetry: () => {
@@ -126,7 +131,7 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
     onGoToConfig: () => openAiConfiguration(openConfigPage),
     onStartThinkingExpansion: (direction) => {
       const current = state.view.request;
-      if (current.kind !== "thinking_expansion") return false;
+      if (current.kind !== "thinking_expansion" || current.snapshot === null) return false;
       return requestFirst(
         current.snapshot,
         buildThinkingExpansionRequest(current.snapshot, direction),
@@ -136,6 +141,10 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
     onRetryFollowUp: async () => retryFollowUpAcceptedRequest(state, requestStructured),
     onEditFollowUp: async (question) =>
       editAndResendFollowUpAcceptedRequest(state, question, requestStructured),
+    onSubmitDirectQuestion: async (question) => submitDirectQuestion(question),
+    onRemoveDirectQuestionSelection: () => state.removePendingSelection(),
+    onDirectQuestionFocus: () => syncPendingSelection(),
+    onOpenPanel: () => syncPendingSelection(),
   };
 }
 
@@ -205,7 +214,7 @@ export function setupAiFeature(
   const generate = dependencies.generate ?? generateAiThinking;
   const loadConfig = dependencies.loadConfig ?? loadLlmConfig;
   const setupEntry = dependencies.setupEntry ?? setupSelectionEntry;
-  const firstRequestPreflight: FirstRequestPreflightState = { pending: false };
+  const firstRequestPreflight: FirstRequestPreflightState = createPreflightGate();
 
   const coordinator = new AiRequestCoordinator(
     (selectedText: string) =>
@@ -227,6 +236,16 @@ export function setupAiFeature(
           state.failFollowUp(identity.turnId ?? -1, error);
         }
       },
+      onDirectQuestionSuccess: (content) => {
+        state.succeedDirectQuestion(content);
+      },
+      onDirectQuestionError: (error) => {
+        if (error.code === "configuration_required") {
+          state.requireDirectQuestionConfiguration();
+        } else {
+          state.failDirectQuestion(error);
+        }
+      },
     },
     () => projectToken,
     (request) => generate(request),
@@ -234,6 +253,36 @@ export function setupAiFeature(
   );
   const requestStructured: StructuredRequestSender = (request, identity) =>
     coordinator.requestStructured(request, identity);
+  const requestDirectQuestion = (request: GenerateAiRequest) =>
+    coordinator.requestDirectQuestion(request);
+
+  function syncPendingSelection(): void {
+    const editor = hooks.getCurrentEditor();
+    const documentId = hooks.getCurrentDocumentId();
+    if (!editor || documentId === null) return;
+    const snapshot = captureSelection(documentId, editor);
+    state.setPendingSelection(isMeaningfulSelection(snapshot) ? snapshot : null);
+  }
+
+  function submitDirectQuestion(question: string): boolean {
+    return startDirectQuestion({
+      state,
+      question,
+      selection: state.view.pendingSelection,
+      loadConfig,
+      request: requestDirectQuestion,
+      getProjectToken: () => projectToken,
+      preflight: firstRequestPreflight,
+    });
+  }
+
+  // 面板打开期间，编辑器选区变化会同步为待附带的重点材料（替换旧选区或清除）。
+  const editorEventTypes = ["mouseup", "keyup", "select", "click", "input", "scroll"] as const;
+  for (const eventType of editorEventTypes) {
+    dom.editorTextarea.addEventListener(eventType, () => {
+      if (state.isOpen) syncPendingSelection();
+    });
+  }
 
   function requestFirst(
     snapshot: SelectionSnapshot,
@@ -257,6 +306,8 @@ export function setupAiFeature(
     openConfigPage: hooks.openConfigPage,
     requestFirst,
     requestStructured,
+    submitDirectQuestion,
+    syncPendingSelection,
   }));
 
   const selectionEntry = setupSelectionEntryCallbacks({

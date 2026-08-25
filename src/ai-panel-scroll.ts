@@ -19,7 +19,11 @@ export class AiPanelScrollResetController {
       this.lastRequestSnapshot = request.snapshot;
       return true;
     }
-    if (this.lastRequestSnapshot && sameSelectionSnapshot(this.lastRequestSnapshot, request.snapshot)) {
+    if (
+      request.snapshot !== null &&
+      this.lastRequestSnapshot !== null &&
+      sameSelectionSnapshot(this.lastRequestSnapshot, request.snapshot)
+    ) {
       return false;
     }
     this.lastConversationId = request.conversationId ?? null;

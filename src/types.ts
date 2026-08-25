@@ -111,7 +111,19 @@ export type GenerateAiRequest =
       selected_text: string;
       /** 追问复用首次思维扩展方向；普通召唤或空方向开始时省略。 */
       thinking_direction?: string;
+      /**
+       * 追问来源：`selection`（AI 及时召唤 / 思维扩展，默认省略）或
+       * `direct_question`（直接提问首轮成功后进入统一对话）。
+       */
+      origin?: "selection" | "direct_question";
       messages: GenerateAiMessage[];
+    }
+  | {
+      kind: "direct_question";
+      /** 必填的直接提问。 */
+      question: string;
+      /** 可选选区重点材料；无选区时省略。 */
+      selected_text?: string;
     };
 
 /**

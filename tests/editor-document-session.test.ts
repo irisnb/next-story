@@ -31,6 +31,7 @@ test("session ignores a stale document load", async () => {
     setDocumentId: () => {}, setEditor: () => {}, disposeEditor: () => {},
     setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
     onLoaded: () => { loaded += 1; }, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
+    onTreeRefreshed: () => {},
     isDocumentInTree: () => true, firstDocument: () => ({ id: "doc-a" }), hasUnsavedChanges: () => false,
     confirmDiscard: () => true, clearRememberedDocument: () => {},
   });
@@ -54,6 +55,7 @@ test("session applies deleted document fallback to empty state", () => {
     setDocumentId: (value) => { documentId = value; }, setEditor: (value) => { editor = value; },
     disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
     onLoaded: (_project, id) => { loadedId = id; }, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
+    onTreeRefreshed: () => {},
     isDocumentInTree: () => false, firstDocument: () => null, hasUnsavedChanges: () => false,
     confirmDiscard: () => true, clearRememberedDocument: () => {},
   });
@@ -62,4 +64,31 @@ test("session applies deleted document fallback to empty state", () => {
   assert.equal(editor, null);
   assert.equal(loadedId, null);
   assert.deepEqual(current.tree.root_children, []);
+});
+
+test("applyTree with the same document refreshes the tree without a full load", () => {
+  let current = project();
+  let documentId: string | null = "doc-a";
+  let loaded = 0;
+  let refreshed = 0;
+  const session = createEditorDocumentSession({
+    dom: { editorTextarea: {} as HTMLElement }, readDocument: async () => "",
+    createEditor: () => ({ onEdit: () => () => {}, onSelectionChange: () => () => {} }),
+    getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
+    setDocumentId: (value) => { documentId = value; }, setEditor: () => {},
+    disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
+    onLoaded: () => { loaded += 1; },
+    onTreeRefreshed: () => { refreshed += 1; },
+    beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
+    isDocumentInTree: () => true, firstDocument: () => ({ id: "doc-a" }), hasUnsavedChanges: () => false,
+    confirmDiscard: () => true, clearRememberedDocument: () => {},
+  });
+  session.applyTree({
+    root_children: ["doc-a"],
+    nodes: { "doc-a": { id: "doc-a", name: "重命名", kind: "Document", children: [] } },
+    recycle_bin: [],
+  });
+  assert.equal(loaded, 0, "同一文档的树刷新不应触发完整加载");
+  assert.equal(refreshed, 1, "应触发树刷新回调");
+  assert.equal(documentId, "doc-a");
 });

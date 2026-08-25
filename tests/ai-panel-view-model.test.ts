@@ -4,6 +4,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { buildAiPanelView } from "../src/ai-panel-view-model.ts";
 import type { AiPanelView } from "../src/ai-panel-view-model.ts";
+import type { PanelStateView } from "../src/ai-panel-request-state.ts";
 import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 /**
@@ -27,6 +28,30 @@ const authError: GenerateAiError = {
 function viewOf(state: AiPanelState): AiPanelView {
   return buildAiPanelView(state.view, state.conversation);
 }
+
+test("success request with a null snapshot renders without a snapshot block", () => {
+  // Given: 直接提问无选区成功后的统一 success 请求（snapshot 为 null）
+  const panelState: PanelStateView = {
+    visibility: "open",
+    request: {
+      kind: "success",
+      snapshot: null,
+      response: "回答",
+      conversationId: 1,
+      phase: "first",
+    },
+    directQuestionDraft: "",
+    pendingSelection: null,
+  };
+
+  // When: 构建显示 view model
+  const view = buildAiPanelView(panelState, null);
+
+  // Then: 不显示选区块，独立回复区显示回应，不抛错
+  assert.equal(view.snapshot, null);
+  assert.equal(view.response, "回答");
+  assert.equal(view.panelVisible, true);
+});
 
 test("idle state hides every content region and marks the panel collapsed", () => {
   // Given: 一个全新的、未召唤过 AI 的面板状态
@@ -360,4 +385,138 @@ test("follow-up configuration failure keeps the thread and exposes retry and edi
   assert.equal(view.errorBlock, null);
   assert.ok(view.followUpForm);
   assert.equal(view.followUpForm.inputEnabled, false);
+});
+
+test("idle open panel shows the direct question input with submit disabled for blank draft", () => {
+  // Given: 面板打开且处于空闲
+  const state = new AiPanelState();
+  state.open();
+
+  // When: 构建显示 view model
+  const view = viewOf(state);
+
+  // Then: 直接提问入口可见，空草稿时提交禁用
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.draft, "");
+  assert.equal(view.directQuestion.pendingSelection, null);
+  assert.equal(view.directQuestion.status, "idle");
+  assert.equal(view.directQuestion.submitEnabled, false);
+});
+
+test("direct question input enables submit once the draft is non-blank", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.updateDirectQuestionDraft("这个角色为什么犹豫？");
+
+  const view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.draft, "这个角色为什么犹豫？");
+  assert.equal(view.directQuestion.submitEnabled, true);
+});
+
+test("direct question shows the attached pending selection as focus material", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.setPendingSelection(snapshot("林站在天台边。"));
+
+  const view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.deepEqual(view.directQuestion.pendingSelection, { text: "林站在天台边。" });
+});
+
+test("direct question loading disables duplicate submission", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", null);
+
+  const view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.status, "loading");
+  assert.equal(view.directQuestion.submitEnabled, false);
+});
+
+test("direct question success enters the unified conversation and hides the direct question form", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("回答");
+
+  const view = viewOf(state);
+  assert.equal(view.directQuestion, null, "成功后隐藏直接提问表单，改由统一对话呈现");
+  assert.equal(view.snapshot, null, "无选区时无选区块");
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "问题" },
+    { role: "assistant", text: "回答" },
+  ]);
+  assert.ok(view.followUpForm);
+  assert.equal(view.followUpForm.inputEnabled, true);
+});
+
+test("direct question conversation shows original question, first answer, then follow-up turns in order", () => {
+  // Given: 直接提问来源的统一对话，含首轮原问题、首轮回答与一次追问
+  const state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("这个角色为什么犹豫？", null);
+  state.succeedDirectQuestion("首轮回答");
+  const turnId = state.beginFollowUp("那她后来怎么决定？");
+  assert.ok(turnId !== null);
+  state.succeedFollowUp(turnId, "追问回答");
+
+  // When: 构建显示 view model
+  const view = viewOf(state);
+
+  // Then: 按顺序显示首轮用户原问题、AI 首轮回答、后续用户追问/AI 回答
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "这个角色为什么犹豫？" },
+    { role: "assistant", text: "首轮回答" },
+    { role: "user", text: "那她后来怎么决定？" },
+    { role: "assistant", text: "追问回答" },
+  ]);
+});
+
+test("direct question error shows the error message and keeps submit enabled", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.updateDirectQuestionDraft("问题");
+  state.beginDirectQuestion("问题", null);
+  state.failDirectQuestion(authError);
+
+  const view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.status, "error");
+  assert.equal(view.directQuestion.errorMessage, "认证失败");
+  assert.equal(view.directQuestion.draft, "问题", "失败后保留草稿");
+  assert.equal(view.directQuestion.submitEnabled, true);
+});
+
+test("direct question configuration-required shows the config state", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("问题", null);
+  state.requireDirectQuestionConfiguration();
+
+  const view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.status, "configuration_required");
+});
+
+test("direct question entry is hidden during a legacy selection-summon request", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("冻结选区");
+  state.beginRequest(anchor);
+
+  const view = viewOf(state);
+  assert.equal(view.directQuestion, null);
+  assert.equal(view.loadingVisible, true);
+});
+
+test("direct question entry is hidden while the panel is collapsed", () => {
+  const state = new AiPanelState();
+  state.updateDirectQuestionDraft("问题");
+  const view = viewOf(state);
+  assert.equal(view.directQuestion, null);
 });

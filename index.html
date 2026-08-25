@@ -167,6 +167,27 @@
                   <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
                   <button id="ai-follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
                 </form>
+                <div id="ai-direct-question" class="ai-direct-question hidden">
+                  <div id="ai-direct-question-selection" class="ai-direct-question-selection hidden">
+                    <span class="ai-direct-question-selection-label">重点提示</span>
+                    <pre id="ai-direct-question-selection-text" class="ai-direct-question-selection-text"></pre>
+                    <button id="ai-direct-question-selection-remove" class="ai-panel-btn" type="button">移除</button>
+                  </div>
+                  <form id="ai-direct-question-form" class="ai-direct-question-form">
+                    <label class="ai-direct-question-label" for="ai-direct-question-input">直接提问</label>
+                    <textarea id="ai-direct-question-input" class="ai-direct-question-input" rows="3" placeholder="直接向 AI 提问…"></textarea>
+                    <button id="ai-direct-question-send" class="ai-direct-question-send" type="submit" disabled>提问</button>
+                  </form>
+                  <div id="ai-direct-question-loading" class="ai-loading hidden">正在思考…</div>
+                  <pre id="ai-direct-question-response" class="ai-response hidden"></pre>
+                  <div id="ai-direct-question-error" class="ai-error-block hidden">
+                    <div id="ai-direct-question-error-message" class="ai-error-message"></div>
+                  </div>
+                  <div id="ai-direct-question-config" class="ai-config-block hidden">
+                    <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+                    <button id="ai-direct-question-go-config" class="ai-panel-btn" type="button">前往配置</button>
+                  </div>
+                </div>
               </div>
             </aside>
 

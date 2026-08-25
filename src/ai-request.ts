@@ -5,6 +5,8 @@ export interface AiRequestCallbacks {
   onError(snapshot: SelectionSnapshot, error: GenerateAiError): void;
   onStructuredSuccess?(content: string, identity: RequestIdentity): void;
   onStructuredError?(error: GenerateAiError, identity: RequestIdentity): void;
+  onDirectQuestionSuccess?(content: string): void;
+  onDirectQuestionError?(error: GenerateAiError): void;
 }
 
 export interface RequestIdentity {
@@ -98,6 +100,47 @@ export class AiRequestCoordinator {
       () => generate(request),
     );
     return this.inFlight;
+  }
+
+  /**
+   * 发起一次直接提问生成请求。结果按作品令牌隔离（无对话身份），
+   * 路由到 `onDirectQuestionSuccess` / `onDirectQuestionError`。
+   */
+  requestDirectQuestion(request: GenerateAiRequest): Promise<void> | null {
+    const generate = this.structuredGenerate;
+    if (this.inFlight || !generate) return null;
+    const token = this.getProjectToken();
+    const requestToken = ++this.activeRequestToken;
+    this.inFlightProjectToken = token;
+    this.inFlight = this.runDirectQuestion(token, requestToken, () => generate(request));
+    return this.inFlight;
+  }
+
+  private async runDirectQuestion(
+    token: number,
+    requestToken: number,
+    generate: () => Promise<GenerateAiResult>,
+  ): Promise<void> {
+    let result: GenerateAiResult;
+    try {
+      result = await generate();
+    } catch {
+      this.clearRequestOwnership(requestToken);
+      if (this.isStale(token, requestToken, null)) return;
+      this.callbacks.onDirectQuestionError?.({
+        code: "network",
+        message: "AI 请求未能完成，请检查连接后重试",
+      });
+      return;
+    }
+
+    this.clearRequestOwnership(requestToken);
+    if (this.isStale(token, requestToken, null)) return;
+    if (result.ok) {
+      this.callbacks.onDirectQuestionSuccess?.(result.content);
+    } else {
+      this.callbacks.onDirectQuestionError?.(result.error);
+    }
   }
 
   private async run(

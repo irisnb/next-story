@@ -34,6 +34,7 @@ test("complete page assembly returns a valid AI panel DOM contract", () => {
     assert.ok(contract.configBlock);
     assert.ok(contract.goConfigBtn);
     assert.ok(contract.collapseBtn);
+    assert.ok(contract.newConversationBtn);
     assert.ok(contract.toggleBtn);
     assert.ok(contract.conversation);
     assert.ok(contract.followUpForm);

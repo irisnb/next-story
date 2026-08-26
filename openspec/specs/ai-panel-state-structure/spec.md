@@ -4,7 +4,7 @@
 Document the internal AI panel state boundaries that keep panel visibility, request status, temporary conversation state, follow-up turn state, read-only views, and subscriber notifications separated while preserving the current selection summon and single linear temporary follow-up behavior.
 ## Requirements
 ### Requirement: AI panel state responsibilities remain separated
-The AI panel state implementation SHALL keep panel visibility, request status, temporary conversation state, follow-up turn state, read-only view construction, and subscriber notification as separable responsibilities while preserving the existing public AI panel behavior.
+The AI panel state implementation SHALL keep panel visibility, request status, temporary conversation state, follow-up turn state, read-only view construction, and subscriber notification as separable responsibilities while preserving the existing public AI panel behavior. It SHALL expose the user-initiated new-conversation transition through the facade and reducer without conflating it with project lifecycle reset.
 
 #### Scenario: Existing callers keep using the facade
 - **WHEN** feature orchestration, panel rendering, or scroll logic needs AI panel state
@@ -18,8 +18,13 @@ The AI panel state implementation SHALL keep panel visibility, request status, t
 - **WHEN** a public AI panel state operation is rejected because the current state does not allow it
 - **THEN** the system SHALL preserve existing state and avoid emitting a subscriber notification
 
+#### Scenario: New conversation is distinct from project reset
+- **WHEN** the user triggers the new-conversation operation while the panel is in a non-empty or loading state
+- **THEN** the reducer SHALL clear the current temporary AI state while keeping the panel open
+- **AND** project lifecycle reset SHALL continue to close the panel
+
 ### Requirement: Temporary conversation state preserves current AI boundaries
-The temporary conversation state SHALL preserve the current single in-memory linear conversation model anchored to one frozen selection snapshot, with one first assistant response, ordered successful follow-up turns, and at most one pending follow-up turn.
+The temporary conversation state SHALL preserve the current single in-memory linear conversation model anchored to one frozen selection snapshot, with one first assistant response, ordered successful follow-up turns, and at most one pending follow-up turn. A user-initiated new conversation SHALL discard the current model and advance the identity boundary used to reject stale results.
 
 #### Scenario: Follow-up requests use the frozen anchor
 - **WHEN** the user submits or retries a follow-up question after the first AI response succeeds
@@ -28,6 +33,10 @@ The temporary conversation state SHALL preserve the current single in-memory lin
 #### Scenario: New invocation replaces the prior conversation
 - **WHEN** a new summon request is accepted
 - **THEN** the system SHALL establish a new temporary conversation identity and prevent later results from the replaced conversation from modifying the current conversation
+
+#### Scenario: User-created new conversation rejects stale results
+- **WHEN** the user clears a conversation while a first or follow-up request is pending
+- **THEN** the system SHALL prevent the pending request's later result from modifying the newly cleared state
 
 #### Scenario: Reset clears temporary AI state
 - **WHEN** the current project is unloaded or replaced

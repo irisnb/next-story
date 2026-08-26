@@ -24,6 +24,7 @@ export interface AiPanelDom {
   configBlock: HTMLElement;
   goConfigBtn: HTMLButtonElement;
   collapseBtn: HTMLButtonElement;
+  newConversationBtn: HTMLButtonElement;
   toggleBtn: HTMLButtonElement;
   conversation: HTMLElement;
   followUpForm: HTMLFormElement;
@@ -333,6 +334,7 @@ export function getAppDom(): AppDom {
       configBlock: requireElement("ai-config-block"),
       goConfigBtn: requireElement<HTMLButtonElement>("ai-go-config"),
       collapseBtn: requireElement<HTMLButtonElement>("ai-panel-collapse"),
+      newConversationBtn: requireElement<HTMLButtonElement>("ai-new-conversation"),
       toggleBtn: btnToggleAi,
       conversation: aiConversation,
       followUpForm: aiFollowUpForm,

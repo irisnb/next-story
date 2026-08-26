@@ -112,7 +112,30 @@ export type AiPanelEvent =
   | { readonly type: "require_direct_question_configuration" }
   | { readonly type: "close" }
   | { readonly type: "open" }
+  | { readonly type: "new_conversation" }
   | { readonly type: "reset" };
+
+/**
+ * 首轮请求是否仍在途中：首轮 loading、预检预览或阻塞提示。
+ *
+ * `fail` / `require_configuration` 只接受这些阶段的结果；清空（新建对话 / reset）后
+ * 到达的迟到结果处于 idle / 直接提问 / 追问等状态，一律拒绝，防止污染空状态。
+ * `first_blocked` 也视为在途：阻塞提示意味着原首轮请求仍在生成，其结果应正常应用。
+ */
+function isFirstRoundInFlight(state: AiPanelCoreState): boolean {
+  const request = state.request;
+  if (request.kind === "loading") return request.phase !== "follow_up";
+  return request.kind === "first_preview" || request.kind === "first_blocked";
+}
+
+/** “新建对话”是否有可结束的内容：存在临时对话、已分配的首轮身份或任何非空请求。 */
+function hasEndableConversationWork(state: AiPanelCoreState): boolean {
+  return (
+    state.conversationContext.conversation !== null ||
+    state.pendingFirstConversationId !== null ||
+    state.request.kind !== "idle"
+  );
+}
 
 /**
  * 纯状态迁移：`(state, event) -> state`，无副作用、无通知。
@@ -176,16 +199,20 @@ export function reduceAiPanelState(
       return { ...state, request: thinkingExpansionRequest(request.snapshot, event.direction) };
     }
     case "succeed": {
-      let nextContext = state.conversationContext;
-      let conversationId: number;
-      if (state.pendingFirstConversationId === null) {
-        conversationId = nextContext.nextConversationId;
-        nextContext = { ...nextContext, nextConversationId: nextContext.nextConversationId + 1 };
-      } else {
-        conversationId = state.pendingFirstConversationId;
+      const request = state.request;
+      // 只接受首轮在途（loading 或阻塞提示）的完成结果：新建对话清空后（idle /
+      // 直接提问 / 追问阶段）到达的迟到成功结果一律拒绝，不得重建对话。
+      if (request.kind !== "loading" && request.kind !== "first_blocked") return state;
+      if (request.kind === "loading" && request.phase === "follow_up") return state;
+      let conversationId = state.pendingFirstConversationId;
+      let context = state.conversationContext;
+      if (conversationId === null) {
+        // 阻塞提示下没有已分配的首轮身份：分配新身份（保持单调递增）。
+        conversationId = context.nextConversationId;
+        context = { ...context, nextConversationId: context.nextConversationId + 1 };
       }
       const created = createConversationFromFirstSuccess(
-        nextContext,
+        context,
         conversationId,
         event.snapshot,
         state.pendingFirstRequest ?? { kind: "first", selected_text: event.snapshot.selectedText },
@@ -196,9 +223,12 @@ export function reduceAiPanelState(
         request: firstSuccessRequest(created.conversation.anchor, event.response, conversationId),
         conversationContext: created.context,
         pendingFirstRequest: null,
+        // 首轮身份在成功时消费完毕：后续迟到结果不再拥有可用的首轮身份。
+        pendingFirstConversationId: null,
       };
     }
     case "fail": {
+      if (!isFirstRoundInFlight(state)) return state;
       const identity = state.request.kind === "loading" ? state.request : null;
       return {
         ...state,
@@ -206,6 +236,7 @@ export function reduceAiPanelState(
       };
     }
     case "require_configuration": {
+      if (!isFirstRoundInFlight(state)) return state;
       const identity = state.request.kind === "loading" ? state.request : null;
       return {
         ...state,
@@ -409,6 +440,24 @@ export function reduceAiPanelState(
       return state.visibility === "closed" ? state : { ...state, visibility: "closed" };
     case "open":
       return state.visibility === "open" ? state : { ...state, visibility: "open" };
+    case "new_conversation": {
+      // 纯空 idle 状态（无对话、无进行中请求）没有可结束的内容：原样返回，不通知。
+      if (!hasEndableConversationWork(state)) return state;
+      // 保留单调递增的对话 ID 计数器并预分配下一身份：
+      // 后续首轮请求不会复用任何旧对话身份（新建对话与 reset 都保留计数器）。
+      const allocation = allocateConversationId(state.conversationContext);
+      return {
+        ...state,
+        visibility: "open",
+        request: idleRequest(),
+        conversationContext: clearConversationContext(allocation.context),
+        pendingFirstConversationId: null,
+        pendingFirstRequest: null,
+        directQuestionDraft: "",
+        pendingSelection: null,
+        ignoredSelection: null,
+      };
+    }
     case "reset":
       // 保留 id 计数器：与旧实现 `conversationState.clear()` 一致
       return {

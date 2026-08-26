@@ -97,6 +97,16 @@ export class AiPanelState {
     return conversationIdentityOf(this.state.conversationContext.conversation);
   }
 
+  /**
+   * 单调递增的对话身份代次（对话 ID 计数器）。
+   *
+   * 只增不减：`newConversation` 与每次首轮请求分配都会推进它，`reset` 保留它。
+   * 供在途预检在每次 `await` 之后校验自身是否已被作废（ABA 安全：代次不会回退）。
+   */
+  get conversationGeneration(): number {
+    return this.state.conversationContext.nextConversationId;
+  }
+
   get isOpen(): boolean {
     return this.state.visibility === "open";
   }
@@ -206,6 +216,18 @@ export class AiPanelState {
   /** 展开面板：只改 visibility，恢复显示当前请求/回复。 */
   open(): void {
     this.dispatch({ type: "open" });
+  }
+
+  /**
+   * 用户主动“新建对话”：结束当前唯一的临时对话并回到空白直接提问状态。
+   *
+   * 清除请求显示、临时对话、追问与直接提问草稿、待附带选区；面板保持展开。
+   * 仅当存在可结束的内容（临时对话或进行中的首轮/追问请求）时有效；
+   * 纯空 idle 状态原样返回 false，不触发通知。与项目生命周期 `reset`（关闭面板）
+   * 语义分离，保留单调递增的对话身份计数器。
+   */
+  newConversation(): boolean {
+    return this.dispatch({ type: "new_conversation" });
   }
 
   /**

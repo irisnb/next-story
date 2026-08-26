@@ -310,3 +310,133 @@ test("direct question preflight is rejected when another first-round preflight h
   assert.equal(preflight.owner, null);
   assert.equal(sent, 1, "只有首轮预检真正发送");
 });
+
+test("a direct question preflight invalidated by newConversation does not send the cleared request", async () => {
+  const state = new AiPanelState();
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
+  });
+  let sent = 0;
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "旧问题",
+    selection: null,
+    loadConfig: () => configPromise,
+    request: () => {
+      sent += 1;
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+  }), true);
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "旧问题",
+    selection: null,
+    status: "loading",
+  });
+
+  // 预检期间用户新建对话：清空为空白直接提问状态
+  assert.equal(state.newConversation(), true);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+
+  configDeferred.resolve?.(savedConfig);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent, 0, "不得发送已清空的直接提问");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("a direct question preflight invalidated by newConversation does not enter configuration-required", async () => {
+  const state = new AiPanelState();
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
+  });
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "旧问题",
+    selection: null,
+    loadConfig: () => configPromise,
+    request: () => {
+      throw new Error("request should not run");
+    },
+    getProjectToken: () => 1,
+  }), true);
+
+  state.newConversation();
+  configDeferred.resolve?.(null);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(state.view.request, { kind: "idle" }, "不得进入配置引导状态");
+});
+
+test("a direct question preflight invalidated by newConversation does not surface a late loadConfig rejection", async () => {
+  const state = new AiPanelState();
+  const configDeferred: { reject: ((error: Error) => void) | null } = {
+    reject: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((_resolve, reject) => {
+    configDeferred.reject = reject;
+  });
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "旧问题",
+    selection: null,
+    loadConfig: () => configPromise,
+    request: () => {
+      throw new Error("request should not run");
+    },
+    getProjectToken: () => 1,
+  }), true);
+
+  state.newConversation();
+  configDeferred.reject?.(new Error("配置读取失败"));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到的预检失败不得污染空状态");
+});
+
+test("preflight gate is released when a direct question preflight is invalidated by newConversation", async () => {
+  const state = new AiPanelState();
+  const preflight = createPreflightGate();
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
+  });
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "旧问题",
+    selection: null,
+    loadConfig: () => configPromise,
+    request: () => Promise.resolve(),
+    getProjectToken: () => 1,
+    preflight,
+  }), true);
+  assert.equal(preflight.owner, 1, "预检进行中应锁定单飞");
+
+  state.newConversation();
+  configDeferred.resolve?.(savedConfig);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(preflight.owner, null, "finally 应释放预检门禁");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});

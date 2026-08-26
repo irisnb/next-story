@@ -67,6 +67,8 @@ export interface AiPanelView {
   readonly followUpForm: FollowUpFormView | null;
   readonly retryAvailable: boolean;
   readonly directQuestion: DirectQuestionView | null;
+  /** 是否有可结束的内容（临时对话或进行中的首轮/追问/直接提问请求），决定“新建对话”是否显示。 */
+  readonly newConversationVisible: boolean;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -235,6 +237,11 @@ export function buildAiPanelView(
   const retryAvailable =
     (facts.errorMessage !== null || facts.configRequired) && !hasConversation;
 
+  // “新建对话”仅在存在临时对话或存在任何非空闲请求（首轮预检/阻塞/加载/成功/失败/配置、
+  // 追问或直接提问请求）时显示；空白直接提问 idle 状态隐藏。与 reducer 的
+  // `hasEndableConversationWork` 语义一致（用户有“可结束的内容”才看到结束入口）。
+  const newConversationVisible = hasConversation || panelState.request.kind !== "idle";
+
   return {
     panelVisible: panelState.visibility === "open",
     snapshot: facts.snapshot,
@@ -248,5 +255,6 @@ export function buildAiPanelView(
     followUpForm,
     retryAvailable,
     directQuestion,
+    newConversationVisible,
   };
 }

@@ -1117,3 +1117,91 @@ test("real AI feature flow direct question with pending selection sends question
     ui.restore();
   }
 });
+
+test("empty idle panel hides the new-conversation control and shows it once a conversation exists", () => {
+  const ui = harness();
+  try {
+    const button = ui.elements.get("ai-new-conversation")!;
+    ui.state.open();
+    assert.equal(button.classList.contains("hidden"), true);
+
+    const anchor = snapshot("锚点");
+    ui.state.beginRequest(anchor);
+    ui.state.succeed(anchor, "首答");
+    assert.equal(button.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("new-conversation click clears the conversation and returns to the empty direct-question form", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.beginDirectQuestion("问题", null);
+    ui.state.succeedDirectQuestion("回答");
+    const followUpInput = ui.elements.get("ai-follow-up-input")!;
+    followUpInput.value = "未发送追问";
+    followUpInput.dispatch("input");
+
+    const button = ui.elements.get("ai-new-conversation")!;
+    assert.equal(button.classList.contains("hidden"), false);
+    button.dispatch("click");
+
+    assert.equal(ui.state.conversation, null);
+    assert.equal(ui.state.isOpen, true);
+    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+    assert.equal(button.classList.contains("hidden"), true);
+    assert.equal(followUpInput.value, "");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("new-conversation during first loading clears the request and rejects its late result", () => {
+  const ui = harness();
+  try {
+    const anchor = snapshot("冻结选区");
+    ui.state.beginRequest(anchor);
+    const button = ui.elements.get("ai-new-conversation")!;
+    assert.equal(button.classList.contains("hidden"), false);
+    button.dispatch("click");
+
+    assert.equal(ui.state.conversation, null);
+    assert.equal(ui.state.isOpen, true);
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+
+    ui.state.succeed(anchor, "迟到回答");
+    assert.equal(ui.state.conversation, null);
+    assert.deepEqual(conversationText(ui), []);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("new-conversation clears the direct-question draft and pending selection", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "旧问题";
+    input.dispatch("input");
+    ui.state.beginDirectQuestion("旧问题", null);
+    ui.state.failDirectQuestion({ code: "network", message: "网络失败" });
+    ui.state.setPendingSelection(snapshot("旧选区"));
+
+    assert.equal(ui.state.view.directQuestionDraft, "旧问题");
+
+    ui.elements.get("ai-new-conversation")!.dispatch("click");
+
+    assert.equal(ui.state.view.directQuestionDraft, "");
+    assert.equal(ui.state.view.pendingSelection, null);
+    assert.equal(input.value, "");
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});

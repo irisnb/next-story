@@ -49,6 +49,7 @@ export function setupAiPanel(
     configBlock,
     goConfigBtn,
     collapseBtn,
+    newConversationBtn,
     toggleBtn,
     conversation: conversationElement,
     followUpForm,
@@ -78,6 +79,7 @@ export function setupAiPanel(
   retryBtn.addEventListener("click", actions.onRetry);
   goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
   collapseBtn.addEventListener("click", () => state.close());
+  newConversationBtn.addEventListener("click", () => state.newConversation());
   toggleBtn.addEventListener("click", () => {
     if (state.isOpen) {
       state.close();
@@ -234,6 +236,8 @@ export function setupAiPanel(
     retryBtn.classList.toggle("hidden", !view.retryAvailable);
 
     configBlock.classList.toggle("hidden", !view.configBlock);
+
+    newConversationBtn.classList.toggle("hidden", !view.newConversationVisible);
 
     const followUpErrorView = view.followUpError;
     followUpError.classList.toggle("hidden", followUpErrorView === null);

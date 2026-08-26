@@ -37,18 +37,24 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
     if (preflight) releasePreflight(preflight, frozenToken);
     return false;
   }
+  // 捕获预检开始时的对话身份代次：newConversation / 首轮请求分配会推进它。
+  // 预检期间用户新建对话后，代次变化即表示本次预检已作废，不得再发送请求。
+  const generation = options.state.conversationGeneration;
 
   void (async () => {
     try {
       const config = await options.loadConfig();
       // 预检期间作品被切换：丢弃本次预检结果，不发送旧作品的直接提问。
       if (options.getProjectToken() !== frozenToken) return;
+      // 预检期间用户新建对话：对话身份代次已推进，本次预检作废，保持空白状态。
+      if (options.state.conversationGeneration !== generation) return;
       if (!config) {
         options.state.requireDirectQuestionConfiguration();
         return;
       }
-      // 真正提交请求前再次校验作品身份（纵深防御；请求内部也会以当前令牌校验）。
+      // 真正提交请求前再次校验作品身份与对话代次（纵深防御；请求内部也会以当前令牌校验）。
       if (options.getProjectToken() !== frozenToken) return;
+      if (options.state.conversationGeneration !== generation) return;
       const payload: GenerateAiRequest = {
         kind: "direct_question",
         question,
@@ -63,8 +69,9 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
         return;
       }
     } catch (error) {
-      // 预检失败但作品已切换：同样丢弃，避免旧作品错误污染新作品的 AI 面板。
+      // 预检失败但作品已切换或对话已作废：同样丢弃，避免污染当前 AI 面板。
       if (options.getProjectToken() !== frozenToken) return;
+      if (options.state.conversationGeneration !== generation) return;
       options.state.failDirectQuestion({
         code: "network",
         message: preflightErrorMessage(error),

@@ -595,3 +595,244 @@ test("reset clears the ignored selection marker", () => {
   state.setPendingSelection(selection);
   assert.deepEqual(state.view.pendingSelection, selection);
 });
+
+test("newConversation clears a completed conversation and keeps the panel open", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("冻结选区");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("追问");
+  state.succeedFollowUp(1, "追问回答");
+  state.updateDirectQuestionDraft("未发送草稿");
+  assert.equal(state.isOpen, true);
+
+  assert.equal(state.newConversation(), true);
+  assert.equal(state.isOpen, true, "新建对话后面板保持展开");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null);
+  assert.equal(state.followUpAvailable, false);
+  assert.equal(state.conversationIdentity, null);
+  assert.equal(state.view.directQuestionDraft, "", "直接提问草稿被清空");
+});
+
+test("newConversation during first-round loading clears the pending request and rejects late results", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("旧选区");
+  state.beginRequest(anchor);
+  assert.deepEqual(state.view.request, {
+    kind: "loading",
+    snapshot: anchor,
+    conversationId: 1,
+    phase: "first",
+  });
+
+  assert.equal(state.newConversation(), true);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null);
+
+  // 迟到的首轮成功 / 失败 / 配置结果一律不得污染空状态
+  state.succeed(anchor, "迟到成功");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null, "迟到成功不得重建对话");
+
+  state.fail(anchor, authError);
+  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到失败不得进入错误态");
+
+  state.requireConfiguration(anchor);
+  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到配置引导不得进入配置态");
+});
+
+test("newConversation during a pending follow-up clears it and rejects late follow-up results", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("追问中");
+  assert.equal(state.conversation?.pending?.question, "追问中");
+  assert.deepEqual(state.view.request, {
+    kind: "loading",
+    snapshot: anchor,
+    conversationId: 1,
+    phase: "follow_up",
+    turnId: 1,
+  });
+
+  assert.equal(state.newConversation(), true);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null);
+
+  // 迟到的追问成功 / 失败 / 配置结果全部被忽略
+  assert.equal(state.succeedFollowUp(1, "迟到追问回答"), false);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null);
+
+  assert.equal(state.failFollowUp(1, authError), false);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+
+  assert.equal(state.requireFollowUpConfiguration(1), false);
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("newConversation notifies exactly once when it changes state", () => {
+  let calls = 0;
+  const state = new AiPanelState(() => {
+    calls += 1;
+  });
+  state.beginRequest(snapshot("a"));
+  assert.equal(calls, 1);
+
+  assert.equal(state.newConversation(), true);
+  assert.equal(calls, 2, "新建对话只通知一次");
+});
+
+test("newConversation is inert on a pure empty idle state without notification", () => {
+  let calls = 0;
+  const state = new AiPanelState(() => {
+    calls += 1;
+  });
+
+  assert.equal(state.newConversation(), false);
+  assert.equal(calls, 0, "空 idle 状态不应通知");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.isOpen, false, "空状态操作不改动任何维度");
+
+  // 展开后的空白直接提问状态同样 inert
+  state.open();
+  assert.equal(calls, 1);
+  assert.equal(state.newConversation(), false);
+  assert.equal(calls, 1, "空白直接提问状态没有可结束的内容");
+  assert.equal(state.isOpen, true);
+});
+
+test("newConversation is inert with only an unsent draft and no conversation or request", () => {
+  let calls = 0;
+  const state = new AiPanelState(() => {
+    calls += 1;
+  });
+  state.open();
+  state.updateDirectQuestionDraft("未发送的问题");
+  assert.equal(calls, 2);
+
+  assert.equal(state.newConversation(), false);
+  assert.equal(calls, 2);
+  assert.equal(state.view.directQuestionDraft, "未发送的问题", "只有草稿时不清空草稿");
+});
+
+test("newConversation reopens a collapsed panel that has an existing conversation", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.close();
+  assert.equal(state.isOpen, false);
+
+  assert.equal(state.newConversation(), true);
+  assert.equal(state.isOpen, true, "收起状态下新建对话会重新展开面板");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+});
+
+test("newConversation clears drafts, pending selection and ignored selection markers", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("选区");
+  // 先让同一选区被主动忽略
+  state.setPendingSelection(selection);
+  state.removePendingSelection();
+  state.setPendingSelection(selection);
+  assert.equal(state.view.pendingSelection, null, "被忽略的选区在清除前保持忽略");
+
+  state.updateDirectQuestionDraft("草稿");
+  state.beginDirectQuestion("草稿", null);
+  assert.equal(state.newConversation(), true);
+  assert.equal(state.view.directQuestionDraft, "");
+  assert.equal(state.view.pendingSelection, null);
+
+  // 忽略标记也被清除：同一选区在新对话中可重新附加
+  state.setPendingSelection(selection);
+  assert.deepEqual(state.view.pendingSelection, selection, "清除后同一选区不再被忽略");
+});
+
+test("newConversation is distinct from project reset which still closes the panel", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+
+  state.newConversation();
+  assert.equal(state.isOpen, true, "新建对话保持面板展开");
+
+  state.beginRequest(snapshot("新选区"));
+  state.succeed(snapshot("新选区"), "新答");
+  state.reset();
+  assert.equal(state.isOpen, false, "作品生命周期 reset 仍然关闭面板");
+  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversation, null);
+});
+
+test("newConversation keeps conversation identity monotonic so new requests never reuse old identities", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  assert.equal(state.conversationIdentity?.conversationId, 1);
+
+  assert.equal(state.newConversation(), true);
+
+  state.beginRequest(snapshot("新选区"));
+  const loading = state.view.request;
+  assert.equal(loading.kind, "loading");
+  if (loading.kind !== "loading") return;
+  const loadingId = loading.conversationId;
+  assert.ok(loadingId !== undefined);
+  assert.ok(loadingId > 1, "新对话身份必须大于旧对话身份，不得复用");
+
+  state.succeed(snapshot("新选区"), "新首答");
+  assert.equal(state.conversationIdentity?.conversationId, loadingId);
+  assert.ok(state.conversationIdentity!.conversationId > 1);
+});
+
+test("a result arriving while the panel shows a blocked request is still applied", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("选区A");
+  state.beginRequest(anchor);
+  // 用户再次召唤被单飞拒绝：面板进入阻塞提示，但原请求仍在途
+  state.blockFirstRequest(anchor);
+  assert.equal(state.view.request.kind, "first_blocked");
+
+  // 原请求的成功结果仍然应用（面板显示真实结果，而不是一直停留在阻塞提示）
+  state.succeed(anchor, "真实首答");
+  assert.equal(state.view.request.kind, "success");
+  assert.equal(state.conversation?.firstResponse, "真实首答");
+});
+
+test("late first-round results cannot pollute the state after newConversation and a new direct question", () => {
+  const state = new AiPanelState();
+  const oldAnchor = snapshot("旧选区");
+  state.beginRequest(oldAnchor);
+
+  assert.equal(state.newConversation(), true);
+  state.beginDirectQuestion("新问题", null);
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "新问题",
+    selection: null,
+    status: "loading",
+  });
+
+  // 旧首轮请求的迟到结果不得改写新的直接提问 loading 状态
+  state.succeed(oldAnchor, "迟到成功");
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "新问题",
+    selection: null,
+    status: "loading",
+  });
+
+  state.fail(oldAnchor, authError);
+  state.requireConfiguration(oldAnchor);
+  assert.deepEqual(state.view.request, {
+    kind: "direct_question",
+    question: "新问题",
+    selection: null,
+    status: "loading",
+  });
+});

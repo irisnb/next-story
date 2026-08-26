@@ -38,3 +38,7 @@ test("file management module exposes tree, recycle bin, and new-node actions", (
   assert.match(html, /<div\b[^>]*\bid="fm-file-tree"/);
   assert.match(html, /<div\b[^>]*\bid="fm-recycle-list"/);
 });
+
+test("AI panel header exposes a new-conversation control beside collapse", () => {
+  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*title="新建对话"[^>]*>新建对话<\/button>/);
+});

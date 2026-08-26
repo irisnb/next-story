@@ -5,7 +5,7 @@ TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose af
 ## Requirements
 ### Requirement: AI 面板必须通过显式 DOM 契约接线
 
-系统 SHALL 为 AI 面板提供一个集中且严格类型化的 DOM 依赖契约，契约包含面板渲染、折叠、思维扩展、错误恢复和临时追问所需的全部节点。AI 面板初始化 MUST 使用该契约，不得依赖散落的全局节点查询。
+系统 SHALL 为 AI 面板提供一个集中且严格类型化的 DOM 依赖契约，契约包含面板渲染、折叠、新建对话、思维扩展、错误恢复和临时追问所需的全部节点。AI 面板初始化 MUST 使用该契约，不得依赖散落的全局节点查询。
 
 #### Scenario: 完整页面组装 AI 面板契约
 
@@ -18,6 +18,22 @@ TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose af
 - **WHEN** 页面缺少 AI 面板契约中的必需节点
 - **THEN** DOM 组装在初始化阶段抛出包含缺失节点标识的明确错误
 - **AND** 系统不创建部分接线的 AI 面板
+
+#### Scenario: 新建对话控件完成契约接线
+
+- **WHEN** 应用从包含新建对话控件的页面组装 `AppDom`
+- **THEN** `AiPanelDom` 提供该控件并完成统一初始化
+- **AND** 点击控件通过面板 facade 触发新建对话状态迁移
+
+#### Scenario: 空状态隐藏新建对话控件
+
+- **WHEN** AI 面板处于空白直接提问状态且没有进行中的请求
+- **THEN** 新建对话控件不可见或被隐藏
+
+#### Scenario: 非空状态显示新建对话控件
+
+- **WHEN** AI 面板存在临时对话或首轮/追问请求正在进行
+- **THEN** 新建对话控件可见且可用
 
 ### Requirement: DOM 契约重构必须保持 AI 面板行为
 

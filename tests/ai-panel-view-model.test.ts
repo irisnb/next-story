@@ -520,3 +520,88 @@ test("direct question entry is hidden while the panel is collapsed", () => {
   const view = viewOf(state);
   assert.equal(view.directQuestion, null);
 });
+
+test("new conversation control is hidden in the blank direct-question idle state", () => {
+  // Given: 面板打开且完全空闲（无对话、无请求、无进行中任务）
+  const state = new AiPanelState();
+  state.open();
+
+  // When: 构建显示 view model
+  const view = viewOf(state);
+
+  // Then: 空白直接提问状态没有可结束的内容，隐藏“新建对话”
+  assert.equal(view.newConversationVisible, false);
+});
+
+test("new conversation control is visible once a conversation exists", () => {
+  // Given: 直接提问成功后形成统一对话
+  const state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("这个角色为什么犹豫？", null);
+  state.succeedDirectQuestion("回答");
+
+  // When: 构建显示 view model
+  const view = viewOf(state);
+
+  // Then: 有临时对话可结束，显示“新建对话”
+  assert.equal(view.newConversationVisible, true);
+});
+
+test("new conversation control is visible across first preview, loading, blocked, error and configuration states", () => {
+  // first_preview
+  let state = new AiPanelState();
+  state.previewFirstRequest(snapshot("锚点"));
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // loading（首轮）
+  state = new AiPanelState();
+  state.beginRequest(snapshot("锚点"));
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // first_blocked
+  state = new AiPanelState();
+  state.previewFirstRequest(snapshot("锚点"));
+  state.blockFirstRequest(snapshot("锚点"));
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // error
+  state = new AiPanelState();
+  state.beginRequest(snapshot("锚点"));
+  state.fail(snapshot("锚点"), authError);
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // configuration_required
+  state = new AiPanelState();
+  state.beginRequest(snapshot("锚点"));
+  state.requireConfiguration(snapshot("锚点"));
+  assert.equal(viewOf(state).newConversationVisible, true);
+});
+
+test("new conversation control is visible during follow-up and direct-question requests", () => {
+  // follow-up loading（对话内）
+  let state = new AiPanelState();
+  state.beginRequest(snapshot("锚点"));
+  state.succeed(snapshot("锚点"), "首答");
+  state.beginFollowUp("追问");
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // direct_question loading
+  state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("问题", null);
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // direct_question error
+  state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("问题", null);
+  state.failDirectQuestion(authError);
+  assert.equal(viewOf(state).newConversationVisible, true);
+
+  // direct_question configuration_required
+  state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("问题", null);
+  state.requireDirectQuestionConfiguration();
+  assert.equal(viewOf(state).newConversationVisible, true);
+});

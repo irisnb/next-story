@@ -7,10 +7,11 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    validate_llm_config, FollowUpOrigin, GenerateAiError, GenerateAiErrorCode,
-    GenerateAiMessageRole, GenerateAiRequest, LlmConfig,
+    load_llm_config, validate_llm_config, FollowUpOrigin, GenerateAiError, GenerateAiErrorCode,
+    GenerateAiMessageRole, GenerateAiRequest, GenerateAiResult, LlmConfig,
 };
-use crate::dsh_sidecar::{self, DshGenerationParams};
+use crate::dsh_driver::{DriverParams, DriverReplayTurn};
+use crate::dsh_sidecar;
 use crate::dsh_version::DshVersionLayout;
 
 /// 固定首版思考任务：围绕冻结选区提出观察、问题和可能方向，不代写正文。
@@ -62,12 +63,12 @@ pub async fn generate_ai_thinking_in_dir(
     .await
 }
 
-/// 通过 DSH headless 生成一次回复。
+/// 通过 DSH 生成一次回复（resident-ai-session 改造后）。
 ///
-/// DSH 一次性任务模型接收单个 task 字符串，因此把固定系统提示词、选区原文、
-/// 可选方向与追问轮次序列化进一个 task；spike 已验证「整段对话序列化进一个 task」
-/// 的追问仍锚定首次冻结选区。子进程 spawn 是阻塞操作，放进阻塞线程避免占住异步执行线程。
-/// 超时由 [`crate::dsh_sidecar::DSH_GENERATION_TIMEOUT`] 控制。
+/// legacy 命令入口（`generate_ai_thinking`）仍走本函数：把固定系统提示词、选区
+/// 原文与追问轮次组装成单个消息文本，经常驻驱动以**临时会话**发送（start →
+/// send → end），对前端保持一次性和非流式的旧契约。流式与增量由新的
+/// `ai_send_message` 命令族承接（见下方常驻会话编排函数）。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；`None` 表示沿用 DSH 默认 home（仅测试路径）。
 /// `resource_dir` 为打包后的资源目录；`None` 表示开发目录回退。
@@ -87,29 +88,282 @@ async fn generate_with_dsh(
     })?;
 
     let paths = dsh_sidecar::resolve_paths(dsh_home, resource_dir)?;
-    let params = DshGenerationParams {
+    let params = DriverParams {
         model: config.model.clone(),
         api_base_url: config.api_base_url.clone(),
         api_key: config.api_key.clone(),
     };
+    let manager = crate::dsh_driver::global_driver_manager().clone();
 
-    match tauri::async_runtime::spawn_blocking(move || {
-        dsh_sidecar::generate_via_dsh(&task, &params, &paths)
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.ensure_started(&params, &paths)?;
+        let session_id = format!("legacy-{}", crate::dsh_driver::next_id());
+        let message_id = format!("legacy-msg-{}", crate::dsh_driver::next_id());
+        manager.start_session(&session_id)?;
+        let text = match manager.send_message_and_wait(
+            &session_id,
+            &message_id,
+            &task,
+            crate::dsh_driver::REQUEST_TIMEOUT,
+        ) {
+            Ok(text) => text,
+            Err(error) => {
+                let _ = manager.end_session(&session_id);
+                return Err(error);
+            }
+        };
+        let _ = manager.end_session(&session_id);
+        Ok(text)
     })
     .await
-    {
-        Ok(Ok(content)) => Ok(content),
-        Ok(Err(error)) => Err(error),
-        Err(join_error) => Err(GenerateAiError::new(
+    .map_err(|join_error| {
+        GenerateAiError::new(
             GenerateAiErrorCode::Service,
             format!("DSH 生成任务执行失败: {join_error}"),
-        )),
-    }
+        )
+    })?
 }
 
 /// 从应用数据目录派生版本隔离的 DSH_HOME（`<base_dir>/dsh/homes/<current_version>`）。
 fn versioned_dsh_home(base_dir: &Path) -> PathBuf {
     DshVersionLayout::new(base_dir.join("dsh")).current_home()
+}
+
+// ========== 常驻会话编排（resident-ai-session 任务 3.3–3.4） ==========
+
+/// 常驻会话消息种类：首轮（后端组装系统提示词与选区材料）或追问（只发增量问题）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiMessageKind {
+    /// 首轮：组装固定系统提示词 + 用户问题 + 可选选区重点材料。
+    First,
+    /// 追问：只发送本次新增的问题，历史由常驻会话维护。
+    FollowUp,
+}
+
+/// 加载已保存的唯一 LLM 配置（阻塞读取放阻塞线程）。
+async fn load_saved_config(base_dir: &Path) -> Result<LlmConfig, GenerateAiError> {
+    let base = base_dir.to_path_buf();
+    let loaded = tauri::async_runtime::spawn_blocking(move || load_llm_config(&base)).await;
+    match loaded {
+        Ok(Ok(Some(config))) => Ok(config),
+        Ok(Ok(None)) => Err(GenerateAiError::new(
+            GenerateAiErrorCode::ConfigurationRequired,
+            "缺少 LLM 配置，请先到设置中填写并保存 API 地址、Key 与模型名",
+        )),
+        Ok(Err(_)) => Err(GenerateAiError::new(
+            GenerateAiErrorCode::ConfigurationRequired,
+            "LLM 配置无法读取，请重新保存配置",
+        )),
+        Err(_) => Err(GenerateAiError::new(
+            GenerateAiErrorCode::ConfigurationRequired,
+            "LLM 配置目录读取任务执行失败，请重启应用后重试",
+        )),
+    }
+}
+
+/// 确保常驻驱动进程以当前配置启动（懒启动 / 参数变化重启 / 崩溃重启）。
+async fn ensure_driver_started(
+    config: &LlmConfig,
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+) -> Result<(), GenerateAiError> {
+    validate_llm_config(config).map_err(|_| {
+        GenerateAiError::new(
+            GenerateAiErrorCode::ConfigurationRequired,
+            "LLM 配置不完整，请检查 API 地址、Key 与模型名",
+        )
+    })?;
+    let paths = dsh_sidecar::resolve_paths(Some(versioned_dsh_home(base_dir)), resource_dir)?;
+    let params = DriverParams {
+        model: config.model.clone(),
+        api_base_url: config.api_base_url.clone(),
+        api_key: config.api_key.clone(),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().ensure_started(&params, &paths)
+    })
+    .await
+    .map_err(|join_error| {
+        GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("驱动启动任务执行失败: {join_error}"),
+        )
+    })?
+}
+
+/// 常驻会话：启动会话（同时懒启动驱动进程）。
+pub async fn ai_start_session_in_dir(
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+    session_id: String,
+) -> GenerateAiResult {
+    let config = match load_saved_config(base_dir).await {
+        Ok(config) => config,
+        Err(error) => return GenerateAiResult::failure(error),
+    };
+    if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
+        return GenerateAiResult::failure(error);
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().start_session(&session_id)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => GenerateAiResult::success(String::new()),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("会话启动任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 常驻会话：发送消息并等待终态。流式增量经驱动管理器的 sink 转发为前端事件。
+///
+/// - `First`：后端组装固定系统提示词 + 用户问题 + 可选选区重点材料（组装语义
+///   与旧链路的 `direct_question_user_content` 完全一致）。
+/// - `FollowUp`：只发送本次新增的问题，历史由常驻会话维护。
+pub async fn ai_send_message_in_dir(
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+    session_id: String,
+    message_id: String,
+    kind: AiMessageKind,
+    question: String,
+    selected_text: Option<String>,
+) -> GenerateAiResult {
+    if question.trim().is_empty() {
+        return GenerateAiResult::failure(invalid_request());
+    }
+    let config = match load_saved_config(base_dir).await {
+        Ok(config) => config,
+        Err(error) => return GenerateAiResult::failure(error),
+    };
+    if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
+        return GenerateAiResult::failure(error);
+    }
+    let text = match kind {
+        AiMessageKind::First => format!(
+            "{}\n\n{}",
+            DIRECT_QUESTION_SYSTEM_PROMPT,
+            direct_question_user_content(&question, selected_text.as_deref())
+        ),
+        AiMessageKind::FollowUp => question,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().send_message_and_wait(
+            &session_id,
+            &message_id,
+            &text,
+            crate::dsh_driver::REQUEST_TIMEOUT,
+        )
+    })
+    .await;
+    match result {
+        Ok(Ok(content)) => GenerateAiResult::success(content),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("生成任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 常驻会话：取消进行中的生成。进程未启动时为无操作（幂等）。
+pub async fn ai_cancel_message_in_dir(session_id: String, message_id: String) -> GenerateAiResult {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().cancel_message(&session_id, &message_id)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => GenerateAiResult::success(String::new()),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("取消任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 常驻会话：结束会话（新建对话 / 切换作品）。进程未启动时为无操作（幂等）。
+pub async fn ai_end_session_in_dir(session_id: String) -> GenerateAiResult {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().end_session(&session_id)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => GenerateAiResult::success(String::new()),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("结束会话任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 常驻会话：注入崩溃恢复历史（前端显示历史的增量投影，不触发再生成）。
+///
+/// 首个 user 轮由宿主组装：把固定系统提示词拼到最前（恢复后的模型上下文与
+/// 原会话首轮一致，陪想姿态不因恢复而丢失）；选区材料已由前端按
+/// `direct_question_user_content` 的格式并入首轮文本。
+pub async fn ai_replay_history_in_dir(
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+    session_id: String,
+    mut turns: Vec<DriverReplayTurn>,
+) -> GenerateAiResult {
+    let config = match load_saved_config(base_dir).await {
+        Ok(config) => config,
+        Err(error) => return GenerateAiResult::failure(error),
+    };
+    if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
+        return GenerateAiResult::failure(error);
+    }
+    if let Some(first) = turns.first_mut() {
+        if first.role == "user" {
+            first.text = format!("{}\n\n{}", DIRECT_QUESTION_SYSTEM_PROMPT, first.text);
+        }
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().replay_history(&session_id, turns)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => GenerateAiResult::success(String::new()),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("历史注入任务执行失败: {join_error}"),
+        )),
+    }
+}
+
+/// 常驻会话：历史注入完成，驱动以 seed 建会话并确认。
+pub async fn ai_replay_done_in_dir(
+    base_dir: &Path,
+    resource_dir: Option<&Path>,
+    session_id: String,
+) -> GenerateAiResult {
+    let config = match load_saved_config(base_dir).await {
+        Ok(config) => config,
+        Err(error) => return GenerateAiResult::failure(error),
+    };
+    if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
+        return GenerateAiResult::failure(error);
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::dsh_driver::global_driver_manager().replay_done(&session_id)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => GenerateAiResult::success(String::new()),
+        Ok(Err(error)) => GenerateAiResult::failure(error),
+        Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            format!("历史注入确认任务执行失败: {join_error}"),
+        )),
+    }
 }
 
 /// 把请求序列化为单个 DSH task 字符串：固定系统提示词 + 选区原文（含可选方向）

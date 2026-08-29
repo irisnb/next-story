@@ -9,6 +9,8 @@ export interface SuccessfulFollowUpTurn {
 export interface PendingFollowUpTurn {
   id: number;
   question: string;
+  /** 流式增量草稿（begin 时初始 ""，逐字追加；done 全文到达后整体替换）。 */
+  streamedText?: string;
   error?: GenerateAiError;
 }
 
@@ -107,7 +109,7 @@ export function beginConversationFollowUp(
   return {
     context: {
       ...context,
-      conversation: { ...conversation, pending: { id, question } },
+      conversation: { ...conversation, pending: { id, question, streamedText: "" } },
       nextTurnId: context.nextTurnId + 1,
     },
     turnId: id,
@@ -173,7 +175,7 @@ export function acceptEditedConversationFollowUp(
   return {
     context: {
       ...context,
-      conversation: { ...conversation, pending: { id: pending.id, question } },
+      conversation: { ...conversation, pending: { id: pending.id, question, streamedText: "" } },
     },
     turnId: pending.id,
   };
@@ -211,7 +213,7 @@ export function acceptConversationFollowUpRetry(
       ...context,
       conversation: {
         ...conversation,
-        pending: { id: pending.id, question: pending.question },
+        pending: { id: pending.id, question: pending.question, streamedText: "" },
       },
     },
     turnId: pending.id,

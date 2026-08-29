@@ -1,8 +1,6 @@
 import type { AppDom } from "./dom.ts";
 import {
-  buildThinkingExpansionRequest,
   createPreflightGate,
-  startFirstRequest,
   type FirstRequestPreflightState,
 } from "./ai-feature-first-request.ts";
 import {
@@ -12,15 +10,16 @@ import {
 } from "./ai-feature-follow-up.ts";
 import { startDirectQuestion } from "./ai-feature-direct-question.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
+import type { ReadonlyTemporaryConversation } from "./ai-panel-conversation.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
+import { captureSelection, isMeaningfulSelection, type SelectionEditor } from "./selection-adapter.ts";
 import {
-  setupSelectionEntry,
-  type SelectionEntryController,
-  type SelectionEntryEditor,
-} from "./selection-entry.ts";
-import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
-import { generateAiThinking, loadLlmConfig } from "./project-api.ts";
+  aiSessionTransport,
+  type AiReplayTurn,
+  type AiSessionTransport,
+} from "./ai-session-transport.ts";
+import { loadLlmConfig } from "./project-api.ts";
 import type {
   GenerateAiError,
   GenerateAiRequest,
@@ -59,34 +58,59 @@ export function openAiConfiguration(
   openConfigPage();
 }
 
+/**
+ * 把当前对话的显示历史投影为会话重放轮次（崩溃恢复用）。
+ *
+ * 首轮 user 文本 = "用户问题：\n{question}"，附带选区时追加
+ * "\n\n重点参考材料（可选）：\n{selection}"；宿主会在其前面拼系统提示词。
+ * 之后依次为 assistant 首轮回应与各成功追问轮次的 user/assistant 交替。
+ */
+export function historyTurnsOf(
+  conversation: ReadonlyTemporaryConversation,
+): AiReplayTurn[] {
+  const material = conversation.initialUserMaterial;
+  let firstUserText: string;
+  if (material.kind === "direct_question") {
+    firstUserText = `用户问题：\n${material.question}`;
+    if (material.selected_text) {
+      firstUserText += `\n\n重点参考材料（可选）：\n${material.selected_text}`;
+    }
+  } else {
+    // 旧选区工具来源（已退场，防御性保留）：首轮只有选区材料。
+    firstUserText = `重点参考材料（可选）：\n${material.selected_text}`;
+  }
+  const turns: AiReplayTurn[] = [
+    { role: "user", text: firstUserText },
+    { role: "assistant", text: conversation.firstResponse },
+  ];
+  for (const turn of conversation.turns) {
+    turns.push({ role: "user", text: turn.question });
+    turns.push({ role: "assistant", text: turn.response });
+  }
+  return turns;
+}
+
 export interface AiFeatureHooks {
   getCurrentDocumentId: () => string | null;
-  getCurrentEditor: () => SelectionEntryEditor | null;
+  getCurrentEditor: () => SelectionEditor | null;
   openConfigPage: () => void;
 }
 
 export interface AiFeatureController {
-  /** 新作品进入编辑器：分配新作品令牌并清空面板状态。 */
+  /** 新作品进入编辑器：分配新作品令牌、结束常驻会话并清空面板状态。 */
   beginProject(): void;
-  /** 作品卸载（返回欢迎页）：使在途请求失效并清空面板。 */
+  /** 作品卸载（返回欢迎页）：使在途请求失效、结束常驻会话并清空面板。 */
   endProject(): void;
-  /** 编辑器本子切换：只清空当前浮动选区入口，不影响 AI 面板对话。 */
-  resetSelectionEntry(): void;
   submitFollowUp(question: string): Promise<boolean>;
   retryFollowUp(): Promise<boolean>;
   editFollowUp(question: string): Promise<boolean>;
 }
 
 export interface AiFeatureDependencies {
-  generate?: typeof generateAiThinking;
   loadConfig?: typeof loadLlmConfig;
-  setupEntry?: typeof setupSelectionEntry;
+  /** 常驻会话传输层；默认用应用内共享单例，测试可注入假实现。 */
+  transport?: AiSessionTransport;
 }
-
-type FirstRequestStarter = (
-  snapshot: SelectionSnapshot,
-  firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
-) => boolean;
 
 type StructuredRequestSender = (
   request: GenerateAiRequest,
@@ -96,83 +120,51 @@ type StructuredRequestSender = (
 interface AiPanelWiring {
   readonly state: AiPanelState;
   readonly openConfigPage: AiFeatureHooks["openConfigPage"];
-  readonly requestFirst: FirstRequestStarter;
   readonly requestStructured: StructuredRequestSender;
   readonly submitDirectQuestion: (question: string) => boolean;
   readonly syncPendingSelection: () => void;
-}
-
-interface SelectionEntryWiring {
-  readonly dom: AppDom;
-  readonly getCurrentDocumentId: AiFeatureHooks["getCurrentDocumentId"];
-  readonly getCurrentEditor: AiFeatureHooks["getCurrentEditor"];
-  readonly coordinator: AiRequestCoordinator;
-  readonly state: AiPanelState;
-  readonly requestFirst: FirstRequestStarter;
-  readonly setupEntry: typeof setupSelectionEntry;
+  readonly endSession: () => void;
 }
 
 interface ProjectLifecycleWiring {
   readonly state: AiPanelState;
   readonly coordinator: AiRequestCoordinator;
-  readonly selectionEntry: SelectionEntryController;
   readonly nextProjectToken: () => void;
   readonly requestStructured: StructuredRequestSender;
+  readonly endSession: () => void;
 }
 
 function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
-  const { state, openConfigPage, requestFirst, requestStructured, submitDirectQuestion, syncPendingSelection } = wiring;
+  const { state, openConfigPage, requestStructured, submitDirectQuestion, syncPendingSelection, endSession } = wiring;
 
   return {
+    // 旧选区工具退场后，首轮错误态不可达；重试按钮不再发送任何请求。
     onRetry: () => {
-      retryAcceptedRequest(state, (snapshot, firstRequest) =>
-        requestFirst(snapshot, firstRequest) ? Promise.resolve() : null);
+      retryAcceptedRequest(state, () => null);
     },
     onGoToConfig: () => openAiConfiguration(openConfigPage),
-    onStartThinkingExpansion: (direction) => {
-      const current = state.view.request;
-      if (current.kind !== "thinking_expansion" || current.snapshot === null) return false;
-      return requestFirst(
-        current.snapshot,
-        buildThinkingExpansionRequest(current.snapshot, direction),
-      );
-    },
     onSubmitFollowUp: async (question) => followUpAcceptedRequest(state, question, requestStructured),
     onRetryFollowUp: async () => retryFollowUpAcceptedRequest(state, requestStructured),
     onEditFollowUp: async (question) =>
       editAndResendFollowUpAcceptedRequest(state, question, requestStructured),
     onSubmitDirectQuestion: async (question) => submitDirectQuestion(question),
+    // 新建对话：结束当前唯一的临时对话，同时结束常驻 AI 会话（会话记忆随之释放）。
+    onNewConversation: () => {
+      if (state.newConversation()) endSession();
+    },
     onRemoveDirectQuestionSelection: () => state.removePendingSelection(),
     onDirectQuestionFocus: () => syncPendingSelection(),
     onOpenPanel: () => syncPendingSelection(),
   };
 }
 
-function setupSelectionEntryCallbacks(wiring: SelectionEntryWiring): SelectionEntryController {
-  const { dom, getCurrentDocumentId, getCurrentEditor, coordinator, state, requestFirst, setupEntry } = wiring;
-
-  return setupEntry({
-    dom,
-    getCurrentDocumentId,
-    getCurrentEditor,
-    isRequestInFlight: () => coordinator.busy,
-    onSummon: (snapshot: SelectionSnapshot) => {
-      requestFirst(snapshot);
-    },
-    onThinkingExpansion: (snapshot: SelectionSnapshot) => {
-      if (coordinator.busy) return;
-      state.beginThinkingExpansion(snapshot);
-    },
-  });
-}
-
 function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureController {
-  const { state, coordinator, selectionEntry, nextProjectToken, requestStructured } = wiring;
+  const { state, coordinator, nextProjectToken, requestStructured, endSession } = wiring;
 
   function resetProjectScopedAi(): void {
     nextProjectToken();
     coordinator.releaseStaleRequestOwnership();
-    selectionEntry.reset();
+    endSession();
     state.reset();
   }
 
@@ -182,9 +174,6 @@ function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureCont
     },
     endProject(): void {
       resetProjectScopedAi();
-    },
-    resetSelectionEntry(): void {
-      selectionEntry.reset();
     },
     submitFollowUp(question: string): Promise<boolean> {
       return Promise.resolve(followUpAcceptedRequest(state, question, requestStructured));
@@ -199,10 +188,13 @@ function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureCont
 }
 
 /**
- * 把选区入口、单请求协调器、生成桥接与面板状态接入编辑器。
+ * 把常驻会话传输层、单请求协调器、生成桥接与面板状态接入编辑器。
  *
  * 模块边界（零写回）：本模块不持有 `saveProject`、编辑器 DOM 写入函数或任何“应用到正文”
- * 回调。生成只提交选区原文，结果只显示在独立面板里。
+ * 回调。生成只提交问题与选区原文，结果只显示在独立面板里。
+ *
+ * 旧选区工具（AI 及时召唤 / 思维扩展 / 浮动入口）已退场：不再接入 selection-entry，
+ * 代码保留在 `selection-entry.ts` / `ai-feature-first-request.ts`（@deprecated）待拆用。
  */
 export function setupAiFeature(
   dom: AppDom,
@@ -211,14 +203,14 @@ export function setupAiFeature(
 ): AiFeatureController {
   const state = new AiPanelState();
   let projectToken = 0;
-  const generate = dependencies.generate ?? generateAiThinking;
   const loadConfig = dependencies.loadConfig ?? loadLlmConfig;
-  const setupEntry = dependencies.setupEntry ?? setupSelectionEntry;
+  const transport = dependencies.transport ?? aiSessionTransport;
   const firstRequestPreflight: FirstRequestPreflightState = createPreflightGate();
 
   const coordinator = new AiRequestCoordinator(
+    // 旧选区工具的 legacy 首轮入口（已退场，防御性保留）：走传输层的 legacy 分支。
     (selectedText: string) =>
-      generate({ kind: "first", selected_text: selectedText }),
+      transport.sendViaResidentSession({ kind: "first", selected_text: selectedText }),
     {
       onSuccess: (snapshot: SelectionSnapshot, content: string) => {
         state.succeed(snapshot, content);
@@ -248,7 +240,8 @@ export function setupAiFeature(
       },
     },
     () => projectToken,
-    (request) => generate(request),
+    // 结构化生成接缝：全部经常驻会话传输层（首轮增量发送，追问只发新增问题）。
+    (request) => transport.sendViaResidentSession(request),
     () => state.conversationIdentity,
   );
   const requestStructured: StructuredRequestSender = (request, identity) =>
@@ -284,49 +277,44 @@ export function setupAiFeature(
     });
   }
 
-  function requestFirst(
-    snapshot: SelectionSnapshot,
-    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
-  ): boolean {
-    return startFirstRequest({
-      state,
-      snapshot,
-      firstRequest,
-      loadConfig,
-      request: (requestSnapshot, requestPayload) =>
-        coordinator.request(requestSnapshot, requestPayload),
-      preflight: firstRequestPreflight,
-      // 预检开始时冻结作品令牌；预检期间切换作品会丢弃本次预检。
-      getProjectToken: () => projectToken,
-    });
-  }
+  // 常驻会话事件路由：流式增量推进面板状态；驱动丢失进入恢复流程。
+  transport.installSessionEventRouting();
+  transport.onStreamText((text) => {
+    state.appendStreamText(text);
+  });
+  transport.onDriverLost(() => {
+    const conversation = state.conversation;
+    if (conversation === null) {
+      // 无对话：会话记忆本就为空，只重置传输层状态，不进恢复。
+      transport.endActiveSession();
+      return;
+    }
+    if (!state.beginRecovery()) return;
+    transport.replayActiveSession(historyTurnsOf(conversation))
+      .then(() => {
+        state.completeRecovery();
+      })
+      .catch(() => {
+        state.failRecovery();
+      });
+  });
 
   setupAiPanel(dom.aiPanelDom, state, buildAiPanelActions({
     state,
     openConfigPage: hooks.openConfigPage,
-    requestFirst,
     requestStructured,
     submitDirectQuestion,
     syncPendingSelection,
+    endSession: () => transport.endActiveSession(),
   }));
-
-  const selectionEntry = setupSelectionEntryCallbacks({
-    dom,
-    getCurrentDocumentId: hooks.getCurrentDocumentId,
-    getCurrentEditor: hooks.getCurrentEditor,
-    coordinator,
-    state,
-    requestFirst,
-    setupEntry,
-  });
 
   return buildAiFeatureController({
     state,
     coordinator,
-    selectionEntry,
     nextProjectToken: () => {
       projectToken += 1;
     },
     requestStructured,
+    endSession: () => transport.endActiveSession(),
   });
 }

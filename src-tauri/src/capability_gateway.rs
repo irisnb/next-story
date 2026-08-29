@@ -31,14 +31,19 @@ pub const FORBIDDEN_TOOL_IDS: &[&str] = &[
     "skill-filesystem",
 ];
 
-/// 授权检查：判断某个核心能力是否被首版产品允许。
+/// 授权检查：判断某个核心能力是否被产品允许。
 ///
-/// 首版只开放文本生成与追问（见 [`crate::runtime_contract::CoreCapability`]）；
-/// 流式、工具调用、多 Agent、取消均为未来扩展位，当前一律拒绝。
+/// 文本生成、流式与取消随常驻会话改造（resident-ai-session）落地并授权；
+/// 工具调用与多 Agent 仍然拒绝——AI 核心在结构上拿不到任何文档写入、
+/// 命令执行、联网或子 agent 入口（驱动侧默认拒绝装配，见
+/// `sidecar/driver/gen-config.mjs`；协议命令面无文档写入通道，见
+/// `dsh_driver` 的协议面锚点测试）。
 pub fn authorize(capability: crate::runtime_contract::CoreCapability) -> bool {
     matches!(
         capability,
         crate::runtime_contract::CoreCapability::TextGeneration
+            | crate::runtime_contract::CoreCapability::Streaming
+            | crate::runtime_contract::CoreCapability::Cancellation
     )
 }
 
@@ -53,11 +58,16 @@ mod tests {
     }
 
     #[test]
-    fn future_capabilities_are_rejected() {
-        assert!(!authorize(CoreCapability::Streaming));
+    fn streaming_and_cancellation_are_authorized_with_resident_session() {
+        // resident-ai-session 落地后：流式与取消成为已实现能力并授权。
+        assert!(authorize(CoreCapability::Streaming));
+        assert!(authorize(CoreCapability::Cancellation));
+    }
+
+    #[test]
+    fn tool_call_and_multi_agent_are_rejected() {
         assert!(!authorize(CoreCapability::ToolCall));
         assert!(!authorize(CoreCapability::MultiAgent));
-        assert!(!authorize(CoreCapability::Cancellation));
     }
 
     #[test]

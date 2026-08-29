@@ -26,6 +26,7 @@ import {
   followUpLoadingRequest,
   followUpSuccessRequest,
   idleRequest,
+  recoveringRequest,
   thinkingExpansionRequest,
   type PanelRequestState,
   type PanelVisibility,
@@ -110,6 +111,13 @@ export type AiPanelEvent =
   | { readonly type: "succeed_direct_question"; readonly response: string }
   | { readonly type: "fail_direct_question"; readonly error: GenerateAiError }
   | { readonly type: "require_direct_question_configuration" }
+  | {
+      readonly type: "append_stream_text";
+      readonly text: string;
+    }
+  | { readonly type: "begin_recovery" }
+  | { readonly type: "complete_recovery" }
+  | { readonly type: "fail_recovery" }
   | { readonly type: "close" }
   | { readonly type: "open" }
   | { readonly type: "new_conversation" }
@@ -429,12 +437,76 @@ export function reduceAiPanelState(
     case "fail_direct_question": {
       const request = state.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
-      return { ...state, request: { ...request, status: "error", error: event.error } };
+      // 失败终态丢弃部分流式草稿（done 全文才是最终事实）。
+      const { streamedText: _dropped, ...rest } = request;
+      return { ...state, request: { ...rest, status: "error", error: event.error } };
     }
     case "require_direct_question_configuration": {
       const request = state.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
-      return { ...state, request: { ...request, status: "configuration_required" } };
+      const { streamedText: _dropped, ...rest } = request;
+      return { ...state, request: { ...rest, status: "configuration_required" } };
+    }
+    case "append_stream_text": {
+      // 流式增量只推进「生成中」的请求：直接提问 loading 或对话内无错误的待答轮次。
+      // 其余状态原样返回（同一引用），迟到增量一律丢弃。
+      const request = state.request;
+      if (request.kind === "direct_question" && request.status === "loading") {
+        return {
+          ...state,
+          request: { ...request, streamedText: (request.streamedText ?? "") + event.text },
+        };
+      }
+      const conversation = state.conversationContext.conversation;
+      const pending = conversation?.pending;
+      if (conversation && pending && !pending.error) {
+        return {
+          ...state,
+          conversationContext: {
+            ...state.conversationContext,
+            conversation: {
+              ...conversation,
+              pending: { ...pending, streamedText: (pending.streamedText ?? "") + event.text },
+            },
+          },
+        };
+      }
+      return state;
+    }
+    case "begin_recovery": {
+      // 驱动进程丢失：仅当存在对话时进入恢复态（保留对话与锚点）。
+      const conversation = state.conversationContext.conversation;
+      if (!conversation) return state;
+      return {
+        ...state,
+        request: recoveringRequest(conversation.anchor, conversation.id),
+      };
+    }
+    case "complete_recovery": {
+      // 恢复成功：回到对话成功显示（done 全文以重放前的首轮回应为准）。
+      const request = state.request;
+      const conversation = state.conversationContext.conversation;
+      if (request.kind !== "recovering" || !conversation) return state;
+      return {
+        ...state,
+        request: firstSuccessRequest(
+          conversation.anchor,
+          conversation.firstResponse,
+          conversation.id,
+        ),
+      };
+    }
+    case "fail_recovery": {
+      // 恢复失败：进入错误态，引导用户新建对话。
+      const request = state.request;
+      if (request.kind !== "recovering") return state;
+      return {
+        ...state,
+        request: firstErrorRequest(request.snapshot, {
+          code: "service",
+          message: "对话恢复失败，请点击新建对话开始新对话",
+        }, { conversationId: request.conversationId }),
+      };
     }
     case "close":
       return state.visibility === "closed" ? state : { ...state, visibility: "closed" };

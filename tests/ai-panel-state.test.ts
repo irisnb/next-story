@@ -362,6 +362,7 @@ test("beginDirectQuestion freezes question and selection into loading and clears
     question: "问题",
     selection,
     status: "loading",
+    streamedText: "",
   });
   assert.equal(state.view.pendingSelection, null, "发送后待附带选区被消费");
 });
@@ -388,6 +389,7 @@ test("beginDirectQuestion freezes the selection so later mutation of the origina
     question: "问题",
     selection: { documentId: "draft", selectedText: "待附带选区", from: 0, to: 5 },
     status: "loading",
+    streamedText: "",
   });
 
   // 成功进入统一对话后，对话锚点也不受原对象后续修改影响
@@ -546,6 +548,7 @@ test("beginDirectQuestion replaces a prior conversation as a fresh first-round e
     question: "新问题",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
 });
 
@@ -816,6 +819,7 @@ test("late first-round results cannot pollute the state after newConversation an
     question: "新问题",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
 
   // 旧首轮请求的迟到结果不得改写新的直接提问 loading 状态
@@ -825,6 +829,7 @@ test("late first-round results cannot pollute the state after newConversation an
     question: "新问题",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
 
   state.fail(oldAnchor, authError);
@@ -834,5 +839,93 @@ test("late first-round results cannot pollute the state after newConversation an
     question: "新问题",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
+});
+
+test("appendStreamText advances the direct question loading draft and is inert elsewhere", () => {
+  const state = new AiPanelState();
+  // 空闲状态：迟到增量原样拒绝
+  assert.equal(state.appendStreamText("迟到"), false);
+
+  state.beginDirectQuestion("问题", null);
+  assert.equal(state.appendStreamText("她可能"), true);
+  assert.equal(state.appendStreamText("\n在隐瞒"), true);
+  const request = state.view.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.streamedText, "她可能\n在隐瞒");
+  }
+
+  // done 全文到达后（成功终态）不再接受增量
+  state.succeedDirectQuestion("最终回答");
+  assert.equal(state.appendStreamText("迟到"), false);
+});
+
+test("appendStreamText advances the pending follow-up draft and resets on retry", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  // 无待答轮次时增量被拒绝
+  assert.equal(state.appendStreamText("无主增量"), false);
+
+  state.beginFollowUp("追问");
+  assert.equal(state.appendStreamText("部分"), true);
+  assert.equal(state.conversation?.pending?.streamedText, "部分");
+
+  // 失败后部分文本随错误一起不再显示；重试重置增量草稿
+  state.failFollowUp(1, authError);
+  assert.equal(state.appendStreamText("迟到"), false);
+  state.acceptFollowUpRetry();
+  assert.equal(state.conversation?.pending?.streamedText, "");
+  assert.equal(state.appendStreamText("重新开始"), true);
+  assert.equal(state.conversation?.pending?.streamedText, "重新开始");
+});
+
+test("driver recovery keeps the conversation and returns to success display", () => {
+  const state = new AiPanelState();
+  // 无对话时进入恢复被拒绝
+  assert.equal(state.beginRecovery(), false);
+
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("第一问");
+  state.succeedFollowUp(1, "第一答");
+
+  assert.equal(state.beginRecovery(), true);
+  assert.deepEqual(state.view.request, {
+    kind: "recovering",
+    snapshot: anchor,
+    conversationId: 1,
+  });
+  assert.ok(state.conversation, "恢复期间保留对话与锚点");
+
+  assert.equal(state.completeRecovery(), true);
+  assert.deepEqual(state.view.request, {
+    kind: "success",
+    snapshot: anchor,
+    response: "首答",
+    conversationId: 1,
+    phase: "first",
+  });
+});
+
+test("failed recovery enters the error state with a new-conversation guidance message", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginDirectQuestion("问题", anchor);
+  state.succeedDirectQuestion("首答");
+
+  assert.equal(state.beginRecovery(), true);
+  assert.equal(state.failRecovery(), true);
+  const request = state.view.request;
+  assert.equal(request.kind, "error");
+  if (request.kind === "error") {
+    assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
+    assert.equal(request.conversationId, 1);
+  }
+  // 恢复完成 / 失败事件在非恢复态被拒绝
+  assert.equal(state.completeRecovery(), false);
 });

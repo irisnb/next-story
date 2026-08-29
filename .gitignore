@@ -46,3 +46,11 @@ coverage/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# sidecar 探针/测试的临时运行目录与生成配置
+sidecar/**/.probe-home/
+sidecar/**/.dump-home/
+sidecar/**/.test-home/
+sidecar/**/.gen-home/
+sidecar/probe/cordis.probe.yaml
+sidecar/probe/cordis.dump.yaml

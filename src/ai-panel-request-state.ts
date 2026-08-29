@@ -53,6 +53,13 @@ export type PanelRequestState =
       selection: SelectionSnapshot | null;
       status: "loading" | "error" | "configuration_required";
       error?: GenerateAiError;
+      /** 流式增量草稿（仅 loading 阶段逐字追加；done 全文到达后整体替换）。 */
+      streamedText?: string;
+    }
+  | {
+      kind: "recovering";
+      snapshot: SelectionSnapshot | null;
+      conversationId: number;
     };
 
 export interface PanelStateView {
@@ -198,5 +205,13 @@ export function directQuestionLoadingRequest(
   question: string,
   selection: SelectionSnapshot | null,
 ): PanelRequestState {
-  return { kind: "direct_question", question, selection, status: "loading" };
+  return { kind: "direct_question", question, selection, status: "loading", streamedText: "" };
+}
+
+/** 驱动进程丢失后的对话恢复状态：保留对话与锚点，显示“恢复对话中”。 */
+export function recoveringRequest(
+  snapshot: SelectionSnapshot | null,
+  conversationId: number,
+): PanelRequestState {
+  return { kind: "recovering", snapshot, conversationId };
 }

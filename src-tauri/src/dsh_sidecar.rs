@@ -37,7 +37,12 @@ pub struct DshGenerationParams {
 #[derive(Debug, Clone)]
 pub struct DshRuntimePaths {
     pub node_bin: PathBuf,
+    /// 旧一次性路径的 DSH CLI 入口（legacy 回退路径保留可编译，常驻链路不使用）。
     pub bin_js: PathBuf,
+    /// 常驻驱动脚本入口（`sidecar/driver/driver.mjs`，resident-ai-session）。
+    pub driver_entry: PathBuf,
+    /// 常驻驱动的工作目录（`sidecar/driver`）。
+    pub driver_cwd: PathBuf,
     /// 应用自有的 DSH_HOME（版本隔离）；`None` 表示沿用 DSH 默认 home。
     pub dsh_home: Option<PathBuf>,
 }
@@ -121,9 +126,19 @@ pub fn resolve_paths(
             "DSH sidecar 未安装，请先在 sidecar 目录运行 npm install",
         ));
     }
+    let driver_cwd = sidecar_root.join("driver");
+    let driver_entry = driver_cwd.join("driver.mjs");
+    if !driver_entry.exists() {
+        return Err(GenerateAiError::new(
+            GenerateAiErrorCode::Service,
+            "常驻驱动脚本缺失（sidecar/driver/driver.mjs）",
+        ));
+    }
     let paths = DshRuntimePaths {
         node_bin,
         bin_js,
+        driver_entry,
+        driver_cwd,
         dsh_home,
     };
     Ok(paths)

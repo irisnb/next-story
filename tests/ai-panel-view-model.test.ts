@@ -605,3 +605,41 @@ test("new conversation control is visible during follow-up and direct-question r
   state.requireDirectQuestionConfiguration();
   assert.equal(viewOf(state).newConversationVisible, true);
 });
+
+test("recovering request reuses the loading placeholder with the recovery message", () => {
+  // Given: 驱动进程丢失后进入对话恢复态
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginRecovery();
+
+  // When: 构建显示 view model
+  const view = viewOf(state);
+
+  // Then: 复用生成中占位样式并显示恢复文案，对话保留
+  assert.equal(view.loadingVisible, true);
+  assert.equal(view.loadingMessage, "恢复对话中");
+  assert.ok(view.conversation);
+  assert.deepEqual(view.snapshot, { text: "锚点" });
+});
+
+test("direct question loading exposes the streamed draft through the view model", () => {
+  const state = new AiPanelState();
+  state.open();
+  state.beginDirectQuestion("问题", null);
+
+  // 尚无增量：streamedText 为 null，不渲染回复区
+  let view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.streamedText, null);
+
+  state.appendStreamText("她可能\n在隐瞒");
+  view = viewOf(state);
+  assert.ok(view.directQuestion);
+  assert.equal(view.directQuestion.streamedText, "她可能\n在隐瞒");
+
+  // 非 loading 状态不暴露增量草稿
+  state.succeedDirectQuestion("最终回答");
+  assert.equal(viewOf(state).directQuestion, null);
+});

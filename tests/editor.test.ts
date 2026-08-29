@@ -468,7 +468,6 @@ test("showProject begins the AI project and unload ends it", async () => {
     const ai: AiFeatureController = {
       beginProject: () => { begins += 1; },
       endProject: () => { ends += 1; },
-      resetSelectionEntry: () => {},
       submitFollowUp: () => Promise.resolve(false),
       retryFollowUp: () => Promise.resolve(false),
       editFollowUp: () => Promise.resolve(false),
@@ -494,7 +493,6 @@ test("applyTree with the same document does not reset the AI project", async () 
     const ai: AiFeatureController = {
       beginProject: () => { begins += 1; },
       endProject: () => {},
-      resetSelectionEntry: () => {},
       submitFollowUp: () => Promise.resolve(false),
       retryFollowUp: () => Promise.resolve(false),
       editFollowUp: () => Promise.resolve(false),

@@ -262,7 +262,11 @@ impl GenerateAiResult {
 }
 
 pub mod generate;
-pub use generate::{generate_ai_thinking, generate_ai_thinking_in_dir};
+pub use generate::{
+    ai_cancel_message_in_dir, ai_end_session_in_dir, ai_replay_done_in_dir,
+    ai_replay_history_in_dir, ai_send_message_in_dir, ai_start_session_in_dir,
+    generate_ai_thinking, generate_ai_thinking_in_dir, AiMessageKind,
+};
 
 mod http;
 

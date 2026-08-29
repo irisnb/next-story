@@ -5,7 +5,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiPanel } from "../src/ai-panel.ts";
-import type { SelectionEntryEditor } from "../src/selection-entry.ts";
+import type { AiReplayTurn, AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
   GenerateAiRequest,
@@ -43,12 +43,6 @@ function conversationText(ui: { elements: Map<string, FakeElement> }): string[] 
   return ui.elements.get("ai-conversation")!.children.map((child) => child.textContent);
 }
 
-function fixtureElement(elements: Map<string, FakeElement>, id: string): FakeElement {
-  const element = elements.get(id);
-  assert.ok(element, `missing fixture element: ${id}`);
-  return element;
-}
-
 async function flushAiFeatureFlow(): Promise<void> {
   // 固定次数（原来 4 次）的微任务刷洗，一旦流程内部多加一层 await 就会失效。
   // 改为有界循环刷洗，让链式 Promise 充分落定，同时仍不会「完成」一个由测试手动
@@ -60,10 +54,10 @@ async function flushAiFeatureFlow(): Promise<void> {
 
 function harness(): {
   state: AiPanelState;
-	  elements: Map<string, FakeElement>;
-	  submitted: string[];
-	  startedThinkingExpansions: string[];
-	  retried: number;
+  elements: Map<string, FakeElement>;
+  submitted: string[];
+  newConversations: number;
+  retried: number;
   edited: string[];
   firstRetries: number;
   restore(): void;
@@ -79,30 +73,32 @@ function harness(): {
     createElement: (tag: string) => new FakeElement(tag),
   } as unknown as Document;
 
-	  const state = new AiPanelState();
-	  const submitted: string[] = [];
-	  const startedThinkingExpansions: string[] = [];
-	  const edited: string[] = [];
+  const state = new AiPanelState();
+  const submitted: string[] = [];
+  const edited: string[] = [];
+  const newConversations: number[] = [];
   let retried = 0;
   let firstRetries = 0;
   setupAiPanel(dom, state, {
     onRetry: () => { firstRetries += 1; },
     onGoToConfig: () => {},
-	    onSubmitFollowUp: (question) => { submitted.push(question); return Promise.resolve(true); },
-	    onRetryFollowUp: () => { retried += 1; return Promise.resolve(true); },
-	    onEditFollowUp: (question) => { edited.push(question); return Promise.resolve(true); },
-	    onStartThinkingExpansion: (direction) => { startedThinkingExpansions.push(direction); return true; },
+    onSubmitFollowUp: (question) => { submitted.push(question); return Promise.resolve(true); },
+    onRetryFollowUp: () => { retried += 1; return Promise.resolve(true); },
+    onEditFollowUp: (question) => { edited.push(question); return Promise.resolve(true); },
     onSubmitDirectQuestion: () => Promise.resolve(true),
+    onNewConversation: () => {
+      if (state.newConversation()) newConversations.push(1);
+    },
     onRemoveDirectQuestionSelection: () => state.setPendingSelection(null),
     onDirectQuestionFocus: () => {},
     onOpenPanel: () => {},
-	  });
+  });
 
   return {
     state,
-	    elements,
-	    submitted,
-	    startedThinkingExpansions,
+    elements,
+    submitted,
+    get newConversations() { return newConversations.length; },
     get retried() { return retried; },
     edited,
     get firstRetries() { return firstRetries; },
@@ -110,19 +106,78 @@ function harness(): {
   };
 }
 
+interface FakeSessionTransportOptions {
+  readonly results?: readonly GenerateAiResultSource[];
+}
+
+interface FakeSessionTransport {
+  transport: AiSessionTransport;
+  requests: GenerateAiRequest[];
+  endSessionCalls: () => number;
+  replayedTurns: () => AiReplayTurn[] | null;
+  emitStreamText(text: string): void;
+  emitDriverLost(): void;
+  resolveReplay(): void;
+  rejectReplay(): void;
+}
+
+function fakeSessionTransport(options: FakeSessionTransportOptions = {}): FakeSessionTransport {
+  const results = [...(options.results ?? [])];
+  const requests: GenerateAiRequest[] = [];
+  let streamListener: ((text: string) => void) | null = null;
+  let driverLostListener: (() => void) | null = null;
+  let endSessionCalls = 0;
+  let replayedTurns: AiReplayTurn[] | null = null;
+  let resolveReplay: (() => void) | null = null;
+  let rejectReplay: (() => void) | null = null;
+
+  const transport: AiSessionTransport = {
+    sendViaResidentSession: (request) => {
+      requests.push(request);
+      const result = results.shift();
+      if (!result) throw new Error("missing fake result");
+      return Promise.resolve(result);
+    },
+    endActiveSession: () => { endSessionCalls += 1; },
+    replayActiveSession: (turns) => {
+      replayedTurns = [...turns];
+      return new Promise<void>((resolve, reject) => {
+        resolveReplay = resolve;
+        rejectReplay = () => reject(new Error("重放失败"));
+      });
+    },
+    onStreamText: (listener) => {
+      streamListener = listener;
+      return () => { streamListener = null; };
+    },
+    onDriverLost: (listener) => {
+      driverLostListener = listener;
+      return () => { driverLostListener = null; };
+    },
+    installSessionEventRouting: () => {},
+  };
+
+  return {
+    transport,
+    requests,
+    endSessionCalls: () => endSessionCalls,
+    replayedTurns: () => replayedTurns,
+    emitStreamText: (text) => streamListener?.(text),
+    emitDriverLost: () => driverLostListener?.(),
+    resolveReplay: () => resolveReplay?.(),
+    rejectReplay: () => rejectReplay?.(),
+  };
+}
+
 function featureHarness(results: GenerateAiResultSource[], options: {
-  readonly apiBaseUrl?: string;
-  readonly apiBaseUrls?: readonly string[];
   readonly loadConfigError?: unknown;
   readonly loadConfigResult?: LlmConfigSummary | null;
   readonly loadConfigPromise?: Promise<LlmConfigSummary | null>;
-  readonly currentEditor?: SelectionEntryEditor | null;
 } = {}): {
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
-  requests: GenerateAiRequest[];
-  summon(snap: SelectionSnapshot): void;
-  thinkingExpansion(snap: SelectionSnapshot): void;
+  session: FakeSessionTransport;
+  submitDirectQuestion(question: string): void;
   setCurrentDocumentId(documentId: string): void;
   openedConfig: string[];
   restore(): void;
@@ -140,14 +195,10 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     createElement: (tag: string) => new FakeElement(tag),
   } as unknown as Document;
 
-  let onSummon: ((snap: SelectionSnapshot) => void) | null = null;
-  let onThinkingExpansion: ((snap: SelectionSnapshot) => void) | null = null;
-  const requests: GenerateAiRequest[] = [];
+  const session = fakeSessionTransport({ results });
   const openedConfig: string[] = [];
-  const apiBaseUrls = [...(options.apiBaseUrls ?? [])];
   const loadConfigResult = options.loadConfigResult;
   let currentDocumentId = "doc-1";
-  const currentEditor = options.currentEditor ?? null;
 
   const controller = setupAiFeature({
     aiPanelDom: dom,
@@ -157,183 +208,39 @@ function featureHarness(results: GenerateAiResultSource[], options: {
     editorTextarea: editor,
   } as unknown as AppDom, {
     getCurrentDocumentId: () => currentDocumentId,
-    getCurrentEditor: () => currentEditor,
+    getCurrentEditor: () => null,
     openConfigPage: () => { openedConfig.push("settings"); },
   }, {
-    generate: async (request) => {
-      requests.push(request);
-      const result = results.shift();
-      if (!result) throw new Error("missing fake result");
-      return result;
-    },
+    transport: session.transport,
     loadConfig: async () => {
       if (options.loadConfigError) throw options.loadConfigError;
       if (options.loadConfigPromise) return options.loadConfigPromise;
       if (loadConfigResult !== undefined) return loadConfigResult;
       return {
-        api_base_url: apiBaseUrls.shift() ?? options.apiBaseUrl ?? "https://api.example.com/v1",
+        api_base_url: "https://api.example.com/v1",
         model: "saved-model",
         has_api_key: true,
       };
-    },
-    setupEntry: (options) => {
-      onSummon = options.onSummon;
-      onThinkingExpansion = options.onThinkingExpansion;
-      return { reset: () => {}, destroy: () => {} };
     },
   });
 
   return {
     controller,
     elements,
-    requests,
-    summon: (snap) => {
-      if (!onSummon) throw new Error("summon callback missing");
-      onSummon(snap);
-    },
-    thinkingExpansion: (snap) => {
-      if (!onThinkingExpansion) throw new Error("thinking expansion callback missing");
-      onThinkingExpansion(snap);
+    session,
+    submitDirectQuestion(question: string): void {
+      const toggle = elements.get("btn-toggle-ai")!;
+      toggle.dispatch("click");
+      const input = elements.get("ai-direct-question-input")!;
+      input.value = question;
+      input.dispatch("input");
+      elements.get("ai-direct-question-form")!.dispatch("submit");
     },
     setCurrentDocumentId: (documentId) => { currentDocumentId = documentId; },
     openedConfig,
     restore: () => { globalThis.document = previousDocument; },
   };
 }
-
-test("first summon sends directly without creative-content confirmation", async () => {
-  const ui = featureHarness([{ ok: true, content: "首答" }]);
-  try {
-    const editor = ui.elements.get("editor-textarea")!;
-
-    ui.summon(snapshot("冻结选区"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [{ kind: "first", selected_text: "冻结选区" }]);
-    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区");
-    assert.equal(editor.value, "用户正文");
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), true);
-    assert.deepEqual(conversationText(ui), ["首答"]);
-    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("same-project first request rejection shows blocked feedback without generation", async () => {
-  const pending = deferredGenerateResult();
-  const ui = featureHarness([pending.promise, { ok: true, content: "不应发起" }]);
-  try {
-    ui.summon(snapshot("当前作品选区一"));
-    await flushAiFeatureFlow();
-
-    ui.summon(snapshot("当前作品选区二"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "当前作品选区一" },
-    ]);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "当前作品选区二");
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-error-message")!.textContent, "已有 AI 请求正在进行，本次请求没有发出。");
-    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("first request preflight exception shows readable feedback without generation", async () => {
-  const ui = featureHarness([{ ok: true, content: "不应出现" }], {
-    loadConfigError: new Error("配置读取失败，请稍后重试"),
-  });
-  try {
-    ui.summon(snapshot("异常前冻结选区"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, []);
-    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "异常前冻结选区");
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-error-message")!.textContent, "配置读取失败，请稍后重试");
-    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("first request string preflight rejection preserves the backend message", async () => {
-  const ui = featureHarness([{ ok: true, content: "不应出现" }], {
-    loadConfigError: "LLM 配置文件读取失败，请检查配置文件权限",
-  });
-  try {
-    ui.summon(snapshot("字符串异常前冻结选区"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, []);
-    assert.equal(ui.elements.get("ai-panel")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "字符串异常前冻结选区");
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
-    assert.equal(
-      ui.elements.get("ai-error-message")!.textContent,
-      "LLM 配置文件读取失败，请检查配置文件权限",
-    );
-    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), true);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("missing LLM config on first summon shows configuration-required controls and skips generation", async () => {
-  const ui = featureHarness([{ ok: true, content: "不应出现" }], { loadConfigResult: null });
-  try {
-    ui.summon(snapshot("冻结选区"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, []);
-    assert.equal(ui.elements.get("ai-config-block")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-retry")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("follow-up sends directly without changed-origin creative-content confirmation", async () => {
-  const ui = featureHarness([{ ok: true, content: "首答" }, { ok: true, content: "追问回答" }], {
-    apiBaseUrls: ["https://api.example.com/v1", "https://other.example.com/v1"],
-  });
-  try {
-    ui.summon(snapshot("冻结选区"));
-    await flushAiFeatureFlow();
-
-    const input = ui.elements.get("ai-follow-up-input")!;
-    input.value = "不要丢掉的追问";
-    input.dispatch("input");
-    ui.elements.get("ai-follow-up-form")!.dispatch("submit");
-    await flushAiFeatureFlow();
-
-    assert.equal(input.value, "");
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "冻结选区" },
-      {
-        kind: "follow_up",
-        selected_text: "冻结选区",
-        messages: [
-          { role: "assistant", content: "首答" },
-          { role: "user", content: "不要丢掉的追问" },
-        ],
-      },
-    ]);
-    assert.deepEqual(conversationText(ui), ["首答", "不要丢掉的追问", "追问回答"]);
-  } finally {
-    ui.restore();
-  }
-});
 
 test("follow-up composer appears only after the first response succeeds", () => {
   const ui = harness();
@@ -348,32 +255,6 @@ test("follow-up composer appears only after the first response succeeds", () => 
     ui.state.succeed(anchor, "首次回应");
     assert.equal(form.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-follow-up-input")!.disabled, false);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("thinking expansion prestate renders the approved form and starts from the draft direction", () => {
-  const ui = harness();
-  try {
-    const anchor = snapshot("冻结选区文本");
-
-    ui.state.beginThinkingExpansion(anchor);
-
-    assert.equal(ui.elements.get("ai-thinking-expansion-prestate")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-thinking-expansion-title")!.textContent, "思维扩展");
-    assert.equal(ui.elements.get("ai-thinking-expansion-count")!.textContent, "已选中 6 字");
-    assert.equal(ui.elements.get("ai-thinking-expansion-input")!.focusCount, 1);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区文本");
-    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
-
-    const input = ui.elements.get("ai-thinking-expansion-input")!;
-    input.value = "想追的方向";
-    input.dispatch("input");
-    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
-
-    assert.deepEqual(ui.startedThinkingExpansions, ["想追的方向"]);
-    assert.equal((ui.elements.get("editor-textarea")?.value ?? "用户正文"), "用户正文");
   } finally {
     ui.restore();
   }
@@ -398,6 +279,26 @@ test("renders ordered turns as literal text and disables duplicate sends while p
     assert.equal(ui.elements.get("ai-follow-up-input")!.disabled, true);
     assert.equal(ui.elements.get("ai-follow-up-send")!.disabled, true);
     assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("follow-up stream text renders as an assistant message before the thinking status", () => {
+  const ui = harness();
+  try {
+    const anchor = snapshot("冻结选区");
+    ui.state.beginRequest(anchor);
+    ui.state.succeed(anchor, "首答");
+    ui.state.beginFollowUp("问题二");
+    ui.state.appendStreamText("人物可能");
+    ui.state.appendStreamText("在隐瞒动机");
+
+    const conversation = ui.elements.get("ai-conversation")!;
+    assert.deepEqual(
+      conversation.children.map((child) => child.textContent),
+      ["首答", "问题二", "人物可能在隐瞒动机", "正在思考…"],
+    );
   } finally {
     ui.restore();
   }
@@ -548,28 +449,6 @@ test("project lifecycle reset clears conversation and unsent follow-up draft", (
   }
 });
 
-test("editor lifecycle composition resets AI on project ready and unload", async () => {
-  const ui = featureHarness([{ ok: true, content: "旧作品首答" }, { ok: true, content: "新作品首答" }]);
-  try {
-    ui.summon(snapshot("旧作品选区"));
-    await flushAiFeatureFlow();
-    assert.deepEqual(conversationText(ui), ["旧作品首答"]);
-
-    // endProject（作品卸载）：清空旧对话，AI 面板回到初始状态。
-    ui.controller.endProject();
-    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
-    assert.deepEqual(conversationText(ui), []);
-
-    // beginProject（新作品就绪）：可以立刻在新作品里召唤，旧内容不残留。
-    ui.controller.beginProject();
-    ui.summon(snapshot("新作品选区"));
-    await flushAiFeatureFlow();
-    assert.deepEqual(conversationText(ui), ["新作品首答"]);
-  } finally {
-    ui.restore();
-  }
-});
-
 test("editor shell keeps the AI panel viewport-stable and scrolls its body", () => {
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(styles, /\.editor-page\s*\{[^}]*(?:\{|;)\s*height:\s*100vh;/s);
@@ -597,7 +476,7 @@ test("real AI feature flow never writes notebooks across success, failure, retry
   try {
     const editor = ui.elements.get("editor-textarea")!;
     const original = editor.value;
-    ui.summon(snapshot("冻结选区"));
+    ui.submitDirectQuestion("原问题");
     await flushAiFeatureFlow();
     assert.equal(await ui.controller.submitFollowUp("失败问题"), true);
     await flushAiFeatureFlow();
@@ -607,192 +486,246 @@ test("real AI feature flow never writes notebooks across success, failure, retry
     await flushAiFeatureFlow();
 
     assert.equal(editor.value, original);
-    assert.equal(ui.requests.length, 4);
+    assert.equal(ui.session.requests.length, 4);
   } finally {
     ui.restore();
   }
 });
 
-test("first request, retry, and follow-up keep the clicked snapshot after editor context changes", async () => {
-  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
-    resolve: null,
-  };
-  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
-    configDeferred.resolve = resolve;
-  });
-  const ui = featureHarness([
-    { ok: false, error: { code: "network", message: "网络失败" } },
-    { ok: true, content: "重试回答" },
-    { ok: true, content: "追问回答" },
-  ], { loadConfigPromise: configPromise });
-  try {
-    const editor = fixtureElement(ui.elements, "editor-textarea");
-    const retry = fixtureElement(ui.elements, "ai-retry");
-
-    ui.summon(snapshot("点击时冻结选区"));
-    editor.value = "点击后改写的内容与新选区";
-    ui.setCurrentDocumentId("doc-2");
-    configDeferred.resolve?.({
-      api_base_url: "https://api.example.com/v1",
-      model: "saved-model",
-      has_api_key: true,
-    });
-    await flushAiFeatureFlow();
-
-    editor.value = "重试前再次改写内容";
-    retry.dispatch("click");
-    await flushAiFeatureFlow();
-
-    editor.value = "追问前继续编辑内容";
-    assert.equal(await ui.controller.submitFollowUp("继续追问"), true);
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "点击时冻结选区" },
-      { kind: "first", selected_text: "点击时冻结选区" },
-      {
-        kind: "follow_up",
-        selected_text: "点击时冻结选区",
-        messages: [
-          { role: "assistant", content: "重试回答" },
-          { role: "user", content: "继续追问" },
-        ],
-      },
-    ]);
-    assert.equal(editor.value, "追问前继续编辑内容");
-  } finally {
-    ui.restore();
-  }
-});
-
-test("thinking expansion keeps the clicked snapshot after editor context changes", async () => {
-  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
-  try {
-    const editor = fixtureElement(ui.elements, "editor-textarea");
-    const direction = fixtureElement(ui.elements, "ai-thinking-expansion-input");
-    const form = fixtureElement(ui.elements, "ai-thinking-expansion-form");
-
-    ui.thinkingExpansion(snapshot("思维扩展冻结选区"));
-    editor.value = "点击后改写的内容与新选区";
-    ui.setCurrentDocumentId("doc-2");
-    direction.value = "追人物的犹豫";
-    direction.dispatch("input");
-    form.dispatch("submit");
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [{
-      kind: "first",
-      selected_text: "思维扩展冻结选区",
-      thinking_direction: "追人物的犹豫",
-    }]);
-    assert.equal(editor.value, "点击后改写的内容与新选区");
-  } finally {
-    ui.restore();
-  }
-});
-
-test("real AI feature flow opens thinking expansion prestate and waits for Start before generating", async () => {
-  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
+test("real AI feature flow submits a direct question and renders the unified conversation without writing notebooks", async () => {
+  const ui = featureHarness([{ ok: true, content: "直接提问回答" }]);
   try {
     const editor = ui.elements.get("editor-textarea")!;
     const original = editor.value;
-    const input = ui.elements.get("ai-thinking-expansion-input")!;
-
-    ui.thinkingExpansion(snapshot("冻结选区"));
-
-    assert.equal(ui.requests.length, 0);
-    assert.equal(ui.elements.get("ai-thinking-expansion-prestate")!.classList.contains("hidden"), false);
-    assert.equal(ui.elements.get("ai-snapshot-text")!.textContent, "冻结选区");
-
-    input.value = "想追的方向";
-    input.dispatch("input");
-    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    ui.submitDirectQuestion("这个角色为什么犹豫？");
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.requests, [{
-      kind: "first",
-      selected_text: "冻结选区",
-      thinking_direction: "想追的方向",
+    assert.deepEqual(ui.session.requests, [{
+      kind: "direct_question",
+      question: "这个角色为什么犹豫？",
     }]);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "直接提问回答"]);
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
     assert.equal(editor.value, original);
   } finally {
     ui.restore();
   }
 });
 
-test("real AI feature flow omits thinking direction when the prestate direction is blank", async () => {
-  const ui = featureHarness([{ ok: true, content: "扩展回答" }]);
+test("real AI feature flow direct question with pending selection sends question and selection", async () => {
+  const ui = featureHarness([{ ok: true, content: "回答" }]);
   try {
-    const input = ui.elements.get("ai-thinking-expansion-input")!;
+    const toggle = ui.elements.get("btn-toggle-ai")!;
+    toggle.dispatch("click");
+    // 面板打开时同步编辑器选区为待附带重点材料（无编辑器时无选区）
+    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), true);
 
-    ui.thinkingExpansion(snapshot("冻结选区"));
-
-    input.value = "   \n  ";
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这段里人物在隐瞒什么？";
     input.dispatch("input");
-    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.requests, [{
-      kind: "first",
-      selected_text: "冻结选区",
+    assert.deepEqual(ui.session.requests, [{
+      kind: "direct_question",
+      question: "这段里人物在隐瞒什么？",
     }]);
   } finally {
     ui.restore();
   }
 });
 
-test("thinking expansion follow-up reuses the original direction-bearing first material", async () => {
-  const ui = featureHarness([
-    { ok: true, content: "扩展回答" },
-    { ok: true, content: "追问回答" },
-  ]);
+test("direct question streams incremental text into the response area via state", async () => {
+  const pending = deferredGenerateResult();
+  const ui = featureHarness([pending.promise]);
   try {
-    const input = ui.elements.get("ai-thinking-expansion-input")!;
-
-    ui.thinkingExpansion(snapshot("冻结选区"));
-
-    input.value = "追人物的犹豫";
-    input.dispatch("input");
-    ui.elements.get("ai-thinking-expansion-form")!.dispatch("submit");
+    ui.submitDirectQuestion("这个角色为什么犹豫？");
     await flushAiFeatureFlow();
 
-    assert.equal(await ui.controller.submitFollowUp("继续追问"), true);
-    await flushAiFeatureFlow();
+    // 流式增量经传输层到达面板状态，再渲染到独立回复区（纯文本、保留换行）
+    ui.session.emitStreamText("她可能\n");
+    ui.session.emitStreamText("在隐瞒动机");
+    assert.equal(ui.elements.get("ai-direct-question-response")!.classList.contains("hidden"), false);
+    assert.equal(
+      ui.elements.get("ai-direct-question-response")!.textContent,
+      "她可能\n在隐瞒动机",
+    );
+    assert.equal(ui.elements.get("ai-direct-question-loading")!.classList.contains("hidden"), false);
 
-    assert.deepEqual(ui.requests[1], {
-      kind: "follow_up",
-      selected_text: "冻结选区",
-      thinking_direction: "追人物的犹豫",
-      messages: [
-        { role: "assistant", content: "扩展回答" },
-        { role: "user", content: "继续追问" },
-      ],
-    });
+    // done 全文到达：整体替换流式草稿，进入统一对话
+    pending.resolve({ ok: true, content: "最终回答" });
+    await flushAiFeatureFlow();
+    assert.equal(ui.elements.get("ai-direct-question-response")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "最终回答"]);
   } finally {
     ui.restore();
   }
 });
 
-test("summon follow-up does not invent a thinking direction", async () => {
+test("follow-up streams incremental text into the conversation thread", async () => {
   const ui = featureHarness([
     { ok: true, content: "首答" },
     { ok: true, content: "追问回答" },
   ]);
   try {
-    ui.summon(snapshot("普通选区"));
+    ui.submitDirectQuestion("原问题");
     await flushAiFeatureFlow();
 
-    assert.equal(await ui.controller.submitFollowUp("继续追问"), true);
+    const input = ui.elements.get("ai-follow-up-input")!;
+    input.value = "继续追问";
+    input.dispatch("input");
+    ui.elements.get("ai-follow-up-form")!.dispatch("submit");
+    ui.session.emitStreamText("部分草稿");
+    assert.ok(conversationText(ui).includes("部分草稿"), "流式增量应出现在对话线程中");
+
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["原问题", "首答", "继续追问", "追问回答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("driver lost with a conversation enters recovery, replays history, and completes", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
+  try {
+    ui.submitDirectQuestion("原问题");
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["原问题", "首答"]);
+
+    ui.session.emitDriverLost();
+
+    // 恢复中：保留对话与锚点，显示恢复占位文案
+    assert.ok(ui.session.replayedTurns());
+    assert.deepEqual(ui.session.replayedTurns(), [
+      { role: "user", text: "用户问题：\n原问题" },
+      { role: "assistant", text: "首答" },
+    ]);
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-loading")!.textContent, "恢复对话中");
+
+    ui.session.resolveReplay();
+    await flushAiFeatureFlow();
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["原问题", "首答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("driver lost recovery replays the selection material and successful follow-up turns", async () => {
+  const ui = featureHarness([
+    { ok: true, content: "首答" },
+    { ok: true, content: "第一答" },
+  ]);
+  try {
+    const toggle = ui.elements.get("btn-toggle-ai")!;
+    toggle.dispatch("click");
+    // 无编辑器时无待附带选区；直接提问成功后追问一轮
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "原问题";
+    input.dispatch("input");
+    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
+    await flushAiFeatureFlow();
+    assert.equal(await ui.controller.submitFollowUp("第一问"), true);
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.requests[1], {
-      kind: "follow_up",
-      selected_text: "普通选区",
-      messages: [
-        { role: "assistant", content: "首答" },
-        { role: "user", content: "继续追问" },
-      ],
-    });
+    ui.session.emitDriverLost();
+    assert.deepEqual(ui.session.replayedTurns(), [
+      { role: "user", text: "用户问题：\n原问题" },
+      { role: "assistant", text: "首答" },
+      { role: "user", text: "第一问" },
+      { role: "assistant", text: "第一答" },
+    ]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("driver lost recovery failure shows the recovery error and keeps the conversation", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
+  try {
+    ui.submitDirectQuestion("原问题");
+    await flushAiFeatureFlow();
+
+    ui.session.emitDriverLost();
+    ui.session.rejectReplay();
+    await flushAiFeatureFlow();
+
+    assert.equal(ui.elements.get("ai-error-block")!.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-error-message")!.textContent, "对话恢复失败，请点击新建对话开始新对话");
+    assert.equal(
+      ui.elements.get("ai-conversation")!.classList.contains("hidden"),
+      false,
+      "恢复失败保留对话本体",
+    );
+  } finally {
+    ui.restore();
+  }
+});
+
+test("driver lost without a conversation only resets the transport without recovery", async () => {
+  const ui = featureHarness([]);
+  try {
+    ui.session.emitDriverLost();
+    await flushAiFeatureFlow();
+
+    assert.equal(ui.session.endSessionCalls(), 1);
+    assert.equal(ui.session.replayedTurns(), null, "无对话不进入恢复流程");
+    assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("new-conversation click ends the resident session", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
+  try {
+    ui.submitDirectQuestion("原问题");
+    await flushAiFeatureFlow();
+    assert.equal(ui.session.endSessionCalls(), 0);
+
+    ui.elements.get("ai-new-conversation")!.dispatch("click");
+    assert.equal(ui.session.endSessionCalls(), 1, "新建对话应结束常驻会话");
+    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("project lifecycle transitions end the resident session", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
+  try {
+    ui.submitDirectQuestion("原问题");
+    await flushAiFeatureFlow();
+
+    ui.controller.endProject();
+    assert.equal(ui.session.endSessionCalls(), 1);
+
+    ui.controller.beginProject();
+    assert.equal(ui.session.endSessionCalls(), 2);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("editor lifecycle composition resets AI on project ready and unload", async () => {
+  const ui = featureHarness([{ ok: true, content: "旧作品首答" }, { ok: true, content: "新作品首答" }]);
+  try {
+    ui.submitDirectQuestion("旧作品问题");
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["旧作品问题", "旧作品首答"]);
+
+    // endProject（作品卸载）：清空旧对话，AI 面板回到初始状态。
+    ui.controller.endProject();
+    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), []);
+
+    // beginProject（新作品就绪）：可以立刻在新作品里直接提问，旧内容不残留。
+    ui.controller.beginProject();
+    ui.submitDirectQuestion("新作品问题");
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["新作品问题", "新作品首答"]);
   } finally {
     ui.restore();
   }
@@ -801,11 +734,11 @@ test("summon follow-up does not invent a thinking direction", async () => {
 test("configuration navigation preserves the live feature and never starts generation", async () => {
   const ui = featureHarness([{ ok: true, content: "首答" }]);
   try {
-    ui.summon(snapshot("锚点"));
+    ui.submitDirectQuestion("原问题");
     await flushAiFeatureFlow();
     ui.elements.get("ai-go-config")!.dispatch("click");
     assert.deepEqual(ui.openedConfig, ["settings"]);
-    assert.equal(ui.requests.length, 1);
+    assert.equal(ui.session.requests.length, 1);
     assert.equal(await ui.controller.submitFollowUp("回来后追问"), true);
     await flushAiFeatureFlow();
   } finally {
@@ -813,85 +746,44 @@ test("configuration navigation preserves the live feature and never starts gener
   }
 });
 
-test("same-project first requests remain single-flight while the current request is pending", async () => {
+test("project replacement releases a stale follow-up request so the new project can ask immediately", async () => {
   const pending = deferredGenerateResult();
-  const ui = featureHarness([pending.promise, { ok: true, content: "不应发起" }]);
-  try {
-    ui.summon(snapshot("当前作品选区一"));
-    ui.summon(snapshot("当前作品选区二"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "当前作品选区一" },
-    ]);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("project replacement releases a stale first request so the new project can summon immediately", async () => {
-    const stale = deferredGenerateResult();
-    const ui = featureHarness([stale.promise, { ok: true, content: "新作品回应" }]);
-    try {
-      ui.summon(snapshot("旧作品选区"));
-      await flushAiFeatureFlow();
-      assert.equal(ui.requests.length, 1);
-
-    ui.controller.endProject();
-    ui.controller.beginProject();
-    ui.summon(snapshot("新作品选区"));
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "旧作品选区" },
-      { kind: "first", selected_text: "新作品选区" },
-    ]);
-    assert.deepEqual(conversationText(ui), ["新作品回应"]);
-
-    stale.resolve({ ok: true, content: "迟到旧作品回应" });
-    await flushAiFeatureFlow();
-    assert.deepEqual(conversationText(ui), ["新作品回应"]);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("project replacement releases a stale follow-up request so the new project can summon immediately", async () => {
-  const stale = deferredGenerateResult();
   const ui = featureHarness([
     { ok: true, content: "旧作品首答" },
-    stale.promise,
+    pending.promise,
     { ok: true, content: "新作品首答" },
   ]);
-    try {
-      ui.summon(snapshot("旧作品锚点"));
-      await flushAiFeatureFlow();
-      assert.equal(await ui.controller.submitFollowUp("旧作品追问"), true);
-      await flushAiFeatureFlow();
-      assert.equal(ui.requests.length, 2);
+  try {
+    ui.submitDirectQuestion("旧作品问题");
+    await flushAiFeatureFlow();
+    assert.equal(await ui.controller.submitFollowUp("旧作品追问"), true);
+    await flushAiFeatureFlow();
+    assert.equal(ui.session.requests.length, 2);
 
     ui.controller.endProject();
     ui.controller.beginProject();
-    ui.summon(snapshot("新作品锚点"));
+    ui.submitDirectQuestion("新作品问题");
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.requests, [
-      { kind: "first", selected_text: "旧作品锚点" },
+    assert.deepEqual(ui.session.requests, [
+      { kind: "direct_question", question: "旧作品问题" },
       {
         kind: "follow_up",
-        selected_text: "旧作品锚点",
+        selected_text: "",
+        origin: "direct_question",
         messages: [
+          { role: "user", content: "旧作品问题" },
           { role: "assistant", content: "旧作品首答" },
           { role: "user", content: "旧作品追问" },
         ],
       },
-      { kind: "first", selected_text: "新作品锚点" },
+      { kind: "direct_question", question: "新作品问题" },
     ]);
-    assert.deepEqual(conversationText(ui), ["新作品首答"]);
+    assert.deepEqual(conversationText(ui), ["新作品问题", "新作品首答"]);
 
-    stale.resolve({ ok: false, error: { code: "network", message: "迟到旧作品失败" } });
+    pending.resolve({ ok: false, error: { code: "network", message: "迟到旧作品失败" } });
     await flushAiFeatureFlow();
-    assert.deepEqual(conversationText(ui), ["新作品首答"]);
+    assert.deepEqual(conversationText(ui), ["新作品问题", "新作品首答"]);
   } finally {
     ui.restore();
   }
@@ -1052,67 +944,6 @@ test("direct question error renders the error message and keeps the draft", () =
     assert.equal(ui.elements.get("ai-direct-question-error")!.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-direct-question-error-message")!.textContent, "网络失败");
     assert.equal(input.value, "问题");
-  } finally {
-    ui.restore();
-  }
-});
-
-test("real AI feature flow submits a direct question and renders the unified conversation without writing notebooks", async () => {
-  const ui = featureHarness([{ ok: true, content: "直接提问回答" }]);
-  try {
-    const editor = ui.elements.get("editor-textarea")!;
-    const original = editor.value;
-    const toggle = ui.elements.get("btn-toggle-ai")!;
-    toggle.dispatch("click");
-    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
-
-    const input = ui.elements.get("ai-direct-question-input")!;
-    input.value = "这个角色为什么犹豫？";
-    input.dispatch("input");
-    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [{
-      kind: "direct_question",
-      question: "这个角色为什么犹豫？",
-    }]);
-    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), true);
-    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "直接提问回答"]);
-    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
-    assert.equal(editor.value, original);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("real AI feature flow direct question with pending selection sends question and selection", async () => {
-  const fakeEditor: SelectionEntryEditor = {
-    element: new FakeElement("editor-textarea") as unknown as HTMLElement,
-    getDocument: () => ({
-      type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: "林站在天台边。" }] }],
-    }),
-    getSelection: () => ({ from: 1, to: 8, head: 8 }),
-    coordinatesAt: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-  };
-  const ui = featureHarness([{ ok: true, content: "回答" }], { currentEditor: fakeEditor });
-  try {
-    const toggle = ui.elements.get("btn-toggle-ai")!;
-    toggle.dispatch("click");
-    // 面板打开时同步编辑器选区为待附带重点材料
-    assert.equal(ui.elements.get("ai-direct-question-selection")!.classList.contains("hidden"), false);
-
-    const input = ui.elements.get("ai-direct-question-input")!;
-    input.value = "这段里人物在隐瞒什么？";
-    input.dispatch("input");
-    ui.elements.get("ai-direct-question-form")!.dispatch("submit");
-    await flushAiFeatureFlow();
-
-    assert.deepEqual(ui.requests, [{
-      kind: "direct_question",
-      question: "这段里人物在隐瞒什么？",
-      selected_text: "林站在天台边。",
-    }]);
   } finally {
     ui.restore();
   }

@@ -2,6 +2,13 @@ import type { AiPanelState } from "./ai-panel-state.ts";
 import type { GenerateAiRequest, LlmConfigSummary, SelectionSnapshot } from "./types.ts";
 
 /**
+ * @deprecated 旧选区工具（AI 及时召唤 / 思维扩展）的首轮请求流程，已随
+ * change `resident-ai-session` 从产品退场；代码保留待拆用，不再接入应用入口。
+ * 其中预检门禁（`createPreflightGate` / `acquirePreflight` / `releasePreflight`）
+ * 仍被直接提问流程使用，不属于退场范围。
+ */
+
+/**
  * 首轮流程（选区召唤 / 思维扩展 / 直接提问）共享的 operation 门禁。
  *
  * 以「持有者作品令牌」为 owner：同作品互斥，新作品可取代旧 owner，
@@ -29,6 +36,7 @@ export function releasePreflight(gate: FirstRequestPreflightState, token: number
   if (gate.owner === token) gate.owner = null;
 }
 
+/** @deprecated 旧选区工具的首轮请求入口，已退场；代码保留待拆用。 */
 export interface StartFirstRequestOptions {
   state: AiPanelState;
   snapshot: SelectionSnapshot;
@@ -43,6 +51,7 @@ export interface StartFirstRequestOptions {
   getProjectToken: () => number;
 }
 
+/** @deprecated 旧选区工具的思维扩展请求构造，已退场；代码保留待拆用。 */
 export function buildThinkingExpansionRequest(
   snapshot: SelectionSnapshot,
   direction: string,
@@ -58,6 +67,7 @@ export function buildThinkingExpansionRequest(
   return { kind: "first", selected_text: snapshot.selectedText };
 }
 
+/** @deprecated 旧选区工具的首轮请求流程，已退场；代码保留待拆用。 */
 export function startFirstRequest(options: StartFirstRequestOptions): boolean {
   const preflight = options.preflight;
   // 预检开始时冻结作品身份：预检期间的任何异步窗口之后都要重新校验。

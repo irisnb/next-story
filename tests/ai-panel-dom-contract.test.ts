@@ -106,11 +106,11 @@ test("setupAiPanel initializes purely from the explicit contract without global 
     setupAiPanel(dom, state, {
       onRetry: () => {},
       onGoToConfig: () => {},
-      onStartThinkingExpansion: () => true,
       onSubmitFollowUp: () => Promise.resolve(true),
       onRetryFollowUp: () => Promise.resolve(true),
       onEditFollowUp: () => Promise.resolve(true),
       onSubmitDirectQuestion: () => Promise.resolve(true),
+      onNewConversation: () => {},
       onRemoveDirectQuestionSelection: () => {},
       onDirectQuestionFocus: () => {},
       onOpenPanel: () => {},

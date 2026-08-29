@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
 import type {
@@ -200,4 +201,113 @@ export async function generateAiThinking(
   call: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
   return call<GenerateAiResult>("generate_ai_thinking", { request });
+}
+
+// ========== 常驻 AI 会话命令（change: resident-ai-session） ==========
+
+/** 与 Tauri `listen` 同形的窄类型，便于在测试中注入假事件监听。 */
+export type ListenFn = <T>(
+  event: string,
+  handler: (event: { payload: T }) => void,
+) => Promise<UnlistenFn>;
+
+/** 事件退订函数。 */
+export type UnlistenFn = () => void;
+
+const defaultListen: ListenFn = tauriListen as unknown as ListenFn;
+
+/** `"ai-delta"` 事件载荷：一条流式增量文本。 */
+export interface AiDeltaPayload {
+  session_id: string;
+  message_id: string;
+  seq: number;
+  text: string;
+}
+
+/** 会话历史重放中的一轮对话。 */
+export interface AiReplayTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/** 开始一个常驻会话（幂等；驱动进程内创建会话记忆）。 */
+export async function aiStartSession(
+  sessionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_start_session", { sessionId });
+}
+
+/**
+ * 向常驻会话发送一条消息。命令阻塞到终态才 resolve；流式增量经 `"ai-delta"`
+ * 事件先行转发，`done`（本命令返回的全文）是最终事实。
+ * `kind: "first"` 为首轮（后端组装系统提示词 + 问题 + 可选选区材料），
+ * `kind: "follow_up"` 为追问（只发新增问题）。
+ */
+export async function aiSendMessage(
+  sessionId: string,
+  messageId: string,
+  kind: "first" | "follow_up",
+  question: string,
+  selectedText?: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  const args: Record<string, unknown> = { sessionId, messageId, kind, question };
+  if (selectedText !== undefined) {
+    args.selectedText = selectedText;
+  }
+  return call<GenerateAiResult>("ai_send_message", args);
+}
+
+/** 取消一条在途消息（幂等）。 */
+export async function aiCancelMessage(
+  sessionId: string,
+  messageId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_cancel_message", { sessionId, messageId });
+}
+
+/** 结束常驻会话（幂等；驱动进程内会话记忆随之释放）。 */
+export async function aiEndSession(
+  sessionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_end_session", { sessionId });
+}
+
+/**
+ * 崩溃恢复：把显示历史重放进一个新会话。宿主会把系统提示词组装到首个
+ * user 轮文本前面，前端只提交投影后的 `{role, text}` 轮次。
+ */
+export async function aiReplayHistory(
+  sessionId: string,
+  turns: readonly AiReplayTurn[],
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_replay_history", { sessionId, turns });
+}
+
+/** 历史重放结束标记（幂等）。 */
+export async function aiReplayDone(
+  sessionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_replay_done", { sessionId });
+}
+
+/** 订阅 `"ai-delta"` 流式增量事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenAiDelta(
+  handler: (payload: AiDeltaPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<AiDeltaPayload>("ai-delta", (event) => handler(event.payload));
+}
+
+/** 订阅 `"ai-driver-lost"` 事件（驱动进程丢失，无载荷），返回退订函数。 */
+export function listenAiDriverLost(
+  handler: () => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<null>("ai-driver-lost", () => handler());
 }

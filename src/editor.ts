@@ -258,7 +258,6 @@ export function setupEditor(
     },
     onLoaded: (project, documentId) => {
       if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
-      aiFeature?.resetSelectionEntry();
       aiFeature?.beginProject();
       refreshEditorView(project);
     },

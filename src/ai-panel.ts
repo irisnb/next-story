@@ -6,11 +6,12 @@ import { buildAiPanelView, type ConversationView } from "./ai-panel-view-model.t
 export interface AiPanelActions {
   onRetry: () => void;
   onGoToConfig: () => void;
-  onStartThinkingExpansion: (direction: string) => boolean;
   onSubmitFollowUp: (question: string) => Promise<boolean>;
   onRetryFollowUp: () => Promise<boolean>;
   onEditFollowUp: (question: string) => Promise<boolean>;
   onSubmitDirectQuestion: (question: string) => Promise<boolean>;
+  /** 用户点击“新建对话”：结束当前对话并结束常驻 AI 会话。 */
+  onNewConversation: () => void;
   onRemoveDirectQuestionSelection: () => void;
   onDirectQuestionFocus: () => void;
   onOpenPanel: () => void;
@@ -21,6 +22,9 @@ export interface AiPanelActions {
  *
  * 所有回复、错误与选区文字都通过 `textContent` / `<pre>` 纯文本绑定，绝不解析 HTML 或
  * Markdown；面板不持有任何写入草稿本或正文本的回调。状态变化时由 `AiPanelState` 订阅触发重绘。
+ *
+ * 旧选区工具（AI 及时召唤 / 思维扩展）已退场：思维扩展预备态的渲染与提交接线已移除，
+ * DOM 契约节点保留（不可达）。直接提问、选区附带、流式增量、追问与重试照常工作。
  *
  * 所需节点全部来自显式 `AiPanelDom` 契约（由 `getAppDom()` 集中解析），本模块不再执行
  * 全局节点查找或面板内部选择器查询。
@@ -37,12 +41,6 @@ export function setupAiPanel(
     snapshotText,
     loading,
     response,
-    thinkingExpansionPrestate,
-    thinkingExpansionTitle,
-    thinkingExpansionCount,
-    thinkingExpansionForm,
-    thinkingExpansionInput,
-    thinkingExpansionStart,
     errorBlock,
     errorMessage,
     retryBtn,
@@ -67,6 +65,7 @@ export function setupAiPanel(
     directQuestionInput,
     directQuestionSend,
     directQuestionLoading,
+    directQuestionResponse,
     directQuestionError,
     directQuestionErrorMessage,
     directQuestionConfig,
@@ -74,12 +73,11 @@ export function setupAiPanel(
   } = dom;
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
-  let thinkingExpansionFocused = false;
 
   retryBtn.addEventListener("click", actions.onRetry);
   goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
   collapseBtn.addEventListener("click", () => state.close());
-  newConversationBtn.addEventListener("click", () => state.newConversation());
+  newConversationBtn.addEventListener("click", () => actions.onNewConversation());
   toggleBtn.addEventListener("click", () => {
     if (state.isOpen) {
       state.close();
@@ -98,15 +96,6 @@ export function setupAiPanel(
   followUpForm.addEventListener("submit", (event) => {
     event.preventDefault();
     submitFollowUp();
-  });
-  thinkingExpansionInput.addEventListener("input", () => {
-    state.updateThinkingExpansionDirection(thinkingExpansionInput.value);
-  });
-  thinkingExpansionForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const request = state.view.request;
-    if (request.kind !== "thinking_expansion") return;
-    actions.onStartThinkingExpansion(request.direction);
   });
   followUpRetry.addEventListener("click", () => {
     actions.onRetryFollowUp();
@@ -202,25 +191,10 @@ export function setupAiPanel(
       snapshotText.textContent = view.snapshot.text;
     }
 
-    const thinkingExpansion = view.thinkingExpansion;
-    thinkingExpansionPrestate.classList.toggle("hidden", thinkingExpansion === null);
-    if (thinkingExpansion) {
-      thinkingExpansionTitle.textContent = "思维扩展";
-      thinkingExpansionCount.textContent = `已选中 ${thinkingExpansion.selectionLength} 字`;
-      if (thinkingExpansionInput.value !== thinkingExpansion.direction) {
-        thinkingExpansionInput.value = thinkingExpansion.direction;
-      }
-      thinkingExpansionStart.disabled = false;
-      if (!thinkingExpansionFocused) {
-        thinkingExpansionInput.focus();
-        thinkingExpansionFocused = true;
-      }
-    } else {
-      thinkingExpansionFocused = false;
-      thinkingExpansionInput.value = "";
-    }
-
     loading.classList.toggle("hidden", !view.loadingVisible);
+    if (view.loadingMessage !== null) {
+      loading.textContent = view.loadingMessage;
+    }
 
     response.classList.toggle("hidden", view.response === null);
     if (view.response !== null) {
@@ -280,6 +254,11 @@ export function setupAiPanel(
         "hidden",
         directQuestionView.status !== "loading",
       );
+      // 流式增量草稿：逐字追加的纯文本，保留换行；无增量时隐藏。
+      directQuestionResponse.classList.toggle("hidden", directQuestionView.streamedText === null);
+      if (directQuestionView.streamedText !== null) {
+        directQuestionResponse.textContent = directQuestionView.streamedText;
+      }
       directQuestionError.classList.toggle(
         "hidden",
         directQuestionView.errorMessage === null,
@@ -296,6 +275,7 @@ export function setupAiPanel(
       directQuestionInput.value = "";
       directQuestionSelection.classList.add("hidden");
       directQuestionLoading.classList.add("hidden");
+      directQuestionResponse.classList.add("hidden");
       directQuestionError.classList.add("hidden");
       directQuestionConfig.classList.add("hidden");
     }

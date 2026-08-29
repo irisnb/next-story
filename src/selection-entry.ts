@@ -9,6 +9,11 @@ import type {
 } from "./rich-text-editor.ts";
 import type { SelectionSnapshot } from "./types.ts";
 
+/**
+ * @deprecated 旧选区工具的浮动入口（AI 及时召唤 / 思维扩展），已随
+ * change `resident-ai-session` 从产品退场；代码保留待拆用，不再接入应用入口。
+ */
+
 /** Selection entry trigger width (CSS px). */
 export const SELECTION_ENTRY_TRIGGER_WIDTH_PX = 44;
 

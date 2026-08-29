@@ -51,6 +51,8 @@ export interface DirectQuestionView {
   readonly pendingSelection: SnapshotView | null;
   readonly status: "idle" | "loading" | "error" | "configuration_required";
   readonly errorMessage: string | null;
+  /** 流式增量草稿（仅 loading 且已有增量时非空）。 */
+  readonly streamedText: string | null;
   readonly submitEnabled: boolean;
 }
 
@@ -59,6 +61,8 @@ export interface AiPanelView {
   readonly snapshot: SnapshotView | null;
   readonly thinkingExpansion: ThinkingExpansionView | null;
   readonly loadingVisible: boolean;
+  /** 生成中占位文案：普通生成“正在思考…”，对话恢复“恢复对话中”。 */
+  readonly loadingMessage: string | null;
   readonly response: string | null;
   readonly conversation: ConversationView | null;
   readonly errorBlock: ErrorBlockView | null;
@@ -149,6 +153,13 @@ function requestFacts(request: PanelRequestState): RequestDisplayFacts {
     case "direct_question":
       // 直接提问的状态由 DirectQuestionView 单独呈现，不占用旧请求区。
       return EMPTY_FACTS;
+    case "recovering":
+      // 驱动进程丢失后的对话恢复：复用生成中占位样式，显示恢复文案。
+      return {
+        ...EMPTY_FACTS,
+        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
+        loadingVisible: true,
+      };
     default:
       return assertNever(request);
   }
@@ -172,6 +183,10 @@ function buildConversationView(
   if (conversation.pending) {
     messages.push({ role: "user", text: conversation.pending.question });
     if (!conversation.pending.error) {
+      // 流式增量草稿逐字追加为助手消息；尚未有增量时只显示思考中状态。
+      if (conversation.pending.streamedText) {
+        messages.push({ role: "assistant", text: conversation.pending.streamedText });
+      }
       messages.push({ role: "status", text: "正在思考…" });
     }
   }
@@ -195,12 +210,17 @@ function buildDirectQuestionView(panelState: PanelStateView): DirectQuestionView
   const pendingSelection = panelState.pendingSelection
     ? { text: panelState.pendingSelection.selectedText }
     : null;
+  const streamedText =
+    isDirectQuestion && request.status === "loading" && request.streamedText
+      ? request.streamedText
+      : null;
 
   return {
     draft: panelState.directQuestionDraft,
     pendingSelection,
     status,
     errorMessage,
+    streamedText,
     submitEnabled: panelState.directQuestionDraft.trim().length > 0 && status !== "loading",
   };
 }
@@ -247,6 +267,11 @@ export function buildAiPanelView(
     snapshot: facts.snapshot,
     thinkingExpansion: facts.thinkingExpansion,
     loadingVisible: facts.loadingVisible,
+    loadingMessage: facts.loadingVisible
+      ? panelState.request.kind === "recovering"
+        ? "恢复对话中"
+        : "正在思考…"
+      : null,
     response,
     conversation: conversationView,
     errorBlock,

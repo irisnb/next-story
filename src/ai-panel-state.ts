@@ -283,4 +283,24 @@ export class AiPanelState {
   requireDirectQuestionConfiguration(): boolean {
     return this.dispatch({ type: "require_direct_question_configuration" });
   }
+
+  /** 推进一条流式增量文本（仅生成中的请求接受；其余状态原样返回 false）。 */
+  appendStreamText(text: string): boolean {
+    return this.dispatch({ type: "append_stream_text", text });
+  }
+
+  /** 驱动进程丢失后进入对话恢复态（仅当存在对话时接受）。 */
+  beginRecovery(): boolean {
+    return this.dispatch({ type: "begin_recovery" });
+  }
+
+  /** 对话重放完成：回到对话成功显示。 */
+  completeRecovery(): boolean {
+    return this.dispatch({ type: "complete_recovery" });
+  }
+
+  /** 对话重放失败：进入错误态并引导新建对话。 */
+  failRecovery(): boolean {
+    return this.dispatch({ type: "fail_recovery" });
+  }
 }

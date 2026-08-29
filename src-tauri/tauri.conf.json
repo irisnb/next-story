@@ -29,7 +29,8 @@
     "targets": "all",
     "resources": {
       "../sidecar/node_modules/": "sidecar/node_modules/",
-      "../sidecar/node-runtime/": "sidecar/node-runtime/"
+      "../sidecar/node-runtime/": "sidecar/node-runtime/",
+      "../sidecar/driver/": "sidecar/driver/"
     },
     "icon": [
       "icons/32x32.png",

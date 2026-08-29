@@ -47,6 +47,7 @@ test("direct question without selection sends a question-only request", async ()
     question: "这个角色为什么犹豫？",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
 });
 
@@ -194,6 +195,7 @@ test("direct question preflight result is discarded when the project changes", a
     question: "旧作品问题",
     selection: snapshot("旧作品选区"),
     status: "loading",
+    streamedText: "",
   });
 });
 
@@ -337,6 +339,7 @@ test("a direct question preflight invalidated by newConversation does not send t
     question: "旧问题",
     selection: null,
     status: "loading",
+    streamedText: "",
   });
 
   // 预检期间用户新建对话：清空为空白直接提问状态

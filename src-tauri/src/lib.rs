@@ -1,4 +1,5 @@
 pub mod capability_gateway;
+pub mod dsh_driver;
 pub mod dsh_sidecar;
 pub mod dsh_version;
 pub mod llm_config;
@@ -7,7 +8,7 @@ pub mod runtime_contract;
 
 use std::path::PathBuf;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use llm_config::{GenerateAiResult, LlmConfig, LlmConfigSummary};
 use project::{ContentTree, CreateProjectParams, ExportWordResult, ProjectLocks, ProjectOpenResult};
@@ -501,16 +502,120 @@ async fn generate_ai_result_for_request(
     llm_config::generate_ai_result_in_with_resource(base_dir, resource_dir, request).await
 }
 
+// ========== 常驻 AI 会话命令（resident-ai-session 任务 3.4） ==========
+
+/// 常驻会话：启动会话（同时懒启动驱动进程）。
+#[tauri::command]
+async fn ai_start_session(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<GenerateAiResult, String> {
+    let dir = match app.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
+    };
+    let resource_dir = app.path().resource_dir().ok();
+    Ok(llm_config::ai_start_session_in_dir(&dir, resource_dir.as_deref(), session_id).await)
+}
+
+/// 常驻会话：发送消息并等待终态；流式增量经 `ai-delta` 事件转发前端。
+#[tauri::command]
+async fn ai_send_message(
+    app: tauri::AppHandle,
+    session_id: String,
+    message_id: String,
+    kind: llm_config::AiMessageKind,
+    question: String,
+    selected_text: Option<String>,
+) -> Result<GenerateAiResult, String> {
+    let dir = match app.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
+    };
+    let resource_dir = app.path().resource_dir().ok();
+    Ok(llm_config::ai_send_message_in_dir(
+        &dir,
+        resource_dir.as_deref(),
+        session_id,
+        message_id,
+        kind,
+        question,
+        selected_text,
+    )
+    .await)
+}
+
+/// 常驻会话：取消进行中的生成（幂等）。
+#[tauri::command]
+async fn ai_cancel_message(
+    session_id: String,
+    message_id: String,
+) -> Result<GenerateAiResult, String> {
+    Ok(llm_config::ai_cancel_message_in_dir(session_id, message_id).await)
+}
+
+/// 常驻会话：结束会话（新建对话 / 切换作品；幂等）。
+#[tauri::command]
+async fn ai_end_session(session_id: String) -> Result<GenerateAiResult, String> {
+    Ok(llm_config::ai_end_session_in_dir(session_id).await)
+}
+
+/// 常驻会话：注入崩溃恢复历史（前端显示历史的增量投影，不触发再生成）。
+#[tauri::command]
+async fn ai_replay_history(
+    app: tauri::AppHandle,
+    session_id: String,
+    turns: Vec<crate::dsh_driver::DriverReplayTurn>,
+) -> Result<GenerateAiResult, String> {
+    let dir = match app.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
+    };
+    let resource_dir = app.path().resource_dir().ok();
+    Ok(llm_config::ai_replay_history_in_dir(
+        &dir,
+        resource_dir.as_deref(),
+        session_id,
+        turns,
+    )
+    .await)
+}
+
+/// 常驻会话：历史注入完成确认。
+#[tauri::command]
+async fn ai_replay_done(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<GenerateAiResult, String> {
+    let dir = match app.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(llm_config::app_data_dir_failure_result()),
+    };
+    let resource_dir = app.path().resource_dir().ok();
+    Ok(llm_config::ai_replay_done_in_dir(&dir, resource_dir.as_deref(), session_id).await)
+}
+
 // ========== Application Entry Point ==========
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // 进程内作品锁注册表：同一作品的操作串行化。
         .manage(ProjectLocks::default())
         // 关闭 WebView2 的浏览器快捷键拦截（默认会吞掉 Ctrl+U/Ctrl+F 等，前端 keydown 收不到）。
         .setup(|app| {
+            // 常驻驱动流式增量 → 前端事件（resident-ai-session 任务 3.4）。
+            let handle = app.handle().clone();
+            crate::dsh_driver::global_driver_manager().set_sink(std::sync::Arc::new(move |payload| {
+                let _ = handle.emit("ai-delta", &payload);
+            }));
+            // 驱动进程丢失（崩溃/重启）→ 前端恢复流程触发器（任务 4.4）。
+            let loss_handle = app.handle().clone();
+            crate::dsh_driver::global_driver_manager().set_loss_sink(std::sync::Arc::new(move || {
+                let _ = loss_handle.emit("ai-driver-lost", ());
+            }));
+
             #[cfg(windows)]
             {
                 if let Some(window) = app.get_webview_window("main") {
@@ -550,8 +655,22 @@ pub fn run() {
             save_llm_config,
             load_llm_config,
             test_llm_connection,
-            generate_ai_thinking
+            generate_ai_thinking,
+            ai_start_session,
+            ai_send_message,
+            ai_cancel_message,
+            ai_end_session,
+            ai_replay_history,
+            ai_replay_done
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // 应用退出时优雅关闭常驻驱动进程（design.md D3 生命周期表）。
+    let driver_manager = crate::dsh_driver::global_driver_manager().clone();
+    app.run(move |_app, event| {
+        if let tauri::RunEvent::Exit = event {
+            driver_manager.shutdown_best_effort();
+        }
+    });
 }

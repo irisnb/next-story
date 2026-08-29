@@ -4,15 +4,19 @@
 TBD - created by archiving change spike-dsh-headless-generation. Update Purpose after archive.
 ## Requirements
 ### Requirement: DSH headless 生成与现有链等价
-系统 SHALL 通过 headless DSH adapter 生成 AI 思考响应，其输入（冻结选区原文 + 可选方向 + 追问轮次）与输出语义与现有生成链一致：不代写正文、不评价故事、纯文本回答、追问仍锚定首次冻结选区。Runtime Contract MUST 保留任务、事件、结果、错误和能力声明的扩展位，即使本次首版只返回一次非流式结果。
+系统 SHALL 通过常驻 DSH 会话进程生成 AI 思考响应（本要求标题中的 headless 为历史能力名），其输入（用户问题 + 可选冻结选区重点材料）与输出语义与现有生成链一致：不代写正文、不评价故事、纯文本回答、流式输出。系统 MUST 要求模型区分"从提供材料中可见的内容"与"进一步提出的可能解释、问题或方向"，不把假设冒充作品事实。Runtime Contract MUST 保留任务、事件、结果、错误和能力声明的扩展位。
 
 #### Scenario: 首问生成等价
-- **WHEN** 传入一个合法的首问请求（非空选区原文，可选方向）
-- **THEN** DSH 路径返回一个非空 assistant 文本，内容只基于选区原文与可选方向，不代写正文、不判断故事好坏
+- **WHEN** 传入一个合法的首问请求（非空问题，可选选区材料）
+- **THEN** 常驻会话路径流式返回非空 assistant 文本，内容只基于问题与选区材料，不代写正文、不判断故事好坏
 
 #### Scenario: 追问生成等价
-- **WHEN** 传入一个合法的追问请求（原冻结选区 + 完整消息轮次列表，末轮为 user）
-- **THEN** DSH 路径返回一个非空 assistant 文本，且回应仍锚定首次冻结选区
+- **WHEN** 在已建立的会话中传入追问
+- **THEN** 会话在既有上下文基础上流式返回非空 assistant 文本
+
+#### Scenario: 生成保持陪想姿态
+- **WHEN** 系统组装任一轮生成请求
+- **THEN** 请求要求模型区分材料可见信息与可能解释，不代写、不润色、不提供可直接替换正文的改写文本，不替用户评价或决定故事方向
 
 ### Requirement: DSH 版本锁定
 sidecar 使用的 DSH SHALL 锁定为精确版本，Node 运行时 SHALL vendor 到应用内；任何升级 MUST 在独立版本目录和 DSH_HOME 中完成显式回归测试后才能激活，且不得要求前端修改稳定 Runtime Contract。
@@ -79,15 +83,4 @@ DSH 生成接口 SHALL 接受必填的直接提问和可选的选区重点材料
 #### Scenario: 空问题被拒绝
 - **WHEN** 请求问题为空白
 - **THEN** 接口拒绝请求且不调用模型
-
-### Requirement: 统一对话每轮携带完整问答
-DSH 生成接口 SHALL 接受统一临时对话的追问请求：首轮冻结选区 + 此前完整问答轮次，末轮为用户问题。
-
-#### Scenario: 追问携带完整问答
-- **WHEN** 统一对话中提交新一轮问题
-- **THEN** 生成任务包含首轮冻结选区与此前全部问答轮次
-
-#### Scenario: 追问仍锚定首轮选区
-- **WHEN** 统一对话中提交追问
-- **THEN** 生成任务以首轮冻结选区为锚点，不读取当前编辑器选区
 

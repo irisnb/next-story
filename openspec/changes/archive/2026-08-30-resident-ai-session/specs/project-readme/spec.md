@@ -1,0 +1,59 @@
+# project-readme 变更增量
+
+## MODIFIED Requirements
+
+### Requirement: README distinguishes implemented truth, future direction, and permanent boundaries
+项目 README MUST 只将正式规格确认的产品能力描述为已实现，MUST 将未来方向标记为未实现，并 MUST 将永久 AI 边界与普通未实现项目分开说明。
+
+#### Scenario: README lists implemented capabilities
+- **WHEN** README 声明当前已实现的产品能力
+- **THEN** 每项声明都有当前正式规格中的要求作为依据
+- **AND** README 可以将"常驻 AI 会话支持直接提问（选区作为可选重点提示自动附带）"写为已实现
+- **AND** README 可以将"回复流式逐字呈现，追问只发送增量问题"写为已实现
+- **AND** README 可以将"首次回应成功后进行线性临时追问，可取消生成"写为已实现
+- **AND** README 可以将"驱动进程崩溃后自动重启并重放显示历史恢复会话"写为已实现
+- **AND** README 说明临时对话只在当前应用打开周期存在，不跨重启持久化，新对话会替换旧对话
+- **AND** README 如实说明旧选区工具（AI 及时召唤、思维扩展、浮动入口）已退场
+- **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、多个对话、历史、持久化、自动摘要、多 provider 或多模型支持写成已实现
+
+#### Scenario: README refers to future direction
+- **WHEN** README 提及尚未归档进正式规格的产品方向
+- **THEN** README 将该内容明确标记为未来方向或当前未实现
+- **AND** README 不把方向文档当作已实现事实来源
+
+#### Scenario: README states the permanent AI notebook boundary
+- **WHEN** README 说明 AI 与草稿本、正文本的关系
+- **THEN** README 明确说明首次回应、用户追问和后续 AI 回应都只属于两个本子之外的临时材料
+- **AND** README 明确说明 AI 永远不能插入、追加、替换、改写、删除、移动或整理草稿本和正文本内容
+- **AND** README 说明内容只有经过用户亲手复制、粘贴、编辑并保存后才进入作品事实
+
+### Requirement: README explains the one-way architecture and current data flows
+项目 README SHALL 用初学者可理解的语言说明"前端 → bridge → Tauri commands → Rust domain"的单向责任传递，并 SHALL 说明作品生命周期、LLM 配置和测试、AI 生成与临时追问三条当前数据流。
+
+#### Scenario: Reader follows the architecture chain
+- **WHEN** 读者查看架构说明
+- **THEN** README 将前端定位到 `src/`
+- **AND** README 将 bridge 定位到 `src/project-api.ts`
+- **AND** README 将 Tauri commands 定位到 `src-tauri/src/lib.rs`
+- **AND** README 将 Rust domain 定位到 `src-tauri/src/project/` 与 `src-tauri/src/llm_config/`
+- **AND** README 说明结果和错误会沿调用链返回前端
+
+#### Scenario: Reader follows project lifecycle data
+- **WHEN** 读者查看新建、打开或手动保存作品的流程
+- **THEN** README 说明前端动作经 bridge 和对应 Tauri command 进入 Rust project domain
+- **AND** README 说明 project domain 负责校验并读写作品目录
+- **AND** README 说明处理结果返回界面
+
+#### Scenario: Reader follows LLM configuration and test data
+- **WHEN** 读者查看 LLM 配置加载、保存或连接测试流程
+- **THEN** README 说明配置表单经 bridge 和对应 Tauri command 进入 Rust llm_config domain
+- **AND** README 说明该 domain 负责校验和应用本地配置读写，或使用当前唯一配置发出真实 OpenAI-compatible 测试请求
+- **AND** README 说明测试连接只发送固定测试语句和身份凭据，不发送用户剧本文字或临时对话
+- **AND** README 说明成功状态或可读错误返回界面
+
+#### Scenario: Reader follows AI generation and follow-up data
+- **WHEN** 读者查看 AI 生成或临时追问流程
+- **THEN** README 说明直接提问发送用户问题与可选选区重点材料
+- **AND** README 说明继续追问只发送本次新增问题，此前问答由常驻会话在驱动进程内维护
+- **AND** README 说明这些创作内容会发送给用户配置的 API 服务，后端运行期维护会话上下文但不落盘，应用退出后随进程结束消失
+- **AND** README 说明 AI 返回内容只显示在 AI 面板中，不能写回草稿本或正文本

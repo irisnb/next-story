@@ -21,12 +21,13 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 #### Scenario: README lists implemented capabilities
 - **WHEN** README 声明当前已实现的产品能力
 - **THEN** 每项声明都有当前正式规格中的要求作为依据
-- **AND** README 可以将“AI 及时召唤从选区快速开始，召唤时无文字输入”写为已实现
-- **AND** README 可以将“思维扩展从选区开始并可带用户填写的可选方向”写为已实现
-- **AND** README 可以将“首次回应成功后围绕原冻结选区进行线性临时追问”写为已实现
-- **AND** README 说明临时对话只在当前应用打开周期存在，新召唤会替换旧对话
-- **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、多个对话、历史、持久化、分支、自动摘要、流式输出、停止生成、多 provider 或多模型支持写成已实现
-- **AND** README MUST NOT 把已归档实现的思维扩展、可选方向输入或临时追问写成未来未实现
+- **AND** README 可以将"常驻 AI 会话支持直接提问（选区作为可选重点提示自动附带）"写为已实现
+- **AND** README 可以将"回复流式逐字呈现，追问只发送增量问题"写为已实现
+- **AND** README 可以将"首次回应成功后进行线性临时追问，可取消生成"写为已实现
+- **AND** README 可以将"驱动进程崩溃后自动重启并重放显示历史恢复会话"写为已实现
+- **AND** README 说明临时对话只在当前应用打开周期存在，不跨重启持久化，新对话会替换旧对话
+- **AND** README 如实说明旧选区工具（AI 及时召唤、思维扩展、浮动入口）已退场
+- **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、多个对话、历史、持久化、自动摘要、多 provider 或多模型支持写成已实现
 
 #### Scenario: README refers to future direction
 - **WHEN** README 提及尚未归档进正式规格的产品方向
@@ -80,10 +81,9 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 
 #### Scenario: Reader follows AI generation and follow-up data
 - **WHEN** 读者查看 AI 生成或临时追问流程
-- **THEN** README 说明 AI 及时召唤发送冻结选区原文
-- **AND** README 说明思维扩展发送冻结选区原文和用户填写的可选方向
-- **AND** README 说明继续追问会发送原冻结选区和当前临时对话中的成功轮次
-- **AND** README 说明这些创作内容会发送给用户配置的 API 服务，后端不持久保存临时对话
+- **THEN** README 说明直接提问发送用户问题与可选选区重点材料
+- **AND** README 说明继续追问只发送本次新增问题，此前问答由常驻会话在驱动进程内维护
+- **AND** README 说明这些创作内容会发送给用户配置的 API 服务，后端运行期维护会话上下文但不落盘，应用退出后随进程结束消失
 - **AND** README 说明 AI 返回内容只显示在 AI 面板中，不能写回草稿本或正文本
 
 ### Requirement: README separates setup, terminating checks, and long-running development commands

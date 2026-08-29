@@ -1,7 +1,7 @@
-## Purpose
+# ai-feature-orchestration 变更增量
 
-规定 AI 功能编排拆分后的公开组合入口、行为保持要求，以及 AI 输出不得写回草稿本和正文本的边界。
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: AI feature orchestration remains behavior-preserving after decomposition
 The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of direct-question submission, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation. The retired selection-tool entries (`AI 及时召唤`, `思维扩展`) MUST NOT be part of the composed orchestration.
 
@@ -18,18 +18,6 @@ The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the
 - **WHEN** the AI feature orchestration is composed for the editor
 - **THEN** no floating selection entry, `及时召唤` action, or `思维扩展` action is registered
 
-### Requirement: AI feature orchestration keeps zero write-back capability
-The decomposed AI feature orchestration MUST NOT receive, create, or expose any callback, command, state transition, or UI action that inserts, appends, replaces, rewrites, deletes, moves, organizes, or saves draft notebook or main notebook text using AI output.
-
-#### Scenario: Decomposed modules do not receive notebook write functions
-- **WHEN** AI feature orchestration is composed for the editor
-- **THEN** the modules responsible for AI requests, panel state, follow-up handling, and thinking expansion do not receive draft notebook or main notebook write callbacks
-- **AND** AI output remains display-only temporary panel material
-
-#### Scenario: Configuration preflight does not broaden AI context
-- **WHEN** the decomposed orchestration checks whether LLM configuration exists before a first request or follow-up request
-- **THEN** it does not add nearby text, full notebook text, summaries, project metadata, AI content library material, persistent history, or user-confirmed story information to the model request
-
 ### Requirement: 面板 action 编排直接提问请求
 AI feature orchestration SHALL 将直接提问问题和可选冻结选区编排为一次流式生成请求，并继续隔离迟到结果。
 
@@ -40,6 +28,14 @@ AI feature orchestration SHALL 将直接提问问题和可选冻结选区编排�
 #### Scenario: 旧作品请求结果被丢弃
 - **WHEN** 作品或文档切换后旧直接提问请求返回
 - **THEN** 旧结果不得修改当前面板状态
+
+## REMOVED Requirements
+
+### Requirement: 三个首轮入口共享统一对话编排
+**Reason**: 旧选区工具（`AI 及时召唤`、`思维扩展`）退场，"三个首轮入口"不复存在；"每轮请求携带完整问答"随一次性进程模型一并退场。
+**Migration**: 直接提问编排统一对话增量请求由本能力新增要求承接（见下）。
+
+## ADDED Requirements
 
 ### Requirement: 直接提问编排统一对话增量请求
 AI feature orchestration SHALL 让直接提问首轮成功后进入统一临时对话，每轮请求只携带增量内容，并保持单请求锁与失败恢复语义。

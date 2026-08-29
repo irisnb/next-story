@@ -1,8 +1,7 @@
-# selection-ai-invocation Specification
+# selection-ai-invocation 变更增量
 
-## Purpose
-TBD - created by archiving change add-selection-ai-panel. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: 召唤时冻结与编辑器实现解耦的选区快照
 系统 SHALL 在用户提交附带选区的直接提问时，冻结本次选区的本子类型、Tiptap 有序选区位置和由该结构化选区切片生成的纯文本 `selectedText`，并 SHALL 让后续 AI 链路只依赖冻结的 `selectedText` 而不是 Tiptap/ProseMirror 实例。投影 MUST 只保留实际选中的可见文字，并用单个 LF 表示每个相邻块边界，空段落 MUST 表示为空行。投影结果 MUST NOT 以 LF 开头（不生成前导换行），也 MUST NOT 以 LF 结尾（不生成尾随换行），无论选区是否从块起点开始或在块终点结束。若选区包含一个非空列表项的全部可见文字，则该项行 MUST 以 `- `（无序）或其实际编号加 `. `（例如 `3. `）开头；"全部"只要求该项所有可见文字均在有序选区内，不要求额外选中不可见节点边界。嵌套列表项在投影时 MUST 先按嵌套深度输出 `2` 个空格 × 深度的缩进，再接列表前缀与文字；顶层深度为 0 不缩进。空列表项不生成前缀，只保留其块边界。部分列表项选区 MUST NOT 补充前缀、缩进、未选文字或其它结构信息。相邻列表、列表与正文及普通段落之间均只使用上述单个 LF 连接，不额外插入空行。投影 MUST 丢弃标题等级、粗体、斜体、下划线、删除线、文字颜色、背景高亮、字体、字号、链接、段落属性和 JSON 结构，且 MUST NOT 静默裁剪或改写文字。选区位置只用于本次应用打开周期内的来源和界面锚定，MUST NOT 持久化或用于请求时重新读取当前编辑器。
 
@@ -101,13 +100,36 @@ TBD - created by archiving change add-selection-ai-panel. Update Purpose after a
 - **THEN** AI 回复仍只能显示在 AI 面板中作为临时材料
 - **AND** 系统仍不得提供把 AI 内容直接插入、追加、替换、改写、删除或移动到草稿本或正文本的入口
 
-### Requirement: AI 预检在异步前冻结作品身份
-系统 MUST 在发起 AI 请求前的异步预检（如配置加载）开始时冻结当前作品身份，并 MUST 在预检完成、真正提交请求前校验作品身份未变化。若作品在预检期间被切换，系统 MUST 丢弃本次预检结果，且 MUST NOT 把旧作品的冻结选区作为新作品请求发出或污染新作品的 AI 面板。
+## REMOVED Requirements
 
-#### Scenario: 预检期间切换作品
-- **WHEN** 用户在作品 A 中触发 AI 召唤
-- **AND** 首次请求的预检（如配置检查）尚未完成
-- **AND** 用户在预检期间切换到作品 B
-- **THEN** 系统丢弃本次预检结果
-- **AND** 系统不发送作品 A 的选区快照
-- **AND** 作品 B 的 AI 面板不出现作品 A 的内容
+### Requirement: 有效选区显示 AI 开启入口
+**Reason**: 旧选区工具（`AI 及时召唤`、`思维扩展`）随常驻会话改造退场，选区浮动 AI 入口及其小菜单一并退场。
+**Migration**: 选区作为直接提问的可选重点提示自动附带，见 `persistent-ai-panel-entry`。
+
+### Requirement: 浮动入口跟随活选区生命周期
+**Reason**: 浮动入口随旧选区工具退场。
+**Migration**: 无替代入口；选区附带语义见 `persistent-ai-panel-entry`。
+
+### Requirement: 长文本选区入口更新保持可用性能
+**Reason**: 浮动入口退场，其几何定位性能要求随之失效。
+**Migration**: 无。
+
+### Requirement: 首版请求只使用选区和固定思考任务
+**Reason**: `及时召唤` 的固定思考任务随工具退场；其陪想姿态要求（区分观察与可能解释、不代写、不裁判）已并入 `dsh-headless-generation` 的生成链等价要求。
+**Migration**: 见 `dsh-headless-generation`（DSH headless 生成与现有链等价）。
+
+### Requirement: 召唤入口不接收初始问题
+**Reason**: 浮动入口与 `及时召唤` 退场；直接提问本身即以问题为输入。
+**Migration**: 见 `persistent-ai-panel-entry`。
+
+### Requirement: 新召唤接受后替换当前临时对话
+**Reason**: 旧选区工具退场；"新的首轮请求被接受时替换当前临时对话"已由 `ai-thinking-panel`（面板使用可替换的当前临时对话策略）覆盖。
+**Migration**: 见 `ai-thinking-panel`。
+
+### Requirement: 同一时间只允许一个 AI 请求
+**Reason**: 该要求已由 `ai-feature-orchestration`（同一时刻只允许一轮请求）与 `ai-thinking-panel`（同一作品仍只允许一个请求）覆盖，本能力不再单独持有。
+**Migration**: 见 `ai-feature-orchestration`、`ai-thinking-panel`。
+
+### Requirement: 及时召唤不得静默停在首次预览态
+**Reason**: `及时召唤` 退场；"请求未发出状态显式呈现"的通用要求已由 `ai-thinking-panel`（面板显式呈现首次请求未发出状态）覆盖。
+**Migration**: 见 `ai-thinking-panel`。

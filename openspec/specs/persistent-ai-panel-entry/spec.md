@@ -38,7 +38,7 @@ TBD - created by archiving change persistent-ai-panel-entry. Update Purpose afte
 
 #### Scenario: 问题与选区一起发送
 - **WHEN** 用户提交非空问题且存在待附带选区
-- **THEN** 一次非流式请求同时包含问题和该选区
+- **THEN** 一次流式请求同时包含问题和该选区
 
 #### Scenario: 无选区问题发送
 - **WHEN** 用户提交非空问题且没有待附带选区
@@ -47,25 +47,6 @@ TBD - created by archiving change persistent-ai-panel-entry. Update Purpose afte
 #### Scenario: 空问题不发送
 - **WHEN** 用户提交只包含空白字符的问题
 - **THEN** 系统拒绝发送并保留输入状态
-
-### Requirement: 三个首轮入口统一进入同一临时对话
-系统 SHALL 让直接提问、AI 及时召唤、思维扩展三个首轮入口在首轮成功后统一进入同一种不限轮临时对话；每轮发送此前完整问答，首轮选区作为对话锚点冻结。
-
-#### Scenario: 直接提问成功后可以继续追问
-- **WHEN** 直接提问首轮成功
-- **THEN** 面板进入统一临时对话，用户可以继续提交追问
-
-#### Scenario: 每轮发送此前完整问答
-- **WHEN** 用户在统一对话中提交新一轮问题
-- **THEN** 请求携带此前完整问答轮次与首轮冻结选区
-
-#### Scenario: 首轮选区作为锚点冻结
-- **WHEN** 首轮成功后用户在编辑器形成新的选区
-- **THEN** 对话锚点仍为首轮冻结选区，新选区不替换原材料
-
-#### Scenario: 收起面板保留统一对话
-- **WHEN** 用户收起并重新展开面板
-- **THEN** 统一对话的完整轮次与未发送输入保持不变
 
 ### Requirement: 直接提问输出保持临时且只读
 系统 SHALL 将直接提问回应限制在现有 AI 面板的临时对话中，不提供向任何作品文档写入、插入、替换、删除或应用的操作。
@@ -88,3 +69,19 @@ TBD - created by archiving change persistent-ai-panel-entry. Update Purpose afte
 #### Scenario: 不持久化且无会话列表
 - **WHEN** 应用关闭或重新打开
 - **THEN** 临时对话不恢复，面板不提供会话列表
+
+### Requirement: 直接提问进入统一临时对话且每轮增量发送
+系统 SHALL 让直接提问首轮成功后进入统一临时对话；每轮请求只携带本次新增内容，此前问答由常驻会话维护；首轮附带选区作为对话初始材料冻结。
+
+#### Scenario: 直接提问成功后可以继续追问
+- **WHEN** 直接提问首轮成功
+- **THEN** 面板进入统一临时对话，用户可以继续提交追问
+
+#### Scenario: 每轮只发增量
+- **WHEN** 用户在统一对话中提交新一轮问题
+- **THEN** 请求只携带本次问题，不重发此前问答轮次
+- **AND** 会话回答仍基于此前全部轮次
+
+#### Scenario: 首轮附带选区作为初始材料冻结
+- **WHEN** 首轮成功后用户在编辑器形成新的选区
+- **THEN** 对话初始材料仍为首轮发送时冻结的选区，新选区不替换原材料

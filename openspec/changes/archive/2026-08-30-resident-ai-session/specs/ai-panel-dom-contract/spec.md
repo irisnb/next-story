@@ -1,8 +1,7 @@
-# ai-panel-dom-contract Specification
+# ai-panel-dom-contract 变更增量
 
-## Purpose
-TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: AI 面板必须通过显式 DOM 契约接线
 
 系统 SHALL 为 AI 面板提供一个集中且严格类型化的 DOM 依赖契约，契约包含面板渲染、折叠、新建对话、错误恢复和临时追问所需的全部节点。AI 面板初始化 MUST 使用该契约，不得依赖散落的全局节点查询。
@@ -51,17 +50,6 @@ TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose af
 - **THEN** 回应只更新面板临时显示节点
 - **AND** 面板契约不包含作品文档写入、插入、替换或删除接口
 
-### Requirement: 现有面板 DOM 契约包含直接提问节点
-现有 `AiPanelDom` 契约 SHALL 集中提供直接提问输入、提交控件、待附带选区提示及移除操作所需节点。
-
-#### Scenario: 完整面板契约接线
-- **WHEN** 应用组装包含现有 AI 面板的页面 DOM
-- **THEN** `AiPanelDom` 提供直接提问所需节点并完成统一初始化
-
-#### Scenario: 直接提问操作调用现有 action
-- **WHEN** 用户提交问题或移除待附带选区
-- **THEN** DOM 适配器通过统一的 `AiPanelActions` 触发状态操作
-
 ### Requirement: DOM 契约包含统一对话与追问节点
 现有 `AiPanelDom` 契约 SHALL 同时提供统一临时对话线程与追问输入所需节点，供直接提问唯一首轮入口使用。
 
@@ -72,6 +60,8 @@ TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose af
 #### Scenario: 追问操作调用现有 action
 - **WHEN** 用户在统一对话中提交、重试或编辑追问
 - **THEN** DOM 适配器通过统一的 `AiPanelActions` 触发状态操作
+
+## ADDED Requirements
 
 ### Requirement: DOM 契约支持流式增量与恢复占位渲染
 DOM 适配器 SHALL 在生成中占位渲染由状态派生的文案（普通生成与恢复各自独立），并 SHALL 把流式增量文本渲染到回复显示节点（纯文本、保留换行）；成功终态以完成全文替换增量显示，失败终态丢弃增量草稿。
@@ -85,4 +75,3 @@ DOM 适配器 SHALL 在生成中占位渲染由状态派生的文案（普通生
 - **WHEN** 面板进入恢复状态（驱动进程丢失后的历史重放）
 - **THEN** 占位显示"恢复对话中"
 - **AND** 已有对话轮次保持可见
-

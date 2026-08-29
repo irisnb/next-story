@@ -624,22 +624,64 @@ test("recovering request reuses the loading placeholder with the recovery messag
   assert.deepEqual(view.snapshot, { text: "锚点" });
 });
 
-test("direct question loading exposes the streamed draft through the view model", () => {
+test("direct question loading renders the unified turn with the streamed draft in the conversation view", () => {
   const state = new AiPanelState();
   state.open();
   state.beginDirectQuestion("问题", null);
 
-  // 尚无增量：streamedText 为 null，不渲染回复区
+  // 尚无增量：统一对话视图只含用户消息与思考中占位（该轮次位置）
   let view = viewOf(state);
   assert.ok(view.directQuestion);
-  assert.equal(view.directQuestion.streamedText, null);
+  assert.equal(view.directQuestion.status, "loading");
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "问题" },
+    { role: "status", text: "正在思考…" },
+  ]);
 
+  // 流式增量经状态推进后，逐字追加为该轮次的助手消息，占位保持在正下方
   state.appendStreamText("她可能\n在隐瞒");
   view = viewOf(state);
-  assert.ok(view.directQuestion);
-  assert.equal(view.directQuestion.streamedText, "她可能\n在隐瞒");
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "问题" },
+    { role: "assistant", text: "她可能\n在隐瞒" },
+    { role: "status", text: "正在思考…" },
+  ]);
 
-  // 非 loading 状态不暴露增量草稿
+  // 非 loading 状态不再产出直接提问的统一轮次
   state.succeedDirectQuestion("最终回答");
   assert.equal(viewOf(state).directQuestion, null);
+});
+
+test("empty idle panel shows the welcome message and hides it once the conversation starts", () => {
+  // Given: 面板打开且完全空闲（无对话轮次、无进行中请求）
+  const state = new AiPanelState();
+  state.open();
+  assert.equal(viewOf(state).welcomeVisible, true);
+
+  // When: 首轮直接提问被接受
+  state.beginDirectQuestion("问题", null);
+
+  // Then: 欢迎语消失，统一对话轮次出现
+  assert.equal(viewOf(state).welcomeVisible, false);
+  assert.ok(viewOf(state).conversation);
+
+  // 对话存在期间欢迎语保持隐藏
+  state.succeedDirectQuestion("回答");
+  assert.equal(viewOf(state).welcomeVisible, false);
+
+  // 新建对话回到空白 idle 状态后欢迎语重新显示
+  state.newConversation();
+  assert.equal(viewOf(state).welcomeVisible, true);
+});
+
+test("welcome message stays hidden during legacy request states", () => {
+  // 首轮预检 / 加载 / 失败等非 idle 请求状态都不显示欢迎语
+  const state = new AiPanelState();
+  state.previewFirstRequest(snapshot("锚点"));
+  assert.equal(viewOf(state).welcomeVisible, false);
+
+  state.beginRequest(snapshot("锚点"));
+  assert.equal(viewOf(state).welcomeVisible, false);
 });

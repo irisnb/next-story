@@ -503,6 +503,7 @@
 }
 
 .ai-panel-header {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -523,13 +524,24 @@
   flex: none;
 }
 
+/* 纵向 flex（D2）：消息区是唯一滚动容器，输入区固定底部不随内容移动 */
 .ai-panel-body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.ai-panel-input {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 1rem;
+  border-top: var(--border-structural);
 }
 
 .ai-block-label {
@@ -550,8 +562,6 @@
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--color-text);
-  max-height: 32vh;
-  overflow: auto;
 }
 
 .ai-loading {
@@ -559,10 +569,17 @@
   font-size: 0.95rem;
 }
 
+/* 空状态欢迎语（D5）：一句轻量文案，把视线引向下方的输入框 */
+.ai-welcome {
+  color: var(--color-muted);
+  font-size: 0.95rem;
+  padding: var(--space-2) 0;
+}
+
 .ai-conversation {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .ai-message {
@@ -573,17 +590,18 @@
   font-size: 0.95rem;
 }
 
-.ai-message-assistant {
+/* AI 回复：无边框、无底色的裸排纯文本（D3），靠底色差与间距和用户消息区分 */
+/* 用户消息：浅色底色块通栏；轮次间距（margin-top）大于轮内间距（conversation gap） */
+.ai-message-user {
   padding: var(--space-3);
   background: var(--color-surface-subtle);
-  border: var(--border-control);
   border-radius: var(--radius-sm);
+  color: var(--color-text);
+  margin-top: var(--space-4);
 }
 
-.ai-message-user {
-  padding-left: var(--space-3);
-  border-left: 3px solid var(--color-primary);
-  color: var(--color-text);
+.ai-message-user:first-child {
+  margin-top: 0;
 }
 
 .ai-message-status {
@@ -659,9 +677,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border-top: var(--border-control);
-  padding-top: var(--space-3);
-  margin-top: var(--space-3);
 }
 
 .ai-direct-question-selection {

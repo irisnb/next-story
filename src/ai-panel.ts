@@ -50,6 +50,7 @@ export function setupAiPanel(
     newConversationBtn,
     toggleBtn,
     conversation: conversationElement,
+    welcome,
     followUpForm,
     followUpInput,
     followUpSend,
@@ -64,8 +65,6 @@ export function setupAiPanel(
     directQuestionForm,
     directQuestionInput,
     directQuestionSend,
-    directQuestionLoading,
-    directQuestionResponse,
     directQuestionError,
     directQuestionErrorMessage,
     directQuestionConfig,
@@ -73,6 +72,17 @@ export function setupAiPanel(
   } = dom;
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
+
+  // 吸底滚动（D4）：滚动事件只维护“贴底”布尔标记（阈值约 40px），
+  // 跟随动作只在渲染后执行；用户上滚脱离贴底后完全不干预滚动。
+  const BOTTOM_FOLLOW_THRESHOLD_PX = 40;
+  let pinnedToBottom = true;
+  let panelWasOpen = false;
+  panelBody.addEventListener("scroll", () => {
+    const distanceToBottom =
+      panelBody.scrollHeight - panelBody.scrollTop - panelBody.clientHeight;
+    pinnedToBottom = distanceToBottom < BOTTOM_FOLLOW_THRESHOLD_PX;
+  });
 
   retryBtn.addEventListener("click", actions.onRetry);
   goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
@@ -179,10 +189,18 @@ export function setupAiPanel(
     const view = buildAiPanelView(state.view, state.conversation);
 
     panel.classList.toggle("hidden", !view.panelVisible);
+
+    // 面板重新展开时直接置于贴底状态（收起期间不滚动）。
+    const isOpen = state.isOpen;
+    if (isOpen && !panelWasOpen) {
+      pinnedToBottom = true;
+    }
+    panelWasOpen = isOpen;
+
+    // 新请求开始（新对话身份 / 新冻结快照）：回到贴底跟随，让新消息可见。
     if (scrollReset.shouldReset(state.view.request)) {
-      panelBody.scrollTop = 0;
+      pinnedToBottom = true;
       snapshotText.scrollTop = 0;
-      response.scrollTop = 0;
     }
 
     snapshotBlock.classList.toggle("hidden", view.snapshot === null);
@@ -200,6 +218,9 @@ export function setupAiPanel(
     if (view.response !== null) {
       response.textContent = view.response;
     }
+
+    // 空状态欢迎语：无对话轮次且无进行中请求时显示，对话开始后消失。
+    welcome.classList.toggle("hidden", !view.welcomeVisible);
 
     renderConversation(view.conversation);
 
@@ -240,9 +261,12 @@ export function setupAiPanel(
     const directQuestionView = view.directQuestion;
     directQuestion.classList.toggle("hidden", directQuestionView === null);
     if (directQuestionView) {
-      if (directQuestionInput.value !== directQuestionView.draft) {
-        directQuestionInput.value = directQuestionView.draft;
+      // 输入框显示值由视图模型按状态决定：生成中清空（问题已入对话流），
+      // 其余状态显示草稿（失败后恢复可见供重试编辑）。
+      if (directQuestionInput.value !== directQuestionView.inputValue) {
+        directQuestionInput.value = directQuestionView.inputValue;
       }
+      directQuestionInput.disabled = !directQuestionView.inputEnabled;
       directQuestionSelection.classList.toggle(
         "hidden",
         directQuestionView.pendingSelection === null,
@@ -250,15 +274,8 @@ export function setupAiPanel(
       if (directQuestionView.pendingSelection) {
         directQuestionSelectionText.textContent = directQuestionView.pendingSelection.text;
       }
-      directQuestionLoading.classList.toggle(
-        "hidden",
-        directQuestionView.status !== "loading",
-      );
-      // 流式增量草稿：逐字追加的纯文本，保留换行；无增量时隐藏。
-      directQuestionResponse.classList.toggle("hidden", directQuestionView.streamedText === null);
-      if (directQuestionView.streamedText !== null) {
-        directQuestionResponse.textContent = directQuestionView.streamedText;
-      }
+      // 生成中占位与流式增量已统一渲染在对话流内该轮次位置（D1/D6），
+      // 不再渲染输入区附近的独立加载 / 回复区块。
       directQuestionError.classList.toggle(
         "hidden",
         directQuestionView.errorMessage === null,
@@ -273,15 +290,20 @@ export function setupAiPanel(
       directQuestionSend.disabled = !directQuestionView.submitEnabled;
     } else {
       directQuestionInput.value = "";
+      directQuestionInput.disabled = false;
       directQuestionSelection.classList.add("hidden");
-      directQuestionLoading.classList.add("hidden");
-      directQuestionResponse.classList.add("hidden");
       directQuestionError.classList.add("hidden");
       directQuestionConfig.classList.add("hidden");
     }
 
     // 面板展开时，header 的“收起”可用；可在任意状态下收起
     toggleBtn.textContent = state.isOpen ? "收起 AI" : "AI 面板";
+
+    // 吸底跟随（D4）：仅在面板展开且处于贴底状态时，渲染后滚动到底部；
+    // 用户上滚脱离贴底后不再干预，滚回底部后由滚动事件恢复标记。
+    if (isOpen && pinnedToBottom) {
+      panelBody.scrollTop = panelBody.scrollHeight;
+    }
   }
 
   state.subscribe(render);

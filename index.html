@@ -147,6 +147,7 @@
                     <button id="ai-thinking-expansion-start" class="ai-thinking-expansion-start" type="submit">开始</button>
                   </form>
                 </div>
+                <div id="ai-welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
                 <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
                 <pre id="ai-response" class="ai-response hidden"></pre>
                 <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
@@ -158,6 +159,13 @@
                   <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
                   <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
                 </div>
+                <div id="ai-direct-question-error" class="ai-error-block hidden">
+                  <div id="ai-direct-question-error-message" class="ai-error-message"></div>
+                </div>
+                <div id="ai-direct-question-config" class="ai-config-block hidden">
+                  <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+                  <button id="ai-direct-question-go-config" class="ai-panel-btn" type="button">前往配置</button>
+                </div>
                 <div id="ai-follow-up-error" class="ai-follow-up-error hidden">
                   <div id="ai-follow-up-error-message" class="ai-error-message"></div>
                   <div class="ai-follow-up-error-actions">
@@ -165,6 +173,8 @@
                     <button id="ai-follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
                   </div>
                 </div>
+              </div>
+              <div class="ai-panel-input">
                 <form id="ai-follow-up-form" class="ai-follow-up-form hidden">
                   <label class="ai-follow-up-label" for="ai-follow-up-input">继续追问</label>
                   <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
@@ -181,15 +191,6 @@
                     <textarea id="ai-direct-question-input" class="ai-direct-question-input" rows="3" placeholder="直接向 AI 提问…"></textarea>
                     <button id="ai-direct-question-send" class="ai-direct-question-send" type="submit" disabled>提问</button>
                   </form>
-                  <div id="ai-direct-question-loading" class="ai-loading hidden">正在思考…</div>
-                  <pre id="ai-direct-question-response" class="ai-response hidden"></pre>
-                  <div id="ai-direct-question-error" class="ai-error-block hidden">
-                    <div id="ai-direct-question-error-message" class="ai-error-message"></div>
-                  </div>
-                  <div id="ai-direct-question-config" class="ai-config-block hidden">
-                    <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
-                    <button id="ai-direct-question-go-config" class="ai-panel-btn" type="button">前往配置</button>
-                  </div>
                 </div>
               </div>
             </aside>

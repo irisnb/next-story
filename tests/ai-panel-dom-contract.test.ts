@@ -51,12 +51,11 @@ test("complete page assembly returns a valid AI panel DOM contract", () => {
     assert.ok(contract.directQuestionForm);
     assert.ok(contract.directQuestionInput);
     assert.ok(contract.directQuestionSend);
-    assert.ok(contract.directQuestionLoading);
-    assert.ok(contract.directQuestionResponse);
     assert.ok(contract.directQuestionError);
     assert.ok(contract.directQuestionErrorMessage);
     assert.ok(contract.directQuestionConfig);
     assert.ok(contract.directQuestionGoConfig);
+    assert.ok(contract.welcome);
 
     // 共享节点与 AppDom 公共字段指向同一元素，避免接线漂移。
     assert.equal(contract.panel, dom.aiPanel);

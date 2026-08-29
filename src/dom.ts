@@ -41,12 +41,12 @@ export interface AiPanelDom {
   directQuestionForm: HTMLFormElement;
   directQuestionInput: HTMLTextAreaElement;
   directQuestionSend: HTMLButtonElement;
-  directQuestionLoading: HTMLElement;
-  directQuestionResponse: HTMLPreElement;
   directQuestionError: HTMLElement;
   directQuestionErrorMessage: HTMLElement;
   directQuestionConfig: HTMLElement;
   directQuestionGoConfig: HTMLButtonElement;
+  /** 空状态欢迎语（无对话轮次且无进行中请求时显示）。 */
+  welcome: HTMLElement;
 }
 
 export interface AppDom {
@@ -351,12 +351,11 @@ export function getAppDom(): AppDom {
       directQuestionForm: requireElement<HTMLFormElement>("ai-direct-question-form"),
       directQuestionInput: requireElement<HTMLTextAreaElement>("ai-direct-question-input"),
       directQuestionSend: requireElement<HTMLButtonElement>("ai-direct-question-send"),
-      directQuestionLoading: requireElement("ai-direct-question-loading"),
-      directQuestionResponse: requireElement<HTMLPreElement>("ai-direct-question-response"),
       directQuestionError: requireElement("ai-direct-question-error"),
       directQuestionErrorMessage: requireElement("ai-direct-question-error-message"),
       directQuestionConfig: requireElement("ai-direct-question-config"),
       directQuestionGoConfig: requireElement<HTMLButtonElement>("ai-direct-question-go-config"),
+      welcome: requireElement("ai-welcome"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

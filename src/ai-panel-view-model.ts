@@ -48,11 +48,17 @@ export interface FollowUpFormView {
 
 export interface DirectQuestionView {
   readonly draft: string;
+  /**
+   * 输入框应显示的值：生成中显示空字符串（问题已作为用户消息进入对话流，
+   * 输入框不保留副本）；其余状态（idle/error/configuration_required）显示草稿，
+   * 失败后草稿恢复可见供重试编辑。
+   */
+  readonly inputValue: string;
   readonly pendingSelection: SnapshotView | null;
   readonly status: "idle" | "loading" | "error" | "configuration_required";
   readonly errorMessage: string | null;
-  /** 流式增量草稿（仅 loading 且已有增量时非空）。 */
-  readonly streamedText: string | null;
+  /** 生成中禁用输入：避免打字被渲染覆盖，与发送按钮的禁用语义一致。 */
+  readonly inputEnabled: boolean;
   readonly submitEnabled: boolean;
 }
 
@@ -65,6 +71,8 @@ export interface AiPanelView {
   readonly loadingMessage: string | null;
   readonly response: string | null;
   readonly conversation: ConversationView | null;
+  /** 空状态欢迎语：无任何对话轮次且无进行中请求时显示。 */
+  readonly welcomeVisible: boolean;
   readonly errorBlock: ErrorBlockView | null;
   readonly configBlock: boolean;
   readonly followUpError: FollowUpErrorView | null;
@@ -196,6 +204,7 @@ function buildConversationView(
 /**
  * 直接提问入口的纯显示决策：面板打开且处于空闲或直接提问请求时可见。
  * 空闲时展示草稿与待附带选区；请求中禁用重复提交；成功/失败/配置缺失分别呈现。
+ * 流式增量与请求状态不再由本视图承载——它们统一渲染在对话流内对应轮次的位置。
  */
 function buildDirectQuestionView(panelState: PanelStateView): DirectQuestionView | null {
   const request = panelState.request;
@@ -210,19 +219,36 @@ function buildDirectQuestionView(panelState: PanelStateView): DirectQuestionView
   const pendingSelection = panelState.pendingSelection
     ? { text: panelState.pendingSelection.selectedText }
     : null;
-  const streamedText =
-    isDirectQuestion && request.status === "loading" && request.streamedText
-      ? request.streamedText
-      : null;
 
   return {
     draft: panelState.directQuestionDraft,
+    inputValue: status === "loading" ? "" : panelState.directQuestionDraft,
     pendingSelection,
     status,
     errorMessage,
-    streamedText,
+    inputEnabled: status !== "loading",
     submitEnabled: panelState.directQuestionDraft.trim().length > 0 && status !== "loading",
   };
+}
+
+/**
+ * 首轮直接提问从被接受那一刻起的统一对话视图（D1）：
+ * 用户问题立即作为用户消息，生成中占位与流式增量在该消息正下方原地展开。
+ * 首轮成功后由 `buildConversationView` 接管，消息位置不变，无容器切换跳变。
+ */
+function buildDirectQuestionConversationView(
+  request: Extract<PanelRequestState, { kind: "direct_question" }>,
+): ConversationView {
+  const messages: ConversationMessageView[] = [{ role: "user", text: request.question }];
+  if (request.status === "loading") {
+    // 流式增量草稿逐字追加为助手消息；尚未有增量时只显示思考中状态。
+    if (request.streamedText) {
+      messages.push({ role: "assistant", text: request.streamedText });
+    }
+    messages.push({ role: "status", text: "正在思考…" });
+  }
+  // 错误 / 缺配置状态由对话流内对应轮次位置的独立反馈区块呈现（见渲染层）。
+  return { messages };
 }
 
 export function buildAiPanelView(
@@ -230,7 +256,13 @@ export function buildAiPanelView(
   conversation: ReadonlyTemporaryConversation | null,
 ): AiPanelView {
   const facts = requestFacts(panelState.request);
-  const conversationView = buildConversationView(conversation);
+  // 统一对话视图（D1）：直接提问请求从被接受起就产出对话流；
+  // 其余情况由已建立的临时对话推导。两条路径不再互斥切换。
+  const directQuestionRequest =
+    panelState.request.kind === "direct_question" ? panelState.request : null;
+  const conversationView = directQuestionRequest
+    ? buildDirectQuestionConversationView(directQuestionRequest)
+    : buildConversationView(conversation);
   const hasConversation = conversation !== null;
   const directQuestion = buildDirectQuestionView(panelState);
 
@@ -257,6 +289,9 @@ export function buildAiPanelView(
   const retryAvailable =
     (facts.errorMessage !== null || facts.configRequired) && !hasConversation;
 
+  // 空状态欢迎语（D5）：无任何对话轮次（含直接提问进行中的统一轮次）且无进行中请求。
+  const welcomeVisible = panelState.request.kind === "idle" && conversation === null;
+
   // “新建对话”仅在存在临时对话或存在任何非空闲请求（首轮预检/阻塞/加载/成功/失败/配置、
   // 追问或直接提问请求）时显示；空白直接提问 idle 状态隐藏。与 reducer 的
   // `hasEndableConversationWork` 语义一致（用户有“可结束的内容”才看到结束入口）。
@@ -274,6 +309,7 @@ export function buildAiPanelView(
       : null,
     response,
     conversation: conversationView,
+    welcomeVisible,
     errorBlock,
     configBlock: facts.configRequired,
     followUpError,

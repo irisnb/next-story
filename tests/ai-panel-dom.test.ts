@@ -536,28 +536,45 @@ test("real AI feature flow direct question with pending selection sends question
   }
 });
 
-test("direct question streams incremental text into the response area via state", async () => {
+test("direct question streams incremental text into the conversation thread via state", async () => {
   const pending = deferredGenerateResult();
   const ui = featureHarness([pending.promise]);
   try {
     ui.submitDirectQuestion("这个角色为什么犹豫？");
     await flushAiFeatureFlow();
 
-    // 流式增量经传输层到达面板状态，再渲染到独立回复区（纯文本、保留换行）
+    // 流式增量经传输层到达面板状态，再渲染到对话流内该轮次位置（纯文本、保留换行）
     ui.session.emitStreamText("她可能\n");
     ui.session.emitStreamText("在隐瞒动机");
-    assert.equal(ui.elements.get("ai-direct-question-response")!.classList.contains("hidden"), false);
-    assert.equal(
-      ui.elements.get("ai-direct-question-response")!.textContent,
+    assert.deepEqual(conversationText(ui), [
+      "这个角色为什么犹豫？",
       "她可能\n在隐瞒动机",
-    );
-    assert.equal(ui.elements.get("ai-direct-question-loading")!.classList.contains("hidden"), false);
+      "正在思考…",
+    ]);
 
-    // done 全文到达：整体替换流式草稿，进入统一对话
+    // done 全文到达：整体替换流式草稿，同一轮次位置无容器跳变
     pending.resolve({ ok: true, content: "最终回答" });
     await flushAiFeatureFlow();
-    assert.equal(ui.elements.get("ai-direct-question-response")!.classList.contains("hidden"), true);
     assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "最终回答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("empty open panel shows the welcome message and hides it once a question is accepted", () => {
+  const ui = harness();
+  try {
+    const welcome = ui.elements.get("ai-welcome")!;
+
+    // 空状态：显示欢迎语，输入区在底部可用
+    ui.state.open();
+    assert.equal(welcome.classList.contains("hidden"), false);
+    assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+
+    // 首轮请求被接受：欢迎语消失，用户问题作为消息进入对话流并显示生成中状态
+    ui.state.beginDirectQuestion("这个角色为什么犹豫？", null);
+    assert.equal(welcome.classList.contains("hidden"), true);
+    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "正在思考…"]);
   } finally {
     ui.restore();
   }
@@ -944,6 +961,64 @@ test("direct question error renders the error message and keeps the draft", () =
     assert.equal(ui.elements.get("ai-direct-question-error")!.classList.contains("hidden"), false);
     assert.equal(ui.elements.get("ai-direct-question-error-message")!.textContent, "网络失败");
     assert.equal(input.value, "问题");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question loading clears the input display and disables typing", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这个角色为什么犹豫？";
+    input.dispatch("input");
+    assert.equal(input.disabled, false);
+
+    ui.state.beginDirectQuestion("这个角色为什么犹豫？", null);
+
+    // 问题已作为用户消息进入对话流，输入框不再保留副本；生成中禁止打字
+    assert.equal(input.value, "");
+    assert.equal(input.disabled, true);
+    assert.deepEqual(conversationText(ui), ["这个角色为什么犹豫？", "正在思考…"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question failure restores the draft in the input for retry editing", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这个问题";
+    input.dispatch("input");
+    ui.state.beginDirectQuestion("这个问题", null);
+    assert.equal(input.value, "");
+
+    ui.state.failDirectQuestion({ code: "network", message: "网络失败" });
+
+    // 失败后恢复草稿供重试编辑（重试语义不破坏），输入重新可用
+    assert.equal(input.value, "这个问题");
+    assert.equal(input.disabled, false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("direct question configuration-required restores the draft in the input", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    const input = ui.elements.get("ai-direct-question-input")!;
+    input.value = "这个问题";
+    input.dispatch("input");
+    ui.state.beginDirectQuestion("这个问题", null);
+
+    ui.state.requireDirectQuestionConfiguration();
+
+    assert.equal(input.value, "这个问题");
+    assert.equal(input.disabled, false);
   } finally {
     ui.restore();
   }

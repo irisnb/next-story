@@ -84,7 +84,7 @@ export class FakeElement {
 
 /** AI 面板契约所需的全部节点 ID（与 index.html 保持一致）。 */
 export const AI_PANEL_NODE_IDS = [
-  "ai-panel", "ai-snapshot-block", "ai-snapshot-text", "ai-loading",
+  "ai-panel", "ai-snapshot-block", "ai-snapshot-text", "ai-welcome", "ai-loading",
   "ai-response", "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
   "ai-thinking-expansion-count", "ai-thinking-expansion-form",
   "ai-thinking-expansion-input", "ai-thinking-expansion-start",
@@ -96,7 +96,6 @@ export const AI_PANEL_NODE_IDS = [
   "ai-direct-question", "ai-direct-question-selection",
   "ai-direct-question-selection-text", "ai-direct-question-selection-remove",
   "ai-direct-question-form", "ai-direct-question-input", "ai-direct-question-send",
-  "ai-direct-question-loading", "ai-direct-question-response",
   "ai-direct-question-error", "ai-direct-question-error-message",
   "ai-direct-question-config", "ai-direct-question-go-config",
   "btn-toggle-ai",
@@ -157,12 +156,11 @@ export function createAiPanelDomFixture(): {
     directQuestionForm: elements.get("ai-direct-question-form")!,
     directQuestionInput: elements.get("ai-direct-question-input")!,
     directQuestionSend: elements.get("ai-direct-question-send")!,
-    directQuestionLoading: elements.get("ai-direct-question-loading")!,
-    directQuestionResponse: elements.get("ai-direct-question-response")!,
     directQuestionError: elements.get("ai-direct-question-error")!,
     directQuestionErrorMessage: elements.get("ai-direct-question-error-message")!,
     directQuestionConfig: elements.get("ai-direct-question-config")!,
     directQuestionGoConfig: elements.get("ai-direct-question-go-config")!,
+    welcome: elements.get("ai-welcome")!,
   } as unknown as AiPanelDom;
 
   return { elements, dom };

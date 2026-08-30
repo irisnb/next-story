@@ -4,7 +4,7 @@
 TBD - created by archiving change persistent-ai-panel-entry. Update Purpose after archive.
 ## Requirements
 ### Requirement: 常驻 AI 面板提供统一直接提问入口
-系统 SHALL 在现有 AI 面板中提供默认可用的直接提问输入，不得创建第二个 AI 面板或第二套临时对话事实源。
+系统 SHALL 在现有 AI 面板中提供默认可用的直接提问输入。面板 SHALL 承载直接提问与及时召唤两个首轮入口，二者进入同一统一临时对话、共享同一事实源；系统 MUST NOT 创建第二个 AI 面板或第二套临时对话事实源。
 
 #### Scenario: 无选区时面板可直接提问
 - **WHEN** AI 面板打开且当前没有有意义的编辑器选区
@@ -13,6 +13,11 @@ TBD - created by archiving change persistent-ai-panel-entry. Update Purpose afte
 #### Scenario: 面板收起后可恢复
 - **WHEN** 用户收起并重新展开 AI 面板
 - **THEN** 面板恢复当前请求、临时回应和未发送的问题状态
+
+#### Scenario: 两个首轮入口共享同一对话事实源
+- **WHEN** 用户分别通过直接提问和及时召唤发起对话
+- **THEN** 两种首轮进入的是同一种统一临时对话，状态由同一面板状态模型保存
+- **AND** 不存在按入口区分的第二套对话事实源
 
 ### Requirement: 选区作为可选重点提示自动附带
 系统 SHALL 将当前有意义的编辑器选区作为直接提问的可选重点材料；选区不得成为发送问题的前置条件，也不得因选区存在自动发送请求。
@@ -85,3 +90,4 @@ TBD - created by archiving change persistent-ai-panel-entry. Update Purpose afte
 #### Scenario: 首轮附带选区作为初始材料冻结
 - **WHEN** 首轮成功后用户在编辑器形成新的选区
 - **THEN** 对话初始材料仍为首轮发送时冻结的选区，新选区不替换原材料
+

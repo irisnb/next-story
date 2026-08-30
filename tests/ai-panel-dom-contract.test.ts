@@ -22,12 +22,6 @@ test("complete page assembly returns a valid AI panel DOM contract", () => {
     assert.ok(contract.snapshotText);
     assert.ok(contract.loading);
     assert.ok(contract.response);
-    assert.ok(contract.thinkingExpansionPrestate);
-    assert.ok(contract.thinkingExpansionTitle);
-    assert.ok(contract.thinkingExpansionCount);
-    assert.ok(contract.thinkingExpansionForm);
-    assert.ok(contract.thinkingExpansionInput);
-    assert.ok(contract.thinkingExpansionStart);
     assert.ok(contract.errorBlock);
     assert.ok(contract.errorMessage);
     assert.ok(contract.retryBtn);

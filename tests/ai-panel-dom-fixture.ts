@@ -85,9 +85,7 @@ export class FakeElement {
 /** AI 面板契约所需的全部节点 ID（与 index.html 保持一致）。 */
 export const AI_PANEL_NODE_IDS = [
   "ai-panel", "ai-snapshot-block", "ai-snapshot-text", "ai-welcome", "ai-loading",
-  "ai-response", "ai-thinking-expansion-prestate", "ai-thinking-expansion-title",
-  "ai-thinking-expansion-count", "ai-thinking-expansion-form",
-  "ai-thinking-expansion-input", "ai-thinking-expansion-start",
+  "ai-response",
   "ai-error-block", "ai-error-message", "ai-retry", "ai-config-block",
   "ai-go-config", "ai-panel-collapse", "ai-new-conversation", "ai-conversation",
   "ai-follow-up-form",
@@ -127,12 +125,6 @@ export function createAiPanelDomFixture(): {
     snapshotText: elements.get("ai-snapshot-text")!,
     loading: elements.get("ai-loading")!,
     response: elements.get("ai-response")!,
-    thinkingExpansionPrestate: elements.get("ai-thinking-expansion-prestate")!,
-    thinkingExpansionTitle: elements.get("ai-thinking-expansion-title")!,
-    thinkingExpansionCount: elements.get("ai-thinking-expansion-count")!,
-    thinkingExpansionForm: elements.get("ai-thinking-expansion-form")!,
-    thinkingExpansionInput: elements.get("ai-thinking-expansion-input")!,
-    thinkingExpansionStart: elements.get("ai-thinking-expansion-start")!,
     errorBlock: elements.get("ai-error-block")!,
     errorMessage: elements.get("ai-error-message")!,
     retryBtn: elements.get("ai-retry")!,

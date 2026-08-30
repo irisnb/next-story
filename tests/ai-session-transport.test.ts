@@ -71,11 +71,6 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
     },
-    legacyGenerate: (request) => {
-      commands.push({ cmd: "generate_ai_thinking", args: { request } });
-      if (failure !== null) return Promise.reject(failure);
-      return Promise.resolve(okResult());
-    },
     listenDelta: (handler, listenFn = listen) =>
       listenFn<AiDeltaPayload>("ai-delta", (event) => handler(event.payload)),
     listenDriverLost: (handler, listenFn = listen) =>
@@ -175,17 +170,6 @@ test("subsequent sends reuse the resident session without starting a new one", a
   const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
   assert.deepEqual(sendCalls.map((entry) => entry.args.messageId), ["msg-1", "msg-2"]);
   assert.deepEqual(sendCalls.map((entry) => entry.args.sessionId), ["session-1", "session-1"]);
-});
-
-test("legacy first-kind requests go through the one-shot generate command", async () => {
-  const ui = harness();
-  const request: GenerateAiRequest = { kind: "first", selected_text: "冻结选区" };
-  await ui.transport.sendViaResidentSession(request);
-
-  assert.deepEqual(ui.commands, [
-    { cmd: "generate_ai_thinking", args: { request } },
-  ]);
-  assert.equal(ui.commands.some((entry) => entry.cmd === "ai_start_session"), false);
 });
 
 test("a failed send clears the in-flight stream target", async () => {

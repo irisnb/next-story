@@ -9,11 +9,6 @@ import type {
 } from "./rich-text-editor.ts";
 import type { SelectionSnapshot } from "./types.ts";
 
-/**
- * @deprecated 旧选区工具的浮动入口（AI 及时召唤 / 思维扩展），已随
- * change `resident-ai-session` 从产品退场；代码保留待拆用，不再接入应用入口。
- */
-
 /** Selection entry trigger width (CSS px). */
 export const SELECTION_ENTRY_TRIGGER_WIDTH_PX = 44;
 
@@ -23,8 +18,6 @@ export const SELECTION_ENTRY_TRIGGER_HEIGHT_PX = 32;
 /** Gap between the focus-end character and the trigger, and clamp inset. */
 export const SELECTION_ENTRY_GAP_PX = 4;
 
-const SELECTION_ENTRY_MENU_WIDTH_PX = 160;
-const SELECTION_ENTRY_MENU_HEIGHT_PX = 96;
 
 export interface EntryVisibilityInput {
   /** 当前选区是否至少包含一个非空白字符。 */
@@ -40,7 +33,7 @@ export function decideSummonVisibility(input: EntryVisibilityInput): boolean {
   return input.hasMeaningfulSelection && input.focusEndVisible;
 }
 
-export type SelectionEntryActionKind = "summon" | "thinking_expansion";
+export type SelectionEntryActionKind = "summon";
 
 export interface SelectionEntryAction {
   kind: SelectionEntryActionKind;
@@ -58,10 +51,7 @@ export function decideSelectionEntryActions(input: EntryVisibilityInput): readon
     return [];
   }
 
-  return [
-    { kind: "summon", label: "及时召唤" },
-    { kind: "thinking_expansion", label: "思维扩展" },
-  ];
+  return [{ kind: "summon", label: "AI" }];
 }
 
 export function renderSelectionEntryActions<TNode extends SelectionEntryActionNode>(
@@ -80,7 +70,7 @@ export function renderSelectionEntryActions<TNode extends SelectionEntryActionNo
 
   for (const action of actions) {
     const button = createButton();
-    button.id = action.kind === "summon" ? "ai-summon-btn" : "ai-thinking-expansion-btn";
+    button.id = "ai-summon-btn";
     button.type = "button";
     button.textContent = action.label;
     domMenu.appendChild(button);
@@ -109,7 +99,6 @@ export interface TriggerPlacementInput {
   readonly focusRect: PlacementRect;
   readonly selectionRect: PlacementRect;
   readonly triggerSize: PlacementSize;
-  readonly menuSize: PlacementSize;
   readonly gap: number;
 }
 
@@ -132,7 +121,6 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
     focusRect,
     selectionRect,
     triggerSize,
-    menuSize,
     gap,
   } = input;
 
@@ -157,17 +145,14 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
   };
 
   const centerTop = focusRect.top + ((focusRect.bottom - focusRect.top) - triggerHeight) / 2;
-  const menuWidth = Math.max(menuSize.width, triggerWidth);
-  const menuHeight = Math.max(menuSize.height, 0);
   const sideFitsVertically = centerTop >= editorTop && centerTop + triggerHeight <= editorBottom;
   const overlapsSelectionVertically = centerTop < selectionRect.bottom && centerTop + triggerHeight > selectionRect.top;
 
   const rightLeft = focusRect.right + gap;
   const rightFitsTrigger = rightLeft + triggerWidth + gap <= editorRight;
-  const rightReservesMenu = rightLeft + menuWidth + gap <= editorRight;
   const rightAvoidsSelection = rightLeft >= selectionRect.right + gap || !overlapsSelectionVertically;
 
-  if (rightFitsTrigger && rightReservesMenu && sideFitsVertically && rightAvoidsSelection) {
+  if (rightFitsTrigger && sideFitsVertically && rightAvoidsSelection) {
     return {
       left: rightLeft,
       top: clamp(centerTop, minTop, maxTop),
@@ -177,10 +162,9 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
 
   const leftLeft = focusRect.left - gap - triggerWidth;
   const leftFitsTrigger = leftLeft >= minLeft;
-  const leftReservesMenu = leftLeft + triggerWidth - menuWidth >= minLeft;
   const leftAvoidsSelection = leftLeft + triggerWidth <= selectionRect.left - gap || !overlapsSelectionVertically;
 
-  if (leftFitsTrigger && leftReservesMenu && sideFitsVertically && leftAvoidsSelection) {
+  if (leftFitsTrigger && sideFitsVertically && leftAvoidsSelection) {
     return {
       left: leftLeft,
       top: clamp(centerTop, minTop, maxTop),
@@ -191,11 +175,10 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
   const belowLeft = clamp(focusRect.left - triggerWidth, minLeft, maxLeft);
   const belowTop = selectionRect.bottom + gap;
   const belowFitsTrigger = belowTop + triggerHeight + gap <= editorBottom;
-  const belowReservesMenu = belowTop + triggerHeight + menuHeight + gap <= editorBottom;
 
-  if (belowFitsTrigger && belowReservesMenu) {
+  if (belowFitsTrigger) {
     return {
-      left: clamp(Math.min(belowLeft, editorRight - menuWidth - gap), minLeft, maxLeft),
+      left: belowLeft,
       top: belowTop,
       mode: "below-line",
     };
@@ -206,7 +189,7 @@ export function decideTriggerPlacement(input: TriggerPlacementInput): TriggerPla
 
   if (aboveFitsTrigger) {
     return {
-      left: clamp(Math.min(focusRect.left - triggerWidth, editorRight - menuWidth - gap), minLeft, maxLeft),
+      left: clamp(focusRect.left - triggerWidth, minLeft, maxLeft),
       top: aboveTop,
       mode: "above-line",
     };
@@ -237,7 +220,6 @@ export interface SelectionEntryOptions {
   getCurrentEditor: () => SelectionEntryEditor | null;
   isRequestInFlight: () => boolean;
   onSummon: (snapshot: SelectionSnapshot) => void;
-  onThinkingExpansion: (snapshot: SelectionSnapshot) => void;
 }
 
 /**
@@ -254,11 +236,16 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     getCurrentEditor,
     isRequestInFlight,
     onSummon,
-    onThinkingExpansion,
   } = options;
   const editorElements = [dom.editorTextarea];
   const editorEventTypes = ["mouseup", "keyup", "select", "focus", "click", "scroll", "input"] as const;
   const captureEditorEvents = true;
+
+  // Some headless consumers construct only the panel DOM. In that mode the
+  // optional floating entry has no mount point and remains inert.
+  if (!dom.editorPage) {
+    return { reset(): void {}, destroy(): void {} };
+  }
 
   const entry = document.createElement("div");
   entry.id = "ai-selection-entry";
@@ -271,27 +258,14 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   trigger.textContent = "AI";
   entry.appendChild(trigger);
 
-  const menu = document.createElement("div");
-  menu.id = "ai-selection-entry-menu";
-  menu.className = "hidden";
-  entry.appendChild(menu);
-
   // 最近一次召唤冻结的快照；在其存在期间抑制入口重现，直到用户形成新的不同选区。
   let frozen: SelectionSnapshot | null = null;
   let actionSnapshot: SelectionSnapshot | null = null;
   /** When true, skip repositioning so opening the menu cannot move the trigger anchor. */
-  let menuOpen = false;
   let pendingUpdateFrame: number | null = null;
-
-  function closeMenu(): void {
-    menu.classList.add("hidden");
-    entry.classList.remove("menu-open");
-    menuOpen = false;
-  }
 
   function hideEntry(): void {
     entry.classList.add("hidden");
-    closeMenu();
     actionSnapshot = null;
   }
 
@@ -353,10 +327,6 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
         width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
         height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
       },
-      menuSize: {
-        width: SELECTION_ENTRY_MENU_WIDTH_PX,
-        height: SELECTION_ENTRY_MENU_HEIGHT_PX,
-      },
       gap: SELECTION_ENTRY_GAP_PX,
     });
     entry.style.position = "fixed";
@@ -397,20 +367,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       focusEndVisible: focusVisible,
     });
     if (actions.length > 0 && snapshot !== null && focusCoordinates !== null) {
-      // Keep the locked anchor while the secondary menu is open (click may blur/focus and re-fire update).
-      if (!menuOpen) {
-        positionEntry(editor, selection, focusCoordinates);
-      }
-      renderSelectionEntryActions(menu, actions, () => document.createElement("button"));
-      for (const button of Array.from(menu.children)) {
-        button.addEventListener("mousedown", (event) => {
-          keepEditorSelectionVisible(event as MouseEvent);
-        });
-        button.addEventListener("click", () => {
-          if (button.id === "ai-summon-btn") freezeAndRun(onSummon);
-          if (button.id === "ai-thinking-expansion-btn") freezeAndRun(onThinkingExpansion);
-        });
-      }
+      positionEntry(editor, selection, focusCoordinates);
       actionSnapshot = snapshot;
       entry.classList.remove("hidden");
     } else {
@@ -459,9 +416,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     if (
       nextTarget === entry ||
       nextTarget === trigger ||
-      nextTarget === menu ||
-      (menuOpen && nextTarget === dom.btnToggleAi) ||
-      (nextTarget !== null && menu.contains(nextTarget as Node))
+      nextTarget === dom.btnToggleAi
     ) {
       return;
     }
@@ -473,15 +428,7 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
   }
 
   trigger.addEventListener("mousedown", keepEditorSelectionVisible);
-  trigger.addEventListener("click", () => {
-    if (menu.classList.contains("hidden")) {
-      menu.classList.remove("hidden");
-      entry.classList.add("menu-open");
-      menuOpen = true;
-    } else {
-      closeMenu();
-    }
-  });
+  trigger.addEventListener("click", () => freezeAndRun(onSummon));
 
   for (const element of editorElements) {
     for (const eventType of editorEventTypes) {

@@ -150,7 +150,7 @@ test("shares the single-flight lock across structured follow-up requests", async
     },
   );
 
-  const first = coordinator.requestStructured({ kind: "first", selected_text: "锚点" }, { conversationId: 1 });
+  const first = coordinator.requestStructured({ kind: "summon", selected_text: "锚点" }, { conversationId: 1 });
   const second = coordinator.requestStructured({
     kind: "follow_up",
     selected_text: "锚点",
@@ -163,7 +163,7 @@ test("shares the single-flight lock across structured follow-up requests", async
   assert.equal(second, null);
   resolve({ ok: true, content: "答复" });
   await first;
-  assert.deepEqual(requests, [{ kind: "first", selected_text: "锚点" }]);
+  assert.deepEqual(requests, [{ kind: "summon", selected_text: "锚点" }]);
 });
 
 test("ignores a structured result when its conversation or turn identity is stale", async () => {

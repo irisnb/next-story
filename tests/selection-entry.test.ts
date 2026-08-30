@@ -5,7 +5,6 @@ import {
   decideSelectionEntryActions,
   decideSummonVisibility,
   decideTriggerPlacement,
-  renderSelectionEntryActions,
   setupSelectionEntry,
   SELECTION_ENTRY_GAP_PX,
   SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
@@ -268,7 +267,6 @@ function setupEditorSelectionEntry(
   ui: SelectionEntryFixture,
   callbacks: Readonly<{
     onSummon?: (snapshot: SelectionSnapshot) => void;
-    onThinkingExpansion?: (snapshot: SelectionSnapshot) => void;
     isRequestInFlight?: () => boolean;
   }> = {},
 ) {
@@ -278,7 +276,6 @@ function setupEditorSelectionEntry(
     getCurrentEditor: () => asEditor(ui.draft),
     isRequestInFlight: callbacks.isRequestInFlight ?? (() => false),
     onSummon: callbacks.onSummon ?? (() => {}),
-    onThinkingExpansion: callbacks.onThinkingExpansion ?? (() => {}),
   };
   return setupSelectionEntry(options);
 }
@@ -286,17 +283,6 @@ function setupEditorSelectionEntry(
 /** 夹具编辑器与真实 `SelectionEntryEditor` 结构一致，仅 element 是假元素，这里显式对齐类型。 */
 function asEditor(editor: FakeSelectionEditor): SelectionEntryEditor {
   return editor as unknown as SelectionEntryEditor;
-}
-
-function setEditorRect(
-  editor: FakeSelectionEditor,
-  rect: Readonly<{ top: number; bottom: number; left: number; right: number }>,
-): void {
-  editor.element.rect = {
-    ...rect,
-    width: rect.right - rect.left,
-    height: rect.bottom - rect.top,
-  };
 }
 
 function visibleEntry(ui: SelectionEntryFixture): FakeElement {
@@ -309,12 +295,6 @@ function entryTrigger(entry: FakeElement): FakeElement {
   const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
   assert.ok(trigger);
   return trigger;
-}
-
-function entryMenu(entry: FakeElement): FakeElement {
-  const menu = entry.children.find((child) => child.id === "ai-selection-entry-menu");
-  assert.ok(menu);
-  return menu;
 }
 
 function editorCoordinates(
@@ -361,16 +341,13 @@ test("shows the entry for a meaningful selection whose focus end is visible", ()
   );
 });
 
-test("offers timely summon and thinking expansion actions for a visible selection", () => {
+test("offers one summon action for a visible selection", () => {
   const actions = decideSelectionEntryActions({
     hasMeaningfulSelection: true,
     focusEndVisible: true,
   });
 
-  assert.deepEqual(actions, [
-    { kind: "summon", label: "及时召唤" },
-    { kind: "thinking_expansion", label: "思维扩展" },
-  ]);
+  assert.deepEqual(actions, [{ kind: "summon", label: "AI" }]);
 });
 
 test("offers no selection entry actions when the entry is hidden", () => {
@@ -382,19 +359,7 @@ test("offers no selection entry actions when the entry is hidden", () => {
   assert.deepEqual(actions, []);
 });
 
-test("renders only the actions returned by the selection entry decision", () => {
-  const menu = new FakeElement();
-  const actions = [{ kind: "summon", label: "及时召唤" }] as const;
-
-  renderSelectionEntryActions(menu, actions, () => new FakeElement());
-
-  assert.deepEqual(
-    menu.children.map((button) => ({ id: button.id, text: button.textContent })),
-    [{ id: "ai-summon-btn", text: "及时召唤" }],
-  );
-});
-
-test("selection entry opens an AI pill-triggered menu and freezes the editor selection", () => {
+test("selection entry summons directly and freezes the editor selection", () => {
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "开头冻结选区结尾";
@@ -406,16 +371,9 @@ test("selection entry opens an AI pill-triggered menu and freezes the editor sel
 
     const entry = visibleEntry(ui);
     const trigger = entryTrigger(entry);
-    const menu = entryMenu(entry);
     assert.equal(trigger.textContent, "AI");
-    assert.equal(menu.classList.contains("hidden"), true);
-
+    assert.equal(entry.children.length, 1);
     trigger.dispatch("click");
-    const buttons = menu.children.filter((child) => child.type === "button");
-    assert.deepEqual(buttons.map((button) => button.textContent), ["及时召唤", "思维扩展"]);
-    const summonButton = buttons.find((button) => button.id === "ai-summon-btn");
-    assert.ok(summonButton);
-    summonButton.dispatch("click");
 
     assert.deepEqual(summons, [{ documentId: "doc-1", selectedText: "冻结选区", from: 3, to: 7 }]);
     assert.equal(entry.classList.contains("hidden"), true);
@@ -436,9 +394,6 @@ test("submitted summon snapshot survives later edits, selection changes, and doc
 
     const entry = visibleEntry(ui);
     entryTrigger(entry).dispatch("click");
-    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
-    assert.ok(summonButton);
-    summonButton.dispatch("click");
 
     ui.draft.text = "文档内容已经被用户改写";
     ui.draft.selection = { from: 1, to: 4, head: 4 };
@@ -450,41 +405,6 @@ test("submitted summon snapshot survives later edits, selection changes, and doc
       selectedText: "冻结选区",
       from: 3,
       to: 7,
-    });
-  } finally {
-    ui.restore();
-  }
-});
-
-test("thinking expansion submits the click-time snapshot before later editor changes", () => {
-  const ui = installSelectionEntryDom();
-  try {
-    ui.setCurrentDocumentId("doc-2");
-    ui.draft.text = "正文本原始片段";
-    ui.draft.selection = { from: 4, to: 8, head: 8 };
-    let submitted: SelectionSnapshot | null = null;
-
-    setupEditorSelectionEntry(ui, { onThinkingExpansion: (snap) => { submitted = snap; } });
-    ui.draft.dispatch("select");
-
-    const entry = visibleEntry(ui);
-    entryTrigger(entry).dispatch("click");
-    const thinkingButton = entryMenu(entry).children.find(
-      (child) => child.id === "ai-thinking-expansion-btn",
-    );
-    assert.ok(thinkingButton);
-    thinkingButton.dispatch("click");
-
-    ui.draft.text = "正文本已改变";
-    ui.draft.selection = { from: 1, to: 3, head: 3 };
-    ui.setCurrentDocumentId("doc-1");
-    ui.draft.dispatch("select");
-
-    assert.deepEqual(submitted, {
-      documentId: "doc-2",
-      selectedText: "原始片段",
-      from: 4,
-      to: 8,
     });
   } finally {
     ui.restore();
@@ -505,9 +425,6 @@ test("selection entry supports forward and backward editor selections", () => {
 
     const entry = visibleEntry(ui);
     entryTrigger(entry).dispatch("click");
-    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
-    assert.ok(summonButton);
-    summonButton.dispatch("click");
     assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
     assert.deepEqual(summons, [
       { documentId: "doc-1", selectedText: "bcd", from: 2, to: 5 },
@@ -597,7 +514,6 @@ test("destroy removes editor listeners so stale selection events do not update",
       getCurrentEditor: () => asEditor(ui.draft),
       isRequestInFlight: () => false,
       onSummon: () => {},
-      onThinkingExpansion: () => {},
     });
     controller.destroy();
     ui.draft.dispatch("select");
@@ -661,7 +577,7 @@ test("hides the entry when the internal editor surface blurs outside the entry",
   }
 });
 
-test("keeps the entry visible when editor blur moves into the controlled menu", () => {
+test("keeps the entry visible when editor blur moves into the summon trigger", () => {
   const ui = installSelectionEntryDom();
   try {
     ui.draft.text = "点击入口不破坏选区";
@@ -672,54 +588,6 @@ test("keeps the entry visible when editor blur moves into the controlled menu", 
     const trigger = entryTrigger(entry);
     ui.draft.element.dispatch("blur", { relatedTarget: trigger });
     assert.equal(entry.classList.contains("hidden"), false);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("keeps an open menu anchored when editor blur moves to the AI panel toggle", () => {
-  const ui = installSelectionEntryDom();
-  try {
-    ui.draft.text = "切换面板时保留已打开的选区菜单";
-    ui.draft.selection = { from: 0, to: 4, head: 4 };
-    setupEditorSelectionEntry(ui);
-    ui.draft.dispatch("select");
-
-    const entry = visibleEntry(ui);
-    const menu = entryMenu(entry);
-    entryTrigger(entry).dispatch("click");
-    const leftBefore = entry.style.left;
-    const topBefore = entry.style.top;
-
-    ui.draft.element.dispatch("blur", {
-      relatedTarget: ui.btnToggleAi,
-    });
-
-    assert.equal(entry.classList.contains("hidden"), false);
-    assert.equal(entry.classList.contains("menu-open"), true);
-    assert.equal(menu.classList.contains("hidden"), false);
-    assert.equal(entry.style.left, leftBefore);
-    assert.equal(entry.style.top, topBefore);
-  } finally {
-    ui.restore();
-  }
-});
-
-test("reset invalidates an open menu so stale action buttons cannot submit old context", () => {
-  const ui = installSelectionEntryDom();
-  try {
-    ui.draft.text = "旧菜单不能继续提交";
-    ui.draft.selection = { from: 0, to: 4, head: 4 };
-    const summons: SelectionSnapshot[] = [];
-    const controller = setupEditorSelectionEntry(ui, { onSummon: (snap) => summons.push(snap) });
-    ui.draft.dispatch("select");
-    const entry = visibleEntry(ui);
-    entryTrigger(entry).dispatch("click");
-    const summonButton = entryMenu(entry).children.find((child) => child.id === "ai-summon-btn");
-    assert.ok(summonButton);
-    controller.reset();
-    summonButton.dispatch("click");
-    assert.deepEqual(summons, []);
   } finally {
     ui.restore();
   }
@@ -776,7 +644,6 @@ test("places the trigger to the right of the focus end when right-side space is 
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -805,7 +672,6 @@ test("falls back below the selected line near the right side when the line is fu
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 44, height: 0 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -836,7 +702,6 @@ test("clamps below-line placement so the trigger stays inside the editor bounds"
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 44, height: 0 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -859,7 +724,6 @@ test("places the trigger left of the focus end at the right edge when that avoid
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 0 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -880,7 +744,6 @@ test("places the trigger above the selected line near the bottom edge", () => {
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -901,7 +764,6 @@ test("keeps the trigger inside a narrow editor when no preferred side has room",
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -922,7 +784,6 @@ test("clamps four-corner placement inside the editor bounds", () => {
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -944,7 +805,6 @@ test("moves below the selected text when side placement would overlap the select
       width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
       height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
     },
-    menuSize: { width: 120, height: 72 },
     gap: SELECTION_ENTRY_GAP_PX,
   });
 
@@ -952,60 +812,3 @@ test("moves below the selected text when side placement would overlap the select
   assert.ok(placement.top >= 66 + SELECTION_ENTRY_GAP_PX);
 });
 
-test("reserves menu footprint when choosing a trigger placement near the window edge", () => {
-  const placement = decideTriggerPlacement({
-    editorLeft: 0,
-    editorTop: 0,
-    editorRight: 360,
-    editorBottom: 244,
-    focusRect: { left: 260, top: 80, right: 262, bottom: 96 },
-    selectionRect: { left: 216, top: 80, right: 262, bottom: 96 },
-    triggerSize: {
-      width: SELECTION_ENTRY_TRIGGER_WIDTH_PX,
-      height: SELECTION_ENTRY_TRIGGER_HEIGHT_PX,
-    },
-    menuSize: { width: 160, height: 96 },
-    gap: SELECTION_ENTRY_GAP_PX,
-  });
-
-  assert.equal(placement.mode, "below-line");
-  assert.ok(placement.left + 160 <= 360 - SELECTION_ENTRY_GAP_PX);
-});
-
-test("keeps the trigger anchor fixed when the secondary menu opens", () => {
-  const ui = installSelectionEntryDom();
-  try {
-    ui.draft.text = "选区右侧有空间显示入口";
-    ui.draft.selection = { from: 0, to: 4, head: 4 };
-    setEditorRect(ui.draft, { top: 0, bottom: 200, left: 0, right: 400 });
-    ui.draft.coordinates.set(4, editorCoordinates(40, 20));
-    ui.draft.coordinates.set(0, editorCoordinates(0, 20));
-
-    setupEditorSelectionEntry(ui);
-    ui.draft.dispatch("select");
-
-    const entry = visibleEntry(ui);
-    assert.equal(entry.classList.contains("hidden"), false);
-
-    const leftBefore = entry.style.left;
-    const topBefore = entry.style.top;
-    assert.notEqual(leftBefore, "");
-    assert.notEqual(topBefore, "");
-
-    const trigger = entry.children.find((child) => child.id === "ai-selection-entry-trigger");
-    assert.ok(trigger);
-    trigger.dispatch("click");
-
-    assert.equal(entry.classList.contains("menu-open"), true);
-    assert.equal(entry.style.left, leftBefore);
-    assert.equal(entry.style.top, topBefore);
-
-    // Re-fire selection update while the menu is open; anchor must stay locked.
-    ui.draft.dispatch("select");
-    assert.equal(entry.classList.contains("menu-open"), true);
-    assert.equal(entry.style.left, leftBefore);
-    assert.equal(entry.style.top, topBefore);
-  } finally {
-    ui.restore();
-  }
-});

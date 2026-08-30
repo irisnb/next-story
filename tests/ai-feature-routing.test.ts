@@ -11,11 +11,7 @@ import {
   followUpAcceptedRequest,
   retryFollowUpAcceptedRequest,
 } from "../src/ai-feature-follow-up.ts";
-import {
-  buildThinkingExpansionRequest,
-  createPreflightGate,
-  startFirstRequest,
-} from "../src/ai-feature-first-request.ts";
+import { createPreflightGate, startSummon } from "../src/ai-feature-first-round.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type {
   GenerateAiError,
@@ -54,25 +50,6 @@ test("routes non-configuration failures to the ordinary error state", () => {
   assert.deepEqual(state.view.request, { kind: "error", snapshot: snap, error });
 });
 
-test("builds thinking expansion first request from frozen selection and trimmed direction", () => {
-  const snap = snapshot("冻结选区");
-
-  assert.deepEqual(buildThinkingExpansionRequest(snap, "  追人物的犹豫  "), {
-    kind: "first",
-    selected_text: "冻结选区",
-    thinking_direction: "追人物的犹豫",
-  });
-});
-
-test("builds thinking expansion first request without blank direction", () => {
-  const snap = snapshot("冻结选区");
-
-  assert.deepEqual(buildThinkingExpansionRequest(snap, "   \n  "), {
-    kind: "first",
-    selected_text: "冻结选区",
-  });
-});
-
 test("first request preflight previews selection before requiring configuration", async () => {
   const state = new AiPanelState();
   const snap = snapshot("冻结选区");
@@ -81,7 +58,7 @@ test("first request preflight previews selection before requiring configuration"
     observed.push(trackedState.view.request.kind);
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state: trackedState,
     snapshot: snap,
     loadConfig: () => Promise.resolve(null),
@@ -92,7 +69,7 @@ test("first request preflight previews selection before requiring configuration"
   }), true);
   await Promise.resolve();
 
-  assert.deepEqual(observed, ["first_preview", "loading", "configuration_required"]);
+  assert.deepEqual(observed, ["loading", "configuration_required"]);
   assert.deepEqual(trackedState.view.request, {
     kind: "configuration_required",
     snapshot: snap,
@@ -114,12 +91,12 @@ test("discards the preflight result when the project changes during config loadi
   const preflight = createPreflightGate();
   let requestedSnapshot: SelectionSnapshot | null = null;
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
-    request: (requestSnapshot) => {
-      requestedSnapshot = requestSnapshot;
+    request: (request) => {
+      requestedSnapshot = snapshot(request.selected_text);
       return Promise.resolve();
     },
     preflight,
@@ -137,7 +114,7 @@ test("discards the preflight result when the project changes during config loadi
   assert.equal(requestedSnapshot, null, "不得把旧作品的冻结选区作为请求发出");
   assert.equal(preflight.owner, null);
   // 预检结果被丢弃：面板停留在预览态（作品切换后由应用层 reset），不进入 loading/error。
-  assert.deepEqual(state.view.request, { kind: "first_preview", snapshot: snap });
+  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: 1, phase: "first" });
 });
 
 test("preflight failure after a project switch is discarded too", async () => {
@@ -151,7 +128,7 @@ test("preflight failure after a project switch is discarded too", async () => {
     configDeferred.reject = reject;
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
@@ -168,7 +145,7 @@ test("preflight failure after a project switch is discarded too", async () => {
   await Promise.resolve();
   await Promise.resolve();
 
-  assert.deepEqual(state.view.request, { kind: "first_preview", snapshot: snap });
+  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: 1, phase: "first" });
 });
 
 test("a preflight invalidated by newConversation does not re-activate the cleared request", async () => {
@@ -182,7 +159,7 @@ test("a preflight invalidated by newConversation does not re-activate the cleare
     configDeferred.resolve = resolve;
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
@@ -192,7 +169,7 @@ test("a preflight invalidated by newConversation does not re-activate the cleare
     },
     getProjectToken: () => 1,
   }), true);
-  assert.equal(state.view.request.kind, "first_preview");
+  assert.equal(state.view.request.kind, "loading");
 
   // 预检期间用户新建对话：清空为空白直接提问状态
   assert.equal(state.newConversation(), true);
@@ -218,7 +195,7 @@ test("a preflight invalidated by newConversation does not enter configuration-re
     configDeferred.resolve = resolve;
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
@@ -247,7 +224,7 @@ test("a preflight invalidated by newConversation does not surface a late loadCon
     configDeferred.reject = reject;
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
@@ -277,7 +254,7 @@ test("preflight gate is released when a preflight is invalidated by newConversat
     configDeferred.resolve = resolve;
   });
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snap,
     loadConfig: () => configPromise,
@@ -304,7 +281,7 @@ test("first request keeps the submitted snapshot after the editor selection chan
   let requestedSnapshot: SelectionSnapshot | null = null;
   let requestedPayload: GenerateAiRequest | null = null;
 
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: currentEditorSelection,
     loadConfig: () => Promise.resolve({
@@ -312,12 +289,9 @@ test("first request keeps the submitted snapshot after the editor selection chan
       model: "test-model",
       has_api_key: true,
     }),
-    request: (requestSnapshot, requestPayload) => {
-      requestedSnapshot = requestSnapshot;
-      requestedPayload = requestPayload ?? {
-        kind: "first",
-        selected_text: requestSnapshot.selectedText,
-      };
+    request: (request) => {
+      requestedSnapshot = snapshot(request.selected_text);
+      requestedPayload = request;
       return Promise.resolve();
     },
     getProjectToken: () => 1,
@@ -335,32 +309,8 @@ test("first request keeps the submitted snapshot after the editor selection chan
   assert.equal(currentEditorSelection.selectedText, "后来选中的正文本");
   assert.deepEqual(requestedSnapshot, submitted);
   assert.deepEqual(requestedPayload, {
-    kind: "first",
+    kind: "summon",
     selected_text: "首次冻结选区",
-  });
-});
-
-test("thinking expansion keeps its prestate snapshot after editing and switching notebooks", () => {
-  const state = new AiPanelState();
-  const submitted = snapshot("扩展冻结选区");
-  let currentEditorSelection: SelectionSnapshot = submitted;
-  state.beginThinkingExpansion(submitted);
-
-  currentEditorSelection = {
-    documentId: "main",
-    selectedText: "正文本当前选区",
-    from: 9,
-    to: 16,
-  };
-
-  const request = state.view.request;
-  assert.equal(request.kind, "thinking_expansion");
-  assert.equal(currentEditorSelection.documentId, "main");
-  assert.deepEqual(request.snapshot, submitted);
-  assert.deepEqual(buildThinkingExpansionRequest(request.snapshot, "追人物选择"), {
-    kind: "first",
-    selected_text: "扩展冻结选区",
-    thinking_direction: "追人物选择",
   });
 });
 
@@ -380,26 +330,6 @@ test("retry enters loading only when the coordinator accepts the request", () =>
     conversationId: 1,
     phase: "first",
   });
-});
-
-test("retry preserves the thinking expansion direction from the failed first request", () => {
-  const state = new AiPanelState();
-  const snap = snapshot("冻结选区");
-  const firstRequest: GenerateAiRequest = {
-    kind: "first",
-    selected_text: "冻结选区",
-    thinking_direction: "追人物的犹豫",
-  };
-  let retriedRequest: unknown = null;
-  state.beginRequest(snap, firstRequest);
-  state.fail(snap, { code: "network", message: "网络失败" });
-
-  assert.equal(retryAcceptedRequest(state, (_snapshot, request) => {
-    retriedRequest = request;
-    return Promise.resolve();
-  }), true);
-
-  assert.deepEqual(retriedRequest, firstRequest);
 });
 
 test("first retry uses the failed request snapshot instead of the current editor selection", () => {

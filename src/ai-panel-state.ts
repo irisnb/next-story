@@ -15,6 +15,7 @@ import {
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
+import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
 
 export type {
   PanelRequestState,
@@ -114,7 +115,7 @@ export class AiPanelState {
   /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入预览。 */
   previewFirstRequest(
     snapshot: SelectionSnapshot,
-    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+    firstRequest?: FirstRoundMaterial,
   ): void {
     this.dispatch({ type: "preview_first_request", snapshot, firstRequest });
   }
@@ -126,17 +127,9 @@ export class AiPanelState {
   /** 用户点击“召唤 AI”且请求被接受：展开面板并以本次冻结快照进入 loading。 */
   beginRequest(
     snapshot: SelectionSnapshot,
-    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+    firstRequest?: FirstRoundMaterial,
   ): void {
     this.dispatch({ type: "begin_request", snapshot, firstRequest });
-  }
-
-  beginThinkingExpansion(snapshot: SelectionSnapshot): void {
-    this.dispatch({ type: "begin_thinking_expansion", snapshot });
-  }
-
-  updateThinkingExpansionDirection(direction: string): void {
-    this.dispatch({ type: "update_thinking_expansion_direction", direction });
   }
 
   /** 生成成功：更新回复，保持当前 visibility（收起期间完成也不自动展开）。 */
@@ -240,7 +233,7 @@ export class AiPanelState {
     return null;
   }
 
-  retryFirstRequest(): Extract<GenerateAiRequest, { kind: "first" }> | null {
+  retryFirstRequest(): FirstRoundMaterial | null {
     if (this.state.request.kind !== "error" && this.state.request.kind !== "configuration_required") {
       return null;
     }

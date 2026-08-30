@@ -1,5 +1,5 @@
 /**
- * AI 面板的显式 DOM 依赖契约：面板渲染、折叠、思维扩展、错误恢复与临时追问
+ * AI 面板的显式 DOM 依赖契约：面板渲染、折叠、错误恢复与临时追问
  * 所需的全部节点，由 `getAppDom()` 在应用启动接线处集中解析和校验。
  *
  * 面板模块只消费本契约，不再执行散落的全局节点查询；契约不包含任何向作品
@@ -12,12 +12,6 @@ export interface AiPanelDom {
   snapshotText: HTMLPreElement;
   loading: HTMLElement;
   response: HTMLPreElement;
-  thinkingExpansionPrestate: HTMLElement;
-  thinkingExpansionTitle: HTMLElement;
-  thinkingExpansionCount: HTMLElement;
-  thinkingExpansionForm: HTMLFormElement;
-  thinkingExpansionInput: HTMLTextAreaElement;
-  thinkingExpansionStart: HTMLButtonElement;
   errorBlock: HTMLElement;
   errorMessage: HTMLElement;
   retryBtn: HTMLButtonElement;
@@ -322,12 +316,6 @@ export function getAppDom(): AppDom {
       snapshotText: requireElement<HTMLPreElement>("ai-snapshot-text"),
       loading: requireElement("ai-loading"),
       response: aiResponse,
-      thinkingExpansionPrestate: requireElement("ai-thinking-expansion-prestate"),
-      thinkingExpansionTitle: requireElement("ai-thinking-expansion-title"),
-      thinkingExpansionCount: requireElement("ai-thinking-expansion-count"),
-      thinkingExpansionForm: requireElement<HTMLFormElement>("ai-thinking-expansion-form"),
-      thinkingExpansionInput: requireElement<HTMLTextAreaElement>("ai-thinking-expansion-input"),
-      thinkingExpansionStart: requireElement<HTMLButtonElement>("ai-thinking-expansion-start"),
       errorBlock: requireElement("ai-error-block"),
       errorMessage: requireElement("ai-error-message"),
       retryBtn: requireElement<HTMLButtonElement>("ai-retry"),

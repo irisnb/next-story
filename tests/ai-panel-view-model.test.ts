@@ -63,7 +63,6 @@ test("idle state hides every content region and marks the panel collapsed", () =
   // Then: 面板收起，所有内容区与操作均不可见/不可用
   assert.equal(view.panelVisible, false);
   assert.equal(view.snapshot, null);
-  assert.equal(view.thinkingExpansion, null);
   assert.equal(view.loadingVisible, false);
   assert.equal(view.response, null);
   assert.equal(view.conversation, null);
@@ -109,26 +108,6 @@ test("first loading shows the snapshot and the first-phase loading indicator", (
   assert.equal(view.conversation, null);
   assert.equal(view.errorBlock, null);
   assert.equal(view.configBlock, false);
-});
-
-test("thinking expansion shows the prestate with selection length and current direction", () => {
-  // Given: 用户开启思维扩展并填写方向
-  const state = new AiPanelState();
-  const anchor = snapshot("五个字啊");
-  state.beginThinkingExpansion(anchor);
-  state.updateThinkingExpansionDirection("想追的方向");
-
-  // When: 构建显示 view model
-  const view = viewOf(state);
-
-  // Then: 显示思维扩展预状态（选区长度为数字、方向透传），不显示 loading/回复
-  assert.deepEqual(view.snapshot, { text: "五个字啊" });
-  assert.ok(view.thinkingExpansion);
-  assert.equal(view.thinkingExpansion.selectionLength, anchor.selectedText.length);
-  assert.equal(view.thinkingExpansion.direction, "想追的方向");
-  assert.equal(view.loadingVisible, false);
-  assert.equal(view.response, null);
-  assert.equal(view.conversation, null);
 });
 
 test("first success without a follow-up conversation shows the standalone response", () => {

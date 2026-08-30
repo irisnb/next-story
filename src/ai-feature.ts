@@ -1,8 +1,9 @@
 import type { AppDom } from "./dom.ts";
 import {
   createPreflightGate,
+  startSummon,
   type FirstRequestPreflightState,
-} from "./ai-feature-first-request.ts";
+} from "./ai-feature-first-round.ts";
 import {
   editAndResendFollowUpAcceptedRequest,
   followUpAcceptedRequest,
@@ -13,7 +14,8 @@ import { AiPanelState } from "./ai-panel-state.ts";
 import type { ReadonlyTemporaryConversation } from "./ai-panel-conversation.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
-import { captureSelection, isMeaningfulSelection, type SelectionEditor } from "./selection-adapter.ts";
+import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
+import { setupSelectionEntry, type SelectionEntryController, type SelectionEntryEditor } from "./selection-entry.ts";
 import {
   aiSessionTransport,
   type AiReplayTurn,
@@ -42,7 +44,7 @@ export function retryAcceptedRequest(
   state: AiPanelState,
   request: (
     snapshot: SelectionSnapshot,
-    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "summon" }> | Extract<GenerateAiRequest, { kind: "direct_question" }>,
   ) => Promise<void> | null,
 ): boolean {
   const snapshot = state.retrySnapshot();
@@ -76,7 +78,7 @@ export function historyTurnsOf(
       firstUserText += `\n\n重点参考材料（可选）：\n${material.selected_text}`;
     }
   } else {
-    // 旧选区工具来源（已退场，防御性保留）：首轮只有选区材料。
+    // 召唤首轮只携带冻结的选区材料。
     firstUserText = `重点参考材料（可选）：\n${material.selected_text}`;
   }
   const turns: AiReplayTurn[] = [
@@ -92,7 +94,7 @@ export function historyTurnsOf(
 
 export interface AiFeatureHooks {
   getCurrentDocumentId: () => string | null;
-  getCurrentEditor: () => SelectionEditor | null;
+  getCurrentEditor: () => SelectionEntryEditor | null;
   openConfigPage: () => void;
 }
 
@@ -132,13 +134,14 @@ interface ProjectLifecycleWiring {
   readonly nextProjectToken: () => void;
   readonly requestStructured: StructuredRequestSender;
   readonly endSession: () => void;
+  readonly selectionEntry: SelectionEntryController;
 }
 
 function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
   const { state, openConfigPage, requestStructured, submitDirectQuestion, syncPendingSelection, endSession } = wiring;
 
   return {
-    // 旧选区工具退场后，首轮错误态不可达；重试按钮不再发送任何请求。
+    // 常驻会话首轮失败后不通过旧的一次性请求协调器重试。
     onRetry: () => {
       retryAcceptedRequest(state, () => null);
     },
@@ -159,11 +162,12 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
 }
 
 function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureController {
-  const { state, coordinator, nextProjectToken, requestStructured, endSession } = wiring;
+  const { state, coordinator, nextProjectToken, requestStructured, endSession, selectionEntry } = wiring;
 
   function resetProjectScopedAi(): void {
     nextProjectToken();
     coordinator.releaseStaleRequestOwnership();
+    selectionEntry.reset();
     endSession();
     state.reset();
   }
@@ -193,8 +197,7 @@ function buildAiFeatureController(wiring: ProjectLifecycleWiring): AiFeatureCont
  * 模块边界（零写回）：本模块不持有 `saveProject`、编辑器 DOM 写入函数或任何“应用到正文”
  * 回调。生成只提交问题与选区原文，结果只显示在独立面板里。
  *
- * 旧选区工具（AI 及时召唤 / 思维扩展 / 浮动入口）已退场：不再接入 selection-entry，
- * 代码保留在 `selection-entry.ts` / `ai-feature-first-request.ts`（@deprecated）待拆用。
+ * 选区召唤通过 selection-entry 接入常驻会话；思维扩展和浮动入口不再提供。
  */
 export function setupAiFeature(
   dom: AppDom,
@@ -208,9 +211,9 @@ export function setupAiFeature(
   const firstRequestPreflight: FirstRequestPreflightState = createPreflightGate();
 
   const coordinator = new AiRequestCoordinator(
-    // 旧选区工具的 legacy 首轮入口（已退场，防御性保留）：走传输层的 legacy 分支。
+    // 保留协调器的选区请求回调，统一复用首轮预检与请求生命周期。
     (selectedText: string) =>
-      transport.sendViaResidentSession({ kind: "first", selected_text: selectedText }),
+      transport.sendViaResidentSession({ kind: "summon", selected_text: selectedText }),
     {
       onSuccess: (snapshot: SelectionSnapshot, content: string) => {
         state.succeed(snapshot, content);
@@ -248,6 +251,23 @@ export function setupAiFeature(
     coordinator.requestStructured(request, identity);
   const requestDirectQuestion = (request: GenerateAiRequest) =>
     coordinator.requestDirectQuestion(request);
+
+  const selectionEntry = setupSelectionEntry({
+    dom,
+    getCurrentDocumentId: hooks.getCurrentDocumentId,
+    getCurrentEditor: hooks.getCurrentEditor as () => SelectionEntryEditor | null,
+    isRequestInFlight: () => coordinator.busy,
+    onSummon: (snapshot) => {
+      startSummon({
+        state,
+        snapshot,
+        loadConfig,
+        request: (request) => coordinator.request(snapshot, request),
+        getProjectToken: () => projectToken,
+        preflight: firstRequestPreflight,
+      });
+    },
+  });
 
   function syncPendingSelection(): void {
     const editor = hooks.getCurrentEditor();
@@ -316,5 +336,6 @@ export function setupAiFeature(
     },
     requestStructured,
     endSession: () => transport.endActiveSession(),
+    selectionEntry,
   });
 }

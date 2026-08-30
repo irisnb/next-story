@@ -4,7 +4,6 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 import type {
   ContentTree,
-  GenerateAiRequest,
   GenerateAiResult,
   LlmConfig,
   LlmConfigSummary,
@@ -189,20 +188,6 @@ export async function testLlmConnection(config: LlmConfig): Promise<void> {
   await tauriInvoke("test_llm_connection", { config });
 }
 
-/**
- * 发起一次真实 AI 思考生成。前端提交冻结选区和受限的临时对话轮次，
- * 由后端加载唯一保存配置、校验请求并集中组装固定 Prompt。前端不传入 API Key，
- * 也不持有任何写入草稿本或正文本的入口（见零写回边界）。
- *
- * 接受可选的 `call` 以便测试注入假 `invoke`，不依赖 Tauri 运行时。
- */
-export async function generateAiThinking(
-  request: GenerateAiRequest,
-  call: InvokeFn = defaultInvoke,
-): Promise<GenerateAiResult> {
-  return call<GenerateAiResult>("generate_ai_thinking", { request });
-}
-
 // ========== 常驻 AI 会话命令（change: resident-ai-session） ==========
 
 /** 与 Tauri `listen` 同形的窄类型，便于在测试中注入假事件监听。 */
@@ -230,6 +215,9 @@ export interface AiReplayTurn {
   text: string;
 }
 
+/** 当前对话的发起方式：重放时后端按来源组装对应的入口层提示词。 */
+export type AiReplayOrigin = "direct_question" | "summon";
+
 /** 开始一个常驻会话（幂等；驱动进程内创建会话记忆）。 */
 export async function aiStartSession(
   sessionId: string,
@@ -241,13 +229,14 @@ export async function aiStartSession(
 /**
  * 向常驻会话发送一条消息。命令阻塞到终态才 resolve；流式增量经 `"ai-delta"`
  * 事件先行转发，`done`（本命令返回的全文）是最终事实。
- * `kind: "first"` 为首轮（后端组装系统提示词 + 问题 + 可选选区材料），
- * `kind: "follow_up"` 为追问（只发新增问题）。
+ * `kind: "first"` 为直接提问首轮（后端组装系统提示词 + 问题 + 可选选区材料），
+ * `kind: "summon_first"` 为及时召唤首轮（空问题、只带选区材料，后端按召唤
+ * 语义组装首轮任务），`kind: "follow_up"` 为追问（只发新增问题）。
  */
 export async function aiSendMessage(
   sessionId: string,
   messageId: string,
-  kind: "first" | "follow_up",
+  kind: "first" | "follow_up" | "summon_first",
   question: string,
   selectedText?: string,
   call: InvokeFn = defaultInvoke,
@@ -278,14 +267,18 @@ export async function aiEndSession(
 
 /**
  * 崩溃恢复：把显示历史重放进一个新会话。宿主会把系统提示词组装到首个
- * user 轮文本前面，前端只提交投影后的 `{role, text}` 轮次。
+ * user 轮文本前面，前端只提交投影后的 `{role, text}` 轮次；`origin` 携带
+ * 当前对话的发起方式，重放时按来源组装对应的入口层提示词。
  */
 export async function aiReplayHistory(
   sessionId: string,
   turns: readonly AiReplayTurn[],
+  originOrCall: AiReplayOrigin | InvokeFn = "direct_question",
   call: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
-  return call<GenerateAiResult>("ai_replay_history", { sessionId, turns });
+  const origin = typeof originOrCall === "function" ? "direct_question" : originOrCall;
+  if (typeof originOrCall === "function") call = originOrCall;
+  return call<GenerateAiResult>("ai_replay_history", { sessionId, turns, origin });
 }
 
 /** 历史重放结束标记（幂等）。 */

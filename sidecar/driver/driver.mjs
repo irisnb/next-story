@@ -319,7 +319,13 @@ rl.on("line", (line) => {
   malformedStreak = 0;
   handleCommand(cmd).catch((error) => {
     diag(`command error: ${String(error?.stack ?? error)}`);
-    emit({ type: "error", session_id: cmd?.session_id, code: "internal", message: String(error?.message ?? error).slice(0, 300) });
+    emit({
+      type: "error",
+      session_id: cmd?.session_id,
+      message_id: cmd?.message_id,
+      code: "internal",
+      message: String(error?.message ?? error).slice(0, 300),
+    });
   });
 });
 // 宿主消失（stdin 关闭而无 shutdown）：防止孤儿进程，优雅清理后退出

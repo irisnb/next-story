@@ -14,16 +14,13 @@ export type PanelRequestState =
       message: string;
     }
   | {
-      kind: "thinking_expansion";
-      snapshot: SelectionSnapshot | null;
-      direction: string;
-    }
-  | {
       kind: "loading";
       snapshot: SelectionSnapshot | null;
       conversationId?: number;
       phase?: "first" | "follow_up";
       turnId?: number;
+      /** 流式增量草稿（仅首轮 loading 阶段逐字追加；done 全文到达后整体替换）。 */
+      streamedText?: string;
     }
   | {
       kind: "success";
@@ -81,13 +78,6 @@ export function firstPreviewRequest(snapshot: SelectionSnapshot | null): PanelRe
 
 export function firstBlockedRequest(snapshot: SelectionSnapshot | null): PanelRequestState {
   return { kind: "first_blocked", snapshot, message: "已有 AI 请求正在进行，本次请求没有发出。" };
-}
-
-export function thinkingExpansionRequest(
-  snapshot: SelectionSnapshot | null,
-  direction: string,
-): PanelRequestState {
-  return { kind: "thinking_expansion", snapshot, direction };
 }
 
 export function firstLoadingRequest(

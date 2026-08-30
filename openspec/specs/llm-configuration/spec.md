@@ -205,13 +205,20 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 - **THEN** 系统不修改草稿本、正文本或作品元数据
 
 ### Requirement: 唯一 LLM 配置支持受限 AI 思考生成
-系统 SHALL 在保存了完整唯一 LLM 配置后支持直接提问触发的真实流式 AI 思考生成与当前临时对话的继续追问，同时 MUST NOT 提供多 provider、多模型槽位、磁盘会话存储或 AI 直接写入用户文档的能力。
+系统 SHALL 在保存了完整唯一 LLM 配置后支持直接提问或及时召唤触发的真实流式 AI 思考生成与当前临时对话的继续追问，同时 MUST NOT 提供多 provider、多模型槽位、磁盘会话存储或 AI 直接写入用户文档的能力。
 
 #### Scenario: 保存配置驱动真实首次生成
 - **WHEN** 用户已保存完整唯一 LLM 配置
 - **AND** 用户提交直接提问（可选附带选区）
 - **THEN** 系统通过常驻会话生成链发起一次真实流式生成
-- **AND** 首次请求只包含后端固定行为任务、用户问题和可选冻结选区原文
+- **AND** 首次请求只包含后端组装的行为任务、用户问题和可选冻结选区原文
+- **AND** 前端不需要再次传入 API Key
+
+#### Scenario: 保存配置驱动召唤首轮生成
+- **WHEN** 用户已保存完整唯一 LLM 配置
+- **AND** 用户通过及时召唤以选区发起首轮
+- **THEN** 系统通过常驻会话生成链发起一次真实流式生成
+- **AND** 首轮请求只包含后端按召唤语义组装的任务与冻结选区原文，不包含用户输入的问题文本
 - **AND** 前端不需要再次传入 API Key
 
 #### Scenario: 保存配置驱动真实追问生成
@@ -229,8 +236,10 @@ TBD - created by archiving change add-llm-configuration. Update Purpose after ar
 
 #### Scenario: 会话消息必须合法
 - **WHEN** 前端提交会话消息
-- **THEN** 系统只接受非空白消息内容与合法的会话、消息身份标识
-- **AND** 系统拒绝前端提供 system 消息或空消息
+- **THEN** 系统只接受合法的会话、消息身份标识
+- **AND** 系统拒绝前端提供 system 消息
+- **AND** 直接提问首轮与追问请求拒绝空白问题文本
+- **AND** 召唤首轮允许空问题文本，但 MUST 要求非空的冻结选区材料
 - **AND** 同一消息身份的重复提交被幂等处理，不产生重复轮次
 
 #### Scenario: 不隐式添加上下文

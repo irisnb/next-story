@@ -14,24 +14,55 @@ use crate::dsh_driver::{DriverParams, DriverReplayTurn};
 use crate::dsh_sidecar;
 use crate::dsh_version::DshVersionLayout;
 
-/// 固定首版思考任务：围绕冻结选区提出观察、问题和可能方向，不代写正文。
-/// 该职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
-const FIXED_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求只提供冻结选区原文，以及用户可选的探索方向。\
-你只能基于这段选区原文回应；若提供了探索方向，把它当作用户希望继续探索的角度，而不是作品事实或最终判断。\
-先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
-追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
-不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
-不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
-不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
+/// 提示词入口：本轮请求以哪种方式发起，决定入口层立场句。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptEntry {
+    /// 直接提问：用户问题为主，选区为可选重点材料。
+    DirectQuestion,
+    /// 及时召唤：只有冻结选区材料，没有用户问题。
+    Summon,
+}
 
-/// 直接提问的固定系统提示词：围绕用户问题与可选选区重点材料思考，不代写正文。
-/// 与选区召唤共用输出边界，但把「用户问题」作为明确请求、选区作为可选重点材料。
-const DIRECT_QUESTION_SYSTEM_PROMPT: &str = "你是陪剧本创作者思考的助手。当前请求提供用户直接提出的问题，以及用户可选的选区重点材料。\
-你只能基于用户问题与提供的重点材料回应；若提供了重点材料，把它当作用户希望重点参考的片段，而不是作品事实或最终判断。\
-先区分从材料里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。\
-不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
+/// 红线层：两块旧碑文的边界条款逐字合并，每次组装照抄，一条不删。
+/// 这是铁律 2/3 在提示词层的落地，不得在组装中弱化或省略。
+fn constitution_prompt() -> &'static str {
+    "你是陪剧本创作者思考的助手。不直接改草稿本或正文本，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
 不能声称读取或使用选区前后文；不能声称读取或使用当前本子全文；不能声称读取或使用摘要；不能声称读取或使用作品元数据；不能声称读取或使用AI 内容库；不能声称读取或使用历史会话；不能声称读取或使用记忆；不能声称读取或使用用户确认的作品事实。\
-不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
+追问仍锚定首次冻结选区；只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实。\
+不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+}
+
+/// 入口层：按入口给出本轮请求的立场句（含本轮可见材料的静态描述）。
+fn entry_stance(entry: PromptEntry) -> &'static str {
+    match entry {
+        PromptEntry::DirectQuestion => {
+            "当前请求提供用户直接提出的问题，以及用户可选的选区重点材料。\
+若提供了重点材料，把它当作用户希望重点参考的片段，而不是作品事实或最终判断。\
+先区分从材料里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。"
+        }
+        PromptEntry::Summon => {
+            "当前请求只提供冻结选区原文，没有用户问题。\
+把这段选区当作用户希望继续探索的材料，而不是作品事实或最终判断。\
+先区分从文字里看到的内容和可能解释，再提出能帮助创作者继续思考的问题，并给出几个可能方向。"
+        }
+    }
+}
+
+/// 语境层：本轮可见材料的动态描述。当前随入口层静态表达（材料描述已并入
+/// 入口层立场句），此处先立结构留空，未来动态化时在此填入。
+fn context_clause(_entry: PromptEntry) -> &'static str {
+    ""
+}
+
+/// 三层组装系统提示词：红线层 + 入口层 + 语境层。
+///
+/// 组装职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
+pub fn compose_system_prompt(entry: PromptEntry) -> String {
+    let mut prompt = String::from(constitution_prompt());
+    prompt.push_str(entry_stance(entry));
+    prompt.push_str(context_clause(entry));
+    prompt
+}
 
 /// 使用唯一保存配置，围绕选区原文发起一次真实非流式生成（DSH headless）。
 ///
@@ -131,14 +162,17 @@ fn versioned_dsh_home(base_dir: &Path) -> PathBuf {
 
 // ========== 常驻会话编排（resident-ai-session 任务 3.3–3.4） ==========
 
-/// 常驻会话消息种类：首轮（后端组装系统提示词与选区材料）或追问（只发增量问题）。
+/// 常驻会话消息种类：首轮（后端组装系统提示词与材料）或追问（只发增量问题）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AiMessageKind {
-    /// 首轮：组装固定系统提示词 + 用户问题 + 可选选区重点材料。
+    /// 首轮（直接提问）：组装系统提示词 + 用户问题 + 可选选区重点材料。
     First,
     /// 追问：只发送本次新增的问题，历史由常驻会话维护。
     FollowUp,
+    /// 召唤首轮（及时召唤）：没有用户问题，只有冻结选区材料，
+    /// 任务由后端按召唤语义组装（线上值为 `summon_first`）。
+    SummonFirst,
 }
 
 /// 加载已保存的唯一 LLM 配置（阻塞读取放阻塞线程）。
@@ -221,8 +255,10 @@ pub async fn ai_start_session_in_dir(
 
 /// 常驻会话：发送消息并等待终态。流式增量经驱动管理器的 sink 转发为前端事件。
 ///
-/// - `First`：后端组装固定系统提示词 + 用户问题 + 可选选区重点材料（组装语义
+/// - `First`：后端组装系统提示词 + 用户问题 + 可选选区重点材料（组装语义
 ///   与旧链路的 `direct_question_user_content` 完全一致）。
+/// - `SummonFirst`：后端按召唤语义组装系统提示词 + 冻结选区材料，
+///   不包含用户问题文本（前端传空字符串）。
 /// - `FollowUp`：只发送本次新增的问题，历史由常驻会话维护。
 pub async fn ai_send_message_in_dir(
     base_dir: &Path,
@@ -233,9 +269,10 @@ pub async fn ai_send_message_in_dir(
     question: String,
     selected_text: Option<String>,
 ) -> GenerateAiResult {
-    if question.trim().is_empty() {
-        return GenerateAiResult::failure(invalid_request());
-    }
+    let text = match compose_message_text(kind, &question, selected_text.as_deref()) {
+        Ok(text) => text,
+        Err(error) => return GenerateAiResult::failure(error),
+    };
     let config = match load_saved_config(base_dir).await {
         Ok(config) => config,
         Err(error) => return GenerateAiResult::failure(error),
@@ -243,14 +280,6 @@ pub async fn ai_send_message_in_dir(
     if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
         return GenerateAiResult::failure(error);
     }
-    let text = match kind {
-        AiMessageKind::First => format!(
-            "{}\n\n{}",
-            DIRECT_QUESTION_SYSTEM_PROMPT,
-            direct_question_user_content(&question, selected_text.as_deref())
-        ),
-        AiMessageKind::FollowUp => question,
-    };
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::dsh_driver::global_driver_manager().send_message_and_wait(
             &session_id,
@@ -302,15 +331,35 @@ pub async fn ai_end_session_in_dir(session_id: String) -> GenerateAiResult {
     }
 }
 
+/// 崩溃恢复重放的会话来源：决定重放首轮按哪种入口语义组装提示词。
+/// 临时对话不跨应用重启持久化，来源只存活在应用会话内存中，由前端传入。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayOrigin {
+    /// 直接提问发起的对话。
+    DirectQuestion,
+    /// 及时召唤发起的对话。
+    Summon,
+}
+
+/// 按重放来源组装首轮 user 轮的提示词前缀（纯函数，便于测试）。
+fn replay_prompt_prefix(origin: ReplayOrigin) -> String {
+    compose_system_prompt(match origin {
+        ReplayOrigin::DirectQuestion => PromptEntry::DirectQuestion,
+        ReplayOrigin::Summon => PromptEntry::Summon,
+    })
+}
+
 /// 常驻会话：注入崩溃恢复历史（前端显示历史的增量投影，不触发再生成）。
 ///
-/// 首个 user 轮由宿主组装：把固定系统提示词拼到最前（恢复后的模型上下文与
-/// 原会话首轮一致，陪想姿态不因恢复而丢失）；选区材料已由前端按
-/// `direct_question_user_content` 的格式并入首轮文本。
+/// 首个 user 轮由宿主按会话来源组装：把对应入口的系统提示词拼到最前
+/// （恢复后的模型上下文与原会话首轮一致，陪想姿态不因恢复而丢失）；
+/// 选区材料已由前端按 `direct_question_user_content` 的格式并入首轮文本。
 pub async fn ai_replay_history_in_dir(
     base_dir: &Path,
     resource_dir: Option<&Path>,
     session_id: String,
+    origin: ReplayOrigin,
     mut turns: Vec<DriverReplayTurn>,
 ) -> GenerateAiResult {
     let config = match load_saved_config(base_dir).await {
@@ -322,7 +371,7 @@ pub async fn ai_replay_history_in_dir(
     }
     if let Some(first) = turns.first_mut() {
         if first.role == "user" {
-            first.text = format!("{}\n\n{}", DIRECT_QUESTION_SYSTEM_PROMPT, first.text);
+            first.text = format!("{}\n\n{}", replay_prompt_prefix(origin), first.text);
         }
     }
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -377,7 +426,7 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
             selected_text,
             thinking_direction,
         } => {
-            task.push_str(FIXED_SYSTEM_PROMPT);
+            task.push_str(&compose_system_prompt(PromptEntry::Summon));
             task.push_str("\n\n");
             task.push_str(&first_user_content(selected_text, thinking_direction.as_deref()));
         }
@@ -390,7 +439,7 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
             let is_direct = matches!(origin, Some(FollowUpOrigin::DirectQuestion));
             if is_direct {
                 // 直接提问来源：messages 以 user 原问题开头，选区作为可选重点材料。
-                task.push_str(DIRECT_QUESTION_SYSTEM_PROMPT);
+                task.push_str(&compose_system_prompt(PromptEntry::DirectQuestion));
                 task.push_str("\n\n");
                 if let Some(first) = messages.first() {
                     task.push_str(&format!("用户问题：\n{}", first.content));
@@ -411,7 +460,7 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
                     }
                 }
             } else {
-                task.push_str(FIXED_SYSTEM_PROMPT);
+                task.push_str(&compose_system_prompt(PromptEntry::Summon));
                 task.push_str("\n\n");
                 task.push_str(&first_user_content(selected_text, thinking_direction.as_deref()));
                 for turn in messages {
@@ -431,7 +480,7 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
             question,
             selected_text,
         } => {
-            task.push_str(DIRECT_QUESTION_SYSTEM_PROMPT);
+            task.push_str(&compose_system_prompt(PromptEntry::DirectQuestion));
             task.push_str("\n\n");
             task.push_str(&direct_question_user_content(question, selected_text.as_deref()));
         }
@@ -527,6 +576,52 @@ fn direct_question_user_content(question: &str, selected_text: Option<&str>) -> 
     }
 }
 
+/// 召唤的用户内容：没有用户问题，只有冻结选区原文作为探索材料。
+/// 前端不伪造默认问题文本，材料之外不加任何标签或方向。
+fn summon_user_content(selected_text: &str) -> String {
+    selected_text.trim().to_string()
+}
+
+/// 按消息种类校验并组装发送文本（纯函数，便于测试）。
+///
+/// - `First` / `FollowUp`：要求 question 非空（现状不变）。
+/// - `SummonFirst`：要求 `selected_text` 非空，question 可空（前端传空字符串）。
+fn compose_message_text(
+    kind: AiMessageKind,
+    question: &str,
+    selected_text: Option<&str>,
+) -> Result<String, GenerateAiError> {
+    match kind {
+        AiMessageKind::First => {
+            if question.trim().is_empty() {
+                return Err(invalid_request());
+            }
+            Ok(format!(
+                "{}\n\n{}",
+                compose_system_prompt(PromptEntry::DirectQuestion),
+                direct_question_user_content(question, selected_text)
+            ))
+        }
+        AiMessageKind::SummonFirst => {
+            let selection = selected_text.unwrap_or("").trim();
+            if selection.is_empty() {
+                return Err(invalid_request());
+            }
+            Ok(format!(
+                "{}\n\n{}",
+                compose_system_prompt(PromptEntry::Summon),
+                summon_user_content(selection)
+            ))
+        }
+        AiMessageKind::FollowUp => {
+            if question.trim().is_empty() {
+                return Err(invalid_request());
+            }
+            Ok(question.to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -539,7 +634,10 @@ mod tests {
             thinking_direction: None,
         };
         let task = build_task_string(&request).expect("build task");
-        assert!(task.contains(FIXED_SYSTEM_PROMPT), "必须包含固定系统提示词");
+        assert!(
+            task.contains(&compose_system_prompt(PromptEntry::Summon)),
+            "必须包含召唤入口组装的系统提示词"
+        );
         assert!(task.contains("林站在天台边。"), "必须包含选区原文");
     }
 
@@ -583,7 +681,10 @@ mod tests {
             selected_text: None,
         };
         let task = build_task_string(&request).expect("build task");
-        assert!(task.contains(DIRECT_QUESTION_SYSTEM_PROMPT), "必须包含直接提问系统提示词");
+        assert!(
+            task.contains(&compose_system_prompt(PromptEntry::DirectQuestion)),
+            "必须包含直接提问入口组装的系统提示词"
+        );
         assert!(task.contains("用户问题：\n这个角色为什么犹豫？"));
         assert!(!task.contains("重点参考材料"), "无选区时不得出现重点参考材料");
     }
@@ -610,7 +711,8 @@ mod tests {
     }
 
     #[test]
-    fn direct_question_system_prompt_declares_grounding_and_output_boundaries() {
+    fn direct_question_compose_declares_grounding_and_output_boundaries() {
+        let prompt = compose_system_prompt(PromptEntry::DirectQuestion);
         for required in [
             "用户直接提出的问题",
             "用户可选的选区重点材料",
@@ -619,8 +721,8 @@ mod tests {
             "不判断故事好坏",
         ] {
             assert!(
-                DIRECT_QUESTION_SYSTEM_PROMPT.contains(required),
-                "直接提问系统提示词缺少约束: {required}"
+                prompt.contains(required),
+                "直接提问组装提示词缺少约束: {required}"
             );
         }
         for prohibited_claim in [
@@ -635,19 +737,20 @@ mod tests {
         ] {
             let expected = format!("不能声称读取或使用{prohibited_claim}");
             assert!(
-                DIRECT_QUESTION_SYSTEM_PROMPT.contains(&expected),
-                "直接提问系统提示词缺少不可用上下文声明: {expected}"
+                prompt.contains(&expected),
+                "直接提问组装提示词缺少不可用上下文声明: {expected}"
             );
         }
     }
 
-    /// 固定系统提示词必须声明 grounding 边界、不代写正文、不判断故事好坏，
-    /// 并明确拒绝读取任何不可用上下文。这是铁律 2/3 在提示词层的落地。
+    /// 召唤入口组装的系统提示词必须声明召唤立场：只有冻结选区材料、
+    /// 没有用户问题，把选区当作希望继续探索的材料。
     #[test]
-    fn fixed_system_prompt_declares_grounding_and_output_boundaries() {
+    fn summon_compose_declares_summon_stance_and_output_boundaries() {
+        let prompt = compose_system_prompt(PromptEntry::Summon);
         for required in [
-            "冻结选区原文",
-            "只能基于这段选区原文",
+            "当前请求只提供冻结选区原文，没有用户问题",
+            "把这段选区当作用户希望继续探索的材料",
             "不直接改草稿本或正文本",
             "不代写正文",
             "不润色",
@@ -659,8 +762,8 @@ mod tests {
             "只把已有轮次当作当前临时线性对话",
         ] {
             assert!(
-                FIXED_SYSTEM_PROMPT.contains(required),
-                "固定系统提示词缺少约束: {required}"
+                prompt.contains(required),
+                "召唤组装提示词缺少约束: {required}"
             );
         }
         for prohibited_claim in [
@@ -675,9 +778,125 @@ mod tests {
         ] {
             let expected = format!("不能声称读取或使用{prohibited_claim}");
             assert!(
-                FIXED_SYSTEM_PROMPT.contains(&expected),
-                "固定系统提示词缺少不可用上下文声明: {expected}"
+                prompt.contains(&expected),
+                "召唤组装提示词缺少不可用上下文声明: {expected}"
             );
         }
+    }
+
+    /// 红线条款完整性：两种入口的组装结果都必须逐条包含全部边界条款关键句，
+    /// 一条不删。这是铁律 2/3 在提示词层的落地。
+    #[test]
+    fn compose_system_prompt_keeps_all_constitution_clauses_for_both_entries() {
+        for prompt in [
+            compose_system_prompt(PromptEntry::DirectQuestion),
+            compose_system_prompt(PromptEntry::Summon),
+        ] {
+            for required in [
+                "你是陪剧本创作者思考的助手",
+                "不直接改草稿本或正文本",
+                "不代写正文",
+                "不润色",
+                "不提供替换文本",
+                "不判断故事好坏",
+                "不判断正确或错误",
+                "不判断高级或低级",
+                "不能声称读取或使用选区前后文",
+                "不能声称读取或使用当前本子全文",
+                "不能声称读取或使用摘要",
+                "不能声称读取或使用作品元数据",
+                "不能声称读取或使用AI 内容库",
+                "不能声称读取或使用历史会话",
+                "不能声称读取或使用记忆",
+                "不能声称读取或使用用户确认的作品事实",
+                "追问仍锚定首次冻结选区",
+                "只把已有轮次当作当前临时线性对话，不当作持久历史，不当作作品事实",
+                "不要输出 Markdown 或 HTML 格式，使用纯文本回答",
+            ] {
+                assert!(
+                    prompt.contains(required),
+                    "组装提示词缺少红线条款: {required}"
+                );
+            }
+        }
+    }
+
+    /// 召唤首轮组装：含选区材料、不含问题文本、含召唤入口层立场句。
+    #[test]
+    fn summon_first_message_composes_selection_material_without_question() {
+        let text = compose_message_text(
+            AiMessageKind::SummonFirst,
+            "",
+            Some("林站在天台边，没有回头。"),
+        )
+        .expect("summon first composes");
+        assert!(
+            text.contains("当前请求只提供冻结选区原文，没有用户问题"),
+            "必须包含召唤入口层立场句"
+        );
+        assert!(text.contains("林站在天台边，没有回头。"), "必须包含选区材料");
+        assert!(!text.contains("用户问题："), "召唤首轮不得出现直接提问的问题内容标签");
+        assert!(
+            !text.contains("重点参考材料"),
+            "召唤首轮不得出现直接提问的重点材料标签"
+        );
+        assert!(
+            !text.contains("用户直接提出的问题"),
+            "召唤首轮不得使用直接提问入口层立场句"
+        );
+    }
+
+    /// 空选区的 SummonFirst 被拒（invalid_request）：选区是召唤的前提。
+    #[test]
+    fn summon_first_message_rejects_empty_selection() {
+        for selection in [None, Some(""), Some("   \n  ")] {
+            let err = compose_message_text(AiMessageKind::SummonFirst, "", selection)
+                .expect_err("empty selection rejected");
+            assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
+        }
+    }
+
+    /// 重放来源两种取值分别拼出直接提问 / 召唤提示词。
+    #[test]
+    fn replay_prompt_prefix_follows_replay_origin() {
+        let direct = replay_prompt_prefix(ReplayOrigin::DirectQuestion);
+        assert!(
+            direct.contains("当前请求提供用户直接提出的问题"),
+            "直接提问来源必须拼直接提问入口层"
+        );
+        assert!(
+            !direct.contains("当前请求只提供冻结选区原文"),
+            "直接提问来源不得拼召唤入口层"
+        );
+
+        let summon = replay_prompt_prefix(ReplayOrigin::Summon);
+        assert!(
+            summon.contains("当前请求只提供冻结选区原文，没有用户问题"),
+            "召唤来源必须拼召唤入口层"
+        );
+        assert!(
+            !summon.contains("用户直接提出的问题"),
+            "召唤来源不得拼直接提问入口层"
+        );
+    }
+
+    /// First / FollowUp 的校验规则保持现状：question 非空。
+    #[test]
+    fn first_and_follow_up_still_require_non_empty_question() {
+        let err = compose_message_text(AiMessageKind::First, "   ", Some("选区"))
+            .expect_err("blank question rejected for First");
+        assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
+
+        let err = compose_message_text(AiMessageKind::FollowUp, "", None)
+            .expect_err("blank question rejected for FollowUp");
+        assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
+
+        let text = compose_message_text(AiMessageKind::First, "这个角色为什么犹豫？", None)
+            .expect("first composes");
+        assert!(
+            text.contains("当前请求提供用户直接提出的问题"),
+            "First 必须使用直接提问入口层"
+        );
+        assert!(text.contains("用户问题：\n这个角色为什么犹豫？"));
     }
 }

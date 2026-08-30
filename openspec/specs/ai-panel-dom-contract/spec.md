@@ -63,10 +63,10 @@ TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose af
 - **THEN** DOM 适配器通过统一的 `AiPanelActions` 触发状态操作
 
 ### Requirement: DOM 契约包含统一对话与追问节点
-现有 `AiPanelDom` 契约 SHALL 同时提供统一临时对话线程与追问输入所需节点，供直接提问唯一首轮入口使用。
+现有 `AiPanelDom` 契约 SHALL 同时提供统一临时对话线程与追问输入所需节点，供直接提问与及时召唤两个首轮入口共同使用。
 
 #### Scenario: 统一对话渲染接线
-- **WHEN** 直接提问首轮成功后进入统一对话
+- **WHEN** 直接提问或及时召唤首轮成功后进入统一对话
 - **THEN** `AiPanelDom` 提供对话线程与追问输入节点并完成渲染
 
 #### Scenario: 追问操作调用现有 action

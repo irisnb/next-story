@@ -13,10 +13,8 @@ const authError: GenerateAiError = {
   message: "认证失败",
 };
 
-function firstRequest(text: string, direction?: string): Extract<GenerateAiRequest, { kind: "first" }> {
-  return direction
-    ? { kind: "first", selected_text: text, thinking_direction: direction }
-    : { kind: "first", selected_text: text };
+function summonRequest(text: string): Extract<GenerateAiRequest, { kind: "summon" }> {
+  return { kind: "summon", selected_text: text };
 }
 
 function directQuestionRequest(
@@ -52,7 +50,7 @@ test("readonlyView handles a null anchor without throwing", () => {
 test("createFromFirstSuccess freezes the anchor and rejects external mutation", () => {
   const state = new TemporaryConversationState();
   const original = snapshot("背叛");
-  const initialUserMaterial = firstRequest("背叛", "追人物关系");
+  const initialUserMaterial = summonRequest("背叛");
   const conversation = state.createFromFirstSuccess(1, original, initialUserMaterial, "首轮回应");
 
   assert.equal(conversation.id, 1);
@@ -68,16 +66,11 @@ test("createFromFirstSuccess freezes the anchor and rejects external mutation", 
   assert.throws(() => {
     (conversation.anchor as { selectedText: string }).selectedText = "再改";
   });
-  initialUserMaterial.thinking_direction = "后来方向";
-  assert.equal(conversation.initialUserMaterial.thinking_direction, "追人物关系");
-  assert.throws(() => {
-    (conversation.initialUserMaterial as { thinking_direction: string }).thinking_direction = "再改";
-  });
 });
 
 test("beginFollowUp allows only one pending turn and rejects blank questions", () => {
   const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), firstRequest("锚点"), "首轮");
+  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
 
   assert.equal(state.beginFollowUp("   "), null);
   assert.equal(state.beginFollowUp(""), null);
@@ -94,7 +87,7 @@ test("beginFollowUp allows only one pending turn and rejects blank questions", (
 
 test("succeedFollowUp appends one successful turn and clears pending", () => {
   const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), firstRequest("锚点"), "首轮");
+  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
   const turnId = state.beginFollowUp("为什么？");
   assert.notEqual(turnId, null);
 
@@ -107,7 +100,7 @@ test("succeedFollowUp appends one successful turn and clears pending", () => {
 
 test("failFollowUp and retry preserve question; stale turn ids are rejected", () => {
   const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), firstRequest("锚点"), "首轮");
+  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
   const turnId = state.beginFollowUp("为什么？")!;
 
   assert.equal(state.failFollowUp(999, authError), false);
@@ -123,7 +116,7 @@ test("failFollowUp and retry preserve question; stale turn ids are rejected", ()
 
 test("edit failed question and cancel restore prior response without touching successful turns", () => {
   const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), firstRequest("锚点"), "首轮");
+  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
   const firstTurn = state.beginFollowUp("第一问")!;
   state.succeedFollowUp(firstTurn, "第一答");
 
@@ -185,7 +178,7 @@ test("direct-question follow-up without a selection uses an empty selected_text"
 test("follow-up request uses frozen selected text and successful turns only", () => {
   const state = new TemporaryConversationState();
   const anchor = snapshot("原选区");
-  state.createFromFirstSuccess(3, anchor, firstRequest("原选区"), "首轮回应");
+  state.createFromFirstSuccess(3, anchor, summonRequest("原选区"), "首轮回应");
   const turnId = state.beginFollowUp("第一问")!;
   state.succeedFollowUp(turnId, "第一答");
   state.beginFollowUp("当前追问");
@@ -201,7 +194,7 @@ test("follow-up request uses frozen selected text and successful turns only", ()
       { role: "user", content: "当前追问" },
     ],
   });
-  assert.equal(request?.origin, undefined, "first 来源的追问不携带 origin");
+  assert.equal(request?.origin, undefined, "召唤来源的追问不携带 origin");
 
   // 编辑预览：失败轮次存在时可用新问题构造请求，但不改已成功轮次
   state.failFollowUp(state.current!.pending!.id, authError);
@@ -213,7 +206,7 @@ test("follow-up request uses frozen selected text and successful turns only", ()
 
 test("readonlyView cannot mutate internal conversation state", () => {
   const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), firstRequest("锚点", "追方向"), "首轮");
+  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
   const turnId = state.beginFollowUp("为什么？")!;
   state.failFollowUp(turnId, authError);
 
@@ -229,16 +222,7 @@ test("readonlyView cannot mutate internal conversation state", () => {
   assert.throws(() => {
     (view!.pending as { question: string }).question = "被改写";
   });
-  assert.throws(() => {
-    (view!.initialUserMaterial as { thinking_direction: string }).thinking_direction = "被改写";
-  });
   assert.equal(state.current?.pending?.question, "为什么？");
-  assert.equal(
-    state.current?.initialUserMaterial.kind === "first"
-      ? state.current.initialUserMaterial.thinking_direction
-      : undefined,
-    "追方向",
-  );
   assert.equal(state.current?.turns.length, 0);
 });
 

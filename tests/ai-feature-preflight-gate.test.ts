@@ -5,7 +5,7 @@ import {
   acquirePreflight,
   createPreflightGate,
   releasePreflight,
-} from "../src/ai-feature-first-request.ts";
+} from "../src/ai-feature-first-round.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import type { AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";

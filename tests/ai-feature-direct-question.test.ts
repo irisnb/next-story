@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { startDirectQuestion } from "../src/ai-feature-direct-question.ts";
-import { createPreflightGate, startFirstRequest } from "../src/ai-feature-first-request.ts";
+import { createPreflightGate, startSummon } from "../src/ai-feature-first-round.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type {
   GenerateAiRequest,
@@ -252,7 +252,7 @@ test("direct question preflight holds the shared gate and blocks a first-request
   assert.equal(preflight.owner, 1, "直接提问预检应占用共享门禁");
 
   // 预检期间发起旧选区首轮预检：应被门禁拒绝
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snapshot("旧选区"),
     loadConfig: () => Promise.resolve(savedConfig),
@@ -282,7 +282,7 @@ test("direct question preflight is rejected when another first-round preflight h
   let sent = 0;
 
   // 旧选区首轮预检先开始（配置加载挂起）
-  assert.equal(startFirstRequest({
+  assert.equal(startSummon({
     state,
     snapshot: snapshot("旧选区"),
     loadConfig: () => configPromise,
@@ -302,7 +302,7 @@ test("direct question preflight is rejected when another first-round preflight h
     getProjectToken: () => 1,
     preflight,
   }), false, "门禁被占用时直接提问应被拒绝");
-  assert.equal(state.view.request.kind, "first_preview", "直接提问不应污染首轮预检状态");
+  assert.equal(state.view.request.kind, "loading", "直接提问不应污染召唤 loading 状态");
 
   configDeferred.resolve?.(savedConfig);
   await Promise.resolve();

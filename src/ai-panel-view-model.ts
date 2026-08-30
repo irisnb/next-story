@@ -16,11 +16,6 @@ export interface SnapshotView {
   readonly text: string;
 }
 
-export interface ThinkingExpansionView {
-  readonly selectionLength: number;
-  readonly direction: string;
-}
-
 export type ConversationMessageRole = "user" | "assistant" | "status";
 
 export interface ConversationMessageView {
@@ -65,7 +60,6 @@ export interface DirectQuestionView {
 export interface AiPanelView {
   readonly panelVisible: boolean;
   readonly snapshot: SnapshotView | null;
-  readonly thinkingExpansion: ThinkingExpansionView | null;
   readonly loadingVisible: boolean;
   /** 生成中占位文案：普通生成“正在思考…”，对话恢复“恢复对话中”。 */
   readonly loadingMessage: string | null;
@@ -86,7 +80,6 @@ export interface AiPanelView {
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
 interface RequestDisplayFacts {
   readonly snapshot: SnapshotView | null;
-  readonly thinkingExpansion: ThinkingExpansionView | null;
   readonly loadingVisible: boolean;
   readonly successResponse: string | null;
   readonly errorMessage: string | null;
@@ -100,7 +93,6 @@ function assertNever(value: never): never {
 
 const EMPTY_FACTS: RequestDisplayFacts = {
   snapshot: null,
-  thinkingExpansion: null,
   loadingVisible: false,
   successResponse: null,
   errorMessage: null,
@@ -122,17 +114,6 @@ function requestFacts(request: PanelRequestState): RequestDisplayFacts {
         ...EMPTY_FACTS,
         snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
         blockedMessage: request.message,
-      };
-    case "thinking_expansion":
-      return {
-        ...EMPTY_FACTS,
-        snapshot: request.snapshot ? { text: request.snapshot.selectedText } : null,
-        thinkingExpansion: request.snapshot
-          ? {
-              selectionLength: request.snapshot.selectedText.length,
-              direction: request.direction,
-            }
-          : null,
       };
     case "loading":
       return {
@@ -179,7 +160,7 @@ function buildConversationView(
   if (!conversation) return null;
   const messages: ConversationMessageView[] = [];
   const material = conversation.initialUserMaterial;
-  // 直接提问来源：首轮用户原问题先于 AI 首轮回答显示；选区召唤/思维扩展保持原顺序。
+  // 直接提问来源：首轮用户原问题先于 AI 首轮回答显示；选区召唤保持原顺序。
   if (material.kind === "direct_question") {
     messages.push({ role: "user", text: material.question });
   }
@@ -198,6 +179,20 @@ function buildConversationView(
       messages.push({ role: "status", text: "正在思考…" });
     }
   }
+  return { messages };
+}
+
+function buildFirstRoundLoadingView(
+  request: Extract<PanelRequestState, { kind: "loading" }>,
+): ConversationView {
+  const messages: ConversationMessageView[] = [];
+  if (request.snapshot?.selectedText) {
+    messages.push({ role: "user", text: request.snapshot.selectedText });
+  }
+  if (request.streamedText) {
+    messages.push({ role: "assistant", text: request.streamedText });
+  }
+  messages.push({ role: "status", text: "正在思考…" });
   return { messages };
 }
 
@@ -260,9 +255,17 @@ export function buildAiPanelView(
   // 其余情况由已建立的临时对话推导。两条路径不再互斥切换。
   const directQuestionRequest =
     panelState.request.kind === "direct_question" ? panelState.request : null;
+  const firstRoundLoadingRequest =
+    panelState.request.kind === "loading" &&
+    panelState.request.phase === "first" &&
+    panelState.request.streamedText
+      ? panelState.request
+      : null;
   const conversationView = directQuestionRequest
     ? buildDirectQuestionConversationView(directQuestionRequest)
-    : buildConversationView(conversation);
+    : firstRoundLoadingRequest
+      ? buildFirstRoundLoadingView(firstRoundLoadingRequest)
+      : buildConversationView(conversation);
   const hasConversation = conversation !== null;
   const directQuestion = buildDirectQuestionView(panelState);
 
@@ -300,7 +303,6 @@ export function buildAiPanelView(
   return {
     panelVisible: panelState.visibility === "open",
     snapshot: facts.snapshot,
-    thinkingExpansion: facts.thinkingExpansion,
     loadingVisible: facts.loadingVisible,
     loadingMessage: facts.loadingVisible
       ? panelState.request.kind === "recovering"

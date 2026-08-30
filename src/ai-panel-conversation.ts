@@ -15,11 +15,10 @@ export interface PendingFollowUpTurn {
 }
 
 /**
- * 三个首轮入口（AI 及时召唤 / 思维扩展 / 直接提问）统一进入同一临时对话，
- * 因此首轮材料是 `first` 与 `direct_question` 请求的联合。
+ * 选区召唤和直接提问统一进入同一临时对话。
  */
 export type FirstRoundMaterial =
-  | Extract<GenerateAiRequest, { kind: "first" }>
+  | Extract<GenerateAiRequest, { kind: "summon" }>
   | Extract<GenerateAiRequest, { kind: "direct_question" }>;
 
 export interface TemporaryConversation {
@@ -242,9 +241,6 @@ export function buildFollowUpRequest(
     selected_text: material.selected_text ?? "",
     ...(material.kind === "direct_question"
       ? { origin: "direct_question" as const }
-      : {}),
-    ...(material.kind === "first" && material.thinking_direction
-      ? { thinking_direction: material.thinking_direction }
       : {}),
     messages,
   };

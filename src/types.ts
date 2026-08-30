@@ -101,21 +101,18 @@ export interface GenerateAiMessage {
 
 export type GenerateAiRequest =
   | {
-      kind: "first";
+      kind: "summon";
+      /** 冻结的选区材料；召唤没有用户输入的问题文本，前端不伪造默认问题。 */
       selected_text: string;
-      /** 思维扩展可选方向；空方向开始时省略，不附加到请求。 */
-      thinking_direction?: string;
     }
   | {
       kind: "follow_up";
       selected_text: string;
-      /** 追问复用首次思维扩展方向；普通召唤或空方向开始时省略。 */
-      thinking_direction?: string;
       /**
-       * 追问来源：`selection`（AI 及时召唤 / 思维扩展，默认省略）或
-       * `direct_question`（直接提问首轮成功后进入统一对话）。
+       * 追问来源：`direct_question`（直接提问首轮成功后进入统一对话）；
+       * 召唤来源默认省略。
        */
-      origin?: "selection" | "direct_question";
+      origin?: "direct_question";
       messages: GenerateAiMessage[];
     }
   | {
@@ -127,7 +124,7 @@ export type GenerateAiRequest =
     };
 
 /**
- * `generate_ai_thinking` 命令的窄返回。命令始终成功返回该枚举，
+ * AI 生成命令的窄返回。命令始终成功返回该枚举，
  * 便于前端在不依赖 Tauri 错误序列化细节的情况下区分成功与失败。
  */
 export type GenerateAiResult =

@@ -561,10 +561,12 @@ async fn ai_end_session(session_id: String) -> Result<GenerateAiResult, String> 
 }
 
 /// 常驻会话：注入崩溃恢复历史（前端显示历史的增量投影，不触发再生成）。
+/// `origin` 为会话来源（直接提问 / 召唤），决定重放首轮按哪种入口语义组装提示词。
 #[tauri::command]
 async fn ai_replay_history(
     app: tauri::AppHandle,
     session_id: String,
+    origin: llm_config::ReplayOrigin,
     turns: Vec<crate::dsh_driver::DriverReplayTurn>,
 ) -> Result<GenerateAiResult, String> {
     let dir = match app.path().app_local_data_dir() {
@@ -576,6 +578,7 @@ async fn ai_replay_history(
         &dir,
         resource_dir.as_deref(),
         session_id,
+        origin,
         turns,
     )
     .await)

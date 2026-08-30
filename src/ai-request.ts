@@ -65,7 +65,7 @@ export class AiRequestCoordinator {
    */
   request(
     snapshot: SelectionSnapshot,
-    firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "summon" }> | Extract<GenerateAiRequest, { kind: "direct_question" }>,
   ): Promise<void> | null {
     if (this.inFlight) {
       return null;

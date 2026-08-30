@@ -11,6 +11,7 @@ import {
   frozenSnapshot,
   succeedConversationFollowUp,
   type TemporaryConversationContext,
+  type FirstRoundMaterial,
 } from "./ai-panel-conversation.ts";
 import {
   cancelFollowUpSuccessRequest,
@@ -27,7 +28,6 @@ import {
   followUpSuccessRequest,
   idleRequest,
   recoveringRequest,
-  thinkingExpansionRequest,
   type PanelRequestState,
   type PanelVisibility,
 } from "./ai-panel-request-state.ts";
@@ -42,14 +42,14 @@ import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.t
  * - `request`：idle / loading / success / error / configuration_required。
  * - `conversationContext`：临时对话本体与 id 计数器（单调递增，`reset` 也不清零）。
  * - `pendingFirstConversationId`：首轮召唤分配的对话身份，成功前保留。
- * - `pendingFirstRequest`：首轮候选请求（含思维扩展方向），失败后重试仍可用。
+ * - `pendingFirstRequest`：首轮候选请求，失败后重试仍可用。
  */
 export interface AiPanelCoreState {
   readonly visibility: PanelVisibility;
   readonly request: PanelRequestState;
   readonly conversationContext: TemporaryConversationContext;
   readonly pendingFirstConversationId: number | null;
-  readonly pendingFirstRequest: Extract<GenerateAiRequest, { kind: "first" }> | null;
+  readonly pendingFirstRequest: FirstRoundMaterial | null;
   /** 直接提问的未发送草稿。 */
   readonly directQuestionDraft: string;
   /** 当前待附带的选区重点材料；无选区时为 null。 */
@@ -79,16 +79,14 @@ export type AiPanelEvent =
   | {
       readonly type: "preview_first_request";
       readonly snapshot: SelectionSnapshot;
-      readonly firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>;
+      readonly firstRequest?: FirstRoundMaterial;
     }
   | { readonly type: "block_first_request"; readonly snapshot: SelectionSnapshot }
   | {
       readonly type: "begin_request";
       readonly snapshot: SelectionSnapshot;
-      readonly firstRequest?: Extract<GenerateAiRequest, { kind: "first" }>;
+      readonly firstRequest?: FirstRoundMaterial;
     }
-  | { readonly type: "begin_thinking_expansion"; readonly snapshot: SelectionSnapshot }
-  | { readonly type: "update_thinking_expansion_direction"; readonly direction: string }
   | { readonly type: "succeed"; readonly snapshot: SelectionSnapshot; readonly response: string }
   | { readonly type: "fail"; readonly snapshot: SelectionSnapshot; readonly error: GenerateAiError }
   | { readonly type: "require_configuration"; readonly snapshot: SelectionSnapshot }
@@ -165,7 +163,7 @@ export function reduceAiPanelState(
         request: firstPreviewRequest(anchor),
         pendingFirstConversationId: null,
         pendingFirstRequest:
-          event.firstRequest ?? { kind: "first", selected_text: anchor.selectedText },
+          event.firstRequest ?? { kind: "summon", selected_text: anchor.selectedText },
       };
     }
     case "block_first_request": {
@@ -188,23 +186,8 @@ export function reduceAiPanelState(
         request: firstLoadingRequest(anchor, allocation.conversationId),
         pendingFirstConversationId: allocation.conversationId,
         pendingFirstRequest:
-          event.firstRequest ?? { kind: "first", selected_text: anchor.selectedText },
+          event.firstRequest ?? { kind: "summon", selected_text: anchor.selectedText },
       };
-    }
-    case "begin_thinking_expansion": {
-      return {
-        ...state,
-        visibility: "open",
-        conversationContext: clearConversationContext(state.conversationContext),
-        request: thinkingExpansionRequest(frozenSnapshot(event.snapshot), ""),
-        pendingFirstConversationId: null,
-        pendingFirstRequest: null,
-      };
-    }
-    case "update_thinking_expansion_direction": {
-      const request = state.request;
-      if (request.kind !== "thinking_expansion") return state;
-      return { ...state, request: thinkingExpansionRequest(request.snapshot, event.direction) };
     }
     case "succeed": {
       const request = state.request;
@@ -223,7 +206,7 @@ export function reduceAiPanelState(
         context,
         conversationId,
         event.snapshot,
-        state.pendingFirstRequest ?? { kind: "first", selected_text: event.snapshot.selectedText },
+        state.pendingFirstRequest ?? { kind: "summon", selected_text: event.snapshot.selectedText },
         event.response,
       );
       return {
@@ -452,6 +435,12 @@ export function reduceAiPanelState(
       // 其余状态原样返回（同一引用），迟到增量一律丢弃。
       const request = state.request;
       if (request.kind === "direct_question" && request.status === "loading") {
+        return {
+          ...state,
+          request: { ...request, streamedText: (request.streamedText ?? "") + event.text },
+        };
+      }
+      if (request.kind === "loading" && request.phase === "first") {
         return {
           ...state,
           request: { ...request, streamedText: (request.streamedText ?? "") + event.text },

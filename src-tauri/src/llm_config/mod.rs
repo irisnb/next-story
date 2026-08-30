@@ -168,16 +168,16 @@ pub struct GenerateAiMessage {
 pub enum GenerateAiRequest {
     First {
         selected_text: String,
-        /// 思维扩展可选方向；缺省或空白表示空方向开始。
+        /// 兼容旧调用方的可选方向字段；当前前端不再发送。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
     },
     FollowUp {
         selected_text: String,
-        /// 追问复用首次思维扩展方向；缺省或空白表示普通召唤或空方向开始。
+        /// 兼容旧调用方的可选方向字段；缺省或空白表示无方向。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
-        /// 追问来源；缺省视为 `selection`（AI 及时召唤 / 思维扩展）。
+        /// 追问来源；缺省视为 `selection`。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<FollowUpOrigin>,
         messages: Vec<GenerateAiMessage>,
@@ -265,7 +265,7 @@ pub mod generate;
 pub use generate::{
     ai_cancel_message_in_dir, ai_end_session_in_dir, ai_replay_done_in_dir,
     ai_replay_history_in_dir, ai_send_message_in_dir, ai_start_session_in_dir,
-    generate_ai_thinking, generate_ai_thinking_in_dir, AiMessageKind,
+    generate_ai_thinking, generate_ai_thinking_in_dir, AiMessageKind, ReplayOrigin,
 };
 
 mod http;

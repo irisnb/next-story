@@ -58,7 +58,7 @@ test("LLM config page distinguishes connection test data from AI generation data
   assert.match(html, /测试连接[^。]*固定测试语句/);
   assert.match(html, /不会发送用户剧本文字或临时对话/);
   assert.match(html, /AI 生成[^。]*冻结选区原文/);
-  assert.match(html, /思维扩展方向/);
+  assert.doesNotMatch(html, /思维扩展方向/);
   assert.match(html, /当前临时对话/);
   assert.match(html, /回复只显示在 AI 面板/);
   assert.match(html, /不会自动进入任何文档/);

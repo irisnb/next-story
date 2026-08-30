@@ -2,8 +2,9 @@ import type { AiPanelState } from "./ai-panel-state.ts";
 import {
   acquirePreflight,
   releasePreflight,
+  runFirstRoundPreflight,
   type FirstRequestPreflightState,
-} from "./ai-feature-first-request.ts";
+} from "./ai-feature-first-round.ts";
 import type { GenerateAiRequest, LlmConfigSummary, SelectionSnapshot } from "./types.ts";
 
 export interface StartDirectQuestionOptions {
@@ -41,50 +42,22 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
   // 预检期间用户新建对话后，代次变化即表示本次预检已作废，不得再发送请求。
   const generation = options.state.conversationGeneration;
 
-  void (async () => {
-    try {
-      const config = await options.loadConfig();
-      // 预检期间作品被切换：丢弃本次预检结果，不发送旧作品的直接提问。
-      if (options.getProjectToken() !== frozenToken) return;
-      // 预检期间用户新建对话：对话身份代次已推进，本次预检作废，保持空白状态。
-      if (options.state.conversationGeneration !== generation) return;
-      if (!config) {
-        options.state.requireDirectQuestionConfiguration();
-        return;
-      }
-      // 真正提交请求前再次校验作品身份与对话代次（纵深防御；请求内部也会以当前令牌校验）。
-      if (options.getProjectToken() !== frozenToken) return;
-      if (options.state.conversationGeneration !== generation) return;
-      const payload: GenerateAiRequest = {
-        kind: "direct_question",
-        question,
-        ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
-      };
-      const accepted = options.request(payload);
-      if (accepted === null) {
-        options.state.failDirectQuestion({
-          code: "network",
-          message: "已有 AI 请求正在进行，本次请求没有发出。",
-        });
-        return;
-      }
-    } catch (error) {
-      // 预检失败但作品已切换或对话已作废：同样丢弃，避免污染当前 AI 面板。
-      if (options.getProjectToken() !== frozenToken) return;
-      if (options.state.conversationGeneration !== generation) return;
-      options.state.failDirectQuestion({
-        code: "network",
-        message: preflightErrorMessage(error),
-      });
-    } finally {
-      if (preflight) releasePreflight(preflight, frozenToken);
-    }
-  })();
+  runFirstRoundPreflight({
+    state: options.state,
+    loadConfig: options.loadConfig,
+    request: options.request,
+    getProjectToken: options.getProjectToken,
+    preflight,
+    frozenToken,
+    generation,
+    buildRequest: () => ({
+      kind: "direct_question",
+      question,
+      ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
+    }),
+    requireConfiguration: () => options.state.requireDirectQuestionConfiguration(),
+    onBlocked: () => options.state.failDirectQuestion({ code: "network", message: "已有 AI 请求正在进行，本次请求没有发出。" }),
+    onError: (error) => options.state.failDirectQuestion(error),
+  });
   return true;
-}
-
-function preflightErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "AI 请求开始前发生异常。";
 }

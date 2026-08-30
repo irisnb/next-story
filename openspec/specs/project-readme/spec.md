@@ -22,11 +22,12 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 - **WHEN** README 声明当前已实现的产品能力
 - **THEN** 每项声明都有当前正式规格中的要求作为依据
 - **AND** README 可以将"常驻 AI 会话支持直接提问（选区作为可选重点提示自动附带）"写为已实现
+- **AND** README 可以将"及时召唤：选中文字后通过浮动入口以选区为材料无打字发起流式对话"写为已实现
 - **AND** README 可以将"回复流式逐字呈现，追问只发送增量问题"写为已实现
 - **AND** README 可以将"首次回应成功后进行线性临时追问，可取消生成"写为已实现
 - **AND** README 可以将"驱动进程崩溃后自动重启并重放显示历史恢复会话"写为已实现
 - **AND** README 说明临时对话只在当前应用打开周期存在，不跨重启持久化，新对话会替换旧对话
-- **AND** README 如实说明旧选区工具（AI 及时召唤、思维扩展、浮动入口）已退场
+- **AND** README 如实说明思维扩展已退场（经用户确认），及时召唤与选区浮动入口已恢复为正式功能
 - **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、多个对话、历史、持久化、自动摘要、多 provider 或多模型支持写成已实现
 
 #### Scenario: README refers to future direction

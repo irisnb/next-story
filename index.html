@@ -137,16 +137,6 @@
                   <div class="ai-block-label">本次选区</div>
                   <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
                 </div>
-                <div id="ai-thinking-expansion-prestate" class="ai-thinking-expansion hidden">
-                  <div class="ai-thinking-expansion-header">
-                    <h2 id="ai-thinking-expansion-title" class="ai-thinking-expansion-title">思维扩展</h2>
-                    <span id="ai-thinking-expansion-count" class="ai-thinking-expansion-count"></span>
-                  </div>
-                  <form id="ai-thinking-expansion-form" class="ai-thinking-expansion-form">
-                    <textarea id="ai-thinking-expansion-input" class="ai-thinking-expansion-input" rows="4" placeholder="写下你想追的方向"></textarea>
-                    <button id="ai-thinking-expansion-start" class="ai-thinking-expansion-start" type="submit">开始</button>
-                  </form>
-                </div>
                 <div id="ai-welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
                 <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
                 <pre id="ai-response" class="ai-response hidden"></pre>
@@ -399,7 +389,7 @@
             提醒：API Key 会作为 Bearer 凭据发送到你填写的 API 地址，并保存在操作系统的凭据存储（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）中。只使用你信任的地址，请勿在公共或不信任的设备上使用。
           </p>
           <p class="config-warning">
-            测试连接只发送固定测试语句，不会发送用户剧本文字或临时对话。AI 生成会把冻结选区原文、思维扩展方向或当前临时对话发送给所选模型；第三方服务如何处理数据，取决于你和该服务的协议与设置。
+            测试连接只发送固定测试语句，不会发送用户剧本文字或临时对话。AI 生成会把用户问题、冻结选区原文或当前临时对话发送给所选模型；第三方服务如何处理数据，取决于你和该服务的协议与设置。
           </p>
           <p class="config-warning">
             AI 请求会把选区和追问发送到你配置的模型服务；回复只显示在 AI 面板，不会自动进入任何文档。

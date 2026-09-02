@@ -32,12 +32,14 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # 测试中解包生成的 .docx（zip 容器）以校验内容；docx 依赖已引入同版本 zip。
 zip = "0.5"
 
-# docx 1.1.2 经 strong-xml 0.5.0 依赖 jetscii 0.4.4，该版本在较新 Rust 上因
-# const 泛型限制无法编译。此处用本地 vendored 副本打补丁覆盖：内容为 jetscii
-# 0.5.3（已修复该问题且 API 与 strong-xml 用法兼容），仅把版本号标为 0.4.4 以
-# 满足 strong-xml 的精确版本要求。避免依赖网络 git 源。
+# docx 1.1.2 经 strong-xml 0.5.0 依赖 jetscii ^0.4.4；crates.io 上的 jetscii 0.4.4
+# 在 Rust ≥1.51 上因「generic parameters may not be used in const operations」无法
+# 编译，而 strong-xml 0.5.0 的 ^0.4.4 约束按 semver 排除了已修复的 0.5.x，无法用
+# 纯 crates.io 配置解决。此处用仓库内 vendored 副本打补丁：内容为 jetscii 0.5.3
+# （已修复且 API 与 strong-xml 用法兼容），仅把版本号标为 0.4.4 以满足要求。
+# 来源、许可证与维护说明见 vendor/jetscii-0.4.4-compat/README.md。
 [patch.crates-io]
-jetscii = { path = "C:/Users/Administrator/AppData/Local/Temp/opencode/jetscii-0.4.4-compat" }
+jetscii = { path = "vendor/jetscii-0.4.4-compat" }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

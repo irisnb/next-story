@@ -1,0 +1,30 @@
+{
+  "id": "post-compaction-retention",
+  "description": "压缩后事实保持（近似）：早期事实埋在长材料开头，需跨越大量无关内容后被召回。真实 compaction 触发留待后续 change。",
+  "material": {
+    "name": "林悦小传",
+    "version": "1",
+    "hash": "sha256:a78ba4a11539831b06d5dc1edb1f1d52bec2b617b15168f71f4e7c0ca22075b4",
+    "text": "林悦出生于城南的一栋老房子里。她小时候喜欢在院子里看蚂蚁搬家。小学时她得了作文比赛二等奖。中学她加入了文学社。大学她选择了视觉设计专业。毕业后她先在一家广告公司做了两年。后来她考进了图书馆。她的妹妹林岚在城南开了一家花店。林岚的花店周末很忙，林悦偶尔会去帮忙。林悦每天坐地铁上班，单程要四十分钟。她习惯在车上听播客。她的同事们都说她很安静。图书馆四楼有个安静的角落，她常去那里整理旧书。去年她参与了一次儿童阅读推广活动。今年春天她开始学水彩。"
+  },
+  "question": "林悦在哪里出生？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "城南"
+      ],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "城西"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第一句"
+    ],
+    "riskTags": [
+      "post-compaction",
+      "long-context"
+    ]
+  }
+}

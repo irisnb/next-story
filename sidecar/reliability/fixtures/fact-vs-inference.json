@@ -1,0 +1,30 @@
+{
+  "id": "fact-vs-inference",
+  "description": "事实与推测区分：材料只陈述工作年限，未评价是否热爱。把推测当成事实是可靠性风险。",
+  "material": {
+    "name": "林悦的工作",
+    "version": "1",
+    "hash": "sha256:08ae9d39d38df2a1428134ffe804538e419ce6dc3fa8f8329337230d62eae893",
+    "text": "林悦在图书馆工作了五年。"
+  },
+  "question": "林悦热爱她的工作吗？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "热爱"
+    ],
+    "allowedUncertainty": [
+      "未知",
+      "未提及"
+    ],
+    "evidenceLocations": [
+      "第一句"
+    ],
+    "riskTags": [
+      "fact-vs-inference"
+    ]
+  }
+}

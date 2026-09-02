@@ -1,0 +1,29 @@
+{
+  "id": "version-conflict-v1",
+  "description": "版本冲突（v1）：林悦在城东图书馆工作。若在 v2 语境下仍答出此事实，即陈旧事实冲突。",
+  "material": {
+    "name": "林悦的工作",
+    "version": "1",
+    "hash": "sha256:7448db3dcd4550a080235ed4e13274a6bcb0bc5dacf16221fcb83b7467045c03",
+    "text": "林悦是一名平面设计师，今年三十二岁。她在城东的图书馆上班，负责儿童阅读区的海报设计。她的妹妹林岚住在城南。"
+  },
+  "question": "林悦在哪里工作？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "城东的图书馆"
+      ],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "城西的画廊"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第二句"
+    ],
+    "riskTags": [
+      "version-conflict"
+    ]
+  }
+}

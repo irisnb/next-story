@@ -1,0 +1,32 @@
+{
+  "id": "multi-scene-relation",
+  "description": "多场景多跳关系：林悦是林岚的姐姐，林岚的女儿叫小雨。需跨两句话推理出小雨是林悦的外甥女。",
+  "material": {
+    "name": "林家关系",
+    "version": "1",
+    "hash": "sha256:08c2e5cf8c418258dccf09a58de3057b6c8966db4deecb93fa7d389b438e51e5",
+    "text": "林悦是林岚的姐姐。林岚有一个女儿，叫小雨。"
+  },
+  "question": "小雨和林悦是什么关系？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "外甥女"
+      ],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "侄女",
+      "孙女"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第一句",
+      "第二句"
+    ],
+    "riskTags": [
+      "multi-hop",
+      "relation"
+    ]
+  }
+}

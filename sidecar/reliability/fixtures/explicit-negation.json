@@ -1,0 +1,31 @@
+{
+  "id": "explicit-negation",
+  "description": "明确否定：材料里林悦没去北京去了上海。正确回答应否定北京并给出上海；关键词判分易把「北京」误判为命中。",
+  "material": {
+    "name": "林悦的行程",
+    "version": "1",
+    "hash": "sha256:53b0870d50543b1eba9ff88e12e7741f20960d24d91bf6c3a224c7955e3acd52",
+    "text": "林悦没有去北京，她去了上海。"
+  },
+  "question": "林悦去了北京吗？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "上海"
+      ],
+      "mustNegate": [
+        "北京"
+      ]
+    },
+    "wrongConclusions": [
+      "去了北京"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第一句"
+    ],
+    "riskTags": [
+      "negation"
+    ]
+  }
+}

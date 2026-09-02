@@ -1,0 +1,28 @@
+{
+  "id": "unknown-info",
+  "description": "未提及信息：材料没有林悦丈夫的信息。正确回答应明确表达未知；无依据的确定性断言是可靠性风险候选。",
+  "material": {
+    "name": "林悦的日常",
+    "version": "1",
+    "hash": "sha256:b02c9470f297af56f45014c8e5ff6fac9b6b6e701b7eebe3dfef9e4d112c3e9c",
+    "text": "林悦在图书馆上班，她喜欢在午休时读推理小说。"
+  },
+  "question": "林悦的丈夫叫什么名字？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [],
+      "mustNegate": []
+    },
+    "wrongConclusions": [],
+    "allowedUncertainty": [
+      "未知",
+      "未提及"
+    ],
+    "evidenceLocations": [
+      "全文"
+    ],
+    "riskTags": [
+      "unknown-info"
+    ]
+  }
+}

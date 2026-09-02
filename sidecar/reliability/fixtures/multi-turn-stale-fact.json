@@ -1,0 +1,35 @@
+{
+  "id": "multi-turn-stale-fact",
+  "description": "多轮旧事实冲突：材料先给城东图书馆，追问中更正为城西画廊。问题应依据最新事实，而非陈旧事实。",
+  "material": {
+    "name": "林悦的工作",
+    "version": "1",
+    "hash": "sha256:34d0be2b84814317fc42bb6466d6a1671da9c30dd9c320d705a00e5d87fd7d36",
+    "text": "林悦在城东的图书馆上班。"
+  },
+  "steps": [
+    {
+      "text": "补充一下：林悦上个月已经换工作了，现在在城西的画廊上班。"
+    }
+  ],
+  "question": "林悦现在在哪里工作？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "城西的画廊"
+      ],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "城东的图书馆"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "补充说明"
+    ],
+    "riskTags": [
+      "stale-fact",
+      "multi-turn"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+# Vendored copy of `jetscii` 0.5.3 (https://crates.io/crates/jetscii/0.5.3),
+# relabeled as version 0.4.4 solely to satisfy the `jetscii = "^0.4.4"`
+# requirement of `strong-xml` 0.5.0 (pulled in by `docx` 1.1.2).
+#
+# Source `src/*.rs` and `build.rs` are verbatim 0.5.3; the only deviations from
+# upstream are confined to this Cargo.toml (version relabel + `[lints]` table).
+# See README.md in this directory for provenance, license and maintenance notes.
+
+[package]
+name = "jetscii"
+version = "0.4.4"
+authors = ["Jake Goulding <jake.goulding@gmail.com>"]
+description = "A tiny library to efficiently search strings and byte slices for sets of ASCII characters or bytes."
+readme = "README.md"
+keywords = ["string", "bytes", "ascii", "search", "simd"]
+repository = "https://github.com/shepmaster/jetscii"
+documentation = "https://docs.rs/jetscii/"
+license = "MIT OR Apache-2.0"
+
+[features]
+benchmarks = []
+pattern = []
+
+# Declare the custom cfg emitted by build.rs so modern rustc's `unexpected_cfgs`
+# lint does not warn about `jetscii_sse4_2` (upstream 0.5.3 predates check-cfg).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(jetscii_sse4_2, values("yes", "maybe", "no"))'] }

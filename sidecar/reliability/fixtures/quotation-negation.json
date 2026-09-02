@@ -1,0 +1,29 @@
+{
+  "id": "quotation-negation",
+  "description": "否定句引用：材料里林悦在引号内否认偷书。正确回答应转述其否认；关键词判分易把引号内的「偷」误当成模型结论。",
+  "material": {
+    "name": "书店风波",
+    "version": "1",
+    "hash": "sha256:936b06316223f2552360ccb4b7575115e89696c745a5bb3d448d0168e5884f8c",
+    "text": "林悦对店员说：「我没有偷那本书，我只是拿起来看了看。」"
+  },
+  "question": "根据材料，林悦承认自己偷了书吗？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [],
+      "mustNegate": [
+        "偷"
+      ]
+    },
+    "wrongConclusions": [
+      "承认偷了书"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第一句"
+    ],
+    "riskTags": [
+      "quotation-negation"
+    ]
+  }
+}

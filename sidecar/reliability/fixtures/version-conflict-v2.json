@@ -1,0 +1,29 @@
+{
+  "id": "version-conflict-v2",
+  "description": "版本冲突（v2）：同一事实在 v2 中改为城西画廊。若回答仍断言 v1 的城东图书馆即失败。",
+  "material": {
+    "name": "林悦的工作",
+    "version": "2",
+    "hash": "sha256:54c59d85eb52d361b496406238e69021462c0eaed4e4e39a4ac3132db4706c0f",
+    "text": "林悦是一名平面设计师，今年三十二岁。她在城西的画廊上班，负责展览宣传的设计。她的妹妹林岚住在城南。"
+  },
+  "question": "林悦在哪里工作？",
+  "expect": {
+    "factBoundary": {
+      "mustContain": [
+        "城西的画廊"
+      ],
+      "mustNegate": []
+    },
+    "wrongConclusions": [
+      "城东的图书馆"
+    ],
+    "allowedUncertainty": [],
+    "evidenceLocations": [
+      "第二句"
+    ],
+    "riskTags": [
+      "version-conflict"
+    ]
+  }
+}

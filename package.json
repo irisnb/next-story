@@ -13,8 +13,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:frontend": "node --test tests/*.test.ts",
+    "test:reliability": "node --test sidecar/reliability/tests/*.test.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run typecheck && npm run lint && npm run test:frontend && npm run build && npm run test:rust"
+    "check": "npm run typecheck && npm run lint && npm run test:frontend && npm run test:reliability && npm run build && npm run test:rust"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.11.1",

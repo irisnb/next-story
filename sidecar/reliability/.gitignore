@@ -1,3 +1,6 @@
 # 回答可靠性测试器的运行时产物（不入库）
 .run-home/
 evidence/
+
+# 长上下文夹具：由 build-cases.mjs 生成的、可被 runner 直接运行的案例（材料+裁判已在 materials/oracle 检入，无需重复入库）
+long-context/.generated/

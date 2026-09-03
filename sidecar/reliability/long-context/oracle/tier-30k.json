@@ -1,0 +1,750 @@
+{
+  "schema_version": 1,
+  "tier": "30k",
+  "material_name": "回声旅馆",
+  "material_version": "1",
+  "material_hash": "sha256:2d0ff1383ad24258d9d60510d7186c09776ca95f123836af395d436ef2717f6b",
+  "entities": [
+    {
+      "id": "e1",
+      "name": "陆遥",
+      "role": "主角，摄影师"
+    },
+    {
+      "id": "e2",
+      "name": "江眠",
+      "role": "回声旅馆老板娘"
+    },
+    {
+      "id": "e3",
+      "name": "顾成",
+      "role": "陆遥的旧友，刑警"
+    },
+    {
+      "id": "e4",
+      "name": "陆远",
+      "role": "陆遥的弟弟，教师"
+    },
+    {
+      "id": "e5",
+      "name": "白露",
+      "role": "江眠的妹妹，策展人"
+    },
+    {
+      "id": "e6",
+      "name": "陆芸",
+      "role": "陆遥的母亲"
+    },
+    {
+      "id": "e7",
+      "name": "陆征",
+      "role": "陆遥的父亲，灯塔看守人"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "b1",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "陆遥",
+      "statement": "陆遥出生在白鹭镇，镇外有一座废弃的旧灯塔。"
+    },
+    {
+      "id": "b2",
+      "chapter": 1,
+      "category": "similar-entity",
+      "entity": "陆远",
+      "statement": "陆遥的弟弟陆远在白鹭洲教书，兄弟俩每年只聚一次。"
+    },
+    {
+      "id": "b3",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "陆遥",
+      "statement": "陆遥小时候总爱去旧码头看潮水涨落。"
+    },
+    {
+      "id": "b4",
+      "chapter": 2,
+      "category": "multi-turn-recall",
+      "entity": "江眠",
+      "statement": "江眠是回声旅馆的老板娘，旅馆坐落在云峰山脚下。"
+    },
+    {
+      "id": "b5",
+      "chapter": 2,
+      "category": "similar-entity",
+      "entity": "白鹭洲",
+      "statement": "白鹭洲与白鹭镇相隔百里，名字相近，常被外地人认错。"
+    },
+    {
+      "id": "b6",
+      "chapter": 3,
+      "category": "cross-chapter-relation",
+      "entity": "顾成",
+      "statement": "顾成是陆遥的旧友，如今在云峰山一带做刑警。"
+    },
+    {
+      "id": "b7",
+      "chapter": 3,
+      "category": "multi-turn-recall",
+      "entity": "陆遥",
+      "statement": "陆遥收藏着一台老式相机，是父亲留下的唯一遗物。"
+    },
+    {
+      "id": "b8",
+      "chapter": 4,
+      "category": "cross-chapter-relation",
+      "entity": "陆芸",
+      "statement": "陆遥的母亲叫陆芸，早年是白鹭镇小学的语文老师。"
+    },
+    {
+      "id": "b9",
+      "chapter": 5,
+      "category": "version-conflict",
+      "entity": "陆遥",
+      "statement": "陆遥原本在城北的印刷厂做排版，后来辞职去了云峰山下的摄影工作室。"
+    },
+    {
+      "id": "b10",
+      "chapter": 5,
+      "category": "cross-chapter-relation",
+      "entity": "白露",
+      "statement": "白露是江眠的妹妹，在城西的文化馆工作。"
+    },
+    {
+      "id": "b11",
+      "chapter": 6,
+      "category": "false-premise",
+      "entity": "陆遥",
+      "statement": "朋友曾劝陆遥把摄影展办在城东的画廊，但他最终选在城西的文化馆，策展人是白露。"
+    },
+    {
+      "id": "b12",
+      "chapter": 7,
+      "category": "distant-recall",
+      "entity": "陆征",
+      "statement": "陆遥的父亲叫陆征，曾是白鹭镇的灯塔看守人。"
+    },
+    {
+      "id": "b13",
+      "chapter": 7,
+      "category": "cross-chapter-relation",
+      "entity": "顾成",
+      "statement": "顾成是陆芸的侄子，和陆遥从小一起长大。"
+    },
+    {
+      "id": "b14",
+      "chapter": 8,
+      "category": "version-conflict",
+      "entity": "旧灯塔",
+      "statement": "那座废弃的旧灯塔去年被改造成了观景台，成了白鹭镇的新地标。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "lc-30k-01",
+      "category": "distant-recall",
+      "description": "远距召回：出生地埋在第一章。",
+      "question": "陆遥的出生地是哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "白鹭镇"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "白鹭洲"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-01-t1",
+        "lc-30k-01-t2",
+        "lc-30k-01-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-02",
+      "category": "distant-recall",
+      "description": "远距召回：童年习惯埋在第一章。",
+      "question": "陆遥小时候喜欢做什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "看潮水"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "钓鱼",
+          "放风筝"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-02-t1",
+        "lc-30k-02-t2",
+        "lc-30k-02-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-03",
+      "category": "distant-recall",
+      "description": "远距召回：父亲职业埋在第七章。",
+      "question": "陆遥的父亲是做什么的？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "灯塔看守人"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "渔民",
+          "教师"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第七章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-03-t1",
+        "lc-30k-03-t2",
+        "lc-30k-03-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-04",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：陆远是弟弟（第一章）+ 陆芸是母亲（第四章），推出母子关系。",
+      "question": "陆远和陆芸是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "儿子"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "兄弟",
+          "外甥"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第四章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-04-t1",
+        "lc-30k-04-t2",
+        "lc-30k-04-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-05",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：顾成在第三章出场、第七章点明与陆芸的侄甥关系。",
+      "question": "顾成和陆芸是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "侄子"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "儿子",
+          "外甥"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章",
+          "第七章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-05-t1",
+        "lc-30k-05-t2",
+        "lc-30k-05-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-06",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：白露第五章为文化馆工作人员、第六章为策展人，需跨章还原身份。",
+      "question": "白露是谁？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "策展人"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "医生",
+          "演员"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章",
+          "第六章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-06-t1",
+        "lc-30k-06-t2",
+        "lc-30k-06-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-07",
+      "category": "similar-entity",
+      "description": "相似实体：陆远住白鹭洲，与陆遥住白鹭镇一字之差。",
+      "question": "陆远住在哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "白鹭洲"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "白鹭镇"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-07-t1",
+        "lc-30k-07-t2",
+        "lc-30k-07-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-08",
+      "category": "similar-entity",
+      "description": "相似实体：白鹭镇与白鹭洲易混，陆遥住白鹭镇而非白鹭洲。",
+      "question": "陆遥住在白鹭洲吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "白鹭镇"
+          ],
+          "mustNegate": [
+            "白鹭洲"
+          ]
+        },
+        "wrongConclusions": [
+          "住在白鹭洲"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第二章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-08-t1",
+        "lc-30k-08-t2",
+        "lc-30k-08-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-09",
+      "category": "similar-entity",
+      "description": "相似实体：陆远教书，与陆遥摄影不同，需区分兄弟二人。",
+      "question": "陆远是做什么的？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "教书"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "摄影",
+          "警察"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-09-t1",
+        "lc-30k-09-t2",
+        "lc-30k-09-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-10",
+      "category": "version-conflict",
+      "description": "版本冲突：早期在印刷厂，后来去了摄影工作室。",
+      "question": "陆遥现在在哪里工作？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "摄影工作室"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "印刷厂"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-10-t1",
+        "lc-30k-10-t2",
+        "lc-30k-10-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-11",
+      "category": "version-conflict",
+      "description": "版本冲突：已离开印刷厂，应否定旧工作。",
+      "question": "陆遥现在还在印刷厂工作吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "摄影工作室"
+          ],
+          "mustNegate": [
+            "印刷厂"
+          ]
+        },
+        "wrongConclusions": [
+          "还在印刷厂"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-11-t1",
+        "lc-30k-11-t2",
+        "lc-30k-11-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-12",
+      "category": "version-conflict",
+      "description": "版本冲突：旧灯塔已改为观景台（第一章 vs 第八章）。",
+      "question": "旧灯塔现在是什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "观景台"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "灯塔"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第八章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-12-t1",
+        "lc-30k-12-t2",
+        "lc-30k-12-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-13",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未提及陆遥的妻子。",
+      "question": "陆遥的妻子叫什么名字？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-13-t1",
+        "lc-30k-13-t2",
+        "lc-30k-13-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-14",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未给出陆遥的年龄。",
+      "question": "陆遥今年多大年纪？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-14-t1",
+        "lc-30k-14-t2",
+        "lc-30k-14-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-15",
+      "category": "false-premise",
+      "description": "错误前提纠正：问题误以为摄影展在城东的画廊，正确地点是城西的文化馆。",
+      "question": "陆遥的摄影展是在城东的画廊举办的吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "城西的文化馆"
+          ],
+          "mustNegate": [
+            "城东的画廊"
+          ]
+        },
+        "wrongConclusions": [
+          "城东的画廊"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第六章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-15-t1",
+        "lc-30k-15-t2",
+        "lc-30k-15-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-16",
+      "category": "false-premise",
+      "description": "错误前提纠正：相机是父亲留下的，而非母亲。",
+      "question": "那台老式相机是母亲留给陆遥的吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "父亲"
+          ],
+          "mustNegate": [
+            "母亲"
+          ]
+        },
+        "wrongConclusions": [
+          "母亲留下的"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-16-t1",
+        "lc-30k-16-t2",
+        "lc-30k-16-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-17",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回相机来源。",
+      "question": "陆遥的相机是谁留给他的？",
+      "steps": [
+        {
+          "text": "我之前问过陆遥的相机，你还记得吗？"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "父亲"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "母亲",
+          "顾成"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-17-t1",
+        "lc-30k-17-t2",
+        "lc-30k-17-t3"
+      ]
+    },
+    {
+      "id": "lc-30k-18",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回旅馆老板娘。",
+      "question": "回声旅馆的老板娘是谁？",
+      "steps": [
+        {
+          "text": "你前面提到了回声旅馆，能再想想吗？"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "江眠"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "陆芸",
+          "白露"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第二章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-30k-18-t1",
+        "lc-30k-18-t2",
+        "lc-30k-18-t3"
+      ]
+    }
+  ],
+  "query_count": 18
+}

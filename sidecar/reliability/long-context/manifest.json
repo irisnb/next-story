@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "size_tolerance_ratio": 0.05,
+  "estimated_tokens_per_char": 0.75,
+  "trial_count": 3,
+  "risk_categories": [
+    "distant-recall",
+    "cross-chapter-relation",
+    "similar-entity",
+    "version-conflict",
+    "unknown-fact",
+    "false-premise",
+    "multi-turn-recall"
+  ],
+  "query_counts": { "10k": 12, "30k": 18, "50k": 24, "coherent-10k": 12 },
+  "tiers": [
+    { "tier": "10k", "seed": 20260903, "target_chars": 10000, "title": "雾城长河", "version": "1" },
+    { "tier": "30k", "seed": 20260904, "target_chars": 30000, "title": "回声旅馆", "version": "1" },
+    { "tier": "50k", "seed": 20260905, "target_chars": 50000, "title": "北境邮差", "version": "1" },
+    { "tier": "coherent-10k", "seed": null, "target_chars": 10000, "title": "青石巷", "version": "1", "handwritten": true }
+  ]
+}

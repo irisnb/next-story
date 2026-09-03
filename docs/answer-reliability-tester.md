@@ -114,3 +114,11 @@ node -e "const c=require('crypto');const t='<你的正文>';console.log('sha256:
 - 核心固定案例覆盖八类高风险语义：版本冲突、明确否定、未提及信息、否定句引用、事实/推测区分、多轮旧事实冲突、压缩后事实保持（**近似**：长上下文早期事实召回，真实 compaction 触发留待后续 change）、多场景多跳关系。
 - 证据与运行目录（`.run-home/`、`evidence/`）已被 `sidecar/reliability/.gitignore` 忽略，不入库。
 - 保密责任：测试器只读取明确指定的离线固定材料，结果不进入生产作品存储；证据不含 API key。
+
+## 长上下文幻觉夹具（扩展）
+
+对「材料越长、事实越容易丢、混、编」这一主要风险，另有 `sidecar/reliability/long-context/` 提供确定性生成的合成中文小说（约 1 万 / 3 万 / 5 万字）与分档查询矩阵（12 / 18 / 24 题、七类风险、三试计划），材料与裁判元数据物理分离。详见 `sidecar/reliability/long-context/README.md`。
+
+- 重新生成：`node sidecar/reliability/long-context/generator.mjs`
+- 离线校验：`node sidecar/reliability/long-context/validate.mjs`
+- 组装可运行案例：`node sidecar/reliability/long-context/build-cases.mjs`（产物在 `.generated/`，可经 `--cases` 喂给本测试器的 runner 分档执行；完整三试矩阵约 162 次调用）

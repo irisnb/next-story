@@ -1,0 +1,501 @@
+{
+  "schema_version": 1,
+  "tier": "10k",
+  "material_name": "雾城长河",
+  "material_version": "1",
+  "material_hash": "sha256:0bd94a513fc964f7ac3e94299f13cd1fecb933cdeadb063f174ec316c1350f2c",
+  "entities": [
+    {
+      "id": "e1",
+      "name": "苏晚",
+      "role": "主角，盐镇人"
+    },
+    {
+      "id": "e2",
+      "name": "沈砚",
+      "role": "苏晚的表哥，雾港旧书修复师"
+    },
+    {
+      "id": "e3",
+      "name": "苏梅",
+      "role": "苏晚的母亲，盐镇杂货铺老板"
+    },
+    {
+      "id": "e4",
+      "name": "苏蔓",
+      "role": "苏晚的远房表妹，盐城茶馆老板"
+    },
+    {
+      "id": "e5",
+      "name": "陈屿",
+      "role": "城西出版社编辑，摄影展策展人"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "a1",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "苏晚",
+      "statement": "苏晚出生在海边的盐镇，那里常年被海雾笼罩。"
+    },
+    {
+      "id": "a2",
+      "chapter": 1,
+      "category": "cross-chapter-relation",
+      "entity": "沈砚",
+      "statement": "沈砚是苏晚的表哥，是母亲这边的亲戚，在雾港做旧书修复。"
+    },
+    {
+      "id": "a3",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "苏晚",
+      "statement": "苏晚小时候喜欢在退潮后的滩涂上捡贝壳。"
+    },
+    {
+      "id": "a4",
+      "chapter": 2,
+      "category": "similar-entity",
+      "entity": "苏蔓",
+      "statement": "苏蔓是苏晚的远房表妹，三年前搬去了盐城，在城里开了一间茶馆。"
+    },
+    {
+      "id": "a5",
+      "chapter": 2,
+      "category": "similar-entity",
+      "entity": "盐城",
+      "statement": "盐城和盐镇只隔着一片海湾，名字相近，许多人常把两地弄混。"
+    },
+    {
+      "id": "a6",
+      "chapter": 3,
+      "category": "multi-turn-recall",
+      "entity": "苏晚",
+      "statement": "苏晚在盐镇中学教语文，课间总把玩外婆留给她的那枚旧怀表。"
+    },
+    {
+      "id": "a7",
+      "chapter": 4,
+      "category": "cross-chapter-relation",
+      "entity": "苏梅",
+      "statement": "苏梅是苏晚的母亲，在盐镇开着一间小杂货铺。"
+    },
+    {
+      "id": "a8",
+      "chapter": 5,
+      "category": "false-premise",
+      "entity": "苏晚",
+      "statement": "朋友曾建议苏晚把摄影展办在城东的画廊，但她最终选了城西的文化馆，展出了雾城系列，策展人是出版社编辑陈屿。"
+    },
+    {
+      "id": "a9",
+      "chapter": 6,
+      "category": "version-conflict",
+      "entity": "苏晚",
+      "statement": "苏晚辞去了盐镇中学的工作，去了城西的出版社做美术编辑，同事陈屿常和她一起加班。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "lc-10k-01",
+      "category": "distant-recall",
+      "description": "远距召回：出生地埋在第一章开头，需跨越大量后续内容召回。",
+      "question": "苏晚的出生地是哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "盐镇"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "盐城"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-01-t1",
+        "lc-10k-01-t2",
+        "lc-10k-01-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-02",
+      "category": "distant-recall",
+      "description": "远距召回：童年爱好埋在第一章，远离提问点。",
+      "question": "苏晚小时候喜欢做什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "捡贝壳"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "钓鱼"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-02-t1",
+        "lc-10k-02-t2",
+        "lc-10k-02-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-03",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：沈砚是表哥（第一章）+ 苏梅是母亲（第四章），需拼接两章推出甥舅关系。",
+      "question": "沈砚和苏梅是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "外甥"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "侄子",
+          "儿子"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第四章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-03-t1",
+        "lc-10k-03-t2",
+        "lc-10k-03-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-04",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：陈屿在第五章以策展人出现、第六章以同事出现，需跨章还原其身份。",
+      "question": "陈屿是谁？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "编辑"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "医生",
+          "教师"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章",
+          "第六章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-04-t1",
+        "lc-10k-04-t2",
+        "lc-10k-04-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-05",
+      "category": "similar-entity",
+      "description": "相似实体：苏蔓住盐城，与苏晚住盐镇一字之差，需区分。",
+      "question": "苏蔓住在哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "盐城"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "盐镇"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第二章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-05-t1",
+        "lc-10k-05-t2",
+        "lc-10k-05-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-06",
+      "category": "similar-entity",
+      "description": "相似实体：盐镇与盐城易混，苏晚住盐镇而非盐城。",
+      "question": "苏晚住在盐城吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "盐镇"
+          ],
+          "mustNegate": [
+            "盐城"
+          ]
+        },
+        "wrongConclusions": [
+          "住在盐城"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第二章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-06-t1",
+        "lc-10k-06-t2",
+        "lc-10k-06-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-07",
+      "category": "version-conflict",
+      "description": "版本冲突：早期在盐镇中学教书（第三章），后来去了出版社（第六章），应依据最新事实。",
+      "question": "苏晚现在在哪里工作？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "出版社"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "盐镇中学"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第六章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-07-t1",
+        "lc-10k-07-t2",
+        "lc-10k-07-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-08",
+      "category": "version-conflict",
+      "description": "版本冲突：工作已从盐镇中学变为出版社，应否定旧工作。",
+      "question": "苏晚现在还在盐镇中学教书吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "出版社"
+          ],
+          "mustNegate": [
+            "盐镇中学"
+          ]
+        },
+        "wrongConclusions": [
+          "还在盐镇中学"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章",
+          "第六章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-08-t1",
+        "lc-10k-08-t2",
+        "lc-10k-08-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-09",
+      "category": "unknown-fact",
+      "description": "未知事实：材料从未提及苏晚的丈夫。",
+      "question": "苏晚的丈夫叫什么名字？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-09-t1",
+        "lc-10k-09-t2",
+        "lc-10k-09-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-10",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未给出苏晚的年龄。",
+      "question": "苏晚今年多少岁？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-10-t1",
+        "lc-10k-10-t2",
+        "lc-10k-10-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-11",
+      "category": "false-premise",
+      "description": "错误前提纠正：问题误以为摄影展在城东的画廊，正确地点是城西的文化馆。",
+      "question": "苏晚的摄影展是在城东的画廊举办的吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "城西的文化馆"
+          ],
+          "mustNegate": [
+            "城东的画廊"
+          ]
+        },
+        "wrongConclusions": [
+          "城东的画廊"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-11-t1",
+        "lc-10k-11-t2",
+        "lc-10k-11-t3"
+      ]
+    },
+    {
+      "id": "lc-10k-12",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回怀表来源。",
+      "question": "苏晚的怀表是谁留给她的？",
+      "steps": [
+        {
+          "text": "我之前问过苏晚的怀表，你还记得吗？"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "外婆"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "母亲",
+          "沈砚"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-10k-12-t1",
+        "lc-10k-12-t2",
+        "lc-10k-12-t3"
+      ]
+    }
+  ],
+  "query_count": 12
+}

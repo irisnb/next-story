@@ -1,0 +1,969 @@
+{
+  "schema_version": 1,
+  "tier": "50k",
+  "material_name": "北境邮差",
+  "material_version": "1",
+  "material_hash": "sha256:390fbfdfee7b7bb371f4fd4d81d6bd938a5d3e767b8e50ff4157e526011a0bdf",
+  "entities": [
+    {
+      "id": "e1",
+      "name": "陈渡",
+      "role": "主角，邮差"
+    },
+    {
+      "id": "e2",
+      "name": "沈青梧",
+      "role": "青梧医馆医生"
+    },
+    {
+      "id": "e3",
+      "name": "阿黎",
+      "role": "陈渡的妹妹，教师"
+    },
+    {
+      "id": "e4",
+      "name": "陈桂芳",
+      "role": "陈渡的母亲，旧货铺老板"
+    },
+    {
+      "id": "e5",
+      "name": "陈大川",
+      "role": "陈渡的父亲，猎户"
+    },
+    {
+      "id": "e6",
+      "name": "小满",
+      "role": "青梧医馆学徒"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "c1",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "陈渡",
+      "statement": "陈渡出生在望山集，那里冬天会下很厚的雪。"
+    },
+    {
+      "id": "c2",
+      "chapter": 1,
+      "category": "similar-entity",
+      "entity": "阿黎",
+      "statement": "陈渡的妹妹阿黎在望山岗教书，兄妹俩靠书信往来。"
+    },
+    {
+      "id": "c3",
+      "chapter": 1,
+      "category": "distant-recall",
+      "entity": "陈渡",
+      "statement": "陈渡小时候喜欢在结冰的河面上滑冰。"
+    },
+    {
+      "id": "c4",
+      "chapter": 2,
+      "category": "distant-recall",
+      "entity": "陈渡",
+      "statement": "陈渡是北境的一名邮差，负责鹿角镇到望山集之间的邮路。"
+    },
+    {
+      "id": "c5",
+      "chapter": 3,
+      "category": "multi-turn-recall",
+      "entity": "沈青梧",
+      "statement": "沈青梧是青梧医馆的医生，医馆开在鹿角镇。"
+    },
+    {
+      "id": "c6",
+      "chapter": 3,
+      "category": "false-premise",
+      "entity": "陈渡",
+      "statement": "陈渡有一块旧怀表，是父亲留给他的。"
+    },
+    {
+      "id": "c7",
+      "chapter": 4,
+      "category": "cross-chapter-relation",
+      "entity": "陈桂芳",
+      "statement": "陈渡的母亲叫陈桂芳，在望山集经营一家旧货铺。"
+    },
+    {
+      "id": "c8",
+      "chapter": 5,
+      "category": "version-conflict",
+      "entity": "陈渡",
+      "statement": "陈渡原本在城西的邮局做分拣，后来主动申请调去了偏远的鹿角镇邮路。"
+    },
+    {
+      "id": "c9",
+      "chapter": 6,
+      "category": "distant-recall",
+      "entity": "陈大川",
+      "statement": "陈渡的父亲叫陈大川，曾是北境的一名猎户。"
+    },
+    {
+      "id": "c10",
+      "chapter": 6,
+      "category": "false-premise",
+      "entity": "陈渡",
+      "statement": "父亲留下的那封信，陈渡一直没拆，信封已经泛黄。"
+    },
+    {
+      "id": "c11",
+      "chapter": 7,
+      "category": "cross-chapter-relation",
+      "entity": "小满",
+      "statement": "小满是青梧医馆的学徒，跟着沈青梧学医已经三年。"
+    },
+    {
+      "id": "c12",
+      "chapter": 8,
+      "category": "similar-entity",
+      "entity": "望山岗",
+      "statement": "望山岗和望山集相隔很远，名字相近，常被寄错信。"
+    },
+    {
+      "id": "c13",
+      "chapter": 9,
+      "category": "false-premise",
+      "entity": "陈渡",
+      "statement": "陈渡曾想把旧怀表拿去城东的当铺换钱，犹豫再三，还是没有去。"
+    },
+    {
+      "id": "c14",
+      "chapter": 10,
+      "category": "version-conflict",
+      "entity": "鹿角镇",
+      "statement": "鹿角镇那座废弃的老磨坊去年被改成了邮局的仓库。"
+    },
+    {
+      "id": "c15",
+      "chapter": 11,
+      "category": "similar-entity",
+      "entity": "阿黎",
+      "statement": "阿黎在信里说，望山岗的学校只有她一个老师。"
+    },
+    {
+      "id": "c16",
+      "chapter": 12,
+      "category": "cross-chapter-relation",
+      "entity": "沈青梧",
+      "statement": "沈青梧是陈桂芳的外甥女，小时候常来旧货铺帮忙。"
+    },
+    {
+      "id": "c17",
+      "chapter": 13,
+      "category": "cross-chapter-relation",
+      "entity": "小满",
+      "statement": "小满是沈青梧的侄子，从城里来投奔她学医。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "lc-50k-01",
+      "category": "distant-recall",
+      "description": "远距召回：出生地埋在第一章。",
+      "question": "陈渡的出生地是哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "望山集"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "望山岗"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-01-t1",
+        "lc-50k-01-t2",
+        "lc-50k-01-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-02",
+      "category": "distant-recall",
+      "description": "远距召回：童年爱好埋在第一章。",
+      "question": "陈渡小时候喜欢做什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "滑冰"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "滑雪",
+          "钓鱼"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-02-t1",
+        "lc-50k-02-t2",
+        "lc-50k-02-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-03",
+      "category": "distant-recall",
+      "description": "远距召回：父亲职业埋在第六章。",
+      "question": "陈渡的父亲是做什么的？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "猎户"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "渔夫",
+          "木匠"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第六章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-03-t1",
+        "lc-50k-03-t2",
+        "lc-50k-03-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-04",
+      "category": "distant-recall",
+      "description": "远距召回：职业埋在第二章。",
+      "question": "陈渡的职业是什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "邮差"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "医生",
+          "教师"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第二章"
+        ],
+        "riskTags": [
+          "distant-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-04-t1",
+        "lc-50k-04-t2",
+        "lc-50k-04-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-05",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：阿黎是妹妹（第一章）+ 陈桂芳是母亲（第四章），推出母女关系。",
+      "question": "阿黎和陈桂芳是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "女儿"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "儿媳",
+          "外甥女"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第四章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-05-t1",
+        "lc-50k-05-t2",
+        "lc-50k-05-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-06",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：沈青梧与陈桂芳的甥舅关系在第十二章点明。",
+      "question": "沈青梧和陈桂芳是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "外甥女"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "女儿",
+          "儿媳"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第四章",
+          "第十二章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-06-t1",
+        "lc-50k-06-t2",
+        "lc-50k-06-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-07",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：小满第七章为学徒、第十三章为侄子，需跨章还原身份。",
+      "question": "小满和沈青梧是什么关系？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "侄子"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "儿子",
+          "徒弟"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第七章",
+          "第十三章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-07-t1",
+        "lc-50k-07-t2",
+        "lc-50k-07-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-08",
+      "category": "cross-chapter-relation",
+      "description": "跨章关系：沈青梧在第三章出场为医生、第十二章点明与陈桂芳关系。",
+      "question": "沈青梧是谁？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "医生"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "教师",
+          "邮差"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章",
+          "第十二章"
+        ],
+        "riskTags": [
+          "cross-chapter-relation",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-08-t1",
+        "lc-50k-08-t2",
+        "lc-50k-08-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-09",
+      "category": "similar-entity",
+      "description": "相似实体：阿黎住望山岗，与陈渡住望山集一字之差。",
+      "question": "阿黎住在哪里？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "望山岗"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "望山集"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-09-t1",
+        "lc-50k-09-t2",
+        "lc-50k-09-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-10",
+      "category": "similar-entity",
+      "description": "相似实体：望山集与望山岗易混，陈渡住望山集而非望山岗。",
+      "question": "陈渡住在望山岗吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "望山集"
+          ],
+          "mustNegate": [
+            "望山岗"
+          ]
+        },
+        "wrongConclusions": [
+          "住在望山岗"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第八章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-10-t1",
+        "lc-50k-10-t2",
+        "lc-50k-10-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-11",
+      "category": "similar-entity",
+      "description": "相似实体：阿黎教书，与陈渡邮差不同，需区分兄妹二人。",
+      "question": "阿黎是做什么的？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "老师"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "邮差"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章",
+          "第十一章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-11-t1",
+        "lc-50k-11-t2",
+        "lc-50k-11-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-12",
+      "category": "similar-entity",
+      "description": "相似实体：陈渡的妹妹是阿黎，需与医馆学徒小满等其他人物区分。",
+      "question": "陈渡的妹妹叫什么名字？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "阿黎"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "小满",
+          "沈青梧"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第一章"
+        ],
+        "riskTags": [
+          "similar-entity",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-12-t1",
+        "lc-50k-12-t2",
+        "lc-50k-12-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-13",
+      "category": "version-conflict",
+      "description": "版本冲突：早期在城西邮局分拣，后来调到鹿角镇邮路。",
+      "question": "陈渡现在负责哪里的邮路？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "鹿角镇"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "城西的邮局"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第二章",
+          "第五章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-13-t1",
+        "lc-50k-13-t2",
+        "lc-50k-13-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-14",
+      "category": "version-conflict",
+      "description": "版本冲突：已离开城西邮局，应否定旧岗位。",
+      "question": "陈渡现在还在城西的邮局工作吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "鹿角镇"
+          ],
+          "mustNegate": [
+            "城西的邮局"
+          ]
+        },
+        "wrongConclusions": [
+          "还在城西的邮局"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第五章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-14-t1",
+        "lc-50k-14-t2",
+        "lc-50k-14-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-15",
+      "category": "version-conflict",
+      "description": "版本冲突：老磨坊已改为邮局仓库。",
+      "question": "鹿角镇的老磨坊现在是什么？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "仓库"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "磨坊"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第十章"
+        ],
+        "riskTags": [
+          "version-conflict",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-15-t1",
+        "lc-50k-15-t2",
+        "lc-50k-15-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-16",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未提及陈渡的妻子。",
+      "question": "陈渡的妻子叫什么名字？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-16-t1",
+        "lc-50k-16-t2",
+        "lc-50k-16-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-17",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未给出陈渡的年龄。",
+      "question": "陈渡今年多大年纪？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-17-t1",
+        "lc-50k-17-t2",
+        "lc-50k-17-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-18",
+      "category": "unknown-fact",
+      "description": "未知事实：材料未说明医馆的经营年限。",
+      "question": "青梧医馆开了多少年？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [],
+          "mustNegate": []
+        },
+        "wrongConclusions": [],
+        "allowedUncertainty": [
+          "未知",
+          "未提及"
+        ],
+        "evidenceLocations": [
+          "全文"
+        ],
+        "riskTags": [
+          "unknown-fact",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-18-t1",
+        "lc-50k-18-t2",
+        "lc-50k-18-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-19",
+      "category": "false-premise",
+      "description": "错误前提纠正：怀表是父亲留下的，而非母亲。",
+      "question": "陈渡的旧怀表是母亲留给他的吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "父亲"
+          ],
+          "mustNegate": [
+            "母亲"
+          ]
+        },
+        "wrongConclusions": [
+          "母亲留的"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章",
+          "第四章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-19-t1",
+        "lc-50k-19-t2",
+        "lc-50k-19-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-20",
+      "category": "false-premise",
+      "description": "错误前提纠正：问题误以为陈渡在望山岗负责邮路，实际是鹿角镇。",
+      "question": "陈渡是在望山岗负责邮路的吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "鹿角镇"
+          ],
+          "mustNegate": [
+            "望山岗"
+          ]
+        },
+        "wrongConclusions": [
+          "在望山岗"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第二章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-20-t1",
+        "lc-50k-20-t2",
+        "lc-50k-20-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-21",
+      "category": "false-premise",
+      "description": "错误前提纠正：信从未拆开。",
+      "question": "陈渡把父亲留下的信拆开看了吗？",
+      "steps": [],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "没拆"
+          ],
+          "mustNegate": [
+            "拆开"
+          ]
+        },
+        "wrongConclusions": [
+          "拆开看了"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第六章"
+        ],
+        "riskTags": [
+          "false-premise",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-21-t1",
+        "lc-50k-21-t2",
+        "lc-50k-21-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-22",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回怀表来源。",
+      "question": "陈渡的怀表是谁留给他的？",
+      "steps": [
+        {
+          "text": "我之前问过陈渡的怀表，你还记得吗？"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "父亲"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "母亲",
+          "沈青梧"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-22-t1",
+        "lc-50k-22-t2",
+        "lc-50k-22-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-23",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回医馆医生。",
+      "question": "青梧医馆的医生是谁？",
+      "steps": [
+        {
+          "text": "你前面提到了青梧医馆，能再想想吗？"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "沈青梧"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "小满",
+          "陈桂芳"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第三章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-23-t1",
+        "lc-50k-23-t2",
+        "lc-50k-23-t3"
+      ]
+    },
+    {
+      "id": "lc-50k-24",
+      "category": "multi-turn-recall",
+      "description": "多轮召回：经前置追问后召回父亲姓名。",
+      "question": "陈渡的父亲叫什么名字？",
+      "steps": [
+        {
+          "text": "之前聊过陈渡的父亲，再帮我回忆一下。"
+        }
+      ],
+      "expect": {
+        "factBoundary": {
+          "mustContain": [
+            "陈大川"
+          ],
+          "mustNegate": []
+        },
+        "wrongConclusions": [
+          "陈桂芳",
+          "陈渡"
+        ],
+        "allowedUncertainty": [],
+        "evidenceLocations": [
+          "第六章"
+        ],
+        "riskTags": [
+          "multi-turn-recall",
+          "long-context"
+        ]
+      },
+      "trial_count": 3,
+      "trial_ids": [
+        "lc-50k-24-t1",
+        "lc-50k-24-t2",
+        "lc-50k-24-t3"
+      ]
+    }
+  ],
+  "query_count": 24
+}

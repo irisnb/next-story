@@ -172,7 +172,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "望山岗"
+          "出生在望山岗"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -439,7 +439,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "望山集"
+          "住在望山集"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -469,7 +469,7 @@
             "望山集"
           ],
           "mustNegate": [
-            "望山岗"
+            "住在望山岗"
           ]
         },
         "wrongConclusions": [
@@ -539,8 +539,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "小满",
-          "沈青梧"
+          "妹妹叫小满",
+          "妹妹叫沈青梧"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -572,7 +572,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "城西的邮局"
+          "在城西的邮局工作"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -603,7 +603,7 @@
             "鹿角镇"
           ],
           "mustNegate": [
-            "城西的邮局"
+            "在城西的邮局工作"
           ]
         },
         "wrongConclusions": [
@@ -639,7 +639,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "磨坊"
+          "还是磨坊"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -762,11 +762,11 @@
             "父亲"
           ],
           "mustNegate": [
-            "母亲"
+            "母亲留给他的"
           ]
         },
         "wrongConclusions": [
-          "母亲留的"
+          "母亲留给他的"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -797,11 +797,11 @@
             "鹿角镇"
           ],
           "mustNegate": [
-            "望山岗"
+            "在望山岗负责邮路"
           ]
         },
         "wrongConclusions": [
-          "在望山岗"
+          "在望山岗负责邮路"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -871,8 +871,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "母亲",
-          "沈青梧"
+          "母亲留给他的",
+          "沈青梧留给他的"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -908,8 +908,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "小满",
-          "陈桂芳"
+          "医生是小满",
+          "医生是陈桂芳"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -945,8 +945,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "陈桂芳",
-          "陈渡"
+          "父亲叫陈桂芳",
+          "父亲叫陈渡"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [

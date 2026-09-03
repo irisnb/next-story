@@ -85,7 +85,7 @@ export const STORY_SPECS = {
         question: "苏晚的出生地是哪里？",
         expect: {
           factBoundary: { mustContain: ["盐镇"], mustNegate: [] },
-          wrongConclusions: ["盐城"],
+          wrongConclusions: ["出生在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["distant-recall"],
@@ -137,7 +137,7 @@ export const STORY_SPECS = {
         question: "苏蔓住在哪里？",
         expect: {
           factBoundary: { mustContain: ["盐城"], mustNegate: [] },
-          wrongConclusions: ["盐镇"],
+          wrongConclusions: ["住在盐镇"],
           allowedUncertainty: [],
           evidenceLocations: ["第二章"],
           riskTags: ["similar-entity"],
@@ -149,7 +149,7 @@ export const STORY_SPECS = {
         description: "相似实体：盐镇与盐城易混，苏晚住盐镇而非盐城。",
         question: "苏晚住在盐城吗？",
         expect: {
-          factBoundary: { mustContain: ["盐镇"], mustNegate: ["盐城"] },
+          factBoundary: { mustContain: ["盐镇"], mustNegate: ["住在盐城"] },
           wrongConclusions: ["住在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第二章"],
@@ -163,7 +163,7 @@ export const STORY_SPECS = {
         question: "苏晚现在在哪里工作？",
         expect: {
           factBoundary: { mustContain: ["出版社"], mustNegate: [] },
-          wrongConclusions: ["盐镇中学"],
+          wrongConclusions: ["在盐镇中学教书"],
           allowedUncertainty: [],
           evidenceLocations: ["第六章"],
           riskTags: ["version-conflict"],
@@ -175,7 +175,7 @@ export const STORY_SPECS = {
         description: "版本冲突：工作已从盐镇中学变为出版社，应否定旧工作。",
         question: "苏晚现在还在盐镇中学教书吗？",
         expect: {
-          factBoundary: { mustContain: ["出版社"], mustNegate: ["盐镇中学"] },
+          factBoundary: { mustContain: ["出版社"], mustNegate: ["在盐镇中学教书"] },
           wrongConclusions: ["还在盐镇中学"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章", "第六章"],
@@ -214,8 +214,8 @@ export const STORY_SPECS = {
         description: "错误前提纠正：问题误以为摄影展在城东的画廊，正确地点是城西的文化馆。",
         question: "苏晚的摄影展是在城东的画廊举办的吗？",
         expect: {
-          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["城东的画廊"] },
-          wrongConclusions: ["城东的画廊"],
+          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["在城东的画廊举办"] },
+          wrongConclusions: ["在城东的画廊举办"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["false-premise"],
@@ -229,7 +229,7 @@ export const STORY_SPECS = {
         steps: [{ text: "我之前问过苏晚的怀表，你还记得吗？" }],
         expect: {
           factBoundary: { mustContain: ["外婆"], mustNegate: [] },
-          wrongConclusions: ["母亲", "沈砚"],
+          wrongConclusions: ["母亲留给她的", "沈砚留给她的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
           riskTags: ["multi-turn-recall"],
@@ -326,7 +326,7 @@ export const STORY_SPECS = {
         question: "陆遥的出生地是哪里？",
         expect: {
           factBoundary: { mustContain: ["白鹭镇"], mustNegate: [] },
-          wrongConclusions: ["白鹭洲"],
+          wrongConclusions: ["出生在白鹭洲"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["distant-recall"],
@@ -404,7 +404,7 @@ export const STORY_SPECS = {
         question: "陆远住在哪里？",
         expect: {
           factBoundary: { mustContain: ["白鹭洲"], mustNegate: [] },
-          wrongConclusions: ["白鹭镇"],
+          wrongConclusions: ["住在白鹭镇"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["similar-entity"],
@@ -416,7 +416,7 @@ export const STORY_SPECS = {
         description: "相似实体：白鹭镇与白鹭洲易混，陆遥住白鹭镇而非白鹭洲。",
         question: "陆遥住在白鹭洲吗？",
         expect: {
-          factBoundary: { mustContain: ["白鹭镇"], mustNegate: ["白鹭洲"] },
+          factBoundary: { mustContain: ["白鹭镇"], mustNegate: ["住在白鹭洲"] },
           wrongConclusions: ["住在白鹭洲"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第二章"],
@@ -443,7 +443,7 @@ export const STORY_SPECS = {
         question: "陆遥现在在哪里工作？",
         expect: {
           factBoundary: { mustContain: ["摄影工作室"], mustNegate: [] },
-          wrongConclusions: ["印刷厂"],
+          wrongConclusions: ["在印刷厂工作"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["version-conflict"],
@@ -455,7 +455,7 @@ export const STORY_SPECS = {
         description: "版本冲突：已离开印刷厂，应否定旧工作。",
         question: "陆遥现在还在印刷厂工作吗？",
         expect: {
-          factBoundary: { mustContain: ["摄影工作室"], mustNegate: ["印刷厂"] },
+          factBoundary: { mustContain: ["摄影工作室"], mustNegate: ["在印刷厂工作"] },
           wrongConclusions: ["还在印刷厂"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
@@ -469,7 +469,7 @@ export const STORY_SPECS = {
         question: "旧灯塔现在是什么？",
         expect: {
           factBoundary: { mustContain: ["观景台"], mustNegate: [] },
-          wrongConclusions: ["灯塔"],
+          wrongConclusions: ["还是灯塔"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第八章"],
           riskTags: ["version-conflict"],
@@ -507,8 +507,8 @@ export const STORY_SPECS = {
         description: "错误前提纠正：问题误以为摄影展在城东的画廊，正确地点是城西的文化馆。",
         question: "陆遥的摄影展是在城东的画廊举办的吗？",
         expect: {
-          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["城东的画廊"] },
-          wrongConclusions: ["城东的画廊"],
+          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["在城东的画廊举办"] },
+          wrongConclusions: ["在城东的画廊举办"],
           allowedUncertainty: [],
           evidenceLocations: ["第六章"],
           riskTags: ["false-premise"],
@@ -520,7 +520,7 @@ export const STORY_SPECS = {
         description: "错误前提纠正：相机是父亲留下的，而非母亲。",
         question: "那台老式相机是母亲留给陆遥的吗？",
         expect: {
-          factBoundary: { mustContain: ["父亲"], mustNegate: ["母亲"] },
+          factBoundary: { mustContain: ["父亲"], mustNegate: ["母亲留下的"] },
           wrongConclusions: ["母亲留下的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
@@ -535,7 +535,7 @@ export const STORY_SPECS = {
         steps: [{ text: "我之前问过陆遥的相机，你还记得吗？" }],
         expect: {
           factBoundary: { mustContain: ["父亲"], mustNegate: [] },
-          wrongConclusions: ["母亲", "顾成"],
+          wrongConclusions: ["母亲留下的", "顾成留下的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
           riskTags: ["multi-turn-recall"],
@@ -549,7 +549,7 @@ export const STORY_SPECS = {
         steps: [{ text: "你前面提到了回声旅馆，能再想想吗？" }],
         expect: {
           factBoundary: { mustContain: ["江眠"], mustNegate: [] },
-          wrongConclusions: ["陆芸", "白露"],
+          wrongConclusions: ["老板娘是陆芸", "老板娘是白露"],
           allowedUncertainty: [],
           evidenceLocations: ["第二章"],
           riskTags: ["multi-turn-recall"],
@@ -678,7 +678,7 @@ export const STORY_SPECS = {
         question: "陈渡的出生地是哪里？",
         expect: {
           factBoundary: { mustContain: ["望山集"], mustNegate: [] },
-          wrongConclusions: ["望山岗"],
+          wrongConclusions: ["出生在望山岗"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["distant-recall"],
@@ -782,7 +782,7 @@ export const STORY_SPECS = {
         question: "阿黎住在哪里？",
         expect: {
           factBoundary: { mustContain: ["望山岗"], mustNegate: [] },
-          wrongConclusions: ["望山集"],
+          wrongConclusions: ["住在望山集"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["similar-entity"],
@@ -794,7 +794,7 @@ export const STORY_SPECS = {
         description: "相似实体：望山集与望山岗易混，陈渡住望山集而非望山岗。",
         question: "陈渡住在望山岗吗？",
         expect: {
-          factBoundary: { mustContain: ["望山集"], mustNegate: ["望山岗"] },
+          factBoundary: { mustContain: ["望山集"], mustNegate: ["住在望山岗"] },
           wrongConclusions: ["住在望山岗"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第八章"],
@@ -821,7 +821,7 @@ export const STORY_SPECS = {
         question: "陈渡的妹妹叫什么名字？",
         expect: {
           factBoundary: { mustContain: ["阿黎"], mustNegate: [] },
-          wrongConclusions: ["小满", "沈青梧"],
+          wrongConclusions: ["妹妹叫小满", "妹妹叫沈青梧"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["similar-entity"],
@@ -834,7 +834,7 @@ export const STORY_SPECS = {
         question: "陈渡现在负责哪里的邮路？",
         expect: {
           factBoundary: { mustContain: ["鹿角镇"], mustNegate: [] },
-          wrongConclusions: ["城西的邮局"],
+          wrongConclusions: ["在城西的邮局工作"],
           allowedUncertainty: [],
           evidenceLocations: ["第二章", "第五章"],
           riskTags: ["version-conflict"],
@@ -846,7 +846,7 @@ export const STORY_SPECS = {
         description: "版本冲突：已离开城西邮局，应否定旧岗位。",
         question: "陈渡现在还在城西的邮局工作吗？",
         expect: {
-          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["城西的邮局"] },
+          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["在城西的邮局工作"] },
           wrongConclusions: ["还在城西的邮局"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
@@ -860,7 +860,7 @@ export const STORY_SPECS = {
         question: "鹿角镇的老磨坊现在是什么？",
         expect: {
           factBoundary: { mustContain: ["仓库"], mustNegate: [] },
-          wrongConclusions: ["磨坊"],
+          wrongConclusions: ["还是磨坊"],
           allowedUncertainty: [],
           evidenceLocations: ["第十章"],
           riskTags: ["version-conflict"],
@@ -911,8 +911,8 @@ export const STORY_SPECS = {
         description: "错误前提纠正：怀表是父亲留下的，而非母亲。",
         question: "陈渡的旧怀表是母亲留给他的吗？",
         expect: {
-          factBoundary: { mustContain: ["父亲"], mustNegate: ["母亲"] },
-          wrongConclusions: ["母亲留的"],
+          factBoundary: { mustContain: ["父亲"], mustNegate: ["母亲留给他的"] },
+          wrongConclusions: ["母亲留给他的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章", "第四章"],
           riskTags: ["false-premise"],
@@ -924,8 +924,8 @@ export const STORY_SPECS = {
         description: "错误前提纠正：问题误以为陈渡在望山岗负责邮路，实际是鹿角镇。",
         question: "陈渡是在望山岗负责邮路的吗？",
         expect: {
-          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["望山岗"] },
-          wrongConclusions: ["在望山岗"],
+          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["在望山岗负责邮路"] },
+          wrongConclusions: ["在望山岗负责邮路"],
           allowedUncertainty: [],
           evidenceLocations: ["第二章"],
           riskTags: ["false-premise"],
@@ -952,7 +952,7 @@ export const STORY_SPECS = {
         steps: [{ text: "我之前问过陈渡的怀表，你还记得吗？" }],
         expect: {
           factBoundary: { mustContain: ["父亲"], mustNegate: [] },
-          wrongConclusions: ["母亲", "沈青梧"],
+          wrongConclusions: ["母亲留给他的", "沈青梧留给他的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
           riskTags: ["multi-turn-recall"],
@@ -966,7 +966,7 @@ export const STORY_SPECS = {
         steps: [{ text: "你前面提到了青梧医馆，能再想想吗？" }],
         expect: {
           factBoundary: { mustContain: ["沈青梧"], mustNegate: [] },
-          wrongConclusions: ["小满", "陈桂芳"],
+          wrongConclusions: ["医生是小满", "医生是陈桂芳"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
           riskTags: ["multi-turn-recall"],
@@ -980,7 +980,7 @@ export const STORY_SPECS = {
         steps: [{ text: "之前聊过陈渡的父亲，再帮我回忆一下。" }],
         expect: {
           factBoundary: { mustContain: ["陈大川"], mustNegate: [] },
-          wrongConclusions: ["陈桂芳", "陈渡"],
+          wrongConclusions: ["父亲叫陈桂芳", "父亲叫陈渡"],
           allowedUncertainty: [],
           evidenceLocations: ["第六章"],
           riskTags: ["multi-turn-recall"],
@@ -1000,6 +1000,8 @@ export const STORY_SPECS = {
       { name: "林蔓", role: "林晚的远房表妹，盐城茶馆老板" },
       { name: "陈屿", role: "城西出版社编辑，摄影展策展人" },
     ],
+    places: ["盐镇", "盐城", "雾港", "城西的文化馆", "城东的画廊", "城西的出版社", "退潮后的滩涂", "旧码头", "盐镇中学"],
+    objects: ["旧怀表", "老相机", "煤油灯", "贝壳"],
     chapters: [
       {
         number: 1,
@@ -1061,7 +1063,7 @@ export const STORY_SPECS = {
         question: "林晚的出生地是哪里？",
         expect: {
           factBoundary: { mustContain: ["盐镇"], mustNegate: [] },
-          wrongConclusions: ["盐城"],
+          wrongConclusions: ["出生在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章"],
           riskTags: ["distant-recall"],
@@ -1113,7 +1115,7 @@ export const STORY_SPECS = {
         question: "林蔓住在哪里？",
         expect: {
           factBoundary: { mustContain: ["盐城"], mustNegate: [] },
-          wrongConclusions: ["盐镇"],
+          wrongConclusions: ["住在盐镇"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
           riskTags: ["similar-entity"],
@@ -1125,7 +1127,7 @@ export const STORY_SPECS = {
         description: "相似实体：盐镇与盐城易混，林晚住盐镇而非盐城。",
         question: "林晚住在盐城吗？",
         expect: {
-          factBoundary: { mustContain: ["盐镇"], mustNegate: ["盐城"] },
+          factBoundary: { mustContain: ["盐镇"], mustNegate: ["住在盐城"] },
           wrongConclusions: ["住在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第三章"],
@@ -1139,7 +1141,7 @@ export const STORY_SPECS = {
         question: "林晚现在在哪里工作？",
         expect: {
           factBoundary: { mustContain: ["出版社"], mustNegate: [] },
-          wrongConclusions: ["盐镇中学"],
+          wrongConclusions: ["在盐镇中学教书"],
           allowedUncertainty: [],
           evidenceLocations: ["第六章"],
           riskTags: ["version-conflict"],
@@ -1151,7 +1153,7 @@ export const STORY_SPECS = {
         description: "版本冲突：工作已从盐镇中学变为出版社，应否定旧工作。",
         question: "林晚现在还在盐镇中学教书吗？",
         expect: {
-          factBoundary: { mustContain: ["出版社"], mustNegate: ["盐镇中学"] },
+          factBoundary: { mustContain: ["出版社"], mustNegate: ["在盐镇中学教书"] },
           wrongConclusions: ["还在盐镇中学"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章", "第六章"],
@@ -1190,8 +1192,8 @@ export const STORY_SPECS = {
         description: "错误前提纠正：问题误以为摄影展在城东的画廊，正确地点是城西的文化馆。",
         question: "林晚的摄影展是在城东的画廊举办的吗？",
         expect: {
-          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["城东的画廊"] },
-          wrongConclusions: ["城东的画廊"],
+          factBoundary: { mustContain: ["城西的文化馆"], mustNegate: ["在城东的画廊举办"] },
+          wrongConclusions: ["在城东的画廊举办"],
           allowedUncertainty: [],
           evidenceLocations: ["第七章"],
           riskTags: ["false-premise"],
@@ -1205,7 +1207,7 @@ export const STORY_SPECS = {
         steps: [{ text: "我之前问过林晚的怀表，你还记得吗？" }],
         expect: {
           factBoundary: { mustContain: ["外婆"], mustNegate: [] },
-          wrongConclusions: ["母亲", "沈砚"],
+          wrongConclusions: ["母亲留给她的", "沈砚留给她的"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["multi-turn-recall"],

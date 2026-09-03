@@ -156,7 +156,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "白鹭洲"
+          "出生在白鹭洲"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -356,7 +356,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "白鹭镇"
+          "住在白鹭镇"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -386,7 +386,7 @@
             "白鹭镇"
           ],
           "mustNegate": [
-            "白鹭洲"
+            "住在白鹭洲"
           ]
         },
         "wrongConclusions": [
@@ -456,7 +456,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "印刷厂"
+          "在印刷厂工作"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -486,7 +486,7 @@
             "摄影工作室"
           ],
           "mustNegate": [
-            "印刷厂"
+            "在印刷厂工作"
           ]
         },
         "wrongConclusions": [
@@ -522,7 +522,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "灯塔"
+          "还是灯塔"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -615,11 +615,11 @@
             "城西的文化馆"
           ],
           "mustNegate": [
-            "城东的画廊"
+            "在城东的画廊举办"
           ]
         },
         "wrongConclusions": [
-          "城东的画廊"
+          "在城东的画廊举办"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -649,7 +649,7 @@
             "父亲"
           ],
           "mustNegate": [
-            "母亲"
+            "母亲留下的"
           ]
         },
         "wrongConclusions": [
@@ -689,8 +689,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "母亲",
-          "顾成"
+          "母亲留下的",
+          "顾成留下的"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -726,8 +726,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "陆芸",
-          "白露"
+          "老板娘是陆芸",
+          "老板娘是白露"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [

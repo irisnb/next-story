@@ -154,6 +154,17 @@ test("未加引号的「否认偷书」识别为否定，不再判为直接断�
   assert.deepEqual(classifyPhraseOccurrences("她是在否认偷书。", "偷"), ["negated"]);
 });
 
+// ── 脱离/停止旧状态的语义否定词（fix-screener-false-failures 根因 A）────────────
+test("「辞去了盐镇中学的工作」中的盐镇中学判定为否定", () => {
+  assert.deepEqual(classifyPhraseOccurrences("她辞去了盐镇中学的工作。", "盐镇中学"), ["negated"]);
+});
+
+test("「离开了盐城」「放弃了教师岗位」识别为语义否定", () => {
+  assert.equal(classifyPhrase("林蔓离开了盐城。", "盐城"), "negated");
+  assert.equal(classifyPhrase("她放弃了教师岗位。", "教师"), "negated");
+  assert.equal(classifyPhrase("林晚不再教书了。", "教书"), "negated");
+});
+
 test("真实证据全文：引号内否定 + 「否认偷书」均判否定，PASS_LIKELY", () => {
   const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: ["承认偷了书"], allowedUncertainty: [] };
   const r = screenAnswer(expect, "没有。材料中林悦明确说「我没有偷那本书，我只是拿起来看了看」，她是在否认偷书，并解释自己只是拿起来看了看。");
@@ -174,4 +185,32 @@ test("detectUncertainty 区分显式未知与推断措辞", () => {
   assert.ok(detectUncertainty("她可能去了").hedge.length > 0);
   assert.equal(detectUncertainty("她去了上海").explicitUnknown.length, 0);
   assert.equal(detectUncertainty("她去了上海").hedge.length, 0);
+});
+
+// ── fix-screener-false-failures 回归：语义否定 + 裸词改命题 ──────────────────
+test("版本冲突：mustNegate 写完整命题后，正确回答不再误判 FAIL", () => {
+  // 旧数据 mustNegate:["盐镇中学"] 会被「辞去了盐镇中学的工作」误判为断言；
+  // 改为完整命题「在盐镇中学教书」后，正确回答命中「出版社」判 PASS。
+  const expect = { factBoundary: { mustContain: ["出版社"], mustNegate: ["在盐镇中学教书"] }, wrongConclusions: ["还在盐镇中学教书"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林晚已经不在盐镇中学教书了，她辞去了盐镇中学的工作，去了城西的出版社做美术编辑。");
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+  assert.ok(!r.reasons.some((x) => x.includes("断言了本应否定的旧事实")));
+});
+
+test("相似实体：mustNegate 写完整命题后，提及另一主体的盐城不再误判 FAIL", () => {
+  // 旧数据 mustNegate:["盐城"] 会被「林蔓搬去了盐城」误判为断言；
+  // 改为完整命题「住在盐城」后，正确回答只提「林蔓搬去盐城」不命中命题。
+  const expect = { factBoundary: { mustContain: ["盐镇"], mustNegate: ["住在盐城"] }, wrongConclusions: ["住在盐城"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "不是。林晚住在盐镇。她的远房表妹林蔓三年前搬去了盐城，在城里开茶馆。");
+  assert.notEqual(r.result, RESULT_FAIL_LIKELY);
+  assert.ok(!r.reasons.some((x) => x.includes("断言了本应否定的旧事实")));
+});
+
+test("传承链：wrongConclusions 写完整命题后，追述传承链不再误判 FAIL", () => {
+  // 旧数据 wrongConclusions:["母亲"] 会被「外婆留给母亲，母亲又留给她」误判；
+  // 改为完整命题「母亲留给她的」后，正确回答不命中该命题。
+  const expect = { factBoundary: { mustContain: ["外婆"], mustNegate: [] }, wrongConclusions: ["母亲留给她的", "沈砚留给她的"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林晚的怀表是外婆留给她的。怀表是外婆留给母亲的，母亲又留给了她。");
+  assert.notEqual(r.result, RESULT_FAIL_LIKELY);
+  assert.ok(!r.reasons.some((x) => x.includes("断言了明确错误结论")));
 });

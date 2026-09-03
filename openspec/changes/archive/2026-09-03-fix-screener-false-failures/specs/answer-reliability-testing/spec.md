@@ -1,47 +1,4 @@
-# answer-reliability-testing Specification
-
-## Purpose
-定义回答可靠性测试器的案例格式、真实 DSH driver 执行、证据保存、密钥保护、保守自动初筛和人工复核边界。
-## Requirements
-### Requirement: Structured reliability cases
-The tester SHALL load repeatable reliability cases from version-controlled JSON or JSONL files, and each case MUST identify its material version and hash, conversation steps, question, expected factual boundary, allowed uncertainty, explicitly wrong conclusions, evidence locations, and risk tags.
-
-#### Scenario: Load a valid case
-- **WHEN** the runner loads a case containing the required fields
-- **THEN** it SHALL validate the case and make it available for execution without changing the case file
-
-#### Scenario: Reject an incomplete case
-- **WHEN** a case is missing its identifier, material identity, or question
-- **THEN** the runner SHALL report a case validation error and SHALL NOT send that case to the DSH driver
-
-### Requirement: Real driver execution
-The tester SHALL execute selected cases through the existing JSONL DSH driver protocol and SHALL support single-turn, multi-turn, and version-specific case inputs without changing the production driver contract.
-
-#### Scenario: Execute a single-turn case
-- **WHEN** a valid single-turn case is selected and the driver completes its message
-- **THEN** the runner SHALL record the complete assistant response and the message terminal state
-
-#### Scenario: Execute a multi-turn case
-- **WHEN** a case contains multiple ordered conversation steps
-- **THEN** the runner SHALL send them in order within the same test session and SHALL associate each response with its case step
-
-### Requirement: Evidence preservation
-The tester SHALL write an independent evidence record for each case run containing the case identity, material identity, model and non-sensitive configuration summary, timing, protocol outcome, assistant responses, relevant event summary, automatic result, and result explanation.
-
-#### Scenario: Successful evidence record
-- **WHEN** a case finishes with a model response
-- **THEN** the evidence record SHALL be readable without rerunning the model and SHALL contain the complete response text
-
-#### Scenario: Runtime failure evidence
-- **WHEN** the driver times out, exits early, emits a protocol error, or returns a failed message
-- **THEN** the evidence record SHALL preserve the failure category and diagnostic message and SHALL distinguish it from a model-answer failure
-
-### Requirement: Secret protection
-The tester SHALL require the API key through the existing environment-based configuration and SHALL NOT write the key into cases, reports, evidence, stdout summaries, or stderr diagnostics.
-
-#### Scenario: Key does not enter evidence
-- **WHEN** a case is executed with an API key configured
-- **THEN** no evidence field or serialized diagnostic SHALL contain the key value
+## MODIFIED Requirements
 
 ### Requirement: Conservative automatic screening
 The tester SHALL produce one of `PASS_LIKELY`, `FAIL_LIKELY`, `NEEDS_REVIEW`, or `RUNTIME_ERROR`, and SHALL use `NEEDS_REVIEW` whenever the available deterministic evidence cannot safely distinguish a correct answer from a negation, quotation, uncertainty, or fact-versus-inference ambiguity. When evaluating a target phrase, the screening rules SHALL consider all occurrences of that phrase in the answer: a quoted occurrence that is explicitly negated SHALL satisfy a required negation boundary only when no unquoted, affirmative occurrence contradicts it; a quoted or negated wrong conclusion SHALL NOT by itself produce `FAIL_LIKELY`. Negation detection SHALL recognize both direct negation markers and verbs that express leaving or stopping a prior state (such as 辞去、辞职、离职、离开、放弃、停止、不再、退出、卸任、终止、中断), so that an answer like 「辞去了盐镇中学的工作」 is treated as negating the superseded fact 「在盐镇中学教书」 rather than asserting it.
@@ -74,23 +31,7 @@ The tester SHALL produce one of `PASS_LIKELY`, `FAIL_LIKELY`, `NEEDS_REVIEW`, or
 - **WHEN** an answer expresses leaving or stopping a prior state with a verb such as 辞去、离开、放弃、停止、退出 or 不再 immediately before the superseded fact's phrase
 - **THEN** the screening SHALL treat that occurrence as negated and SHALL NOT classify the superseded fact as asserted
 
-### Requirement: Separate human review outcome
-The tester SHALL keep human review data separate from the automatic result and SHALL support the review outcomes `MODEL_OK`, `MODEL_ERROR`, `SCORER_ERROR`, and `UNRESOLVED`.
-
-#### Scenario: Review an automatic failure
-- **WHEN** a reviewer determines that an automatic failure was caused by the scorer misreading a quotation or negation
-- **THEN** the record SHALL preserve the original automatic result and SHALL store `SCORER_ERROR` as the human outcome with reviewer reasoning
-
-### Requirement: Core reliability coverage
-The initial case set SHALL include version conflict, explicit negation, unknown or unmentioned information, quotation containing negation, fact-versus-inference distinction, multi-turn stale-fact conflict, post-compaction fact retention, and multi-scene or multi-hop relation cases.
-
-#### Scenario: Version conflict case
-- **WHEN** the same fact differs between v1 and v2 and the runner executes the v2 case
-- **THEN** the evidence SHALL identify the selected version and the screening rule SHALL check whether the answer incorrectly asserts the superseded fact
-
-#### Scenario: Unknown information case
-- **WHEN** the material does not establish an answer to the question
-- **THEN** the case SHALL allow an explicit uncertainty outcome and SHALL treat an unsupported definite assertion as a candidate reliability failure
+## ADDED Requirements
 
 ### Requirement: Proposition-level boundary phrases
 Each `mustNegate` and `wrongConclusions` entry SHALL be a complete proposition phrase that includes an action or relation word identifying the fact being negated or concluded, and SHALL NOT be a bare entity name used alone — a person name, place name, object name, or institution name. A bare entity name is one the model's correct answer legitimately mentions while explaining, contrasting, or tracing a relationship (for example 「林蔓住在盐城」 mentions 「盐城」, or 「外婆留给母亲」 mentions 「母亲」), so using it alone causes a false `FAIL_LIKELY`. A `mustNegate` phrase SHALL omit tense/aspect auxiliaries (such as 还在 or 仍然) so it can match the usual negation wording (for example `在盐镇中学教书` rather than `还在盐镇中学教书`).
@@ -102,4 +43,3 @@ Each `mustNegate` and `wrongConclusions` entry SHALL be a complete proposition p
 #### Scenario: Proposition phrase matches negation wording
 - **WHEN** a `mustNegate` phrase is a complete proposition without tense auxiliaries and the answer negates it with a direct marker or a leaving-a-state verb
 - **THEN** the screening SHALL treat the negation boundary as satisfied
-

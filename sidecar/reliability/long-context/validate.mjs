@@ -14,6 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { generateTier, materialHash, countChars, estimateTokens } from "./generator.mjs";
+import { STORY_SPECS } from "./story-specs.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = join(__dirname, "manifest.json");
@@ -105,6 +106,20 @@ export function validateTier(tierKey, manifest, material, oracle) {
 
   // 8. 裁判与材料一致
   push("oracle-material-hash", oracle.material_hash === material.hash, oracle.material_hash === material.hash ? "oracle 指向当前材料哈希" : `oracle=${oracle.material_hash} material=${material.hash}`);
+
+  // 9. 裸实体词：mustNegate/wrongConclusions 不得单独使用人名/地名/物名（正确回答会合法提及，导致误判）
+  const spec = STORY_SPECS[tierKey];
+  const entityNames = new Set([
+    ...(spec?.characters ?? []).map((c) => c.name),
+    ...(spec?.places ?? []),
+    ...(spec?.objects ?? []),
+  ]);
+  const bareEntities = queries.flatMap((q) => {
+    const fb = q.expect?.factBoundary ?? {};
+    const phrases = [...(fb.mustNegate ?? []), ...(q.expect?.wrongConclusions ?? [])];
+    return phrases.filter((p) => entityNames.has(p)).map((p) => `${q.id}:「${p}」`);
+  });
+  push("no-bare-entity-in-boundary", bareEntities.length === 0, bareEntities.length ? `裸实体词：${bareEntities.join("、")}` : "mustNegate/wrongConclusions 无裸实体词");
 
   return { tier: tierKey, ok: checks.every((c) => c.ok), checks };
 }

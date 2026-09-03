@@ -111,7 +111,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "盐城"
+          "出生在盐城"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -243,7 +243,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "盐镇"
+          "住在盐镇"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -273,7 +273,7 @@
             "盐镇"
           ],
           "mustNegate": [
-            "盐城"
+            "住在盐城"
           ]
         },
         "wrongConclusions": [
@@ -310,7 +310,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "盐镇中学"
+          "在盐镇中学教书"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -340,7 +340,7 @@
             "出版社"
           ],
           "mustNegate": [
-            "盐镇中学"
+            "在盐镇中学教书"
           ]
         },
         "wrongConclusions": [
@@ -437,11 +437,11 @@
             "城西的文化馆"
           ],
           "mustNegate": [
-            "城东的画廊"
+            "在城东的画廊举办"
           ]
         },
         "wrongConclusions": [
-          "城东的画廊"
+          "在城东的画廊举办"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -477,8 +477,8 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "母亲",
-          "沈砚"
+          "母亲留给她的",
+          "沈砚留给她的"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [

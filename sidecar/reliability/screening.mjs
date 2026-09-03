@@ -26,7 +26,8 @@ const EXPLICIT_UNKNOWN_MARKERS = [
 const HEDGE_MARKERS = ["可能", "也许", "或许", "大概", "似乎", "推测", "推断", "疑似", "大约", "也许不", "可能不"];
 
 // 否定词：出现在目标短语之前的窗口内，视为该短语被否定。
-const NEGATION_MARKERS = ["没有", "并未", "并非", "不是", "并不", "不曾", "从未", "没", "不", "非", "无", "未"];
+// 含中文"否认/否定"类明确否认动词，识别「否认偷书」这类否定表述（fix-negated-quotation-screening 后续根因）。
+const NEGATION_MARKERS = ["没有", "并未", "并非", "不是", "并不", "不曾", "从未", "否认", "否定", "没", "不", "非", "无", "未"];
 
 // 引号对：短语出现在引号内，视为引用而非模型自己的断言。
 const QUOTE_PAIRS = [
@@ -64,14 +65,22 @@ export function isQuoted(text, idx, len) {
   return false;
 }
 
-/** 短语出现位置之前的小窗口内是否含否定词。 */
+// 子句边界标点：否定作用域不跨越这些标点，避免「否认偷书，但其实偷了」的第二个「偷」被前文「否认」误判为否定。
+const CLAUSE_BOUNDARIES = ["，", "。", "；", "！", "？", "、", "：", "…", "\n"];
+
+/** 短语出现位置之前的小窗口内是否含否定词（不跨子句边界）。 */
 export function hasNegationBefore(text, idx) {
-  const window = text.slice(Math.max(0, idx - NEGATION_WINDOW), idx);
+  let window = text.slice(Math.max(0, idx - NEGATION_WINDOW), idx);
+  let lastBoundary = -1;
+  for (const b of CLAUSE_BOUNDARIES) {
+    lastBoundary = Math.max(lastBoundary, window.lastIndexOf(b));
+  }
+  if (lastBoundary >= 0) window = window.slice(lastBoundary + 1);
   return NEGATION_MARKERS.some((m) => window.includes(m));
 }
 
 /**
- * 对单个短语做三值判定：
+ * 对单个短语做三值判定（仅首次出现，公开返回形状保持稳定）：
  *   "asserted" 短语明确出现且未被否定、未被引用（模型自己的断言）
  *   "negated"  短语出现但被否定（"没去北京"中的"北京"）
  *   "quoted"   短语出现在引号内（引用，无法判定是否模型自己的结论）
@@ -84,6 +93,60 @@ export function classifyPhrase(text, phrase) {
   if (isQuoted(text, idx, phrase.length)) return "quoted";
   if (hasNegationBefore(text, idx)) return "negated";
   return "asserted";
+}
+
+/** 目标短语在文本中的所有出现位置（大小写不敏感，中文无影响）。找不到返回空数组。 */
+export function findPhraseOccurrences(text, phrase) {
+  if (!phrase || typeof phrase !== "string") return [];
+  const haystack = lower(text);
+  const needle = lower(phrase);
+  if (needle === "") return [];
+  const positions = [];
+  let start = 0;
+  while (true) {
+    const idx = haystack.indexOf(needle, start);
+    if (idx < 0) break;
+    positions.push(idx);
+    start = idx + needle.length;
+  }
+  return positions;
+}
+
+/**
+ * 对单次出现做细分分类（比 classifyPhrase 多一个"引用内否定"）：
+ *   "asserted"       未引用、未否定的直接断言（模型自己的立场）
+ *   "negated"        未引用、被否定的表达
+ *   "quoted"         引用内且引用内未否定（无法判定是否模型结论）
+ *   "quoted-negated" 引用内明确否定（"我没有偷书"中的"偷"）
+ */
+function classifyOccurrence(text, idx, len) {
+  const quoted = isQuoted(text, idx, len);
+  const negated = hasNegationBefore(text, idx);
+  if (quoted && negated) return "quoted-negated";
+  if (quoted) return "quoted";
+  if (negated) return "negated";
+  return "asserted";
+}
+
+/** 目标短语在文本中的所有出现逐次分类。找不到返回空数组。 */
+export function classifyPhraseOccurrences(text, phrase) {
+  return findPhraseOccurrences(text, phrase).map((idx) => classifyOccurrence(text, idx, lower(phrase).length));
+}
+
+/** 是否存在未被引用、未被否定的直接断言出现（模型自己的立场）。 */
+function hasAssertedOccurrence(text, phrase) {
+  return classifyPhraseOccurrences(text, phrase).some((c) => c === "asserted");
+}
+
+/**
+ * mustNegate 目标是否被满足：至少一次明确否定（含引用内否定），且没有未被引用、
+ * 未被否定的直接断言与之矛盾。引用否定「我没有偷书」可满足；「她说没偷，但她确实偷了」不可。
+ */
+function isNegationSatisfied(text, phrase) {
+  const occurrences = classifyPhraseOccurrences(text, phrase);
+  const negated = occurrences.some((c) => c === "negated" || c === "quoted-negated");
+  const affirmed = occurrences.some((c) => c === "asserted");
+  return negated && !affirmed;
 }
 
 /**
@@ -112,14 +175,14 @@ export function screenAnswer(expect, answer) {
     return { result: RESULT_FAIL_LIKELY, reasons: ["空回答（协议完成但无正文）"] };
   }
 
-  // 1. 明确错误结论被断言 → 直接失败
-  const assertedWrongs = wrongConclusions.filter((wc) => classifyPhrase(text, wc) === "asserted");
+  // 1. 明确错误结论被断言（未被引用、未被否定的直接断言）→ 直接失败
+  const assertedWrongs = wrongConclusions.filter((wc) => hasAssertedOccurrence(text, wc));
   if (assertedWrongs.length > 0) {
     return { result: RESULT_FAIL_LIKELY, reasons: [`断言了明确错误结论：${assertedWrongs.join("、")}`] };
   }
 
   // 2. 本应否定的旧事实被正向断言 → 直接失败（版本冲突 / 陈旧事实）
-  const affirmedOld = mustNegate.filter((f) => classifyPhrase(text, f) === "asserted");
+  const affirmedOld = mustNegate.filter((f) => hasAssertedOccurrence(text, f));
   if (affirmedOld.length > 0) {
     return { result: RESULT_FAIL_LIKELY, reasons: [`断言了本应否定的旧事实：${affirmedOld.join("、")}`] };
   }
@@ -146,13 +209,13 @@ export function screenAnswer(expect, answer) {
   // 4. 事实边界
   const reasons = [];
 
-  const missing = mustContain.filter((f) => classifyPhrase(text, f) !== "asserted");
+  const missing = mustContain.filter((f) => !hasAssertedOccurrence(text, f));
   if (missing.length > 0) reasons.push(`未明确命中预期事实：${missing.join("、")}`);
 
-  const unnegated = mustNegate.filter((f) => classifyPhrase(text, f) !== "negated");
+  const unnegated = mustNegate.filter((f) => !isNegationSatisfied(text, f));
   if (unnegated.length > 0) reasons.push(`未明确否定旧事实：${unnegated.join("、")}`);
 
-  const quotedWrongs = wrongConclusions.filter((wc) => classifyPhrase(text, wc) === "quoted");
+  const quotedWrongs = wrongConclusions.filter((wc) => classifyPhraseOccurrences(text, wc).some((c) => c === "quoted"));
   if (quotedWrongs.length > 0) reasons.push(`错误结论以引用形式出现，无法判定：${quotedWrongs.join("、")}`);
 
   if (reasons.length === 0) {

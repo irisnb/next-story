@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   classifyPhrase,
+  classifyPhraseOccurrences,
   detectUncertainty,
   screenAnswer,
   RESULT_PASS_LIKELY,
@@ -99,6 +100,72 @@ test("错误结论以引用形式出现进入人工复核", () => {
   const r = screenAnswer(expect, "林悦说：「我没有偷那本书」。");
   // "偷了那本书" 未出现（原文是「我没有偷那本书」），此处验证 detectUncertainty 与引用路径不误判
   assert.notEqual(r.result, RESULT_FAIL_LIKELY);
+});
+
+// ── 多次出现分类（fix-negated-quotation-screening 回归）────────────────────────
+test("直接否定满足 mustNegate，命中上海判 PASS_LIKELY（明确否定）", () => {
+  const expect = { factBoundary: { mustContain: ["上海"], mustNegate: ["北京"] }, wrongConclusions: ["去了北京"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦没有去北京，她去了上海。");
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+});
+
+test("引用中的明确否定满足 mustNegate，不再误报 NEEDS_REVIEW", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: ["承认偷了书"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦明确说“我没有偷那本书”，只是“拿起来看了看”，并未承认偷书。");
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+  assert.ok(!r.reasons.some((x) => x.includes("未明确否定")));
+});
+
+test("引用否定「我没有偷那本书」不产生缺否定理由", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: [], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦说：「我没有偷那本书」。");
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+});
+
+test("引用否定后又反向断言，不判 PASS_LIKELY（判 FAIL_LIKELY）", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: [], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦说“我没有偷那本书”，但她确实偷了。");
+  assert.equal(r.result, RESULT_FAIL_LIKELY);
+  assert.match(r.reasons.join("；"), /断言了本应否定的旧事实/);
+});
+
+test("错误结论仅以引用出现，不判 FAIL_LIKELY，进入人工复核", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: [] }, wrongConclusions: ["偷了那本书"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦说：「我偷了那本书」。");
+  assert.notEqual(r.result, RESULT_FAIL_LIKELY);
+  assert.equal(r.result, RESULT_NEEDS_REVIEW);
+});
+
+test("错误结论仅以否定出现，不判 FAIL_LIKELY", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: [] }, wrongConclusions: ["偷书"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "林悦没有偷书。");
+  assert.notEqual(r.result, RESULT_FAIL_LIKELY);
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+});
+
+test("classifyPhraseOccurrences 识别多次出现与引用内否定", () => {
+  assert.deepEqual(classifyPhraseOccurrences("林悦说“我没有偷那本书”，但她确实偷了。", "偷"), ["quoted-negated", "asserted"]);
+  assert.deepEqual(classifyPhraseOccurrences("林悦没有去北京，她去了上海。", "北京"), ["negated"]);
+  assert.deepEqual(classifyPhraseOccurrences("林悦去了上海。", "北京"), []);
+});
+
+// ── 中文否认动词「否认/否定」的识别（fix-negated-quotation-screening 后续根因）────
+test("未加引号的「否认偷书」识别为否定，不再判为直接断言", () => {
+  assert.deepEqual(classifyPhraseOccurrences("她是在否认偷书。", "偷"), ["negated"]);
+});
+
+test("真实证据全文：引号内否定 + 「否认偷书」均判否定，PASS_LIKELY", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: ["承认偷了书"], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "没有。材料中林悦明确说「我没有偷那本书，我只是拿起来看了看」，她是在否认偷书，并解释自己只是拿起来看了看。");
+  assert.equal(r.result, RESULT_PASS_LIKELY);
+  assert.ok(!r.reasons.some((x) => x.includes("断言了本应否定的旧事实")));
+});
+
+test("「否认偷书，但其实偷了」仍判 FAIL_LIKELY（否认后反向断言）", () => {
+  const expect = { factBoundary: { mustContain: [], mustNegate: ["偷"] }, wrongConclusions: [], allowedUncertainty: [] };
+  const r = screenAnswer(expect, "她否认偷书，但其实偷了。");
+  assert.equal(r.result, RESULT_FAIL_LIKELY);
+  assert.match(r.reasons.join("；"), /断言了本应否定的旧事实/);
 });
 
 // ── detectUncertainty 分离显式未知与推断措辞 ─────────────────────────────────

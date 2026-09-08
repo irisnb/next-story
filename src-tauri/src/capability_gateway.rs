@@ -31,6 +31,34 @@ pub const FORBIDDEN_TOOL_IDS: &[&str] = &[
     "skill-filesystem",
 ];
 
+/// 验证 harness 唯一暴露的受控只读作品工具名（任务 2.2/2.3/2.4 的边界锚点）。
+///
+/// AI 核心请求作品材料只能通过这些名字；任何其它工具名都拒绝。这些是产品级
+/// 只读能力名，不含任何写入、命令、联网、子 agent 语义。
+pub const READ_ONLY_STORY_TOOLS: &[&str] = &["story-list", "story-read", "story-snapshot"];
+
+/// 工具授权判定：把某个工具/能力名归入「只读作品」「永久禁用」「未知拒绝」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolAuthorization {
+    /// 受控只读作品能力（本 change 唯一新增放行的入口）。
+    ReadOnlyStory,
+    /// 永久禁用（文件 / 命令 / 联网 / 子 agent 等危险入口）。
+    Forbidden,
+    /// 未知工具：一律拒绝，绝不落入通用执行。
+    Unknown,
+}
+
+/// 判定一个工具/能力名是否被允许，以及属于哪一类。未知工具一律拒绝（fail closed）。
+pub fn authorize_tool(name: &str) -> ToolAuthorization {
+    if READ_ONLY_STORY_TOOLS.contains(&name) {
+        ToolAuthorization::ReadOnlyStory
+    } else if FORBIDDEN_TOOL_IDS.contains(&name) {
+        ToolAuthorization::Forbidden
+    } else {
+        ToolAuthorization::Unknown
+    }
+}
+
 /// 授权检查：判断某个核心能力是否被产品允许。
 ///
 /// 文本生成、流式与取消随常驻会话改造（resident-ai-session）落地并授权；
@@ -84,6 +112,38 @@ mod tests {
                 FORBIDDEN_TOOL_IDS.contains(&required),
                 "禁用清单缺少 {required}"
             );
+        }
+    }
+
+    #[test]
+    fn read_only_story_tools_are_authorized_and_never_forbidden() {
+        for name in READ_ONLY_STORY_TOOLS {
+            assert_eq!(authorize_tool(name), ToolAuthorization::ReadOnlyStory, "{name}");
+            assert!(
+                !FORBIDDEN_TOOL_IDS.contains(&name),
+                "只读工具不应出现在禁用清单: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn forbidden_and_unknown_tools_are_rejected() {
+        assert_eq!(authorize_tool("tool-fs"), ToolAuthorization::Forbidden);
+        assert_eq!(authorize_tool("tool-bash"), ToolAuthorization::Forbidden);
+        assert_eq!(authorize_tool("tool-subagent"), ToolAuthorization::Forbidden);
+        assert_eq!(authorize_tool("some-unknown-tool"), ToolAuthorization::Unknown);
+    }
+
+    #[test]
+    fn read_only_tool_names_carry_no_write_semantics() {
+        // 只读作品工具集合里不能出现任何写入/编辑语义的名字，守住「无写入能力」。
+        for name in READ_ONLY_STORY_TOOLS {
+            for write_hint in ["write", "save", "edit", "create", "delete", "move", "rename", "replace"] {
+                assert!(
+                    !name.contains(write_hint),
+                    "{name} 疑似含写入语义"
+                );
+            }
         }
     }
 }

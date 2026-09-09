@@ -166,6 +166,13 @@ pub fn next_id() -> u64 {
     COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+/// 消息终态索引键。键形状保持 `msg:` 前缀不变；`message_id` 现带讨论身份前缀
+/// （`{conversation_id}:msg-{n}`），含冒号也不改变键的生成方式——不同讨论的同序号
+/// 消息因前缀不同而天然落到不同键，互不冲突。
+fn message_key(message_id: &str) -> String {
+    format!("msg:{message_id}")
+}
+
 struct LiveProcess {
     child: Child,
     stdin: ChildStdin,
@@ -235,7 +242,7 @@ impl Inner {
                 self.deliver("ready", event);
             }
             DriverEvent::MessageDone { message_id, .. } | DriverEvent::MessageFailed { message_id, .. } => {
-                let key = format!("msg:{message_id}");
+                let key = message_key(message_id);
                 if !self.deliver(&key, event) {
                     eprintln!("dsh_driver: 无等待者的消息终态（{}）", key);
                 }
@@ -501,7 +508,7 @@ impl DshDriverManager {
         text: &str,
         timeout: Duration,
     ) -> Result<String, GenerateAiError> {
-        let key = format!("msg:{message_id}");
+        let key = message_key(message_id);
         let rx = self.register(&key);
         let cmd = DriverCommand::SendMessage {
             session_id: session_id.to_string(),
@@ -713,6 +720,19 @@ mod tests {
             assert_eq!(err.code, expected, "code={code}");
             assert!(!err.message.contains("raw detail"), "message 不得透传驱动原文");
         }
+    }
+
+    /// 任务 1.3：消息身份改为 `{conversation_id}:msg-{n}`（含冒号）后，
+    /// 终态索引键形状仍保持 `msg:` 前缀不变，两个不同讨论的同序号消息键不冲突。
+    #[test]
+    fn message_key_isolates_same_index_across_conversations() {
+        let key_a = message_key("conv-1725-aaaa:msg-1");
+        let key_b = message_key("conv-1725-bbbb:msg-1");
+
+        assert!(key_a.starts_with("msg:"), "键形状保持 msg: 前缀不变");
+        assert!(key_b.starts_with("msg:"));
+        assert_ne!(key_a, key_b, "两个不同讨论的同序号消息键不得冲突");
+        assert_eq!(message_key("conv-1725-aaaa:msg-1"), key_a);
     }
 
     #[test]

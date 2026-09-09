@@ -11,19 +11,18 @@ import {
 } from "./project-api.ts";
 import type { GenerateAiRequest, GenerateAiResult } from "./types.ts";
 
-export type { AiReplayTurn } from "./project-api.ts";
+export type { AiReplayOrigin, AiReplayTurn } from "./project-api.ts";
 
 /**
- * 常驻 AI 会话传输层（change: resident-ai-session）。
+ * 常驻 AI 会话传输层（change: resident-ai-session；本 change 升级为按讨论多会话）。
  *
- * 会话身份与传输状态收敛在本模块：驱动进程内维护对话历史，前端首轮发
- * 「问题 + 可选选区材料」（直接提问）或「只带选区材料」（及时召唤），
- * 追问只发新增问题；流式增量经 `"ai-delta"` 事件路由到订阅者，`done`
- * （命令返回的全文）是最终事实。本层同时记录当前对话的发起方式，
- * 崩溃恢复重放时把来源传给后端，按来源组装入口层提示词。
+ * 会话身份与传输状态收敛在本模块：驱动进程内为每个讨论维护一个会话（`Map<conversationId,
+ * sessionId>`），首轮发「问题 + 可选选区材料」（直接提问）或「只带选区材料」（及时召唤），
+ * 追问只发新增问题；流式增量经 `"ai-delta"` 事件路由到订阅者，`done`（命令返回的全文）是
+ * 最终事实。消息编号由全局计数器生成并拼成 `{conversation_id}:msg-{n}`，保证跨讨论唯一。
  *
- * 本层不接触面板状态与 DOM，也不持有任何写入草稿本或正本文的入口
- * （零写回边界）；所有依赖可注入，便于测试。
+ * 本层不接触面板状态与 DOM，也不持有任何写入草稿本或正本文的入口（零写回边界）；
+ * 所有依赖可注入，便于测试。
  */
 
 /** 当前流式传输的路由目标：只有匹配的增量才通知订阅者。 */
@@ -46,9 +45,10 @@ export interface ResidentSessionDependencies {
 
 /** 常驻会话传输层的公开接口（供编排层与测试注入使用）。 */
 export interface AiSessionTransport {
-  sendViaResidentSession(request: GenerateAiRequest): Promise<GenerateAiResult>;
-  endActiveSession(): void;
-  replayActiveSession(turns: readonly AiReplayTurn[]): Promise<void>;
+  sendViaResidentSession(conversationId: string, request: GenerateAiRequest): Promise<GenerateAiResult>;
+  endSession(conversationId: string): void;
+  endAllSessions(): void;
+  replaySession(conversationId: string, turns: readonly AiReplayTurn[], origin: AiReplayOrigin): Promise<void>;
   onStreamText(listener: (text: string) => void): () => void;
   onDriverLost(listener: () => void): () => void;
   installSessionEventRouting(): void;
@@ -70,12 +70,9 @@ function lastUserQuestionOf(
 
 export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly deps: Required<ResidentSessionDependencies>;
-  private activeSessionId: string | null = null;
-  private sessionStarted = false;
-  /** 当前对话的发起方式；随首轮请求记录，新建对话时重置。 */
-  private sessionOrigin: AiReplayOrigin | null = null;
+  private readonly sessions: Map<string, string> = new Map();
   private messageCounter = 0;
-  private currentStream: StreamTarget | null = null;
+  private readonly currentStreams: Map<string, StreamTarget> = new Map();
   private readonly streamListeners: Array<(text: string) => void> = [];
   private readonly driverLostListeners: Array<() => void> = [];
   private eventRoutingInstalled = false;
@@ -94,26 +91,21 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   }
 
   /** 无会话则分配新会话 ID 并启动；已有会话则复用（增量发送的前提）。 */
-  private async ensureSessionStarted(): Promise<string> {
-    if (this.sessionStarted && this.activeSessionId !== null) {
-      return this.activeSessionId;
-    }
+  private async ensureSessionStarted(conversationId: string): Promise<string> {
+    const existing = this.sessions.get(conversationId);
+    if (existing !== undefined) return existing;
     const sessionId = this.deps.newId();
     const result = await this.deps.startSession(sessionId);
     if (!result.ok) {
       throw new Error(result.error.message);
     }
-    this.activeSessionId = sessionId;
-    this.sessionStarted = true;
+    this.sessions.set(conversationId, sessionId);
     return sessionId;
   }
 
   /** 流式目标只在仍属于本次发送时清空：被更新的发送替换后不得误清。 */
-  private clearStreamTarget(sessionId: string, messageId: string): void {
-    const stream = this.currentStream;
-    if (stream !== null && stream.sessionId === sessionId && stream.messageId === messageId) {
-      this.currentStream = null;
-    }
+  private clearStreamTarget(messageId: string): void {
+    this.currentStreams.delete(messageId);
   }
 
   /**
@@ -122,13 +114,12 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
    * - `summon`：及时召唤首轮，空问题、只带选区材料（后端按召唤语义组装）；
    * - `follow_up`：只发 messages 中最后一条 user 消息（增量问题）。
    */
-  async sendViaResidentSession(request: GenerateAiRequest): Promise<GenerateAiResult> {
-    const sessionId = await this.ensureSessionStarted();
+  async sendViaResidentSession(conversationId: string, request: GenerateAiRequest): Promise<GenerateAiResult> {
+    const sessionId = await this.ensureSessionStarted(conversationId);
     this.messageCounter += 1;
-    const messageId = `msg-${this.messageCounter}`;
+    const messageId = `${conversationId}:msg-${this.messageCounter}`;
     if (request.kind === "direct_question") {
-      this.sessionOrigin = "direct_question";
-      this.currentStream = { sessionId, messageId };
+      this.currentStreams.set(messageId, { sessionId, messageId });
       try {
         return await this.deps.sendMessage(
           sessionId,
@@ -138,14 +129,12 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           request.selected_text,
         );
       } finally {
-        this.clearStreamTarget(sessionId, messageId);
+        this.clearStreamTarget(messageId);
       }
     }
     if (request.kind === "summon") {
-      this.sessionOrigin = "summon";
-      this.currentStream = { sessionId, messageId };
+      this.currentStreams.set(messageId, { sessionId, messageId });
       try {
-        // 召唤首轮：空问题、只带选区材料；前端不伪造默认问题文本。
         return await this.deps.sendMessage(
           sessionId,
           messageId,
@@ -154,47 +143,47 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           request.selected_text,
         );
       } finally {
-        this.clearStreamTarget(sessionId, messageId);
+        this.clearStreamTarget(messageId);
       }
     }
     const question = lastUserQuestionOf(request.messages);
-    this.currentStream = { sessionId, messageId };
+    this.currentStreams.set(messageId, { sessionId, messageId });
     try {
       return await this.deps.sendMessage(sessionId, messageId, "follow_up", question);
     } finally {
-      this.clearStreamTarget(sessionId, messageId);
+      this.clearStreamTarget(messageId);
     }
   }
 
-  /**
-   * 结束当前常驻会话并重置传输层状态（发起方式随会话一起重置）。
-   * `ai_end_session` 幂等且 fire-and-forget：失败被吞掉，不阻塞新建对话 /
-   * 作品切换。
-   */
-  endActiveSession(): void {
-    const sessionId = this.activeSessionId;
-    if (sessionId !== null && this.sessionStarted) {
-      void this.deps.endSession(sessionId).catch(() => {});
+  /** 结束某个讨论的常驻会话（`ai_end_session` 幂等且 fire-and-forget）。 */
+  endSession(conversationId: string): void {
+    const sessionId = this.sessions.get(conversationId);
+    if (sessionId === undefined) return;
+    this.sessions.delete(conversationId);
+    void this.deps.endSession(sessionId).catch(() => {});
+  }
+
+  /** 结束全部讨论的常驻会话（切换作品 / 应用退出）。 */
+  endAllSessions(): void {
+    for (const conversationId of [...this.sessions.keys()]) {
+      this.endSession(conversationId);
     }
-    this.activeSessionId = null;
-    this.sessionStarted = false;
-    this.sessionOrigin = null;
-    this.messageCounter = 0;
-    this.currentStream = null;
   }
 
   /**
    * 崩溃恢复：用新会话 ID 启动会话，重放显示历史并标记完成。
-   * 重放携带当前对话的发起方式（无记录时按直接提问处理），重放完成后
-   * 会话进入可继续追问状态。
+   * `origin` 携带讨论的发起方式，重放时按来源组装对应的入口层提示词。
    */
-  async replayActiveSession(turns: readonly AiReplayTurn[]): Promise<void> {
+  async replaySession(
+    conversationId: string,
+    turns: readonly AiReplayTurn[],
+    origin: AiReplayOrigin,
+  ): Promise<void> {
     const sessionId = this.deps.newId();
-    this.activeSessionId = sessionId;
     await this.deps.startSession(sessionId);
-    await this.deps.replayHistory(sessionId, [...turns], this.sessionOrigin ?? "direct_question");
+    await this.deps.replayHistory(sessionId, [...turns], origin);
     await this.deps.replayDone(sessionId);
-    this.sessionStarted = true;
+    this.sessions.set(conversationId, sessionId);
   }
 
   /** 订阅流式增量文本（仅匹配当前在途消息的增量会到达），返回退订函数。 */
@@ -220,14 +209,16 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     if (this.eventRoutingInstalled) return;
     this.eventRoutingInstalled = true;
     void this.deps.listenDelta((payload) => {
-      const stream = this.currentStream;
-      if (stream === null) return;
+      const stream = this.currentStreams.get(payload.message_id);
+      if (stream === undefined) return;
       if (payload.session_id !== stream.sessionId || payload.message_id !== stream.messageId) {
         return;
       }
       for (const listener of this.streamListeners) listener(payload.text);
     });
     void this.deps.listenDriverLost(() => {
+      // 驱动进程丢失：所有会话失效，清空会话映射。
+      this.sessions.clear();
       for (const listener of this.driverLostListeners) listener();
     });
   }

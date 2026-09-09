@@ -608,6 +608,182 @@
   color: var(--color-muted);
 }
 
+/* ========== 会话列表 & 保存失败提示（change: add-conversation-persistence-and-isolation） ========== */
+/* 保存失败：可见但不打断写作的窄提示条，沿用提醒语义色 */
+.ai-save-error {
+  color: var(--color-warning);
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ai-conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-conversation-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--border-hairline);
+}
+
+.ai-conversation-list-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+.ai-conversation-list-close {
+  align-self: auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ai-conversation-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-conversation-list-empty {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  padding: var(--space-2) 0;
+}
+
+.ai-conversation-list-item {
+  display: flex;
+  flex-direction: column;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-control-sm);
+  overflow: hidden;
+}
+
+.ai-conversation-list-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.ai-conversation-list-item.active {
+  border-color: var(--color-primary);
+}
+
+.ai-conversation-list-item-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.ai-conversation-list-item-title {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.ai-conversation-list-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.ai-conversation-list-item-time {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.ai-conversation-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-hairline);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.ai-conversation-status.is-muted { color: var(--color-muted); }
+.ai-conversation-status.is-primary { color: var(--color-primary); }
+.ai-conversation-status.is-success { color: var(--color-success); }
+.ai-conversation-status.is-danger { color: var(--color-danger); }
+.ai-conversation-status.is-warning { color: var(--color-warning); }
+
+.ai-conversation-list-delete {
+  align-self: flex-end;
+  margin: 0 var(--space-2) var(--space-2) 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  cursor: pointer;
+  box-shadow: var(--shadow-control-sm);
+  transition: background-color 0.15s;
+}
+
+.ai-conversation-list-delete:hover {
+  background: var(--color-surface-hover);
+}
+
+.ai-conversation-list-item.confirming {
+  border-color: var(--color-danger);
+}
+
+.ai-conversation-list-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-2) var(--space-3);
+}
+
+.ai-conversation-list-confirm-text {
+  margin-right: auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.ai-conversation-list-confirm .ai-panel-btn {
+  align-self: auto;
+  flex: none;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ai-panel-btn.danger {
+  color: var(--color-on-primary);
+  background: var(--color-danger);
+}
+
+.ai-panel-btn.danger:hover:not(:disabled) {
+  background: var(--color-danger);
+}
+
 .ai-follow-up-error,
 .ai-follow-up-form {
   display: flex;

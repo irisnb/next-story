@@ -1,7 +1,9 @@
 import type { AiPanelDom } from "./dom.ts";
 import { AiPanelScrollResetController } from "./ai-panel-scroll.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
-import { buildAiPanelView, type ConversationView } from "./ai-panel-view-model.ts";
+import { buildAiPanelView, type ConversationView, type AiPanelView } from "./ai-panel-view-model.ts";
+import type { ConversationSummary } from "./conversation-archive.ts";
+import type { ConversationListItem } from "./ai-panel-conversation-list.ts";
 
 export interface AiPanelActions {
   onRetry: () => void;
@@ -10,11 +12,15 @@ export interface AiPanelActions {
   onRetryFollowUp: () => Promise<boolean>;
   onEditFollowUp: (question: string) => Promise<boolean>;
   onSubmitDirectQuestion: (question: string) => Promise<boolean>;
-  /** 用户点击“新建对话”：结束当前对话并结束常驻 AI 会话。 */
+  /** 用户点击“新建对话”：开启一个新讨论并保留旧讨论为档案。 */
   onNewConversation: () => void;
   onRemoveDirectQuestionSelection: () => void;
   onDirectQuestionFocus: () => void;
   onOpenPanel: () => void;
+  /** 从会话列表重开一个讨论。 */
+  onOpenDiscussion: (summary: ConversationSummary) => void;
+  /** 删除一个讨论（独立动作，带确认步骤后触发）。 */
+  onDeleteDiscussion: (conversationId: string) => Promise<void>;
 }
 
 /**
@@ -69,9 +75,19 @@ export function setupAiPanel(
     directQuestionErrorMessage,
     directQuestionConfig,
     directQuestionGoConfig,
+    conversationListToggleBtn,
+    conversationList,
+    conversationListCloseBtn,
+    conversationListItems,
+    conversationListEmpty,
+    saveErrorBlock,
   } = dom;
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
+  // 会话列表是否展开（面板内的独立 UI 态，不属于可观察状态模型）。
+  let conversationListOpen = false;
+  // 正在确认删除的讨论身份；非 null 时该条目显示确认步骤。
+  let pendingDeleteId: string | null = null;
 
   // 吸底滚动（D4）：滚动事件只维护“贴底”布尔标记（阈值约 40px），
   // 跟随动作只在渲染后执行；用户上滚脱离贴底后完全不干预滚动。
@@ -88,6 +104,16 @@ export function setupAiPanel(
   goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
   collapseBtn.addEventListener("click", () => state.close());
   newConversationBtn.addEventListener("click", () => actions.onNewConversation());
+  conversationListToggleBtn.addEventListener("click", () => {
+    conversationListOpen = !conversationListOpen;
+    if (!conversationListOpen) pendingDeleteId = null;
+    render();
+  });
+  conversationListCloseBtn.addEventListener("click", () => {
+    conversationListOpen = false;
+    pendingDeleteId = null;
+    render();
+  });
   toggleBtn.addEventListener("click", () => {
     if (state.isOpen) {
       state.close();
@@ -183,10 +209,119 @@ export function setupAiPanel(
     }
   }
 
+  /** 从当前会话列表按身份取回原始摘要（供重开与删除动作消费）。 */
+  function conversationSummaryById(conversationId: string): ConversationSummary | undefined {
+    return state.conversations.find((summary) => summary.conversation_id === conversationId);
+  }
+
+  /** 点击会话条目：收起列表并重开该讨论。 */
+  function openConversationFromId(conversationId: string): void {
+    const summary = conversationSummaryById(conversationId);
+    if (!summary) return;
+    conversationListOpen = false;
+    pendingDeleteId = null;
+    actions.onOpenDiscussion(summary);
+    render();
+  }
+
+  /** 构建单个会话条目（含打开主体与删除入口/确认步骤）。 */
+  function buildConversationRow(item: ConversationListItem): HTMLElement {
+    const row = document.createElement("div");
+    row.classList.add("ai-conversation-list-item");
+    if (item.isActive) row.classList.add("active");
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.classList.add("ai-conversation-list-item-main");
+    openBtn.addEventListener("click", () => openConversationFromId(item.conversationId));
+
+    const title = document.createElement("span");
+    title.classList.add("ai-conversation-list-item-title");
+    title.textContent = item.title;
+
+    const meta = document.createElement("span");
+    meta.classList.add("ai-conversation-list-item-meta");
+    const time = document.createElement("span");
+    time.classList.add("ai-conversation-list-item-time");
+    time.textContent = item.timeLabel;
+    const status = document.createElement("span");
+    status.classList.add("ai-conversation-status", `is-${item.status.tone}`);
+    status.textContent = item.status.label;
+    meta.append(time, status);
+
+    openBtn.append(title, meta);
+    row.append(openBtn);
+
+    if (pendingDeleteId === item.conversationId) {
+      // 删除确认步骤：先问一句，确认后才真正删除。
+      row.classList.add("confirming");
+      const confirm = document.createElement("div");
+      confirm.classList.add("ai-conversation-list-confirm");
+      const prompt = document.createElement("span");
+      prompt.classList.add("ai-conversation-list-confirm-text");
+      prompt.textContent = "删除这个讨论？";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.classList.add("ai-panel-btn");
+      cancelBtn.textContent = "取消";
+      cancelBtn.addEventListener("click", () => {
+        pendingDeleteId = null;
+        render();
+      });
+      const confirmBtn = document.createElement("button");
+      confirmBtn.type = "button";
+      confirmBtn.classList.add("ai-panel-btn", "danger");
+      confirmBtn.textContent = "删除";
+      confirmBtn.addEventListener("click", () => {
+        const id = item.conversationId;
+        pendingDeleteId = null;
+        render();
+        void actions.onDeleteDiscussion(id);
+      });
+      confirm.append(prompt, cancelBtn, confirmBtn);
+      row.append(confirm);
+    } else {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.classList.add("ai-conversation-list-delete");
+      deleteBtn.title = "删除讨论";
+      deleteBtn.textContent = "删除";
+      deleteBtn.addEventListener("click", () => {
+        pendingDeleteId = item.conversationId;
+        render();
+      });
+      row.append(deleteBtn);
+    }
+
+    return row;
+  }
+
+  /** 渲染会话列表（条目、空状态、入口按钮可见性），并呈现保存失败提示。 */
+  function renderConversationList(view: AiPanelView): void {
+    conversationListToggleBtn.classList.toggle("hidden", view.conversations.length === 0);
+    conversationList.classList.toggle("hidden", !conversationListOpen);
+    conversationListEmpty.classList.toggle("hidden", view.conversations.length > 0);
+
+    if (conversationListOpen) {
+      conversationListItems.replaceChildren();
+      for (const item of view.conversations) {
+        conversationListItems.append(buildConversationRow(item));
+      }
+    }
+
+    saveErrorBlock.classList.toggle("hidden", view.saveError === null);
+    if (view.saveError !== null) {
+      saveErrorBlock.textContent = view.saveError;
+    }
+  }
+
   function render(): void {
     // 所有请求/对话的显示决策交给纯函数 view model 推导；本函数只负责把结构化
     // 结果落到既有 DOM 节点，并保留焦点、滚动、输入等交互态。
-    const view = buildAiPanelView(state.view, state.conversation);
+    const view = buildAiPanelView(state.view, state.conversation, {
+      conversations: state.conversations,
+      activeConversationId: state.activeConversationId,
+    });
 
     panel.classList.toggle("hidden", !view.panelVisible);
 
@@ -233,6 +368,8 @@ export function setupAiPanel(
     configBlock.classList.toggle("hidden", !view.configBlock);
 
     newConversationBtn.classList.toggle("hidden", !view.newConversationVisible);
+
+    renderConversationList(view);
 
     const followUpErrorView = view.followUpError;
     followUpError.classList.toggle("hidden", followUpErrorView === null);

@@ -27,7 +27,7 @@ function makeCoordinator(
   return { coordinator, events };
 }
 
-test("executes exactly one client call even when summoned repeatedly", async () => {
+test("executes exactly one client call for the same discussion even when summoned repeatedly", async () => {
   let calls = 0;
   const generate = async (text: string): Promise<GenerateAiResult> => {
     calls += 1;
@@ -38,7 +38,7 @@ test("executes exactly one client call even when summoned repeatedly", async () 
   const first = coordinator.request(snapshot("a"))!;
   const second = coordinator.request(snapshot("b"));
 
-  assert.equal(second, null, "第二个召唤不应执行");
+  assert.equal(second, null, "同一讨论（legacy 兜底身份）的第二个召唤不应执行");
   assert.equal(calls, 1, "只应发起一次生成调用");
   assert.equal(coordinator.busy, true);
 
@@ -115,7 +115,7 @@ test("applies the result when the project token is unchanged", async () => {
   assert.deepEqual(events, ["success:a:ok"]);
 });
 
-test("does not re-execute a second call while one is in flight even across snapshots", async () => {
+test("does not re-execute a second call while one is in flight for the same discussion", async () => {
   let calls = 0;
   let resolve!: (v: GenerateAiResult) => void;
   const generate = (): Promise<GenerateAiResult> =>
@@ -135,22 +135,20 @@ test("does not re-execute a second call while one is in flight even across snaps
   assert.equal(calls, 1);
 });
 
-test("shares the single-flight lock across structured follow-up requests", async () => {
+test("rejects a second structured request in the same discussion", async () => {
   let resolve!: (value: GenerateAiResult) => void;
   const requests: GenerateAiRequest[] = [];
   const coordinator = new AiRequestCoordinator(
     async (text) => ({ ok: true, content: `legacy:${text}` }),
     { onSuccess: () => {}, onError: () => {} },
     () => 1,
-    async (request) => {
+    async (_conversationId, request) => {
       requests.push(request);
-      return new Promise<GenerateAiResult>((r) => {
-        resolve = r;
-      });
+      return new Promise<GenerateAiResult>((r) => { resolve = r; });
     },
   );
 
-  const first = coordinator.requestStructured({ kind: "summon", selected_text: "锚点" }, { conversationId: 1 });
+  const first = coordinator.requestStructured({ kind: "summon", selected_text: "锚点" }, { conversationId: "1" });
   const second = coordinator.requestStructured({
     kind: "follow_up",
     selected_text: "锚点",
@@ -158,7 +156,7 @@ test("shares the single-flight lock across structured follow-up requests", async
       { role: "assistant", content: "首答" },
       { role: "user", content: "追问" },
     ],
-  }, { conversationId: 1, turnId: 1 });
+  }, { conversationId: "1", turnId: 1 });
   assert.notEqual(first, null);
   assert.equal(second, null);
   resolve({ ok: true, content: "答复" });
@@ -166,186 +164,49 @@ test("shares the single-flight lock across structured follow-up requests", async
   assert.deepEqual(requests, [{ kind: "summon", selected_text: "锚点" }]);
 });
 
-test("ignores a structured result when its conversation or turn identity is stale", async () => {
+test("different discussions generate in parallel without blocking each other", async () => {
+  let resolveA!: (value: GenerateAiResult) => void;
+  let resolveB!: (value: GenerateAiResult) => void;
+  const calls: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async (text) => ({ ok: true, content: `legacy:${text}` }),
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, id) => calls.push(`ok:${id.conversationId}`) },
+    () => 1,
+    async (conversationId) => {
+      calls.push(`start:${conversationId}`);
+      return new Promise<GenerateAiResult>((r) => {
+        if (conversationId === "a") resolveA = r;
+        else resolveB = r;
+      });
+    },
+  );
+
+  const first = coordinator.requestStructured({ kind: "summon", selected_text: "A" }, { conversationId: "a" });
+  const second = coordinator.requestStructured({ kind: "summon", selected_text: "B" }, { conversationId: "b" });
+  assert.notEqual(first, null);
+  assert.notEqual(second, null, "不同讨论的请求互不阻塞");
+
+  resolveA({ ok: true, content: "答复A" });
+  await first;
+  resolveB({ ok: true, content: "答复B" });
+  await second;
+  assert.deepEqual(calls, ["start:a", "start:b", "ok:a", "ok:b"]);
+});
+
+test("releaseStaleRequestOwnership invalidates in-flight results after a project switch", async () => {
   let resolve!: (value: GenerateAiResult) => void;
-  let identity: { conversationId: number; turnId?: number } | null = {
-    conversationId: 4,
-    turnId: 1,
-  };
   const events: string[] = [];
   const coordinator = new AiRequestCoordinator(
     async () => ({ ok: true, content: "legacy" }),
-    {
-      onSuccess: () => events.push("legacy-success"),
-      onError: () => events.push("legacy-error"),
-      onStructuredSuccess: () => events.push("follow-up-success"),
-      onStructuredError: () => events.push("follow-up-error"),
-    },
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: () => events.push("success") },
     () => 1,
     async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
-    () => identity,
   );
-
-  const pending = coordinator.requestStructured(
-    {
-      kind: "follow_up",
-      selected_text: "锚点",
-      messages: [
-        { role: "assistant", content: "首答" },
-        { role: "user", content: "问题" },
-      ],
-    },
-    { conversationId: 4, turnId: 1 },
-  );
-  identity = { conversationId: 5, turnId: 2 };
+  const pending = coordinator.requestStructured({ kind: "summon", selected_text: "锚点" }, { conversationId: "1" });
+  coordinator.releaseStaleRequestOwnership();
   resolve({ ok: true, content: "迟到" });
   await pending;
   assert.deepEqual(events, []);
-});
-
-async function runStructuredStaleCase(
-  initialIdentity: { conversationId: number; turnId: number },
-  currentIdentity: { conversationId: number; turnId: number },
-  changeProjectToken: boolean,
-): Promise<string[]> {
-  let resolve!: (value: GenerateAiResult) => void;
-  let projectToken = 1;
-  let identity: { conversationId: number; turnId?: number } | null = initialIdentity;
-  const events: string[] = [];
-  const coordinator = new AiRequestCoordinator(
-    async () => ({ ok: true, content: "legacy" }),
-    {
-      onSuccess: () => events.push("legacy-success"),
-      onError: () => events.push("legacy-error"),
-      onStructuredSuccess: () => events.push("success"),
-      onStructuredError: () => events.push("error"),
-    },
-    () => projectToken,
-    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
-    () => identity,
-  );
-  const pending = coordinator.requestStructured(
-    { kind: "follow_up", selected_text: "锚点", messages: [
-      { role: "assistant", content: "首答" },
-      { role: "user", content: "问题" },
-    ] },
-    initialIdentity,
-  );
-  identity = currentIdentity;
-  if (changeProjectToken) projectToken = 2;
-  resolve({ ok: true, content: "迟到" });
-  await pending;
-  return events;
-}
-
-test("structured follow-up ignores stale project token", async () => {
-  assert.deepEqual(await runStructuredStaleCase({ conversationId: 1, turnId: 1 }, { conversationId: 1, turnId: 1 }, true), []);
-});
-
-test("structured follow-up ignores stale conversation identity with same turn", async () => {
-  assert.deepEqual(await runStructuredStaleCase({ conversationId: 1, turnId: 1 }, { conversationId: 2, turnId: 1 }, false), []);
-});
-
-test("structured follow-up ignores stale turn identity with same conversation", async () => {
-  assert.deepEqual(await runStructuredStaleCase({ conversationId: 1, turnId: 1 }, { conversationId: 1, turnId: 2 }, false), []);
-});
-
-test("stale structured failure result is ignored independently", async () => {
-  let resolve!: (value: GenerateAiResult) => void;
-  let identity: { conversationId: number; turnId?: number } | null = {
-    conversationId: 1,
-    turnId: 1,
-  };
-  const events: string[] = [];
-  const coordinator = new AiRequestCoordinator(
-    async () => ({ ok: true, content: "legacy" }),
-    {
-      onSuccess: () => {},
-      onError: () => {},
-      onStructuredError: () => events.push("error"),
-    },
-    () => 1,
-    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
-    () => identity,
-  );
-  const pending = coordinator.requestStructured(
-    { kind: "follow_up", selected_text: "锚点", messages: [
-      { role: "assistant", content: "首答" },
-      { role: "user", content: "问题" },
-    ] },
-    { conversationId: 1, turnId: 1 },
-  );
-  identity = { conversationId: 1, turnId: 2 };
-  resolve({ ok: false, error: authError });
-  await pending;
-  assert.deepEqual(events, []);
-});
-
-test("stale structured promise rejection is ignored without an error callback", async () => {
-  let reject!: (reason: Error) => void;
-  let identity: { conversationId: number; turnId?: number } | null = {
-    conversationId: 1,
-    turnId: 1,
-  };
-  const events: string[] = [];
-  const coordinator = new AiRequestCoordinator(
-    async () => ({ ok: true, content: "legacy" }),
-    {
-      onSuccess: () => {},
-      onError: () => {},
-      onStructuredError: () => events.push("error"),
-    },
-    () => 1,
-    async () => new Promise<GenerateAiResult>((_resolve, rejectPromise) => { reject = rejectPromise; }),
-    () => identity,
-  );
-  const pending = coordinator.requestStructured(
-    { kind: "follow_up", selected_text: "锚点", messages: [
-      { role: "assistant", content: "首答" },
-      { role: "user", content: "问题" },
-    ] },
-    { conversationId: 1, turnId: 1 },
-  );
-  identity = { conversationId: 2, turnId: 1 };
-  reject(new Error("transport failed"));
-  await pending;
-  assert.deepEqual(events, []);
-  assert.equal(coordinator.busy, false);
-});
-
-test("new accepted summon replacement invalidates an old structured follow-up result", async () => {
-  const state = new (await import("../src/ai-panel-state.ts")).AiPanelState();
-  const anchor = snapshot("相同锚点");
-  state.beginRequest(anchor);
-  state.succeed(anchor, "旧首答");
-  state.beginFollowUp("旧问题");
-  const oldIdentity = state.conversationIdentity;
-  assert.ok(oldIdentity?.turnId);
-
-  let resolve!: (value: GenerateAiResult) => void;
-  const events: string[] = [];
-  const coordinator = new AiRequestCoordinator(
-    async () => ({ ok: true, content: "first" }),
-    {
-      onSuccess: () => {},
-      onError: () => {},
-      onStructuredSuccess: () => events.push("stale-applied"),
-    },
-    () => 1,
-    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
-    () => state.conversationIdentity,
-  );
-  const pending = coordinator.requestStructured(state.followUpRequest()!, {
-    conversationId: oldIdentity.conversationId,
-    turnId: oldIdentity.turnId,
-  });
-  state.beginRequest(anchor);
-  resolve({ ok: true, content: "旧迟到结果" });
-  await pending;
-
-  assert.deepEqual(events, []);
-  assert.equal(state.view.request.kind, "loading");
-  assert.notEqual(state.view.request.conversationId, oldIdentity.conversationId);
 });
 
 test("direct question request routes success to the direct question callback", async () => {
@@ -417,7 +278,7 @@ test("direct question result is discarded after the project token changes", asyn
   assert.equal(coordinator.busy, false);
 });
 
-test("direct question request shares the single-flight lock with other requests", async () => {
+test("direct question request shares the single-flight lock with a same-discussion request", async () => {
   let resolve!: (value: GenerateAiResult) => void;
   const coordinator = new AiRequestCoordinator(
     async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
@@ -431,7 +292,7 @@ test("direct question request shares the single-flight lock with other requests"
     kind: "direct_question",
     question: "问题",
   });
-  assert.equal(blocked, null, "已有请求进行中，直接提问应被单飞拒绝");
+  assert.equal(blocked, null, "同一讨论（legacy 兜底身份）已有请求进行中，直接提问应被单飞拒绝");
   resolve({ ok: true, content: "r" });
   await first;
   assert.equal(coordinator.busy, false);

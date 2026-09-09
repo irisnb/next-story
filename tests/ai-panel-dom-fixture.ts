@@ -97,6 +97,8 @@ export const AI_PANEL_NODE_IDS = [
   "ai-direct-question-error", "ai-direct-question-error-message",
   "ai-direct-question-config", "ai-direct-question-go-config",
   "btn-toggle-ai",
+  "ai-conversation-list-toggle", "ai-conversation-list", "ai-conversation-list-close",
+  "ai-conversation-list-items", "ai-conversation-list-empty", "ai-save-error",
 ] as const;
 
 /**
@@ -153,6 +155,12 @@ export function createAiPanelDomFixture(): {
     directQuestionConfig: elements.get("ai-direct-question-config")!,
     directQuestionGoConfig: elements.get("ai-direct-question-go-config")!,
     welcome: elements.get("ai-welcome")!,
+    conversationListToggleBtn: elements.get("ai-conversation-list-toggle")!,
+    conversationList: elements.get("ai-conversation-list")!,
+    conversationListCloseBtn: elements.get("ai-conversation-list-close")!,
+    conversationListItems: elements.get("ai-conversation-list-items")!,
+    conversationListEmpty: elements.get("ai-conversation-list-empty")!,
+    saveErrorBlock: elements.get("ai-save-error")!,
   } as unknown as AiPanelDom;
 
   return { elements, dom };

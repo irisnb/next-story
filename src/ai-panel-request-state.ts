@@ -16,7 +16,7 @@ export type PanelRequestState =
   | {
       kind: "loading";
       snapshot: SelectionSnapshot | null;
-      conversationId?: number;
+      conversationId?: string;
       phase?: "first" | "follow_up";
       turnId?: number;
       /** 流式增量草稿（仅首轮 loading 阶段逐字追加；done 全文到达后整体替换）。 */
@@ -26,7 +26,7 @@ export type PanelRequestState =
       kind: "success";
       snapshot: SelectionSnapshot | null;
       response: string;
-      conversationId?: number;
+      conversationId?: string;
       phase?: "first" | "follow_up";
       turnId?: number;
     }
@@ -34,14 +34,14 @@ export type PanelRequestState =
       kind: "error";
       snapshot: SelectionSnapshot | null;
       error: GenerateAiError;
-      conversationId?: number;
+      conversationId?: string;
       phase?: "first" | "follow_up";
       turnId?: number;
     }
   | {
       kind: "configuration_required";
       snapshot: SelectionSnapshot | null;
-      conversationId?: number;
+      conversationId?: string;
       turnId?: number;
     }
   | {
@@ -56,7 +56,7 @@ export type PanelRequestState =
   | {
       kind: "recovering";
       snapshot: SelectionSnapshot | null;
-      conversationId: number;
+      conversationId: string;
     };
 
 export interface PanelStateView {
@@ -66,6 +66,8 @@ export interface PanelStateView {
   directQuestionDraft: string;
   /** 当前待附带的选区重点材料；无选区时为 null。 */
   pendingSelection: SelectionSnapshot | null;
+  /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
+  saveError: string | null;
 }
 
 export function idleRequest(): PanelRequestState {
@@ -82,7 +84,7 @@ export function firstBlockedRequest(snapshot: SelectionSnapshot | null): PanelRe
 
 export function firstLoadingRequest(
   snapshot: SelectionSnapshot | null,
-  conversationId: number,
+  conversationId: string,
 ): PanelRequestState {
   return { kind: "loading", snapshot, conversationId, phase: "first" };
 }
@@ -90,7 +92,7 @@ export function firstLoadingRequest(
 export function firstSuccessRequest(
   snapshot: SelectionSnapshot | null,
   response: string,
-  conversationId: number,
+  conversationId: string,
 ): PanelRequestState {
   return { kind: "success", snapshot, response, conversationId, phase: "first" };
 }
@@ -98,7 +100,7 @@ export function firstSuccessRequest(
 export function firstErrorRequest(
   snapshot: SelectionSnapshot | null,
   error: GenerateAiError,
-  identity: { conversationId?: number; phase?: "first" | "follow_up" } | null,
+  identity: { conversationId?: string; phase?: "first" | "follow_up" } | null,
 ): PanelRequestState {
   if (identity?.conversationId === undefined) {
     return { kind: "error", snapshot, error };
@@ -114,7 +116,7 @@ export function firstErrorRequest(
 
 export function configurationRequiredRequest(
   snapshot: SelectionSnapshot | null,
-  conversationId?: number,
+  conversationId?: string,
   turnId?: number,
 ): PanelRequestState {
   if (conversationId === undefined) {
@@ -128,7 +130,7 @@ export function configurationRequiredRequest(
 
 export function followUpLoadingRequest(
   snapshot: SelectionSnapshot | null,
-  conversationId: number,
+  conversationId: string,
   turnId: number,
 ): PanelRequestState {
   return {
@@ -143,7 +145,7 @@ export function followUpLoadingRequest(
 export function followUpSuccessRequest(
   snapshot: SelectionSnapshot | null,
   response: string,
-  conversationId: number,
+  conversationId: string,
   turnId: number,
 ): PanelRequestState {
   return {
@@ -159,7 +161,7 @@ export function followUpSuccessRequest(
 export function followUpErrorRequest(
   snapshot: SelectionSnapshot | null,
   error: GenerateAiError,
-  conversationId: number,
+  conversationId: string,
   turnId: number,
 ): PanelRequestState {
   return {
@@ -181,7 +183,7 @@ export function cancelFollowUpSuccessRequest(
 
 export function firstRetryLoadingRequest(
   snapshot: SelectionSnapshot | null,
-  conversationId: number,
+  conversationId: string,
 ): PanelRequestState {
   return {
     kind: "loading",
@@ -201,7 +203,7 @@ export function directQuestionLoadingRequest(
 /** 驱动进程丢失后的对话恢复状态：保留对话与锚点，显示“恢复对话中”。 */
 export function recoveringRequest(
   snapshot: SelectionSnapshot | null,
-  conversationId: number,
+  conversationId: string,
 ): PanelRequestState {
   return { kind: "recovering", snapshot, conversationId };
 }

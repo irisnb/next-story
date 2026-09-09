@@ -126,6 +126,9 @@ export interface StartSummonOptions {
   request: (request: Extract<GenerateAiRequest, { kind: "summon" }>) => Promise<void> | null;
   getProjectToken: () => number;
   preflight?: FirstRequestPreflightState;
+  /** 发起时关注文档身份（默认取快照的 documentId）。 */
+  focusDocumentId?: string | null;
+  focusDocumentTitle?: string | null;
 }
 
 /**
@@ -144,7 +147,12 @@ export function startSummon(options: StartSummonOptions): boolean {
   const frozen = frozenSnapshot(options.snapshot);
   const frozenToken = options.getProjectToken();
   if (preflight && !acquirePreflight(preflight, frozenToken)) return false;
-  options.state.beginRequest(frozen, { kind: "summon", selected_text: frozen.selectedText });
+  options.state.beginRequest(
+    frozen,
+    { kind: "summon", selected_text: frozen.selectedText },
+    options.focusDocumentId ?? frozen.documentId,
+    options.focusDocumentTitle ?? null,
+  );
   runFirstRoundPreflight({
     state: options.state,
     loadConfig: options.loadConfig,

@@ -73,7 +73,7 @@ test("first request preflight previews selection before requiring configuration"
   assert.deepEqual(trackedState.view.request, {
     kind: "configuration_required",
     snapshot: snap,
-    conversationId: 1,
+    conversationId: "1",
   });
   assert.deepEqual(state.view.request, { kind: "idle" });
 });
@@ -114,7 +114,7 @@ test("discards the preflight result when the project changes during config loadi
   assert.equal(requestedSnapshot, null, "不得把旧作品的冻结选区作为请求发出");
   assert.equal(preflight.owner, null);
   // 预检结果被丢弃：面板停留在预览态（作品切换后由应用层 reset），不进入 loading/error。
-  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: 1, phase: "first" });
+  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: "1", phase: "first" });
 });
 
 test("preflight failure after a project switch is discarded too", async () => {
@@ -145,7 +145,7 @@ test("preflight failure after a project switch is discarded too", async () => {
   await Promise.resolve();
   await Promise.resolve();
 
-  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: 1, phase: "first" });
+  assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: "1", phase: "first" });
 });
 
 test("a preflight invalidated by newConversation does not re-activate the cleared request", async () => {
@@ -327,7 +327,7 @@ test("retry enters loading only when the coordinator accepts the request", () =>
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: snap,
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
 });
@@ -434,7 +434,7 @@ test("preserves a failed follow-up as configuration-required without auto-reques
   assert.deepEqual(state.view.request, {
     kind: "configuration_required",
     snapshot: anchor,
-    conversationId: 1,
+    conversationId: "1",
     turnId: 1,
   });
   assert.equal(state.retryFollowUpQuestion(), "需要配置的问题");

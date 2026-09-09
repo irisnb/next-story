@@ -127,12 +127,22 @@
             <aside id="ai-panel" class="ai-panel hidden" aria-live="polite">
               <div class="ai-panel-header">
                 <span class="ai-panel-title">AI 思考</span>
-                <div class="ai-panel-header-actions">
-                  <button id="ai-new-conversation" class="ai-panel-btn hidden" type="button" title="新建对话">新建对话</button>
-                  <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
-                </div>
+              <div class="ai-panel-header-actions">
+                <button id="ai-conversation-list-toggle" class="ai-panel-btn hidden" type="button" title="会话列表">会话列表</button>
+                <button id="ai-new-conversation" class="ai-panel-btn hidden" type="button" title="新建对话">新建对话</button>
+                <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
+              </div>
               </div>
               <div class="ai-panel-body">
+                <div id="ai-save-error" class="ai-save-error hidden" role="status" aria-live="polite"></div>
+                <div id="ai-conversation-list" class="ai-conversation-list hidden" aria-label="会话列表">
+                  <div class="ai-conversation-list-header">
+                    <span class="ai-conversation-list-title">会话列表</span>
+                    <button id="ai-conversation-list-close" class="ai-panel-btn ai-conversation-list-close" type="button">收起</button>
+                  </div>
+                  <div id="ai-conversation-list-items" class="ai-conversation-list-items"></div>
+                  <div id="ai-conversation-list-empty" class="ai-conversation-list-empty hidden">还没有会话，直接提问开始一个讨论。</div>
+                </div>
                 <div id="ai-snapshot-block" class="ai-block hidden">
                   <div class="ai-block-label">本次选区</div>
                   <pre id="ai-snapshot-text" class="ai-snapshot"></pre>

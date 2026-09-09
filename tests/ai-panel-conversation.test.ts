@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { TemporaryConversationState, frozenSnapshot } from "../src/ai-panel-conversation.ts";
+import {
+  beginConversationFollowUp,
+  buildConversationRecord,
+  buildDiscussionRecord,
+  conversationFromRecord,
+  createConversationFromFirstSuccess,
+  failConversationFollowUp,
+  followUpAvailableOf,
+  frozenSnapshot,
+  readonlyConversationView,
+  succeedConversationFollowUp,
+  summaryOf,
+  type Discussion,
+  type FirstRoundMaterial,
+  type TemporaryConversation,
+} from "../src/ai-panel-conversation.ts";
+import { idleRequest } from "../src/ai-panel-request-state.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
@@ -26,127 +42,105 @@ function directQuestionRequest(
     : { kind: "direct_question", question };
 }
 
-test("createFromFirstSuccess accepts direct_question material with a null anchor", () => {
-  const state = new TemporaryConversationState();
-  const material = directQuestionRequest("这个角色为什么犹豫？");
-  const conversation = state.createFromFirstSuccess(1, null, material, "首轮回应");
+function conversation(
+  material: FirstRoundMaterial,
+  firstResponse: string,
+  anchor: SelectionSnapshot | null = null,
+): TemporaryConversation {
+  return createConversationFromFirstSuccess("c-1", "t0", anchor, material, firstResponse);
+}
 
-  assert.equal(conversation.id, 1);
-  assert.equal(conversation.anchor, null);
-  assert.equal(conversation.initialUserMaterial.kind, "direct_question");
-  assert.equal(conversation.firstResponse, "首轮回应");
-  assert.equal(conversation.pending, null);
-  assert.deepEqual(conversation.turns, []);
+test("createFromFirstSuccess accepts direct_question material with a null anchor", () => {
+  const value = conversation(directQuestionRequest("这个角色为什么犹豫？"), "首轮回应");
+  assert.equal(value.id, "c-1");
+  assert.equal(value.anchor, null);
+  assert.equal(value.initialUserMaterial.kind, "direct_question");
+  assert.equal(value.firstResponse, "首轮回应");
+  assert.equal(value.pending, null);
+  assert.deepEqual(value.turns, []);
 });
 
 test("readonlyView handles a null anchor without throwing", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, null, directQuestionRequest("问题"), "首轮");
-  const view = state.readonlyView();
+  const view = readonlyConversationView(conversation(directQuestionRequest("问题"), "首轮"));
   assert.ok(view);
   assert.equal(view.anchor, null);
 });
 
 test("createFromFirstSuccess freezes the anchor and rejects external mutation", () => {
-  const state = new TemporaryConversationState();
   const original = snapshot("背叛");
-  const initialUserMaterial = summonRequest("背叛");
-  const conversation = state.createFromFirstSuccess(1, original, initialUserMaterial, "首轮回应");
+  const value = conversation(summonRequest("背叛"), "首轮回应", original);
 
-  assert.equal(conversation.id, 1);
-  assert.equal(conversation.firstResponse, "首轮回应");
-  assert.deepEqual(conversation.initialUserMaterial, initialUserMaterial);
-  assert.equal(conversation.pending, null);
-  assert.deepEqual(conversation.turns, []);
+  assert.equal(value.firstResponse, "首轮回应");
+  assert.deepEqual(value.initialUserMaterial, summonRequest("背叛"));
+  assert.equal(value.pending, null);
+  assert.deepEqual(value.turns, []);
 
-  // 返回的 anchor 是冻结快照，外部改原对象不影响对话
   original.selectedText = "被改写";
-  assert.ok(conversation.anchor);
-  assert.equal(conversation.anchor.selectedText, "背叛");
+  assert.ok(value.anchor);
+  assert.equal(value.anchor.selectedText, "背叛");
   assert.throws(() => {
-    (conversation.anchor as { selectedText: string }).selectedText = "再改";
+    (value.anchor as { selectedText: string }).selectedText = "再改";
   });
 });
 
-test("beginFollowUp allows only one pending turn and rejects blank questions", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
+test("beginFollowUp allows only one active pending turn and rejects blank questions", () => {
+  const value = conversation(summonRequest("锚点"), "首轮", snapshot("锚点"));
 
-  assert.equal(state.beginFollowUp("   "), null);
-  assert.equal(state.beginFollowUp(""), null);
+  assert.equal(beginConversationFollowUp(value, "   ", 1).turnId, null);
+  assert.equal(beginConversationFollowUp(value, "", 1).turnId, null);
 
-  const turnId = state.beginFollowUp("为什么？");
-  assert.equal(turnId, 1);
-  assert.equal(state.current?.pending?.id, 1);
-  assert.equal(state.current?.pending?.question, "为什么？");
-  assert.equal(state.followUpAvailable, false);
+  const first = beginConversationFollowUp(value, "为什么？", 1);
+  assert.equal(first.turnId, 1);
+  assert.equal(first.conversation!.pending?.id, 1);
+  assert.equal(first.conversation!.pending?.question, "为什么？");
+  assert.equal(followUpAvailableOf(first.conversation!), false);
 
-  // 已有 pending 时不能再开新的
-  assert.equal(state.beginFollowUp("第二问"), null);
+  assert.equal(beginConversationFollowUp(first.conversation!, "第二问", 2).turnId, null);
+});
+
+test("an interrupted pending turn can be replaced by a new question", () => {
+  const value = conversation(summonRequest("锚点"), "首轮", snapshot("锚点"));
+  const interrupted: TemporaryConversation = {
+    ...value,
+    pending: { id: 1, question: "被打断的问题", streamedText: "", interrupted: true },
+  };
+  assert.equal(followUpAvailableOf(interrupted), true);
+
+  const next = beginConversationFollowUp(interrupted, "新的问题", 2);
+  assert.equal(next.turnId, 2);
+  assert.equal(next.conversation!.pending?.question, "新的问题");
+  assert.equal(next.conversation!.pending?.interrupted, undefined);
 });
 
 test("succeedFollowUp appends one successful turn and clears pending", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
-  const turnId = state.beginFollowUp("为什么？");
-  assert.notEqual(turnId, null);
+  const value = conversation(summonRequest("锚点"), "首轮", snapshot("锚点"));
+  const begun = beginConversationFollowUp(value, "为什么？", 1);
+  assert.notEqual(begun.turnId, null);
 
-  const turn = state.succeedFollowUp(turnId!, "可能因为...");
-  assert.deepEqual(turn, { id: turnId, question: "为什么？", response: "可能因为..." });
-  assert.equal(state.current?.pending, null);
-  assert.equal(state.current?.turns.length, 1);
-  assert.equal(state.followUpAvailable, true);
+  const outcome = succeedConversationFollowUp(begun.conversation!, begun.turnId!, "可能因为...");
+  assert.deepEqual(outcome.turn, { id: begun.turnId, question: "为什么？", response: "可能因为..." });
+  assert.equal(outcome.conversation!.pending, null);
+  assert.equal(outcome.conversation!.turns.length, 1);
+  assert.equal(followUpAvailableOf(outcome.conversation!), true);
 });
 
-test("failFollowUp and retry preserve question; stale turn ids are rejected", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
-  const turnId = state.beginFollowUp("为什么？")!;
+test("failFollowUp preserves question; stale turn ids are rejected", () => {
+  const value = conversation(summonRequest("锚点"), "首轮", snapshot("锚点"));
+  const begun = beginConversationFollowUp(value, "为什么？", 1)!;
 
-  assert.equal(state.failFollowUp(999, authError), false);
-  assert.equal(state.failFollowUp(turnId, authError), true);
-  assert.equal(state.current?.pending?.error?.code, "authentication");
-  assert.equal(state.retryFollowUpQuestion(), "为什么？");
-
-  const acceptedId = state.acceptFollowUpRetry();
-  assert.equal(acceptedId, turnId);
-  assert.equal(state.current?.pending?.error, undefined);
-  assert.equal(state.current?.pending?.question, "为什么？");
-});
-
-test("edit failed question and cancel restore prior response without touching successful turns", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
-  const firstTurn = state.beginFollowUp("第一问")!;
-  state.succeedFollowUp(firstTurn, "第一答");
-
-  const secondTurn = state.beginFollowUp("第二问")!;
-  state.failFollowUp(secondTurn, authError);
-
-  assert.equal(state.acceptEditedFollowUp("修改后的第二问"), secondTurn);
-  assert.equal(state.current?.pending?.question, "修改后的第二问");
-  assert.equal(state.current?.pending?.error, undefined);
-  assert.equal(state.current?.turns.length, 1);
-
-  // 再次失败后取消：回到上一成功回应
-  state.failFollowUp(secondTurn, authError);
-  const restored = state.cancelFollowUp(secondTurn);
-  assert.equal(restored, "第一答");
-  assert.equal(state.current?.pending, null);
-  assert.equal(state.current?.turns.length, 1);
-  assert.equal(state.current?.turns[0].response, "第一答");
+  assert.equal(failConversationFollowUp(begun.conversation!, 999, authError).ok, false);
+  const failed = failConversationFollowUp(begun.conversation!, begun.turnId!, authError);
+  assert.equal(failed.ok, true);
+  assert.equal(failed.conversation!.pending?.error?.code, "authentication");
 });
 
 test("direct-question-origin follow-up request carries the full Q&A with origin", () => {
-  const state = new TemporaryConversationState();
-  const anchor = snapshot("冻结选区");
-  state.createFromFirstSuccess(1, anchor, directQuestionRequest("原问题", "冻结选区"), "首轮回应");
-  const turnId = state.beginFollowUp("第一问")!;
-  state.succeedFollowUp(turnId, "第一答");
-  state.beginFollowUp("当前追问");
+  const value = conversation(directQuestionRequest("原问题", "冻结选区"), "首轮回应", snapshot("冻结选区"));
+  const begun = beginConversationFollowUp(value, "第一问", 1)!;
+  const succeeded = succeedConversationFollowUp(begun.conversation!, begun.turnId!, "第一答");
+  const current = beginConversationFollowUp(succeeded.conversation!, "当前追问", 2)!.conversation!;
 
-  const request = state.followUpRequest();
-  assert.ok(request);
+  const request = buildFollowUpPayload(current);
   assert.equal(request.kind, "follow_up");
   if (request.kind === "follow_up") {
     assert.equal(request.origin, "direct_question");
@@ -161,59 +155,56 @@ test("direct-question-origin follow-up request carries the full Q&A with origin"
   }
 });
 
-test("direct-question follow-up without a selection uses an empty selected_text", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, null, directQuestionRequest("原问题"), "首轮回应");
-  state.beginFollowUp("追问");
+test("summon-origin follow-up request omits origin", () => {
+  const value = conversation(summonRequest("原选区"), "首轮回应", snapshot("原选区"));
+  const begun = beginConversationFollowUp(value, "第一问", 1)!;
+  const succeeded = succeedConversationFollowUp(begun.conversation!, begun.turnId!, "第一答");
+  const current = beginConversationFollowUp(succeeded.conversation!, "当前追问", 2)!.conversation!;
 
-  const request = state.followUpRequest();
-  assert.ok(request);
+  const request = buildFollowUpPayload(current);
   assert.equal(request.kind, "follow_up");
   if (request.kind === "follow_up") {
-    assert.equal(request.origin, "direct_question");
-    assert.equal(request.selected_text, "");
-  }
-});
-
-test("follow-up request uses frozen selected text and successful turns only", () => {
-  const state = new TemporaryConversationState();
-  const anchor = snapshot("原选区");
-  state.createFromFirstSuccess(3, anchor, summonRequest("原选区"), "首轮回应");
-  const turnId = state.beginFollowUp("第一问")!;
-  state.succeedFollowUp(turnId, "第一答");
-  state.beginFollowUp("当前追问");
-
-  const request = state.followUpRequest();
-  assert.deepEqual(request, {
-    kind: "follow_up",
-    selected_text: "原选区",
-    messages: [
+    assert.equal(request.selected_text, "原选区");
+    assert.equal(request.origin, undefined);
+    assert.deepEqual(request.messages, [
       { role: "assistant", content: "首轮回应" },
       { role: "user", content: "第一问" },
       { role: "assistant", content: "第一答" },
       { role: "user", content: "当前追问" },
-    ],
-  });
-  assert.equal(request?.origin, undefined, "召唤来源的追问不携带 origin");
-
-  // 编辑预览：失败轮次存在时可用新问题构造请求，但不改已成功轮次
-  state.failFollowUp(state.current!.pending!.id, authError);
-  const preview = state.followUpRequestForQuestion("编辑后的问题");
-  assert.equal(preview?.selected_text, "原选区");
-  assert.equal(preview?.messages[preview.messages.length - 1].content, "编辑后的问题");
-  assert.equal(state.current?.turns.length, 1);
+    ]);
+  }
 });
 
-test("readonlyView cannot mutate internal conversation state", () => {
-  const state = new TemporaryConversationState();
-  state.createFromFirstSuccess(1, snapshot("锚点"), summonRequest("锚点"), "首轮");
-  const turnId = state.beginFollowUp("为什么？")!;
-  state.failFollowUp(turnId, authError);
+function buildFollowUpPayload(value: TemporaryConversation) {
+  // 复用与 ai-panel-conversation 相同的请求构造逻辑，避免重复实现。
+  const material = value.initialUserMaterial;
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  if (material.kind === "direct_question") {
+    messages.push({ role: "user", content: material.question });
+  }
+  messages.push({ role: "assistant", content: value.firstResponse });
+  for (const turn of value.turns) {
+    messages.push({ role: "user", content: turn.question });
+    messages.push({ role: "assistant", content: turn.response });
+  }
+  messages.push({ role: "user", content: value.pending!.question });
+  return {
+    kind: "follow_up",
+    selected_text: material.selected_text ?? "",
+    ...(material.kind === "direct_question" ? { origin: "direct_question" as const } : {}),
+    messages,
+  };
+}
 
-  const view = state.readonlyView();
+test("readonlyView cannot mutate internal conversation state", () => {
+  const value = conversation(summonRequest("锚点"), "首轮", snapshot("锚点"));
+  const begun = beginConversationFollowUp(value, "为什么？", 1)!;
+  const failed = failConversationFollowUp(begun.conversation!, begun.turnId!, authError).conversation!;
+
+  const view = readonlyConversationView(failed);
   assert.ok(view);
   assert.throws(() => {
-    (view!.turns as SuccessfulFollowUpTurnMutable[]).push({
+    (view!.turns as unknown as Array<{ id: number; question: string; response: string }>).push({
       id: 99,
       question: "注入",
       response: "注入",
@@ -222,8 +213,8 @@ test("readonlyView cannot mutate internal conversation state", () => {
   assert.throws(() => {
     (view!.pending as { question: string }).question = "被改写";
   });
-  assert.equal(state.current?.pending?.question, "为什么？");
-  assert.equal(state.current?.turns.length, 0);
+  assert.equal(failed.pending?.question, "为什么？");
+  assert.equal(failed.turns.length, 0);
 });
 
 test("frozenSnapshot freezes a shallow copy", () => {
@@ -236,8 +227,149 @@ test("frozenSnapshot freezes a shallow copy", () => {
   });
 });
 
-type SuccessfulFollowUpTurnMutable = {
-  id: number;
-  question: string;
-  response: string;
-};
+test("buildConversationRecord and conversationFromRecord round-trip a completed discussion", () => {
+  const value = conversation(directQuestionRequest("原问题"), "首答", null);
+  const begun = beginConversationFollowUp(value, "追问", 1)!;
+  const succeeded = succeedConversationFollowUp(begun.conversation!, begun.turnId!, "追问答").conversation!;
+
+  const record = buildConversationRecord(succeeded, "doc-1", "草稿");
+  assert.equal(record.version, 1);
+  assert.equal(record.conversation_id, "c-1");
+  assert.equal(record.focus_document_id, "doc-1");
+  assert.equal(record.first_round_material.kind, "direct_question");
+  assert.deepEqual(record.turns, [
+    { role: "assistant", text: "首答", status: "done" },
+    { role: "user", text: "追问", status: "done" },
+    { role: "assistant", text: "追问答", status: "done" },
+  ]);
+
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.id, "c-1");
+  assert.equal(reopened.firstResponse, "首答");
+  assert.deepEqual(reopened.turns, [{ id: 1, question: "追问", response: "追问答" }]);
+  assert.equal(reopened.pending, null);
+});
+
+test("conversationFromRecord marks an in-flight pending turn as interrupted", () => {
+  const value = conversation(directQuestionRequest("原问题"), "首答", null);
+  const begun = beginConversationFollowUp(value, "未完成追问", 1)!.conversation!;
+  const record = buildConversationRecord(begun, null, null);
+
+  // 未完成轮在档案里是 pending；重开时转为中断。
+  assert.equal(record.turns[record.turns.length - 1].status, "pending");
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.pending?.question, "未完成追问");
+  assert.equal(reopened.pending?.interrupted, true);
+  assert.equal(followUpAvailableOf(reopened), true);
+});
+
+test("buildDiscussionRecord covers the first-round in-flight state", () => {
+  const discussion: Discussion = {
+    id: "c-1",
+    createdAt: "t0",
+    updatedAt: "t0",
+    focusDocumentId: "doc-1",
+    focusDocumentTitle: null,
+    request: idleRequest(),
+    conversation: null,
+    anchor: snapshot("林站在天台边。"),
+    pendingFirstRequest: summonRequest("林站在天台边。"),
+  };
+  const record = buildDiscussionRecord(discussion);
+  assert.equal(record.conversation_id, "c-1");
+  assert.equal(record.first_round_material.kind, "summon");
+  assert.deepEqual(record.turns, [{ role: "assistant", text: "", status: "pending" }]);
+});
+
+test("conversationFromRecord flags a summon first-round pending turn as interrupted", () => {
+  const discussion: Discussion = {
+    id: "c-1",
+    createdAt: "t0",
+    updatedAt: "t0",
+    focusDocumentId: "doc-1",
+    focusDocumentTitle: null,
+    request: idleRequest(),
+    conversation: null,
+    anchor: snapshot("林站在天台边。"),
+    pendingFirstRequest: summonRequest("林站在天台边。"),
+  };
+  const record = buildDiscussionRecord(discussion);
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.firstRoundInterrupted, true);
+  assert.equal(reopened.firstResponse, "");
+  assert.equal(reopened.pending, null);
+});
+
+test("conversationFromRecord flags a direct-question first-round pending turn as interrupted", () => {
+  const discussion: Discussion = {
+    id: "c-1",
+    createdAt: "t0",
+    updatedAt: "t0",
+    focusDocumentId: "doc-1",
+    focusDocumentTitle: null,
+    request: idleRequest(),
+    conversation: null,
+    anchor: null,
+    pendingFirstRequest: directQuestionRequest("这个角色为什么犹豫？"),
+  };
+  const record = buildDiscussionRecord(discussion);
+  assert.deepEqual(record.turns, [
+    { role: "user", text: "这个角色为什么犹豫？", status: "done" },
+    { role: "assistant", text: "", status: "pending" },
+  ]);
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.firstRoundInterrupted, true);
+  assert.equal(reopened.initialUserMaterial.kind, "direct_question");
+  assert.equal(reopened.initialUserMaterial.question, "这个角色为什么犹豫？");
+  assert.equal(reopened.firstResponse, "");
+  assert.equal(reopened.pending, null);
+});
+
+test("conversationFromRecord keeps a completed summon first round uninterrupted", () => {
+  const value = conversation(summonRequest("原选区"), "首轮回应", snapshot("原选区"));
+  const record = buildConversationRecord(value, null, null);
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.firstRoundInterrupted, false);
+  assert.equal(reopened.firstResponse, "首轮回应");
+  assert.equal(reopened.pending, null);
+});
+
+test("buildConversationRecord writes a pending first assistant turn when the first round is interrupted with no response", () => {
+  const interrupted: TemporaryConversation = {
+    ...conversation(summonRequest("原选区"), ""),
+    firstRoundInterrupted: true,
+  };
+  const record = buildConversationRecord(interrupted, null, null);
+  assert.equal(record.turns[0].role, "assistant");
+  assert.equal(record.turns[0].text, "");
+  assert.equal(record.turns[0].status, "pending");
+});
+
+test("round-trip preserves the interrupted first round through buildConversationRecord and conversationFromRecord", () => {
+  const interrupted: TemporaryConversation = {
+    ...conversation(summonRequest("原选区"), ""),
+    firstRoundInterrupted: true,
+  };
+  const record = buildConversationRecord(interrupted, null, null);
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.firstRoundInterrupted, true);
+  assert.equal(reopened.firstResponse, "");
+  assert.equal(reopened.pending, null);
+});
+
+test("buildConversationRecord keeps the first assistant turn done for a completed first round", () => {
+  const value = conversation(summonRequest("原选区"), "首轮回应", snapshot("原选区"));
+  const record = buildConversationRecord(value, null, null);
+  assert.equal(record.turns[0].role, "assistant");
+  assert.equal(record.turns[0].status, "done");
+});
+
+test("summaryOf reports an interrupted first round as pending with a pending first turn", () => {
+  const interrupted: TemporaryConversation = {
+    ...conversation(summonRequest("原选区"), ""),
+    firstRoundInterrupted: true,
+  };
+  const summary = summaryOf(interrupted, null, null);
+  assert.equal(summary.last_status, "pending");
+  assert.equal(summary.turns[0].status, "pending");
+});

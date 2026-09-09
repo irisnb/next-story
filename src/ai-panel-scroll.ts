@@ -3,7 +3,7 @@ import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.t
 import type { SelectionSnapshot } from "./types.ts";
 
 export class AiPanelScrollResetController {
-  private lastConversationId: number | null = null;
+  private lastConversationId: string | null = null;
   private lastRequestSnapshot: SelectionSnapshot | null = null;
 
   shouldReset(request: PanelRequestState): boolean {

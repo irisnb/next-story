@@ -4,7 +4,14 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { buildAiPanelView } from "../src/ai-panel-view-model.ts";
 import type { AiPanelView } from "../src/ai-panel-view-model.ts";
+import { idleRequest } from "../src/ai-panel-request-state.ts";
 import type { PanelStateView } from "../src/ai-panel-request-state.ts";
+import {
+  conversationFromRecord,
+  readonlyConversationView,
+  type ReadonlyTemporaryConversation,
+} from "../src/ai-panel-conversation.ts";
+import type { ConversationRecord } from "../src/conversation-archive.ts";
 import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 /**
@@ -37,11 +44,12 @@ test("success request with a null snapshot renders without a snapshot block", ()
       kind: "success",
       snapshot: null,
       response: "回答",
-      conversationId: 1,
+      conversationId: "1",
       phase: "first",
     },
     directQuestionDraft: "",
     pendingSelection: null,
+    saveError: null,
   };
 
   // When: 构建显示 view model
@@ -125,6 +133,7 @@ test("first success without a follow-up conversation shows the standalone respon
   assert.equal(view.loadingVisible, false);
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
   ]);
   assert.ok(view.followUpForm);
@@ -203,6 +212,7 @@ test("follow-up loading shows the pending question in-thread and disables the fo
   assert.equal(view.loadingVisible, false);
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "第一个问题" },
     { role: "status", text: "正在思考…" },
@@ -228,6 +238,7 @@ test("follow-up success appends the answered turn and re-enables the input", () 
   // Then: 线程含完整问答对、无待答状态，追问输入重新可用
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "第一个问题" },
     { role: "assistant", text: "第一个回答" },
@@ -254,6 +265,7 @@ test("follow-up failure shows the follow-up error with retry and edit available"
   //       首次错误区不显示，避免与追问错误重叠
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "失败问题" },
   ]);
@@ -282,6 +294,7 @@ test("accepting a plain follow-up retry returns to loading for the same question
   // Then: 回到追问 loading，线程重新显示同一待答问题，错误区消失
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "失败问题" },
     { role: "status", text: "正在思考…" },
@@ -308,6 +321,7 @@ test("accepting an edited follow-up resends with the revised question and clears
   // Then: 线程显示修改后的待答问题并回到 loading，追问错误区消失
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "修改后的问题" },
     { role: "status", text: "正在思考…" },
@@ -353,6 +367,7 @@ test("follow-up configuration failure keeps the thread and exposes retry and edi
   // Then: 追问错误保留配置错误文案，同时提供原样重试和修改问题
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "锚点" },
     { role: "assistant", text: "首次回应" },
     { role: "user", text: "需要配置的问题" },
   ]);
@@ -663,4 +678,94 @@ test("welcome message stays hidden during legacy request states", () => {
 
   state.beginRequest(snapshot("锚点"));
   assert.equal(viewOf(state).welcomeVisible, false);
+});
+
+function idlePanelState(): PanelStateView {
+  return {
+    visibility: "open",
+    request: idleRequest(),
+    directQuestionDraft: "",
+    pendingSelection: null,
+    saveError: null,
+  };
+}
+
+function conversationViewOf(record: ConversationRecord): AiPanelView {
+  const conversation: ReadonlyTemporaryConversation = readonlyConversationView(
+    conversationFromRecord(record),
+  )!;
+  return buildAiPanelView(idlePanelState(), conversation);
+}
+
+test("an interrupted summon first round renders the selection text and an interrupted status, without an empty assistant message", () => {
+  const record: ConversationRecord = {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: "doc-1",
+    focus_document_title: null,
+    first_round_material: { kind: "summon", question: "", selection_text: "林站在天台边。" },
+    turns: [{ role: "assistant", text: "", status: "pending" }],
+  };
+
+  const view = conversationViewOf(record);
+
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "林站在天台边。" },
+    { role: "status", text: "中断" },
+  ]);
+  // 中断的首轮无 pending，追问输入应可用。
+  assert.ok(view.followUpForm);
+  assert.equal(view.followUpForm.inputEnabled, true);
+});
+
+test("an interrupted direct-question first round renders the question and an interrupted status", () => {
+  const record: ConversationRecord = {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: "doc-1",
+    focus_document_title: null,
+    first_round_material: {
+      kind: "direct_question",
+      question: "这个角色为什么犹豫？",
+      selection_text: null,
+    },
+    turns: [
+      { role: "user", text: "这个角色为什么犹豫？", status: "done" },
+      { role: "assistant", text: "", status: "pending" },
+    ],
+  };
+
+  const view = conversationViewOf(record);
+
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "这个角色为什么犹豫？" },
+    { role: "status", text: "中断" },
+  ]);
+});
+
+test("a completed summon first round renders the selection text and the assistant response", () => {
+  const record: ConversationRecord = {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: "doc-1",
+    focus_document_title: null,
+    first_round_material: { kind: "summon", question: "", selection_text: "林站在天台边。" },
+    turns: [{ role: "assistant", text: "首轮回应", status: "done" }],
+  };
+
+  const view = conversationViewOf(record);
+
+  assert.ok(view.conversation);
+  assert.deepEqual(view.conversation.messages, [
+    { role: "user", text: "林站在天台边。" },
+    { role: "assistant", text: "首轮回应" },
+  ]);
 });

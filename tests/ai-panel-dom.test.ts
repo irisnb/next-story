@@ -7,6 +7,7 @@ import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiPanel } from "../src/ai-panel.ts";
 import type { AiReplayTurn, AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
+import type { ConversationSummary } from "../src/conversation-archive.ts";
 import type {
   GenerateAiRequest,
   GenerateAiResult,
@@ -60,6 +61,8 @@ function harness(): {
   retried: number;
   edited: string[];
   firstRetries: number;
+  opened: string[];
+  deleted: string[];
   restore(): void;
 } {
   const { elements, dom } = createAiPanelDomFixture();
@@ -76,6 +79,8 @@ function harness(): {
   const state = new AiPanelState();
   const submitted: string[] = [];
   const edited: string[] = [];
+  const opened: string[] = [];
+  const deleted: string[] = [];
   const newConversations: number[] = [];
   let retried = 0;
   let firstRetries = 0;
@@ -92,6 +97,8 @@ function harness(): {
     onRemoveDirectQuestionSelection: () => state.setPendingSelection(null),
     onDirectQuestionFocus: () => {},
     onOpenPanel: () => {},
+    onOpenDiscussion: (summary) => { opened.push(summary.conversation_id); },
+    onDeleteDiscussion: (conversationId) => { deleted.push(conversationId); return Promise.resolve(); },
   });
 
   return {
@@ -102,6 +109,8 @@ function harness(): {
     get retried() { return retried; },
     edited,
     get firstRetries() { return firstRetries; },
+    opened,
+    deleted,
     restore: () => { globalThis.document = previousDocument; },
   };
 }
@@ -132,14 +141,15 @@ function fakeSessionTransport(options: FakeSessionTransportOptions = {}): FakeSe
   let rejectReplay: (() => void) | null = null;
 
   const transport: AiSessionTransport = {
-    sendViaResidentSession: (request) => {
+    sendViaResidentSession: (_conversationId, request) => {
       requests.push(request);
       const result = results.shift();
       if (!result) throw new Error("missing fake result");
       return Promise.resolve(result);
     },
-    endActiveSession: () => { endSessionCalls += 1; },
-    replayActiveSession: (turns) => {
+    endSession: () => { endSessionCalls += 1; },
+    endAllSessions: () => { endSessionCalls += 1; },
+    replaySession: (_conversationId, turns) => {
       replayedTurns = [...turns];
       return new Promise<void>((resolve, reject) => {
         resolveReplay = resolve;
@@ -273,9 +283,10 @@ test("renders ordered turns as literal text and disables duplicate sends while p
     const conversation = ui.elements.get("ai-conversation")!;
     assert.deepEqual(
       conversation.children.map((child) => child.textContent),
-      ["**首答** <img src=x onerror=alert(1)>", "问题一", "回答一", "问题二", "正在思考…"],
+      ["冻结选区", "**首答** <img src=x onerror=alert(1)>", "问题一", "回答一", "问题二", "正在思考…"],
     );
     assert.equal(conversation.children[0].children.length, 0);
+    assert.equal(conversation.children[1].children.length, 0);
     assert.equal(ui.elements.get("ai-follow-up-input")!.disabled, true);
     assert.equal(ui.elements.get("ai-follow-up-send")!.disabled, true);
     assert.equal(ui.elements.get("ai-loading")!.classList.contains("hidden"), true);
@@ -297,7 +308,7 @@ test("follow-up stream text renders as an assistant message before the thinking 
     const conversation = ui.elements.get("ai-conversation")!;
     assert.deepEqual(
       conversation.children.map((child) => child.textContent),
-      ["首答", "问题二", "人物可能在隐瞒动机", "正在思考…"],
+      ["冻结选区", "首答", "问题二", "人物可能在隐瞒动机", "正在思考…"],
     );
   } finally {
     ui.restore();
@@ -354,7 +365,7 @@ test("failed follow-up offers original retry and edit-resend without changing ea
     editInput.dispatch("input");
     ui.elements.get("ai-follow-up-form")!.dispatch("submit");
     assert.deepEqual(ui.edited, ["新问题"]);
-    assert.deepEqual(before.slice(0, 2), ["首答", "旧问题"]);
+    assert.deepEqual(before.slice(1, 3), ["首答", "旧问题"]);
   } finally {
     ui.restore();
   }
@@ -419,7 +430,7 @@ test("collapse and reopen preserve conversation and draft without submitting", (
 
     assert.deepEqual(
       ui.elements.get("ai-conversation")!.children.map((child) => child.textContent),
-      ["首答"],
+      ["锚点", "首答"],
     );
     assert.equal(input.value, "未发送的追问");
     assert.deepEqual(ui.submitted, []);
@@ -695,7 +706,7 @@ test("driver lost without a conversation only resets the transport without recov
   }
 });
 
-test("new-conversation click ends the resident session", async () => {
+test("new-conversation click opens a new discussion without ending the old session", async () => {
   const ui = featureHarness([{ ok: true, content: "首答" }]);
   try {
     ui.submitDirectQuestion("原问题");
@@ -703,7 +714,7 @@ test("new-conversation click ends the resident session", async () => {
     assert.equal(ui.session.endSessionCalls(), 0);
 
     ui.elements.get("ai-new-conversation")!.dispatch("click");
-    assert.equal(ui.session.endSessionCalls(), 1, "新建对话应结束常驻会话");
+    assert.equal(ui.session.endSessionCalls(), 0, "新建对话不结束旧讨论会话");
     assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
   } finally {
     ui.restore();
@@ -1107,6 +1118,135 @@ test("new-conversation clears the direct-question draft and pending selection", 
     assert.equal(ui.state.view.pendingSelection, null);
     assert.equal(input.value, "");
     assert.equal(ui.elements.get("ai-direct-question")!.classList.contains("hidden"), false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("conversation list toggle opens and shows the saved discussion items", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.beginDirectQuestion("这个角色为什么犹豫？", null);
+    ui.state.succeedDirectQuestion("回答");
+
+    const toggle = ui.elements.get("ai-conversation-list-toggle")!;
+    assert.equal(toggle.classList.contains("hidden"), false, "有会话时显示会话列表入口");
+    assert.equal(ui.elements.get("ai-conversation-list")!.classList.contains("hidden"), true, "默认列表收起");
+
+    toggle.dispatch("click");
+    assert.equal(ui.elements.get("ai-conversation-list")!.classList.contains("hidden"), false);
+
+    const items = ui.elements.get("ai-conversation-list-items")!.children;
+    assert.equal(items.length, 1);
+    const openBtn = items[0].children[0]!;
+    const title = openBtn.children[0]!;
+    const meta = openBtn.children[1]!;
+    assert.equal(title.textContent, "这个角色为什么犹豫？", "条目显示标题");
+    assert.equal(meta.children[1]!.textContent, "完成", "done 终态显示为完成");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("clicking a saved conversation item reopens it as the active discussion", async () => {
+  const ui = featureHarness([{ ok: true, content: "首答" }]);
+  try {
+    ui.submitDirectQuestion("原问题");
+    await flushAiFeatureFlow();
+    assert.deepEqual(conversationText(ui), ["原问题", "首答"]);
+    const savedId = ui.controller.getConversations()[0].conversation_id;
+
+    // 开启一个空白新讨论，回到可直接提问的空状态
+    ui.elements.get("ai-new-conversation")!.dispatch("click");
+    assert.equal(ui.controller.state.conversation, null);
+    assert.equal(ui.elements.get("ai-conversation")!.classList.contains("hidden"), true);
+
+    // 从列表重开旧讨论
+    ui.elements.get("ai-conversation-list-toggle")!.dispatch("click");
+    const items = ui.elements.get("ai-conversation-list-items")!.children;
+    assert.equal(items.length, 1);
+    items[0].children[0]!.dispatch("click"); // 条目主体
+
+    assert.equal(ui.controller.state.activeConversationId, savedId);
+    assert.deepEqual(conversationText(ui), ["原问题", "首答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("deleting a discussion requires confirmation and then removes it from list and state", async () => {
+  const ui = featureHarness([{ ok: true, content: "回答" }]);
+  try {
+    ui.submitDirectQuestion("问题");
+    await flushAiFeatureFlow();
+    assert.equal(ui.controller.getConversations().length, 1);
+
+    ui.elements.get("ai-conversation-list-toggle")!.dispatch("click");
+    const items = ui.elements.get("ai-conversation-list-items")!;
+    assert.equal(items.children.length, 1);
+
+    // 先取消：确认前不删除
+    items.children[0].children[1]!.dispatch("click"); // 删除按钮
+    assert.equal(items.children[0].classList.contains("confirming"), true);
+    const confirmBar = items.children[0].children[1]!;
+    confirmBar.children[1]!.dispatch("click"); // 取消
+    assert.equal(ui.controller.getConversations().length, 1, "取消不删除");
+
+    // 再次删除并确认
+    items.children[0].children[1]!.dispatch("click");
+    const confirmBar2 = items.children[0].children[1]!;
+    confirmBar2.children[2]!.dispatch("click"); // 确认删除
+
+    assert.equal(ui.controller.getConversations().length, 0, "确认后从列表移除");
+    assert.equal(ui.controller.state.activeConversationId, null);
+    assert.equal(items.children.length, 0);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("save error renders visibly when set and hides when cleared", () => {
+  const ui = harness();
+  try {
+    ui.state.open();
+    ui.state.setSaveError("讨论保存失败，本次内容可能未落盘");
+
+    const block = ui.elements.get("ai-save-error")!;
+    assert.equal(block.classList.contains("hidden"), false);
+    assert.equal(block.textContent, "讨论保存失败，本次内容可能未落盘");
+
+    ui.state.clearSaveError();
+    assert.equal(block.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("interrupted discussion shows 中断 and keeps the follow-up input enabled", () => {
+  const ui = featureHarness([]);
+  try {
+    const interrupted: ConversationSummary = {
+      conversation_id: "c-x",
+      title: "原问题",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "pending",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: { kind: "direct_question", question: "原问题", selection_text: null },
+      turns: [
+        { role: "assistant" as const, text: "首答", status: "done" as const },
+        { role: "user" as const, text: "未完成追问", status: "done" as const },
+        { role: "assistant" as const, text: "", status: "pending" as const },
+      ],
+    };
+
+    ui.controller.openDiscussion(interrupted);
+
+    assert.deepEqual(conversationText(ui), ["原问题", "首答", "未完成追问", "中断"]);
+    assert.equal(ui.elements.get("ai-follow-up-input")!.disabled, false, "中断后可继续追问");
+    assert.equal(ui.elements.get("ai-follow-up-form")!.classList.contains("hidden"), false);
   } finally {
     ui.restore();
   }

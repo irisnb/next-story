@@ -3,7 +3,7 @@ import type { GenerateAiRequest } from "./types.ts";
 
 type FollowUpRequest = (
   payload: GenerateAiRequest,
-  identity: { conversationId: number; turnId: number },
+  identity: { conversationId: string; turnId: number },
 ) => Promise<void> | null;
 
 export function followUpAcceptedRequest(

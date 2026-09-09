@@ -1,17 +1,16 @@
 import {
   acceptConversationFollowUpRetry,
   acceptEditedConversationFollowUp,
-  allocateConversationId,
   beginConversationFollowUp,
   cancelConversationFollowUp,
-  clearConversationContext,
+  conversationFromRecord,
   createConversationFromFirstSuccess,
-  emptyConversationContext,
   failConversationFollowUp,
   frozenSnapshot,
   succeedConversationFollowUp,
-  type TemporaryConversationContext,
+  type Discussion,
   type FirstRoundMaterial,
+  type TemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import {
   cancelFollowUpSuccessRequest,
@@ -31,25 +30,32 @@ import {
   type PanelRequestState,
   type PanelVisibility,
 } from "./ai-panel-request-state.ts";
-import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
+import type {
+  ConversationSummary,
+} from "./conversation-archive.ts";
+import type { GenerateAiError, SelectionSnapshot } from "./types.ts";
 import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
 
 /**
  * AI 面板核心状态的显式数据模型（reducer 的输入 / 输出）。
  *
- * 与旧 `AiPanelState` 的字段一一对应：
- * - `visibility`：面板展开 / 收起。收起只改这一维，不清空 `request`。
- * - `request`：idle / loading / success / error / configuration_required。
- * - `conversationContext`：临时对话本体与 id 计数器（单调递增，`reset` 也不清零）。
- * - `pendingFirstConversationId`：首轮召唤分配的对话身份，成功前保留。
- * - `pendingFirstRequest`：首轮候选请求，失败后重试仍可用。
+ * 讨论集合模型（change: add-conversation-persistence-and-isolation）：
+ * - `discussions`：当前作品内各讨论的完整运行期数据（身份、时间、关注文档、请求状态、
+ *   已建立对话、首轮材料与锚点）。
+ * - `activeConversationId`：当前显示的讨论；一次显示一个，其余保留为档案。
+ * - `previewRequest`：首轮预检预览 / 阻塞提示等瞬态请求状态（不归属任何讨论）。
+ * - `generation`：单调递增的代次计数器（ABA 安全：`newConversation` / 首轮接受 / reset 推进）。
+ * - `nextTurnId`：讨论内追问轮次的单调编号。
+ * - `saveError`：讨论档案保存失败时对用户可见的提示位。
  */
 export interface AiPanelCoreState {
   readonly visibility: PanelVisibility;
-  readonly request: PanelRequestState;
-  readonly conversationContext: TemporaryConversationContext;
-  readonly pendingFirstConversationId: number | null;
-  readonly pendingFirstRequest: FirstRoundMaterial | null;
+  readonly previewRequest: PanelRequestState | null;
+  readonly discussions: ReadonlyMap<string, Discussion>;
+  readonly activeConversationId: string | null;
+  readonly generation: number;
+  readonly nextTurnId: number;
+  readonly saveError: string | null;
   /** 直接提问的未发送草稿。 */
   readonly directQuestionDraft: string;
   /** 当前待附带的选区重点材料；无选区时为 null。 */
@@ -61,10 +67,12 @@ export interface AiPanelCoreState {
 export function initialAiPanelCoreState(): AiPanelCoreState {
   return {
     visibility: "closed",
-    request: idleRequest(),
-    conversationContext: emptyConversationContext(),
-    pendingFirstConversationId: null,
-    pendingFirstRequest: null,
+    previewRequest: null,
+    discussions: new Map(),
+    activeConversationId: null,
+    generation: 1,
+    nextTurnId: 1,
+    saveError: null,
     directQuestionDraft: "",
     pendingSelection: null,
     ignoredSelection: null,
@@ -72,8 +80,8 @@ export function initialAiPanelCoreState(): AiPanelCoreState {
 }
 
 /**
- * 面板全部可观察操作的事件。非法迁移（如没有对话时开追问、重复收起）由 reducer
- * 原样返回输入状态（同一引用），调用方据此不触发通知。
+ * 面板全部可观察操作的事件。非法迁移由 reducer 原样返回输入状态（同一引用），
+ * 调用方据此不触发通知。
  */
 export type AiPanelEvent =
   | {
@@ -86,14 +94,46 @@ export type AiPanelEvent =
       readonly type: "begin_request";
       readonly snapshot: SelectionSnapshot;
       readonly firstRequest?: FirstRoundMaterial;
+      readonly conversationId: string;
+      readonly createdAt: string;
+      readonly focusDocumentId: string | null;
+      readonly focusDocumentTitle: string | null;
     }
-  | { readonly type: "succeed"; readonly snapshot: SelectionSnapshot; readonly response: string }
-  | { readonly type: "fail"; readonly snapshot: SelectionSnapshot; readonly error: GenerateAiError }
-  | { readonly type: "require_configuration"; readonly snapshot: SelectionSnapshot }
+  | {
+      readonly type: "succeed";
+      readonly snapshot: SelectionSnapshot;
+      readonly response: string;
+      readonly conversationId: string;
+    }
+  | {
+      readonly type: "fail";
+      readonly snapshot: SelectionSnapshot;
+      readonly error: GenerateAiError;
+      readonly conversationId: string;
+    }
+  | {
+      readonly type: "require_configuration";
+      readonly snapshot: SelectionSnapshot;
+      readonly conversationId: string;
+    }
   | { readonly type: "begin_follow_up"; readonly question: string }
-  | { readonly type: "succeed_follow_up"; readonly turnId: number; readonly response: string }
-  | { readonly type: "fail_follow_up"; readonly turnId: number; readonly error: GenerateAiError }
-  | { readonly type: "require_follow_up_configuration"; readonly turnId: number }
+  | {
+      readonly type: "succeed_follow_up";
+      readonly turnId: number;
+      readonly response: string;
+      readonly conversationId: string;
+    }
+  | {
+      readonly type: "fail_follow_up";
+      readonly turnId: number;
+      readonly error: GenerateAiError;
+      readonly conversationId: string;
+    }
+  | {
+      readonly type: "require_follow_up_configuration";
+      readonly turnId: number;
+      readonly conversationId: string;
+    }
   | { readonly type: "accept_edited_follow_up"; readonly question: string }
   | { readonly type: "cancel_follow_up"; readonly turnId: number }
   | { readonly type: "accept_follow_up_retry" }
@@ -105,42 +145,100 @@ export type AiPanelEvent =
       readonly type: "begin_direct_question";
       readonly question: string;
       readonly selection: SelectionSnapshot | null;
+      readonly conversationId: string;
+      readonly createdAt: string;
+      readonly focusDocumentId: string | null;
+      readonly focusDocumentTitle: string | null;
     }
-  | { readonly type: "succeed_direct_question"; readonly response: string }
-  | { readonly type: "fail_direct_question"; readonly error: GenerateAiError }
-  | { readonly type: "require_direct_question_configuration" }
-  | {
-      readonly type: "append_stream_text";
-      readonly text: string;
-    }
+  | { readonly type: "succeed_direct_question"; readonly response: string; readonly conversationId: string }
+  | { readonly type: "fail_direct_question"; readonly error: GenerateAiError; readonly conversationId: string }
+  | { readonly type: "require_direct_question_configuration"; readonly conversationId: string }
+  | { readonly type: "append_stream_text"; readonly text: string }
   | { readonly type: "begin_recovery" }
   | { readonly type: "complete_recovery" }
   | { readonly type: "fail_recovery" }
   | { readonly type: "close" }
   | { readonly type: "open" }
-  | { readonly type: "new_conversation" }
-  | { readonly type: "reset" };
+  | {
+      readonly type: "new_conversation";
+      readonly conversationId: string;
+      readonly createdAt: string;
+      readonly focusDocumentId: string | null;
+      readonly focusDocumentTitle: string | null;
+    }
+  | { readonly type: "reset" }
+  | { readonly type: "load_discussions"; readonly summaries: readonly ConversationSummary[]; readonly skipped: readonly string[] }
+  | {
+      readonly type: "open_discussion";
+      readonly conversation: TemporaryConversation;
+      readonly focusDocumentId: string | null;
+      readonly focusDocumentTitle: string | null;
+    }
+  | { readonly type: "delete_discussion"; readonly conversationId: string }
+  | { readonly type: "set_save_error"; readonly message: string }
+  | { readonly type: "clear_save_error" };
 
-/**
- * 首轮请求是否仍在途中：首轮 loading、预检预览或阻塞提示。
- *
- * `fail` / `require_configuration` 只接受这些阶段的结果；清空（新建对话 / reset）后
- * 到达的迟到结果处于 idle / 直接提问 / 追问等状态，一律拒绝，防止污染空状态。
- * `first_blocked` 也视为在途：阻塞提示意味着原首轮请求仍在生成，其结果应正常应用。
- */
-function isFirstRoundInFlight(state: AiPanelCoreState): boolean {
-  const request = state.request;
+function activeDiscussion(state: AiPanelCoreState): Discussion | null {
+  if (state.activeConversationId === null) return null;
+  return state.discussions.get(state.activeConversationId) ?? null;
+}
+
+function discussionById(state: AiPanelCoreState, id: string): Discussion | null {
+  return state.discussions.get(id) ?? null;
+}
+
+function setDiscussion(state: AiPanelCoreState, discussion: Discussion): AiPanelCoreState {
+  return { ...state, discussions: new Map(state.discussions).set(discussion.id, discussion) };
+}
+
+/** 当前面板显示的请求状态：瞬态预览优先，其次为当前讨论的请求，最后回退 idle。 */
+export function activeRequestOf(state: AiPanelCoreState): PanelRequestState {
+  if (state.previewRequest) return state.previewRequest;
+  return activeDiscussion(state)?.request ?? idleRequest();
+}
+
+function isFirstRoundInFlight(request: PanelRequestState): boolean {
   if (request.kind === "loading") return request.phase !== "follow_up";
   return request.kind === "first_preview" || request.kind === "first_blocked";
 }
 
-/** “新建对话”是否有可结束的内容：存在临时对话、已分配的首轮身份或任何非空请求。 */
-function hasEndableConversationWork(state: AiPanelCoreState): boolean {
+/** 讨论是否为空（未接受首轮）：无对话、无待首轮材料、请求为空闲。 */
+function isEmptyDiscussion(discussion: Discussion): boolean {
   return (
-    state.conversationContext.conversation !== null ||
-    state.pendingFirstConversationId !== null ||
-    state.request.kind !== "idle"
+    discussion.conversation === null &&
+    discussion.pendingFirstRequest === null &&
+    discussion.request.kind === "idle"
   );
+}
+
+/** 是否存在可归档的内容：任一讨论已有对话、待首轮材料或非空闲请求。 */
+function hasEndableConversationWork(state: AiPanelCoreState): boolean {
+  for (const discussion of state.discussions.values()) {
+    if (!isEmptyDiscussion(discussion)) return true;
+  }
+  return false;
+}
+
+/** 在目标讨论上创建首轮成功后的对话，返回更新后的讨论。 */
+function applyFirstSuccess(discussion: Discussion, response: string): Discussion {
+  const material = discussion.pendingFirstRequest ?? {
+    kind: "summon" as const,
+    selected_text: discussion.anchor?.selectedText ?? "",
+  };
+  const created = createConversationFromFirstSuccess(
+    discussion.id,
+    discussion.createdAt,
+    discussion.anchor,
+    material,
+    response,
+  );
+  return {
+    ...discussion,
+    updatedAt: discussion.createdAt,
+    request: firstSuccessRequest(created.anchor, response, discussion.id),
+    conversation: created,
+    pendingFirstRequest: null,
+  };
 }
 
 /**
@@ -155,207 +253,233 @@ export function reduceAiPanelState(
 ): AiPanelCoreState {
   switch (event.type) {
     case "preview_first_request": {
-      const anchor = frozenSnapshot(event.snapshot);
       return {
         ...state,
         visibility: "open",
-        conversationContext: clearConversationContext(state.conversationContext),
-        request: firstPreviewRequest(anchor),
-        pendingFirstConversationId: null,
-        pendingFirstRequest:
-          event.firstRequest ?? { kind: "summon", selected_text: anchor.selectedText },
+        previewRequest: firstPreviewRequest(frozenSnapshot(event.snapshot)),
       };
     }
     case "block_first_request": {
-      // 与旧实现一致：不触碰当前对话，只进入阻塞反馈
       return {
         ...state,
         visibility: "open",
-        request: firstBlockedRequest(frozenSnapshot(event.snapshot)),
-        pendingFirstConversationId: null,
-        pendingFirstRequest: null,
+        previewRequest: firstBlockedRequest(frozenSnapshot(event.snapshot)),
       };
     }
     case "begin_request": {
       const anchor = frozenSnapshot(event.snapshot);
-      const allocation = allocateConversationId(state.conversationContext);
+      const material = event.firstRequest ?? { kind: "summon" as const, selected_text: anchor.selectedText };
+      const current = activeDiscussion(state);
+      let discussion: Discussion;
+      if (current && isEmptyDiscussion(current)) {
+        discussion = {
+          ...current,
+          request: firstLoadingRequest(anchor, current.id),
+          anchor,
+          pendingFirstRequest: material,
+        };
+      } else {
+        discussion = {
+          id: event.conversationId,
+          createdAt: event.createdAt,
+          updatedAt: event.createdAt,
+          focusDocumentId: event.focusDocumentId,
+          focusDocumentTitle: event.focusDocumentTitle,
+          request: firstLoadingRequest(anchor, event.conversationId),
+          conversation: null,
+          anchor,
+          pendingFirstRequest: material,
+        };
+      }
       return {
         ...state,
         visibility: "open",
-        conversationContext: clearConversationContext(allocation.context),
-        request: firstLoadingRequest(anchor, allocation.conversationId),
-        pendingFirstConversationId: allocation.conversationId,
-        pendingFirstRequest:
-          event.firstRequest ?? { kind: "summon", selected_text: anchor.selectedText },
+        previewRequest: null,
+        discussions: new Map(state.discussions).set(discussion.id, discussion),
+        activeConversationId: discussion.id,
+        generation: state.generation + 1,
       };
     }
     case "succeed": {
-      const request = state.request;
-      // 只接受首轮在途（loading 或阻塞提示）的完成结果：新建对话清空后（idle /
-      // 直接提问 / 追问阶段）到达的迟到成功结果一律拒绝，不得重建对话。
-      if (request.kind !== "loading" && request.kind !== "first_blocked") return state;
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      const blockedPreview = state.previewRequest?.kind === "first_blocked";
       if (request.kind === "loading" && request.phase === "follow_up") return state;
-      let conversationId = state.pendingFirstConversationId;
-      let context = state.conversationContext;
-      if (conversationId === null) {
-        // 阻塞提示下没有已分配的首轮身份：分配新身份（保持单调递增）。
-        conversationId = context.nextConversationId;
-        context = { ...context, nextConversationId: context.nextConversationId + 1 };
-      }
-      const created = createConversationFromFirstSuccess(
-        context,
-        conversationId,
-        event.snapshot,
-        state.pendingFirstRequest ?? { kind: "summon", selected_text: event.snapshot.selectedText },
-        event.response,
-      );
+      if (request.kind !== "loading" && !blockedPreview) return state;
       return {
         ...state,
-        request: firstSuccessRequest(created.conversation.anchor, event.response, conversationId),
-        conversationContext: created.context,
-        pendingFirstRequest: null,
-        // 首轮身份在成功时消费完毕：后续迟到结果不再拥有可用的首轮身份。
-        pendingFirstConversationId: null,
+        previewRequest: null,
+        discussions: new Map(state.discussions).set(
+          discussion.id,
+          applyFirstSuccess(discussion, event.response),
+        ),
       };
     }
     case "fail": {
-      if (!isFirstRoundInFlight(state)) return state;
-      const identity = state.request.kind === "loading" ? state.request : null;
-      return {
-        ...state,
-        request: firstErrorRequest(frozenSnapshot(event.snapshot), event.error, identity),
-      };
+      const discussion = discussionById(state, event.conversationId);
+      if (discussion) {
+        const request = discussion.request;
+        if (!isFirstRoundInFlight(request)) return state;
+        const identity = request.kind === "loading" ? request : null;
+        return setDiscussion(state, {
+          ...discussion,
+          request: firstErrorRequest(frozenSnapshot(event.snapshot), event.error, identity),
+        });
+      }
+      // 无讨论（旧式预检预览）：仅在瞬态预览态接受失败。
+      if (state.previewRequest && isFirstRoundInFlight(state.previewRequest)) {
+        return {
+          ...state,
+          previewRequest: firstErrorRequest(frozenSnapshot(event.snapshot), event.error, null),
+        };
+      }
+      return state;
     }
     case "require_configuration": {
-      if (!isFirstRoundInFlight(state)) return state;
-      const identity = state.request.kind === "loading" ? state.request : null;
-      return {
-        ...state,
-        request: configurationRequiredRequest(
-          frozenSnapshot(event.snapshot),
-          identity?.conversationId,
-        ),
-      };
+      const discussion = discussionById(state, event.conversationId);
+      if (discussion) {
+        const request = discussion.request;
+        if (!isFirstRoundInFlight(request)) return state;
+        const identity = request.kind === "loading" ? request : null;
+        return setDiscussion(state, {
+          ...discussion,
+          request: configurationRequiredRequest(
+            frozenSnapshot(event.snapshot),
+            identity?.conversationId,
+          ),
+        });
+      }
+      if (state.previewRequest && isFirstRoundInFlight(state.previewRequest)) {
+        return {
+          ...state,
+          previewRequest: configurationRequiredRequest(frozenSnapshot(event.snapshot)),
+        };
+      }
+      return state;
     }
     case "begin_follow_up": {
-      const outcome = beginConversationFollowUp(state.conversationContext, event.question);
-      if (outcome.turnId === null) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
+      const discussion = activeDiscussion(state);
+      const conversation = discussion?.conversation;
+      if (!discussion || !conversation) return state;
+      const outcome = beginConversationFollowUp(conversation, event.question, state.nextTurnId);
+      if (outcome.conversation === null) return state;
       return {
         ...state,
-        conversationContext: outcome.context,
-        request: followUpLoadingRequest(conversation.anchor, conversation.id, outcome.turnId),
+        nextTurnId: state.nextTurnId + 1,
+        discussions: new Map(state.discussions).set(discussion.id, {
+          ...discussion,
+          conversation: outcome.conversation,
+          request: followUpLoadingRequest(conversation.anchor, discussion.id, outcome.turnId!),
+        }),
       };
     }
     case "succeed_follow_up": {
-      const outcome = succeedConversationFollowUp(
-        state.conversationContext,
-        event.turnId,
-        event.response,
-      );
-      if (outcome.turn === null) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const outcome = succeedConversationFollowUp(discussion.conversation, event.turnId, event.response);
+      if (outcome.turn === null || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
         request: followUpSuccessRequest(
-          conversation.anchor,
+          outcome.conversation.anchor,
           event.response,
-          conversation.id,
+          discussion.id,
           event.turnId,
         ),
-      };
+      });
     }
     case "fail_follow_up": {
-      const outcome = failConversationFollowUp(state.conversationContext, event.turnId, event.error);
-      if (!outcome.ok) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const outcome = failConversationFollowUp(discussion.conversation, event.turnId, event.error);
+      if (!outcome.ok || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
         request: followUpErrorRequest(
-          conversation.anchor,
+          outcome.conversation.anchor,
           event.error,
-          conversation.id,
+          discussion.id,
           event.turnId,
         ),
-      };
+      });
     }
     case "require_follow_up_configuration": {
-      // 与旧实现一致：配置缺失按一次带配置错误的追问失败处理
-      const outcome = failConversationFollowUp(state.conversationContext, event.turnId, {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const outcome = failConversationFollowUp(discussion.conversation, event.turnId, {
         code: "configuration_required",
         message: "请先配置 LLM 后再重试",
       });
-      if (!outcome.ok) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
-        request: configurationRequiredRequest(conversation.anchor, conversation.id, event.turnId),
-      };
+      if (!outcome.ok || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
+        request: configurationRequiredRequest(
+          outcome.conversation.anchor,
+          discussion.id,
+          event.turnId,
+        ),
+      });
     }
     case "accept_edited_follow_up": {
-      const outcome = acceptEditedConversationFollowUp(state.conversationContext, event.question);
-      if (outcome.turnId === null) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
-        request: followUpLoadingRequest(conversation.anchor, conversation.id, outcome.turnId),
-      };
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      const outcome = acceptEditedConversationFollowUp(discussion.conversation, event.question);
+      if (outcome.turnId === null || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
+        request: followUpLoadingRequest(outcome.conversation.anchor, discussion.id, outcome.turnId),
+      });
     }
     case "cancel_follow_up": {
-      const outcome = cancelConversationFollowUp(state.conversationContext, event.turnId);
-      if (outcome.response === null) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
-        request: cancelFollowUpSuccessRequest(conversation.anchor, outcome.response),
-      };
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      const outcome = cancelConversationFollowUp(discussion.conversation, event.turnId);
+      if (outcome.response === null || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
+        request: cancelFollowUpSuccessRequest(outcome.conversation.anchor, outcome.response),
+      });
     }
     case "accept_follow_up_retry": {
-      const outcome = acceptConversationFollowUpRetry(state.conversationContext);
-      if (outcome.turnId === null) return state;
-      const conversation = outcome.context.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        conversationContext: outcome.context,
-        request: followUpLoadingRequest(conversation.anchor, conversation.id, outcome.turnId),
-      };
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      const outcome = acceptConversationFollowUpRetry(discussion.conversation);
+      if (outcome.turnId === null || outcome.conversation === null) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: outcome.conversation,
+        request: followUpLoadingRequest(outcome.conversation.anchor, discussion.id, outcome.turnId),
+      });
     }
     case "accept_first_retry": {
-      const request = state.request;
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      const request = discussion.request;
       if (request.kind !== "error" && request.kind !== "configuration_required") return state;
       if (request.conversationId === undefined) return state;
-      return {
-        ...state,
+      return setDiscussion(state, {
+        ...discussion,
         request: firstRetryLoadingRequest(request.snapshot, request.conversationId),
-      };
+      });
     }
     case "update_direct_question_draft":
       return { ...state, directQuestionDraft: event.question };
     case "set_pending_selection": {
       if (event.snapshot === null) {
-        // 编辑器选区被清空：移除待附带材料，但不标记为「主动忽略」。
         return { ...state, pendingSelection: null };
       }
-      // 用户主动移除过的同一选区在 focus sync 时保持忽略，不重新附加。
       if (
         state.ignoredSelection !== null &&
         sameSelectionSnapshot(event.snapshot, state.ignoredSelection)
       ) {
         return { ...state, pendingSelection: null };
       }
-      // 新选区：附加并清除忽略标记。
       return {
         ...state,
         pendingSelection: frozenSnapshot(event.snapshot),
@@ -372,165 +496,249 @@ export function reduceAiPanelState(
     }
     case "begin_direct_question": {
       if (!event.question.trim()) return state;
-      const allocation = allocateConversationId(state.conversationContext);
-      // 自行冻结选区：不依赖调用方复制，调用后修改原对象不影响状态/请求/对话锚点。
       const frozenSelection = event.selection ? frozenSnapshot(event.selection) : null;
+      const material: FirstRoundMaterial = {
+        kind: "direct_question",
+        question: event.question,
+        ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
+      };
+      const current = activeDiscussion(state);
+      let discussion: Discussion;
+      if (current && isEmptyDiscussion(current)) {
+        discussion = {
+          ...current,
+          request: directQuestionLoadingRequest(event.question, frozenSelection),
+          anchor: frozenSelection,
+          pendingFirstRequest: material,
+        };
+      } else {
+        discussion = {
+          id: event.conversationId,
+          createdAt: event.createdAt,
+          updatedAt: event.createdAt,
+          focusDocumentId: event.focusDocumentId,
+          focusDocumentTitle: event.focusDocumentTitle,
+          request: directQuestionLoadingRequest(event.question, frozenSelection),
+          conversation: null,
+          anchor: frozenSelection,
+          pendingFirstRequest: material,
+        };
+      }
       return {
         ...state,
         visibility: "open",
-        request: directQuestionLoadingRequest(event.question, frozenSelection),
-        conversationContext: clearConversationContext(allocation.context),
-        pendingFirstConversationId: allocation.conversationId,
-        pendingFirstRequest: null,
+        previewRequest: null,
+        discussions: new Map(state.discussions).set(discussion.id, discussion),
+        activeConversationId: discussion.id,
+        generation: state.generation + 1,
         pendingSelection: null,
       };
     }
     case "succeed_direct_question": {
-      const request = state.request;
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
-      let nextContext = state.conversationContext;
-      let conversationId: number;
-      if (state.pendingFirstConversationId === null) {
-        conversationId = nextContext.nextConversationId;
-        nextContext = { ...nextContext, nextConversationId: nextContext.nextConversationId + 1 };
-      } else {
-        conversationId = state.pendingFirstConversationId;
-      }
-      const material: Extract<GenerateAiRequest, { kind: "direct_question" }> = {
-        kind: "direct_question",
-        question: request.question,
-        ...(request.selection ? { selected_text: request.selection.selectedText } : {}),
-      };
-      const anchor = request.selection ? frozenSnapshot(request.selection) : null;
-      const created = createConversationFromFirstSuccess(
-        nextContext,
-        conversationId,
-        anchor,
-        material,
-        event.response,
-      );
+      const created = applyFirstSuccess(discussion, event.response);
       return {
         ...state,
-        request: firstSuccessRequest(created.conversation.anchor, event.response, conversationId),
-        conversationContext: created.context,
-        pendingFirstConversationId: null,
+        discussions: new Map(state.discussions).set(discussion.id, created),
         directQuestionDraft: "",
       };
     }
     case "fail_direct_question": {
-      const request = state.request;
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
-      // 失败终态丢弃部分流式草稿（done 全文才是最终事实）。
       const { streamedText: _dropped, ...rest } = request;
-      return { ...state, request: { ...rest, status: "error", error: event.error } };
+      return setDiscussion(state, {
+        ...discussion,
+        request: { ...rest, status: "error", error: event.error },
+      });
     }
     case "require_direct_question_configuration": {
-      const request = state.request;
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
       const { streamedText: _dropped, ...rest } = request;
-      return { ...state, request: { ...rest, status: "configuration_required" } };
+      return setDiscussion(state, {
+        ...discussion,
+        request: { ...rest, status: "configuration_required" },
+      });
     }
     case "append_stream_text": {
-      // 流式增量只推进「生成中」的请求：直接提问 loading 或对话内无错误的待答轮次。
-      // 其余状态原样返回（同一引用），迟到增量一律丢弃。
-      const request = state.request;
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      const request = discussion.request;
       if (request.kind === "direct_question" && request.status === "loading") {
-        return {
-          ...state,
+        return setDiscussion(state, {
+          ...discussion,
           request: { ...request, streamedText: (request.streamedText ?? "") + event.text },
-        };
+        });
       }
       if (request.kind === "loading" && request.phase === "first") {
-        return {
-          ...state,
+        return setDiscussion(state, {
+          ...discussion,
           request: { ...request, streamedText: (request.streamedText ?? "") + event.text },
-        };
+        });
       }
-      const conversation = state.conversationContext.conversation;
+      const conversation = discussion.conversation;
       const pending = conversation?.pending;
       if (conversation && pending && !pending.error) {
-        return {
-          ...state,
-          conversationContext: {
-            ...state.conversationContext,
-            conversation: {
-              ...conversation,
-              pending: { ...pending, streamedText: (pending.streamedText ?? "") + event.text },
-            },
+        return setDiscussion(state, {
+          ...discussion,
+          conversation: {
+            ...conversation,
+            pending: { ...pending, streamedText: (pending.streamedText ?? "") + event.text },
           },
-        };
+        });
       }
       return state;
     }
     case "begin_recovery": {
-      // 驱动进程丢失：仅当存在对话时进入恢复态（保留对话与锚点）。
-      const conversation = state.conversationContext.conversation;
-      if (!conversation) return state;
-      return {
-        ...state,
-        request: recoveringRequest(conversation.anchor, conversation.id),
-      };
+      const discussion = activeDiscussion(state);
+      const conversation = discussion?.conversation;
+      if (!discussion || !conversation) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        request: recoveringRequest(conversation.anchor, discussion.id),
+      });
     }
     case "complete_recovery": {
-      // 恢复成功：回到对话成功显示（done 全文以重放前的首轮回应为准）。
-      const request = state.request;
-      const conversation = state.conversationContext.conversation;
-      if (request.kind !== "recovering" || !conversation) return state;
-      return {
-        ...state,
-        request: firstSuccessRequest(
-          conversation.anchor,
-          conversation.firstResponse,
-          conversation.id,
-        ),
-      };
+      const discussion = activeDiscussion(state);
+      const conversation = discussion?.conversation;
+      if (!discussion || !conversation) return state;
+      if (discussion.request.kind !== "recovering") return state;
+      return setDiscussion(state, {
+        ...discussion,
+        request: firstSuccessRequest(conversation.anchor, conversation.firstResponse, discussion.id),
+      });
     }
     case "fail_recovery": {
-      // 恢复失败：进入错误态，引导用户新建对话。
-      const request = state.request;
-      if (request.kind !== "recovering") return state;
-      return {
-        ...state,
-        request: firstErrorRequest(request.snapshot, {
+      const discussion = activeDiscussion(state);
+      if (!discussion) return state;
+      if (discussion.request.kind !== "recovering") return state;
+      return setDiscussion(state, {
+        ...discussion,
+        request: firstErrorRequest(discussion.request.snapshot, {
           code: "service",
           message: "对话恢复失败，请点击新建对话开始新对话",
-        }, { conversationId: request.conversationId }),
-      };
+        }, { conversationId: discussion.request.conversationId }),
+      });
     }
     case "close":
       return state.visibility === "closed" ? state : { ...state, visibility: "closed" };
     case "open":
       return state.visibility === "open" ? state : { ...state, visibility: "open" };
     case "new_conversation": {
-      // 纯空 idle 状态（无对话、无进行中请求）没有可结束的内容：原样返回，不通知。
       if (!hasEndableConversationWork(state)) return state;
-      // 保留单调递增的对话 ID 计数器并预分配下一身份：
-      // 后续首轮请求不会复用任何旧对话身份（新建对话与 reset 都保留计数器）。
-      const allocation = allocateConversationId(state.conversationContext);
+      const discussion: Discussion = {
+        id: event.conversationId,
+        createdAt: event.createdAt,
+        updatedAt: event.createdAt,
+        focusDocumentId: event.focusDocumentId,
+        focusDocumentTitle: event.focusDocumentTitle,
+        request: idleRequest(),
+        conversation: null,
+        anchor: null,
+        pendingFirstRequest: null,
+      };
       return {
         ...state,
         visibility: "open",
-        request: idleRequest(),
-        conversationContext: clearConversationContext(allocation.context),
-        pendingFirstConversationId: null,
-        pendingFirstRequest: null,
+        previewRequest: null,
+        discussions: new Map(state.discussions).set(discussion.id, discussion),
+        activeConversationId: discussion.id,
+        generation: state.generation + 1,
+        directQuestionDraft: "",
+        pendingSelection: null,
+        ignoredSelection: null,
+        saveError: null,
+      };
+    }
+    case "reset":
+      return {
+        ...state,
+        visibility: "closed",
+        previewRequest: null,
+        discussions: new Map(),
+        activeConversationId: null,
+        generation: state.generation + 1,
+        saveError: null,
+        directQuestionDraft: "",
+        pendingSelection: null,
+        ignoredSelection: null,
+      };
+    case "load_discussions": {
+      const discussions = new Map<string, Discussion>();
+      for (const summary of event.summaries) {
+        const conversation = conversationFromRecord(summary);
+        discussions.set(summary.conversation_id, {
+          id: summary.conversation_id,
+          createdAt: summary.created_at,
+          updatedAt: summary.updated_at,
+          focusDocumentId: summary.focus_document_id,
+          focusDocumentTitle: summary.focus_document_title,
+          request: firstSuccessRequest(conversation.anchor, conversation.firstResponse, conversation.id),
+          conversation,
+          anchor: null,
+          pendingFirstRequest: null,
+        });
+      }
+      return {
+        ...state,
+        visibility: "closed",
+        previewRequest: null,
+        discussions,
+        activeConversationId: null,
+        generation: state.generation + 1,
+        saveError: null,
         directQuestionDraft: "",
         pendingSelection: null,
         ignoredSelection: null,
       };
     }
-    case "reset":
-      // 保留 id 计数器：与旧实现 `conversationState.clear()` 一致
+    case "open_discussion": {
+      const conversation = event.conversation;
+      const discussion: Discussion = {
+        id: conversation.id,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.createdAt,
+        focusDocumentId: event.focusDocumentId,
+        focusDocumentTitle: event.focusDocumentTitle,
+        request: firstSuccessRequest(conversation.anchor, conversation.firstResponse, conversation.id),
+        conversation,
+        anchor: conversation.anchor,
+        pendingFirstRequest: null,
+      };
       return {
         ...state,
-        visibility: "closed",
-        request: idleRequest(),
-        conversationContext: clearConversationContext(state.conversationContext),
-        pendingFirstConversationId: null,
-        pendingFirstRequest: null,
-        directQuestionDraft: "",
-        pendingSelection: null,
-        ignoredSelection: null,
+        visibility: "open",
+        previewRequest: null,
+        discussions: new Map(state.discussions).set(discussion.id, discussion),
+        activeConversationId: discussion.id,
+        generation: state.generation + 1,
+        saveError: null,
       };
+    }
+    case "delete_discussion": {
+      if (!state.discussions.has(event.conversationId)) return state;
+      const discussions = new Map(state.discussions);
+      discussions.delete(event.conversationId);
+      const activeConversationId =
+        state.activeConversationId === event.conversationId ? null : state.activeConversationId;
+      return {
+        ...state,
+        discussions,
+        activeConversationId,
+        ...(activeConversationId === null ? { previewRequest: null } : {}),
+      };
+    }
+    case "set_save_error":
+      return { ...state, saveError: event.message };
+    case "clear_save_error":
+      return state.saveError === null ? state : { ...state, saveError: null };
   }
 }

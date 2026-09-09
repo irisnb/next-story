@@ -56,6 +56,13 @@ window.addEventListener("DOMContentLoaded", () => {
     getCurrentDocumentId: () => editor.getCurrentDocumentId(),
     getCurrentEditor: () => editor.getCurrentEditor(),
     openConfigPage: () => llmConfig.open(),
+    getCurrentProjectPath: () => editor.getProjectPath(),
+    getCurrentDocumentTitle: () => {
+      const tree = editor.getTree();
+      const documentId = editor.getCurrentDocumentId();
+      if (tree === null || documentId === null) return null;
+      return tree.nodes[documentId]?.name ?? null;
+    },
   });
   editor.attachAi(ai);
 

@@ -17,6 +17,9 @@ export interface StartDirectQuestionOptions {
   getProjectToken: () => number;
   /** 与首轮召唤共享的 operation 门禁；预检开始占用、所有路径释放。 */
   preflight?: FirstRequestPreflightState;
+  /** 发起时关注文档身份（默认取选区 documentId）。 */
+  focusDocumentId?: string | null;
+  focusDocumentTitle?: string | null;
 }
 
 /**
@@ -34,7 +37,12 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
   const frozenSelection = options.selection ? { ...options.selection } : null;
   const frozenToken = options.getProjectToken();
   if (preflight && !acquirePreflight(preflight, frozenToken)) return false;
-  if (!options.state.beginDirectQuestion(question, frozenSelection)) {
+  if (!options.state.beginDirectQuestion(
+    question,
+    frozenSelection,
+    options.focusDocumentId ?? frozenSelection?.documentId ?? null,
+    options.focusDocumentTitle ?? null,
+  )) {
     if (preflight) releasePreflight(preflight, frozenToken);
     return false;
   }

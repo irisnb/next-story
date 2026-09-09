@@ -146,4 +146,25 @@ mod tests {
             }
         }
     }
+
+    /// 任务 2.5：讨论档案命令（list/save/delete）是受控应用服务的前端命令，
+    /// 绝不注册为 AI 可调用工具、不进入能力网关授权面；未知工具一律拒绝（fail closed）。
+    #[test]
+    fn conversation_store_commands_are_not_ai_callable_tools() {
+        for name in ["conversation_list", "conversation_save", "conversation_delete"] {
+            assert!(
+                !READ_ONLY_STORY_TOOLS.contains(&name),
+                "讨论档案命令不应出现在只读作品工具集合: {name}"
+            );
+            assert!(
+                !FORBIDDEN_TOOL_IDS.contains(&name),
+                "讨论档案命令不应出现在禁用工具清单（它根本不是 AI 工具）: {name}"
+            );
+            assert_eq!(
+                authorize_tool(name),
+                ToolAuthorization::Unknown,
+                "讨论档案命令作为工具名应被拒绝: {name}"
+            );
+        }
+    }
 }

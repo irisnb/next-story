@@ -20,35 +20,16 @@ The AI panel state implementation SHALL keep panel visibility, request status, t
 
 #### Scenario: New conversation is distinct from project reset
 - **WHEN** the user triggers the new-conversation operation while the panel is in a non-empty or loading state
-- **THEN** the reducer SHALL clear the current temporary AI state while keeping the panel open
+- **THEN** the reducer SHALL start a new discussion while keeping the panel open
+- **AND** the prior discussion SHALL be preserved as an archive
 - **AND** project lifecycle reset SHALL continue to close the panel
-
-### Requirement: Temporary conversation state preserves current AI boundaries
-The temporary conversation state SHALL preserve the current single in-memory linear conversation model with one first assistant response, ordered successful follow-up turns, and at most one pending follow-up turn. The conversation state SHALL keep the full display history for rendering and crash-recovery replay, while each request payload SHALL only carry the incremental new content. A user-initiated new conversation SHALL discard the current model and advance the identity boundary used to reject stale results.
-
-#### Scenario: Follow-up requests send only the increment
-- **WHEN** the user submits or retries a follow-up question after the first AI response succeeds
-- **THEN** the generated follow-up request SHALL only carry the new question content, not the prior conversation turns
-- **AND** the conversation display history SHALL remain the source for rendering and crash-recovery replay, not for request payloads
-
-#### Scenario: New invocation replaces the prior conversation
-- **WHEN** a new first-round request is accepted
-- **THEN** the system SHALL establish a new temporary conversation identity and prevent later results from the replaced conversation from modifying the current conversation
-
-#### Scenario: User-created new conversation rejects stale results
-- **WHEN** the user clears a conversation while a first or follow-up request is pending
-- **THEN** the system SHALL prevent the pending request's later result from modifying the newly cleared state
-
-#### Scenario: Reset clears temporary AI state
-- **WHEN** the current project is unloaded or replaced
-- **THEN** the system SHALL close the panel, return the request state to idle, and remove the current temporary conversation from memory
 
 ### Requirement: Refactor introduces no new AI product capability
 The state split SHALL NOT add AI panel behavior beyond the currently implemented direct-question flow with optional selection attachment and linear temporary follow-up.
 
 #### Scenario: No new context source is added
 - **WHEN** the AI panel state is refactored
-- **THEN** the system SHALL NOT add nearby text, full-document text, summaries, persisted history, multiple conversations, or user-confirmed project information to AI requests
+- **THEN** the system SHALL NOT add nearby text, full-document text, summaries, or user-confirmed project information to AI requests
 
 #### Scenario: No notebook write path is added
 - **WHEN** AI output or follow-up content is displayed in the panel
@@ -89,23 +70,46 @@ AI 面板状态 SHALL 通过显式的 `(state, event) -> state` 纯函数（redu
 - **WHEN** 直接提问请求已经提交
 - **THEN** 已发送问题和选区不再被后续编辑器选区变化修改
 
-### Requirement: 统一临时对话保存完整轮次
-面板状态 SHALL 保存统一的不限轮临时对话的完整显示轮次（首轮冻结材料、首轮回应与后续问答轮次），作为显示与崩溃恢复重放的运行期事实源；每轮请求载荷只携带增量内容，显示历史不作为请求载荷重发。
+### Requirement: Discussion state preserves current AI boundaries
+The discussion state SHALL preserve multiple discussions within a project while the panel SHALL display one current discussion at a time. A new first-round request SHALL start a new discussion without replacing prior discussions, which remain archived and reopenable. Stale results SHALL be rejected by discussion identity. The current discussion state SHALL keep the full display history for rendering and crash-recovery replay, while each request payload SHALL only carry the incremental new content. When the project is unloaded, the in-memory discussion view SHALL be cleared while the on-disk discussion archives remain.
+
+#### Scenario: Follow-up requests send only the increment
+- **WHEN** the user submits or retries a follow-up question after the first AI response succeeds
+- **THEN** the generated follow-up request SHALL only carry the new question content, not the prior conversation turns
+- **AND** the conversation display history SHALL remain the source for rendering and crash-recovery replay, not for request payloads
+
+#### Scenario: New invocation starts a new discussion without replacing prior ones
+- **WHEN** a new first-round request is accepted
+- **THEN** the system SHALL establish a new discussion identity and display the new discussion
+- **AND** prior discussions SHALL remain archived and reopenable
+
+#### Scenario: User-created new discussion rejects stale results
+- **WHEN** the user starts a new discussion while a first or follow-up request is pending in the prior discussion
+- **THEN** the system SHALL prevent the pending request's later result from modifying the new discussion
+
+#### Scenario: Project unload clears in-memory view but retains archives
+- **WHEN** the current project is unloaded or replaced
+- **THEN** the system SHALL close the panel, return the request state to idle, and remove the current project's discussion set from the in-memory view
+- **AND** the on-disk discussion archives SHALL remain in the project folder
+
+### Requirement: 当前讨论保存完整轮次
+面板状态 SHALL 保存当前讨论引用与讨论集合的轻量视图（当前作品内各讨论的身份、标题、时间与终态），并 SHALL 保存当前讨论的完整显示轮次（首轮冻结材料、首轮回应与后续问答轮次），作为显示与崩溃恢复重放的运行期事实源；每轮请求载荷只携带增量内容，显示历史不作为请求载荷重发。
 
 #### Scenario: 直接提问首轮成功后进入统一对话
 - **WHEN** 直接提问首轮成功
-- **THEN** 面板进入统一临时对话结构，后续追问复用该对话
+- **THEN** 面板进入当前讨论结构，后续追问复用该讨论
 
 #### Scenario: 每轮请求只携带增量
-- **WHEN** 统一对话中提交新一轮问题
+- **WHEN** 当前讨论中提交新一轮问题
 - **THEN** 请求载荷只包含本次问题，不重发此前问答轮次
 - **AND** 面板显示历史仍完整保留全部轮次
 
 #### Scenario: 收起面板保留对话
 - **WHEN** 用户收起并重新展开面板
-- **THEN** 对话完整轮次与未发送输入保持不变
+- **THEN** 讨论完整轮次与未发送输入保持不变
 
-#### Scenario: 作品或文档切换清空对话
+#### Scenario: 切换作品加载新列表，切换文档不清空讨论
 - **WHEN** 作品或当前文档切换
-- **THEN** 面板清空统一对话、待附带选区与未发送输入
+- **THEN** 切换作品时清空当前视图并加载新作品的讨论列表
+- **AND** 切换文档时不清空讨论、不改变讨论绑定
 

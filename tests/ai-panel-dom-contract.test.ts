@@ -50,6 +50,12 @@ test("complete page assembly returns a valid AI panel DOM contract", () => {
     assert.ok(contract.directQuestionConfig);
     assert.ok(contract.directQuestionGoConfig);
     assert.ok(contract.welcome);
+    assert.ok(contract.conversationListToggleBtn);
+    assert.ok(contract.conversationList);
+    assert.ok(contract.conversationListCloseBtn);
+    assert.ok(contract.conversationListItems);
+    assert.ok(contract.conversationListEmpty);
+    assert.ok(contract.saveErrorBlock);
 
     // 共享节点与 AppDom 公共字段指向同一元素，避免接线漂移。
     assert.equal(contract.panel, dom.aiPanel);
@@ -107,6 +113,8 @@ test("setupAiPanel initializes purely from the explicit contract without global 
       onRemoveDirectQuestionSelection: () => {},
       onDirectQuestionFocus: () => {},
       onOpenPanel: () => {},
+      onOpenDiscussion: () => {},
+      onDeleteDiscussion: () => Promise.resolve(),
     });
 
     assert.equal(getElementByIdCalls, 0);

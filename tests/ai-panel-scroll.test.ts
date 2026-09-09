@@ -59,16 +59,16 @@ test("preserves scroll across visibility renders and same-snapshot completion", 
 test("preserves scroll when appending or retrying within one conversation", () => {
   const controller = new AiPanelScrollResetController();
   const anchor = snapshot("锚点");
-  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: 1, phase: "first" }), true);
-  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: 1, phase: "follow_up", turnId: 1 }), false);
-  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: 1, phase: "follow_up", turnId: 1 }), false);
+  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: "1", phase: "first" }), true);
+  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: "1", phase: "follow_up", turnId: 1 }), false);
+  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: "1", phase: "follow_up", turnId: 1 }), false);
 });
 
 test("resets scroll for a new conversation identity even with the same anchor", () => {
   const controller = new AiPanelScrollResetController();
   const anchor = snapshot("锚点");
-  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: 1, phase: "first" }), true);
-  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: 2, phase: "first" }), true);
+  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: "1", phase: "first" }), true);
+  assert.equal(controller.shouldReset({ kind: "loading", snapshot: anchor, conversationId: "2", phase: "first" }), true);
 });
 
 test("state-driven scroll resets for an accepted new summon with the same snapshot", () => {

@@ -61,8 +61,8 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
     },
-    replayHistory: (sessionId, turns) => {
-      commands.push({ cmd: "ai_replay_history", args: { sessionId, turns } });
+    replayHistory: (sessionId, turns, origin) => {
+      commands.push({ cmd: "ai_replay_history", args: { sessionId, turns, origin } });
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
     },
@@ -112,9 +112,10 @@ function followUpRequest(lastQuestion: string): GenerateAiRequest {
   };
 }
 
-test("first direct question starts a session and sends kind first with question and selection", async () => {
+test("first direct question starts a session and sends kind first with a conversation-prefixed message id", async () => {
   const ui = harness();
   const result = await ui.transport.sendViaResidentSession(
+    "c-1",
     directQuestionRequest("这个角色为什么犹豫？", "林站在天台边。"),
   );
 
@@ -125,7 +126,7 @@ test("first direct question starts a session and sends kind first with question 
       cmd: "ai_send_message",
       args: {
         sessionId: "session-1",
-        messageId: "msg-1",
+        messageId: "c-1:msg-1",
         kind: "first",
         question: "这个角色为什么犹豫？",
         selectedText: "林站在天台边。",
@@ -136,7 +137,7 @@ test("first direct question starts a session and sends kind first with question 
 
 test("direct question without selection omits the selectedText argument", async () => {
   const ui = harness();
-  await ui.transport.sendViaResidentSession(directQuestionRequest("只问问题"));
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("只问问题"));
 
   const send = ui.commands.find((entry) => entry.cmd === "ai_send_message")!;
   assert.equal("selectedText" in send.args, false);
@@ -144,7 +145,7 @@ test("direct question without selection omits the selectedText argument", async 
 
 test("follow_up sends only the last user message as the incremental question", async () => {
   const ui = harness();
-  await ui.transport.sendViaResidentSession(followUpRequest("当前问题"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("当前问题"));
 
   assert.deepEqual(ui.commands, [
     { cmd: "ai_start_session", args: { sessionId: "session-1" } },
@@ -152,7 +153,7 @@ test("follow_up sends only the last user message as the incremental question", a
       cmd: "ai_send_message",
       args: {
         sessionId: "session-1",
-        messageId: "msg-1",
+        messageId: "c-1:msg-1",
         kind: "follow_up",
         question: "当前问题",
       },
@@ -160,79 +161,98 @@ test("follow_up sends only the last user message as the incremental question", a
   ]);
 });
 
-test("subsequent sends reuse the resident session without starting a new one", async () => {
+test("subsequent sends in the same conversation reuse the resident session with incrementing global counter", async () => {
   const ui = harness();
-  await ui.transport.sendViaResidentSession(directQuestionRequest("第一问"));
-  await ui.transport.sendViaResidentSession(followUpRequest("第二问"));
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第一问"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("第二问"));
 
   const startCalls = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
-  assert.equal(startCalls.length, 1, "常驻会话只启动一次");
+  assert.equal(startCalls.length, 1, "同一讨论的会话只启动一次");
   const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
-  assert.deepEqual(sendCalls.map((entry) => entry.args.messageId), ["msg-1", "msg-2"]);
+  assert.deepEqual(sendCalls.map((entry) => entry.args.messageId), ["c-1:msg-1", "c-1:msg-2"]);
   assert.deepEqual(sendCalls.map((entry) => entry.args.sessionId), ["session-1", "session-1"]);
+});
+
+test("different conversations get separate sessions and non-colliding message ids", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第一问"));
+  await ui.transport.sendViaResidentSession("c-2", directQuestionRequest("第二问"));
+
+  const startCalls = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+  assert.deepEqual(startCalls.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
+  const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+  assert.deepEqual(sendCalls.map((entry) => entry.args.messageId), ["c-1:msg-1", "c-2:msg-2"]);
 });
 
 test("a failed send clears the in-flight stream target", async () => {
   const ui = harness();
   ui.failNextCommand(new Error("网络失败"));
   await assert.rejects(
-    () => ui.transport.sendViaResidentSession(directQuestionRequest("问题")),
+    () => ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题")),
   );
 
-  // 失败后 currentStream 已清空：迟到的增量不路由给订阅者
   const received: string[] = [];
   ui.transport.onStreamText((text) => received.push(text));
   ui.transport.installSessionEventRouting();
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-1", seq: 0, text: "迟到" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 0, text: "迟到" });
   assert.deepEqual(received, []);
 });
 
-test("endActiveSession ends the session and resets state so the next send starts fresh", async () => {
+test("endSession ends the conversation's session so the next send starts fresh", async () => {
   const ui = harness();
-  await ui.transport.sendViaResidentSession(directQuestionRequest("第一问"));
-  ui.transport.endActiveSession();
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第一问"));
+  ui.transport.endSession("c-1");
 
   assert.deepEqual(ui.commands[ui.commands.length - 1], {
     cmd: "ai_end_session",
     args: { sessionId: "session-1" },
   });
 
-  await ui.transport.sendViaResidentSession(directQuestionRequest("第二问"));
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第二问"));
   const startCalls = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
   assert.deepEqual(startCalls.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
 });
 
-test("endActiveSession without a started session sends nothing", () => {
+test("endSession for an unknown conversation sends nothing", () => {
   const ui = harness();
-  ui.transport.endActiveSession();
+  ui.transport.endSession("c-unknown");
   assert.deepEqual(ui.commands, []);
 });
 
-test("endActiveSession swallows end-session failures", async () => {
+test("endSession swallows end-session failures", async () => {
   const ui = harness();
-  await ui.transport.sendViaResidentSession(directQuestionRequest("问题"));
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
   ui.failNextCommand(new Error("结束失败"));
-  assert.doesNotThrow(() => ui.transport.endActiveSession());
+  assert.doesNotThrow(() => ui.transport.endSession("c-1"));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   assert.equal(ui.commands.some((entry) => entry.cmd === "ai_end_session"), true);
 });
 
-test("replayActiveSession starts a new session, replays turns, and marks done", async () => {
+test("endAllSessions ends every started session", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题一"));
+  await ui.transport.sendViaResidentSession("c-2", directQuestionRequest("问题二"));
+  ui.transport.endAllSessions();
+
+  const endCalls = ui.commands.filter((entry) => entry.cmd === "ai_end_session");
+  assert.deepEqual(endCalls.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
+});
+
+test("replaySession starts a new session, replays turns with origin, and marks done", async () => {
   const ui = harness();
   const turns: AiReplayTurn[] = [
     { role: "user", text: "用户问题：\n原问题" },
     { role: "assistant", text: "首答" },
   ];
-  await ui.transport.replayActiveSession(turns);
+  await ui.transport.replaySession("c-1", turns, "direct_question");
 
   assert.deepEqual(ui.commands, [
     { cmd: "ai_start_session", args: { sessionId: "session-1" } },
-    { cmd: "ai_replay_history", args: { sessionId: "session-1", turns } },
+    { cmd: "ai_replay_history", args: { sessionId: "session-1", turns, origin: "direct_question" } },
     { cmd: "ai_replay_done", args: { sessionId: "session-1" } },
   ]);
 
-  // 重放后的会话是常驻会话：下一次追问复用它，不再重新启动
-  await ui.transport.sendViaResidentSession(followUpRequest("恢复后的追问"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("恢复后的追问"));
   const startCalls = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
   assert.equal(startCalls.length, 1);
   const send = ui.commands.find((entry) => entry.cmd === "ai_send_message")!;
@@ -245,20 +265,16 @@ test("stream text routes only deltas matching the in-flight message", async () =
   ui.transport.onStreamText((text) => received.push(text));
   ui.transport.installSessionEventRouting();
 
-  const sendPromise = ui.transport.sendViaResidentSession(directQuestionRequest("问题"));
-  // 等待 ensureSessionStarted 落定，currentStream 就位后再发增量
+  const sendPromise = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
   await Promise.resolve();
   await Promise.resolve();
-  // 在途消息匹配：增量到达订阅者
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-1", seq: 0, text: "她可能" });
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-1", seq: 1, text: "在隐瞒" });
-  // 不匹配的会话 / 消息：丢弃
-  ui.deltaHandlers[0]({ session_id: "other", message_id: "msg-1", seq: 2, text: "X" });
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-9", seq: 3, text: "Y" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 0, text: "她可能" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 1, text: "在隐瞒" });
+  ui.deltaHandlers[0]({ session_id: "other", message_id: "c-1:msg-1", seq: 2, text: "X" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-2:msg-9", seq: 3, text: "Y" });
   await sendPromise;
 
-  // 命令完成后 currentStream 清空：迟到增量不再转发
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-1", seq: 4, text: "迟到" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 4, text: "迟到" });
   assert.deepEqual(received, ["她可能", "在隐瞒"]);
 });
 
@@ -268,9 +284,9 @@ test("onStreamText unsubscribe stops delivering deltas", async () => {
   const unsubscribe = ui.transport.onStreamText((text) => received.push(text));
   ui.transport.installSessionEventRouting();
 
-  const sendPromise = ui.transport.sendViaResidentSession(directQuestionRequest("问题"));
+  const sendPromise = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
   unsubscribe();
-  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "msg-1", seq: 0, text: "增量" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 0, text: "增量" });
   await sendPromise;
   assert.deepEqual(received, []);
 });

@@ -1,4 +1,5 @@
 pub mod capability_gateway;
+pub mod conversation_store;
 pub mod dsh_driver;
 pub mod dsh_sidecar;
 pub mod dsh_version;
@@ -404,6 +405,62 @@ async fn restore_node(
     .map_err(|e| e.to_string())
 }
 
+// ========== 讨论档案命令（conversation-persistence 任务 2.2） ==========
+
+/// 列出当前作品的已保存讨论（摘要视图）。损坏/超限档案被跳过并如实返回提示。
+#[tauri::command]
+async fn conversation_list(
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<conversation_store::ListResult, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::list_conversations(&project_root).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("读取讨论列表任务执行失败: {e}"))?
+}
+
+/// 保存（原子写入）一份讨论档案到作品系统目录，与作品正文分开存放。
+#[tauri::command]
+async fn conversation_save(
+    app: tauri::AppHandle,
+    project_path: String,
+    record: conversation_store::ConversationRecord,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::save_conversation(&project_root, &record).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("保存讨论任务执行失败: {e}"))?
+}
+
+/// 删除一份讨论档案（幂等：不存在视为成功）。
+#[tauri::command]
+async fn conversation_delete(
+    app: tauri::AppHandle,
+    project_path: String,
+    conversation_id: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::delete_conversation(&project_root, &conversation_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("删除讨论任务执行失败: {e}"))?
+}
+
 /// 导出当前作品为 Word 文档：只读取已保存内容，生成真正的 `.docx` 并写入
 /// 用户选择的目标路径。命令始终返回稳定的 `ExportWordResult`（成功 / 失败
 /// 都带中文说明），前端据此区分结果，不依赖 Tauri 错误序列化细节。
@@ -664,7 +721,10 @@ pub fn run() {
             ai_cancel_message,
             ai_end_session,
             ai_replay_history,
-            ai_replay_done
+            ai_replay_done,
+            conversation_list,
+            conversation_save,
+            conversation_delete
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -3,6 +3,11 @@ import type {
   PanelStateView,
 } from "./ai-panel-request-state.ts";
 import type { ReadonlyTemporaryConversation } from "./ai-panel-conversation.ts";
+import type { ConversationSummary } from "./conversation-archive.ts";
+import {
+  buildConversationListItems,
+  type ConversationListItem,
+} from "./ai-panel-conversation-list.ts";
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -75,6 +80,12 @@ export interface AiPanelView {
   readonly directQuestion: DirectQuestionView | null;
   /** 是否有可结束的内容（临时对话或进行中的首轮/追问/直接提问请求），决定“新建对话”是否显示。 */
   readonly newConversationVisible: boolean;
+  /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
+  readonly saveError: string | null;
+  /** 当前显示的讨论身份；无活动讨论时为 null。 */
+  readonly activeConversationId: string | null;
+  /** 当前作品的会话列表条目（供会话列表 UI 展示）。 */
+  readonly conversations: ReadonlyArray<ConversationListItem>;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -160,18 +171,29 @@ function buildConversationView(
   if (!conversation) return null;
   const messages: ConversationMessageView[] = [];
   const material = conversation.initialUserMaterial;
-  // 直接提问来源：首轮用户原问题先于 AI 首轮回答显示；选区召唤保持原顺序。
+  // 首轮用户消息：直接提问显示原问题；选区召唤显示冻结选区文本（与首轮 loading 视图一致）。
   if (material.kind === "direct_question") {
     messages.push({ role: "user", text: material.question });
+  } else if (material.selected_text) {
+    messages.push({ role: "user", text: material.selected_text });
   }
-  messages.push({ role: "assistant", text: conversation.firstResponse });
+  // 首轮 assistant 回应：为空（生成途中被打断的首轮）时不推空消息。
+  if (conversation.firstResponse) {
+    messages.push({ role: "assistant", text: conversation.firstResponse });
+  }
+  if (conversation.firstRoundInterrupted) {
+    messages.push({ role: "status", text: "中断" });
+  }
   for (const turn of conversation.turns) {
     messages.push({ role: "user", text: turn.question });
     messages.push({ role: "assistant", text: turn.response });
   }
   if (conversation.pending) {
     messages.push({ role: "user", text: conversation.pending.question });
-    if (!conversation.pending.error) {
+    if (conversation.pending.interrupted) {
+      // 重开时未完成轮显示「中断」，不自动重发。
+      messages.push({ role: "status", text: "中断" });
+    } else if (!conversation.pending.error) {
       // 流式增量草稿逐字追加为助手消息；尚未有增量时只显示思考中状态。
       if (conversation.pending.streamedText) {
         messages.push({ role: "assistant", text: conversation.pending.streamedText });
@@ -246,9 +268,16 @@ function buildDirectQuestionConversationView(
   return { messages };
 }
 
+/** 从当前作品投影会话列表所需的额外信息（由 DOM 控制器从 state 传入）。 */
+interface ConversationListExtras {
+  readonly conversations: readonly ConversationSummary[];
+  readonly activeConversationId: string | null;
+}
+
 export function buildAiPanelView(
   panelState: PanelStateView,
   conversation: ReadonlyTemporaryConversation | null,
+  extras?: ConversationListExtras,
 ): AiPanelView {
   const facts = requestFacts(panelState.request);
   // 统一对话视图（D1）：直接提问请求从被接受起就产出对话流；
@@ -286,7 +315,7 @@ export function buildAiPanelView(
       ? { message: pendingError.message, retryAvailable: true, editAvailable: true }
       : null;
 
-  const hasPending = conversation !== null && conversation.pending !== null;
+  const hasPending = conversation !== null && conversation.pending !== null && !conversation.pending.interrupted;
   const followUpForm = hasConversation ? { inputEnabled: !hasPending } : null;
 
   const retryAvailable =
@@ -319,5 +348,10 @@ export function buildAiPanelView(
     retryAvailable,
     directQuestion,
     newConversationVisible,
+    saveError: panelState.saveError,
+    activeConversationId: extras?.activeConversationId ?? null,
+    conversations: extras
+      ? buildConversationListItems(extras.conversations, extras.activeConversationId)
+      : [],
   };
 }

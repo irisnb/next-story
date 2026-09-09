@@ -80,13 +80,14 @@ interface FeatureHarness {
 function fakeTransport(): { transport: AiSessionTransport; requests: GenerateAiRequest[] } {
   const requests: GenerateAiRequest[] = [];
   const transport: AiSessionTransport = {
-    sendViaResidentSession: (request) => {
+    sendViaResidentSession: (_conversationId, request) => {
       requests.push(request);
       const result: GenerateAiResult = { ok: true, content: "回答" };
       return Promise.resolve(result);
     },
-    endActiveSession: () => {},
-    replayActiveSession: () => Promise.resolve(),
+    endSession: () => {},
+    endAllSessions: () => {},
+    replaySession: () => Promise.resolve(),
     onStreamText: () => () => {},
     onDriverLost: () => () => {},
     installSessionEventRouting: () => {},

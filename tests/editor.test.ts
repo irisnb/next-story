@@ -4,6 +4,7 @@ import test from "node:test";
 import type { JSONContent } from "@tiptap/core";
 
 import type { AiFeatureController } from "../src/ai-feature.ts";
+import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { AppDom } from "../src/dom.ts";
 import { setupEditor } from "../src/editor.ts";
 import type { FormatCommand } from "../src/format-commands.ts";
@@ -466,11 +467,15 @@ test("showProject begins the AI project and unload ends it", async () => {
     let begins = 0;
     let ends = 0;
     const ai: AiFeatureController = {
+      state: new AiPanelState(),
       beginProject: () => { begins += 1; },
       endProject: () => { ends += 1; },
       submitFollowUp: () => Promise.resolve(false),
       retryFollowUp: () => Promise.resolve(false),
       editFollowUp: () => Promise.resolve(false),
+      getConversations: () => [],
+      openDiscussion: () => {},
+      deleteDiscussion: () => Promise.resolve(),
     };
     fixture.editor.attachAi(ai);
 
@@ -491,11 +496,15 @@ test("applyTree with the same document does not reset the AI project", async () 
   try {
     let begins = 0;
     const ai: AiFeatureController = {
+      state: new AiPanelState(),
       beginProject: () => { begins += 1; },
       endProject: () => {},
       submitFollowUp: () => Promise.resolve(false),
       retryFollowUp: () => Promise.resolve(false),
       editFollowUp: () => Promise.resolve(false),
+      getConversations: () => [],
+      openDiscussion: () => {},
+      deleteDiscussion: () => Promise.resolve(),
     };
     fixture.editor.attachAi(ai);
 

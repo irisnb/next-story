@@ -41,6 +41,18 @@ export interface AiPanelDom {
   directQuestionGoConfig: HTMLButtonElement;
   /** 空状态欢迎语（无对话轮次且无进行中请求时显示）。 */
   welcome: HTMLElement;
+  /** 会话列表入口（展开/收起列表）。 */
+  conversationListToggleBtn: HTMLButtonElement;
+  /** 会话列表容器。 */
+  conversationList: HTMLElement;
+  /** 会话列表内的“收起”按钮。 */
+  conversationListCloseBtn: HTMLButtonElement;
+  /** 会话列表条目容器（条目由 DOM 控制器动态创建）。 */
+  conversationListItems: HTMLElement;
+  /** 会话列表空状态提示。 */
+  conversationListEmpty: HTMLElement;
+  /** 讨论档案保存失败的可见提示；无错误时隐藏。 */
+  saveErrorBlock: HTMLElement;
 }
 
 export interface AppDom {
@@ -344,6 +356,12 @@ export function getAppDom(): AppDom {
       directQuestionConfig: requireElement("ai-direct-question-config"),
       directQuestionGoConfig: requireElement<HTMLButtonElement>("ai-direct-question-go-config"),
       welcome: requireElement("ai-welcome"),
+      conversationListToggleBtn: requireElement<HTMLButtonElement>("ai-conversation-list-toggle"),
+      conversationList: requireElement("ai-conversation-list"),
+      conversationListCloseBtn: requireElement<HTMLButtonElement>("ai-conversation-list-close"),
+      conversationListItems: requireElement("ai-conversation-list-items"),
+      conversationListEmpty: requireElement("ai-conversation-list-empty"),
+      saveErrorBlock: requireElement("ai-save-error"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

@@ -33,7 +33,7 @@ test("beginRequest opens the panel and enters loading with the frozen snapshot",
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: snap,
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
 });
@@ -44,24 +44,22 @@ test("visibility and request change independently", () => {
   state.close();
   assert.equal(state.isOpen, false);
 
-  // 收起期间完成：request 更新，但面板保持收起
   state.succeed(snapshot("a"), "思考结果");
   assert.equal(state.isOpen, false);
   assert.deepEqual(state.view.request, {
     kind: "success",
     snapshot: snapshot("a"),
     response: "思考结果",
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
 
-  // 重新展开后可以看到对应结果
   state.open();
   assert.equal(state.isOpen, true);
   assert.equal(state.view.request.kind, "success");
 });
 
-test("new request replaces the current result (replace-current strategy)", () => {
+test("a new first request opens a new discussion and switches the active view", () => {
   const state = new AiPanelState();
   state.beginRequest(snapshot("旧选区"));
   state.succeed(snapshot("旧选区"), "旧回复");
@@ -71,9 +69,12 @@ test("new request replaces the current result (replace-current strategy)", () =>
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: next,
-    conversationId: 2,
+    conversationId: "2",
     phase: "first",
   });
+  // 旧讨论保留在讨论集合中，可重开查看
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].conversation_id, "1");
 
   state.succeed(next, "新回复");
   assert.equal(state.view.request.kind, "success");
@@ -135,8 +136,6 @@ test("retry uses the original frozen snapshot, not any new selection", () => {
 
   const retry = state.retrySnapshot();
   assert.deepEqual(retry, original);
-
-  // 模拟用户在编辑器里形成了另一选区——重试不受影响
   assert.equal(state.retrySnapshot()?.selectedText, "原选区");
 });
 
@@ -156,6 +155,7 @@ test("reset clears the panel after project unload or replace", () => {
   state.reset();
   assert.equal(state.isOpen, false);
   assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(state.conversations.length, 0);
 });
 
 test("notifies listeners on every state change", () => {
@@ -188,16 +188,14 @@ test("forms one anchored linear conversation after the first success", () => {
   state.succeed(anchor, "首次回应");
 
   assert.equal(state.followUpAvailable, true);
-  // 断言签名会把 conversation 收窄为字面量（此时 pending 为 null），
-  // 因此这里显式以 ReadonlyTemporaryConversation 作为期望类型，避免污染后续 pending 访问。
-  assert.deepEqual(state.conversation, {
-    id: 1,
-    anchor,
-    initialUserMaterial: { kind: "summon", selected_text: "冻结选区" },
-    firstResponse: "首次回应",
-    turns: [],
-    pending: null,
-  } as ReadonlyTemporaryConversation);
+  const conversation = state.conversation;
+  assert.ok(conversation);
+  assert.equal(conversation.id, "1");
+  assert.deepEqual(conversation.anchor, anchor);
+  assert.deepEqual(conversation.initialUserMaterial, { kind: "summon", selected_text: "冻结选区" });
+  assert.equal(conversation.firstResponse, "首次回应");
+  assert.deepEqual(conversation.turns, []);
+  assert.equal(conversation.pending, null);
 
   const turn = state.beginFollowUp("第一个问题");
   assert.equal(turn, 1);
@@ -233,7 +231,7 @@ test("previews and commits an edited failed question without changing successful
   assert.deepEqual(state.conversation?.turns, []);
 });
 
-test("a new summon replaces the old conversation while visibility stays independent", () => {
+test("a new summon opens a new discussion while keeping the old one archived", () => {
   const state = new AiPanelState();
   const first = snapshot("旧");
   state.beginRequest(first);
@@ -247,9 +245,12 @@ test("a new summon replaces the old conversation while visibility stays independ
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: next,
-    conversationId: 2,
+    conversationId: "2",
     phase: "first",
   });
+  // 旧讨论保留，可重开
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].conversation_id, "1");
 });
 
 test("allocates and preserves conversation identity from accepted first summon through success", () => {
@@ -260,7 +261,7 @@ test("allocates and preserves conversation identity from accepted first summon t
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: anchor,
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
   state.succeed(anchor, "首次回应");
@@ -269,10 +270,10 @@ test("allocates and preserves conversation identity from accepted first summon t
     kind: "success",
     snapshot: anchor,
     response: "首次回应",
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
-  assert.equal(state.conversationIdentity?.conversationId, 1);
+  assert.equal(state.conversationIdentity?.conversationId, "1");
 });
 
 test("returns a defensive conversation view that cannot mutate payload state", () => {
@@ -316,12 +317,8 @@ test("pending selection is replaced by a new meaningful selection and cleared wh
 
   state.setPendingSelection(first);
   assert.deepEqual(state.view.pendingSelection, first);
-
-  // 新选区替换旧选区
   state.setPendingSelection(second);
   assert.deepEqual(state.view.pendingSelection, second);
-
-  // 清除选区移除待附带材料
   state.setPendingSelection(null);
   assert.equal(state.view.pendingSelection, null);
 });
@@ -356,7 +353,6 @@ test("beginDirectQuestion freezes the selection so later mutation of the origina
   const selection = snapshot("待附带选区");
   state.beginDirectQuestion("问题", selection);
 
-  // 调用后修改原对象：不应影响已冻结的请求选区
   selection.selectedText = "篡改后的选区";
   selection.from = 99;
   selection.to = 100;
@@ -369,7 +365,6 @@ test("beginDirectQuestion freezes the selection so later mutation of the origina
     streamedText: "",
   });
 
-  // 成功进入统一对话后，对话锚点也不受原对象后续修改影响
   state.succeedDirectQuestion("回答");
   assert.deepEqual(state.conversation?.anchor, {
     documentId: "draft",
@@ -391,7 +386,7 @@ test("direct question success enters the unified conversation and clears the dra
     kind: "success",
     snapshot: selection,
     response: "回答",
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
   assert.ok(state.conversation);
@@ -424,7 +419,7 @@ test("direct question success enables follow-up turns in the unified conversatio
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: null,
-    conversationId: 1,
+    conversationId: "1",
     phase: "follow_up",
     turnId: 1,
   });
@@ -510,7 +505,7 @@ test("reset clears direct question draft and pending selection", () => {
   assert.equal(state.isOpen, false);
 });
 
-test("beginDirectQuestion replaces a prior conversation as a fresh first-round entry", () => {
+test("beginDirectQuestion opens a new discussion when a prior conversation exists", () => {
   const state = new AiPanelState();
   const anchor = snapshot("旧选区");
   state.beginRequest(anchor);
@@ -527,6 +522,7 @@ test("beginDirectQuestion replaces a prior conversation as a fresh first-round e
     status: "loading",
     streamedText: "",
   });
+  assert.equal(state.conversations.length, 1, "旧讨论保留");
 });
 
 test("removing the pending selection keeps the same selection ignored on re-sync", () => {
@@ -535,16 +531,11 @@ test("removing the pending selection keeps the same selection ignored on re-sync
 
   state.setPendingSelection(selection);
   assert.deepEqual(state.view.pendingSelection, selection);
-
-  // 用户主动移除待附带选区
   state.removePendingSelection();
   assert.equal(state.view.pendingSelection, null);
-
-  // 同一选区在 focus sync 时保持忽略，不重新附加
   state.setPendingSelection(selection);
   assert.equal(state.view.pendingSelection, null, "被忽略的同一选区不应重新附加");
 
-  // 新选区才重新附加
   const newSelection = snapshot("新的选区");
   state.setPendingSelection(newSelection);
   assert.deepEqual(state.view.pendingSelection, newSelection);
@@ -555,11 +546,8 @@ test("clearing the editor selection does not mark it as ignored", () => {
   const selection = snapshot("林站在天台边。");
 
   state.setPendingSelection(selection);
-  // 编辑器选区被清空（非用户主动移除）
   state.setPendingSelection(null);
   assert.equal(state.view.pendingSelection, null);
-
-  // 重新选择同一段文字应重新附加（因为不是主动移除）
   state.setPendingSelection(selection);
   assert.deepEqual(state.view.pendingSelection, selection);
 });
@@ -571,12 +559,11 @@ test("reset clears the ignored selection marker", () => {
   state.removePendingSelection();
 
   state.reset();
-  // 重置后同一选区可重新附加（新作品范围）
   state.setPendingSelection(selection);
   assert.deepEqual(state.view.pendingSelection, selection);
 });
 
-test("newConversation clears a completed conversation and keeps the panel open", () => {
+test("newConversation opens a new empty discussion and keeps the old one archived", () => {
   const state = new AiPanelState();
   const anchor = snapshot("冻结选区");
   state.beginRequest(anchor);
@@ -593,16 +580,19 @@ test("newConversation clears a completed conversation and keeps the panel open",
   assert.equal(state.followUpAvailable, false);
   assert.equal(state.conversationIdentity, null);
   assert.equal(state.view.directQuestionDraft, "", "直接提问草稿被清空");
+  // 旧讨论保留为档案
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].conversation_id, "1");
 });
 
-test("newConversation during first-round loading clears the pending request and rejects late results", () => {
+test("newConversation during first-round loading routes late results to the old discussion", () => {
   const state = new AiPanelState();
   const anchor = snapshot("旧选区");
   state.beginRequest(anchor);
   assert.deepEqual(state.view.request, {
     kind: "loading",
     snapshot: anchor,
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
 
@@ -610,46 +600,30 @@ test("newConversation during first-round loading clears the pending request and 
   assert.deepEqual(state.view.request, { kind: "idle" });
   assert.equal(state.conversation, null);
 
-  // 迟到的首轮成功 / 失败 / 配置结果一律不得污染空状态
-  state.succeed(anchor, "迟到成功");
+  // 迟到的首轮成功路由到旧讨论（不显示在新讨论中，也不重建空讨论的对话）。
+  state.succeed(anchor, "迟到成功", "1");
   assert.deepEqual(state.view.request, { kind: "idle" });
-  assert.equal(state.conversation, null, "迟到成功不得重建对话");
-
-  state.fail(anchor, authError);
-  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到失败不得进入错误态");
-
-  state.requireConfiguration(anchor);
-  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到配置引导不得进入配置态");
+  assert.equal(state.conversation, null, "当前显示仍是新讨论空状态");
+  // 旧讨论已建立对话，仍保留在集合中
+  const archived = state.conversations.find((c) => c.conversation_id === "1");
+  assert.ok(archived);
+  assert.equal(archived.last_status, "done");
 });
 
-test("newConversation during a pending follow-up clears it and rejects late follow-up results", () => {
+test("newConversation during a pending follow-up keeps it in the archived discussion", () => {
   const state = new AiPanelState();
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
   state.succeed(anchor, "首答");
   state.beginFollowUp("追问中");
   assert.equal(state.conversation?.pending?.question, "追问中");
-  assert.deepEqual(state.view.request, {
-    kind: "loading",
-    snapshot: anchor,
-    conversationId: 1,
-    phase: "follow_up",
-    turnId: 1,
-  });
 
   assert.equal(state.newConversation(), true);
   assert.deepEqual(state.view.request, { kind: "idle" });
   assert.equal(state.conversation, null);
 
-  // 迟到的追问成功 / 失败 / 配置结果全部被忽略
-  assert.equal(state.succeedFollowUp(1, "迟到追问回答"), false);
-  assert.deepEqual(state.view.request, { kind: "idle" });
-  assert.equal(state.conversation, null);
-
-  assert.equal(state.failFollowUp(1, authError), false);
-  assert.deepEqual(state.view.request, { kind: "idle" });
-
-  assert.equal(state.requireFollowUpConfiguration(1), false);
+  // 迟到追问结果按旧讨论身份路由，不污染新讨论
+  assert.equal(state.succeedFollowUp(1, "迟到追问回答", "1"), true);
   assert.deepEqual(state.view.request, { kind: "idle" });
 });
 
@@ -676,7 +650,6 @@ test("newConversation is inert on a pure empty idle state without notification",
   assert.deepEqual(state.view.request, { kind: "idle" });
   assert.equal(state.isOpen, false, "空状态操作不改动任何维度");
 
-  // 展开后的空白直接提问状态同样 inert
   state.open();
   assert.equal(calls, 1);
   assert.equal(state.newConversation(), false);
@@ -714,7 +687,6 @@ test("newConversation reopens a collapsed panel that has an existing conversatio
 test("newConversation clears drafts, pending selection and ignored selection markers", () => {
   const state = new AiPanelState();
   const selection = snapshot("选区");
-  // 先让同一选区被主动忽略
   state.setPendingSelection(selection);
   state.removePendingSelection();
   state.setPendingSelection(selection);
@@ -726,7 +698,6 @@ test("newConversation clears drafts, pending selection and ignored selection mar
   assert.equal(state.view.directQuestionDraft, "");
   assert.equal(state.view.pendingSelection, null);
 
-  // 忽略标记也被清除：同一选区在新对话中可重新附加
   state.setPendingSelection(selection);
   assert.deepEqual(state.view.pendingSelection, selection, "清除后同一选区不再被忽略");
 });
@@ -748,12 +719,12 @@ test("newConversation is distinct from project reset which still closes the pane
   assert.equal(state.conversation, null);
 });
 
-test("newConversation keeps conversation identity monotonic so new requests never reuse old identities", () => {
+test("newConversation assigns distinct conversation ids so requests never reuse old identities", () => {
   const state = new AiPanelState();
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
   state.succeed(anchor, "首答");
-  assert.equal(state.conversationIdentity?.conversationId, 1);
+  assert.equal(state.conversationIdentity?.conversationId, "1");
 
   assert.equal(state.newConversation(), true);
 
@@ -763,66 +734,26 @@ test("newConversation keeps conversation identity monotonic so new requests neve
   if (loading.kind !== "loading") return;
   const loadingId = loading.conversationId;
   assert.ok(loadingId !== undefined);
-  assert.ok(loadingId > 1, "新对话身份必须大于旧对话身份，不得复用");
+  assert.notEqual(loadingId, "1", "新讨论身份不得复用旧身份");
 
   state.succeed(snapshot("新选区"), "新首答");
   assert.equal(state.conversationIdentity?.conversationId, loadingId);
-  assert.ok(state.conversationIdentity!.conversationId > 1);
 });
 
 test("a result arriving while the panel shows a blocked request is still applied", () => {
   const state = new AiPanelState();
   const anchor = snapshot("选区A");
   state.beginRequest(anchor);
-  // 用户再次召唤被单飞拒绝：面板进入阻塞提示，但原请求仍在途
   state.blockFirstRequest(anchor);
   assert.equal(state.view.request.kind, "first_blocked");
 
-  // 原请求的成功结果仍然应用（面板显示真实结果，而不是一直停留在阻塞提示）
   state.succeed(anchor, "真实首答");
   assert.equal(state.view.request.kind, "success");
   assert.equal(state.conversation?.firstResponse, "真实首答");
 });
 
-test("late first-round results cannot pollute the state after newConversation and a new direct question", () => {
-  const state = new AiPanelState();
-  const oldAnchor = snapshot("旧选区");
-  state.beginRequest(oldAnchor);
-
-  assert.equal(state.newConversation(), true);
-  state.beginDirectQuestion("新问题", null);
-  assert.deepEqual(state.view.request, {
-    kind: "direct_question",
-    question: "新问题",
-    selection: null,
-    status: "loading",
-    streamedText: "",
-  });
-
-  // 旧首轮请求的迟到结果不得改写新的直接提问 loading 状态
-  state.succeed(oldAnchor, "迟到成功");
-  assert.deepEqual(state.view.request, {
-    kind: "direct_question",
-    question: "新问题",
-    selection: null,
-    status: "loading",
-    streamedText: "",
-  });
-
-  state.fail(oldAnchor, authError);
-  state.requireConfiguration(oldAnchor);
-  assert.deepEqual(state.view.request, {
-    kind: "direct_question",
-    question: "新问题",
-    selection: null,
-    status: "loading",
-    streamedText: "",
-  });
-});
-
 test("appendStreamText advances the direct question loading draft and is inert elsewhere", () => {
   const state = new AiPanelState();
-  // 空闲状态：迟到增量原样拒绝
   assert.equal(state.appendStreamText("迟到"), false);
 
   state.beginDirectQuestion("问题", null);
@@ -834,7 +765,6 @@ test("appendStreamText advances the direct question loading draft and is inert e
     assert.equal(request.streamedText, "她可能\n在隐瞒");
   }
 
-  // done 全文到达后（成功终态）不再接受增量
   state.succeedDirectQuestion("最终回答");
   assert.equal(state.appendStreamText("迟到"), false);
 });
@@ -844,14 +774,12 @@ test("appendStreamText advances the pending follow-up draft and resets on retry"
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
   state.succeed(anchor, "首答");
-  // 无待答轮次时增量被拒绝
   assert.equal(state.appendStreamText("无主增量"), false);
 
   state.beginFollowUp("追问");
   assert.equal(state.appendStreamText("部分"), true);
   assert.equal(state.conversation?.pending?.streamedText, "部分");
 
-  // 失败后部分文本随错误一起不再显示；重试重置增量草稿
   state.failFollowUp(1, authError);
   assert.equal(state.appendStreamText("迟到"), false);
   state.acceptFollowUpRetry();
@@ -862,7 +790,6 @@ test("appendStreamText advances the pending follow-up draft and resets on retry"
 
 test("driver recovery keeps the conversation and returns to success display", () => {
   const state = new AiPanelState();
-  // 无对话时进入恢复被拒绝
   assert.equal(state.beginRecovery(), false);
 
   const anchor = snapshot("锚点");
@@ -875,7 +802,7 @@ test("driver recovery keeps the conversation and returns to success display", ()
   assert.deepEqual(state.view.request, {
     kind: "recovering",
     snapshot: anchor,
-    conversationId: 1,
+    conversationId: "1",
   });
   assert.ok(state.conversation, "恢复期间保留对话与锚点");
 
@@ -884,7 +811,7 @@ test("driver recovery keeps the conversation and returns to success display", ()
     kind: "success",
     snapshot: anchor,
     response: "首答",
-    conversationId: 1,
+    conversationId: "1",
     phase: "first",
   });
 });
@@ -901,8 +828,80 @@ test("failed recovery enters the error state with a new-conversation guidance me
   assert.equal(request.kind, "error");
   if (request.kind === "error") {
     assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
-    assert.equal(request.conversationId, 1);
+    assert.equal(request.conversationId, "1");
   }
-  // 恢复完成 / 失败事件在非恢复态被拒绝
   assert.equal(state.completeRecovery(), false);
+});
+
+test("deleteDiscussion removes the discussion and drops its late results", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("锚点");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("追问");
+  assert.equal(state.conversations.length, 1);
+
+  assert.equal(state.deleteDiscussion("1"), true);
+  assert.equal(state.conversations.length, 0);
+  assert.equal(state.conversation, null);
+  assert.equal(state.activeConversationId, null);
+
+  // 已删除讨论的迟到结果被丢弃
+  assert.equal(state.succeedFollowUp(1, "迟到", "1"), false);
+  assert.equal(state.conversation, null);
+});
+
+test("openDiscussion shows saved turns including an interrupted pending turn", () => {
+  const state = new AiPanelState();
+  state.openDiscussion(
+    {
+      id: "c-1",
+      createdAt: "t0",
+      anchor: null,
+      initialUserMaterial: { kind: "direct_question", question: "原问题" },
+      firstResponse: "首答",
+      turns: [],
+      pending: { id: 1, question: "未完成", streamedText: "", interrupted: true },
+    },
+    "doc-1",
+    "草稿",
+  );
+
+  assert.equal(state.activeConversationId, "c-1");
+  assert.equal(state.conversation?.firstResponse, "首答");
+  assert.equal(state.conversation?.pending?.interrupted, true);
+  // 中断轮不自动重发，可继续追问
+  assert.equal(state.followUpAvailable, true);
+});
+
+test("loadDiscussions replaces the in-memory list without auto-opening a discussion", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "标题一",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: { kind: "direct_question", question: "问题一", selection_text: null },
+      turns: [{ role: "assistant", text: "回答一", status: "done" }],
+    },
+  ], []);
+
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].conversation_id, "c-1");
+  assert.equal(state.activeConversationId, null, "加载列表不自动打开任何讨论");
+  assert.equal(state.isOpen, false);
+});
+
+test("setSaveError and clearSaveError expose the save error bit", () => {
+  const state = new AiPanelState();
+  assert.equal(state.saveError, null);
+  state.setSaveError("讨论保存失败");
+  assert.equal(state.saveError, "讨论保存失败");
+  assert.equal(state.view.saveError, "讨论保存失败");
+  state.clearSaveError();
+  assert.equal(state.saveError, null);
 });

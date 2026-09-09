@@ -5,15 +5,20 @@ import {
   followUpRequestOf,
   readonlyConversationView,
   retryFollowUpQuestionOf,
+  summaryOf,
+  type Discussion,
   type ReadonlyTemporaryConversation,
+  type TemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import {
+  activeRequestOf,
   initialAiPanelCoreState,
   reduceAiPanelState,
   type AiPanelCoreState,
   type AiPanelEvent,
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
+import type { ConversationSummary } from "./conversation-archive.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
 
@@ -30,24 +35,35 @@ export type {
 } from "./ai-panel-conversation.ts";
 
 /**
- * AI 面板的显式状态机外观（公开 API 与旧命令式实现完全一致）。
+ * AI 面板的显式状态机外观（公开 API 保持稳定）。
  *
  * 状态迁移全部收敛到纯函数 `reduceAiPanelState`：公开方法只负责构造事件并 dispatch，
  * 由 reducer 决定迁移是否合法（非法迁移原样返回，不触发通知）。因此非法操作的结构性
- * 约束（visibility 与 request 正交、对话身份生命周期、过期结果拒绝等）在 reducer 里
- * 是可见的分支，而不是散落在各方法里的隐式布尔判断。
+ * 约束在 reducer 里是可见的分支，而不是散落在各方法里的隐式布尔判断。
  *
- * 两个正交维度：
- * - `visibility`：面板展开 / 收起。收起只改这一个维度，不清空 `request`。
- * - `request`：idle / loading / success / error / configuration_required。
+ * 讨论集合模型：面板一次显示一个当前讨论（`activeConversationId`），其余讨论保留为档案；
+ * 新召唤 / 直接提问首轮 / 新建对话开启新讨论并保留旧讨论。结果按 `conversationId` 路由，
+ * 迟到结果若所属讨论已删除或已切换作品则被丢弃。
  */
 export class AiPanelState {
   private state: AiPanelCoreState = initialAiPanelCoreState();
   private readonly onChange: () => void;
   private readonly listeners: Array<() => void> = [];
+  private readonly newConversationId: () => string;
+  private readonly now: () => string;
+  private idCounter = 0;
 
-  constructor(onChange: () => void = () => {}) {
+  constructor(
+    onChange: () => void = () => {},
+    newConversationId?: () => string,
+    now?: () => string,
+  ) {
     this.onChange = onChange;
+    this.newConversationId = newConversationId ?? (() => {
+      this.idCounter += 1;
+      return String(this.idCounter);
+    });
+    this.now = now ?? (() => new Date().toISOString());
   }
 
   /** 注册状态变化监听器（面板渲染订阅用），返回退订函数供销毁时释放。 */
@@ -80,39 +96,86 @@ export class AiPanelState {
   get view(): PanelStateView {
     return {
       visibility: this.state.visibility,
-      request: this.state.request,
+      request: activeRequestOf(this.state),
       directQuestionDraft: this.state.directQuestionDraft,
       pendingSelection: this.state.pendingSelection,
+      saveError: this.state.saveError,
     };
   }
 
   get conversation(): ReadonlyTemporaryConversation | null {
-    return readonlyConversationView(this.state.conversationContext.conversation);
+    const active = this.state.activeConversationId;
+    const discussion = active === null ? null : this.state.discussions.get(active) ?? null;
+    return readonlyConversationView(discussion?.conversation ?? null);
   }
 
   get followUpAvailable(): boolean {
-    return followUpAvailableOf(this.state.conversationContext.conversation);
+    const discussion = this.activeDiscussion();
+    return followUpAvailableOf(discussion?.conversation ?? null);
   }
 
-  get conversationIdentity(): { conversationId: number; turnId?: number } | null {
-    return conversationIdentityOf(this.state.conversationContext.conversation);
+  get conversationIdentity(): { conversationId: string; turnId?: number } | null {
+    const discussion = this.activeDiscussion();
+    return conversationIdentityOf(discussion?.conversation ?? null);
+  }
+
+  /** 当前显示的讨论身份（首轮在途也携带，供单请求协调器按讨论隔离）。 */
+  get requestIdentity(): { conversationId: string; turnId?: number } | null {
+    if (this.state.activeConversationId === null) return null;
+    const discussion = this.activeDiscussion();
+    const turnId = discussion?.conversation?.pending?.id;
+    return turnId === undefined
+      ? { conversationId: this.state.activeConversationId }
+      : { conversationId: this.state.activeConversationId, turnId };
+  }
+
+  get activeConversationId(): string | null {
+    return this.state.activeConversationId;
+  }
+
+  /** 当前作品的讨论集合（轻量视图：身份、标题、时间、终态 + 重开所需完整轮次）。 */
+  get conversations(): ConversationSummary[] {
+    const summaries: ConversationSummary[] = [];
+    for (const discussion of this.state.discussions.values()) {
+      if (discussion.conversation === null) continue;
+      summaries.push(summaryOf(discussion.conversation, discussion.focusDocumentId, discussion.focusDocumentTitle));
+    }
+    return summaries;
+  }
+
+  get saveError(): string | null {
+    return this.state.saveError;
+  }
+
+  /** 返回指定讨论的完整运行期数据（供编排层构建档案保存记录）。 */
+  getDiscussion(conversationId: string): Discussion | null {
+    return this.state.discussions.get(conversationId) ?? null;
   }
 
   /**
-   * 单调递增的对话身份代次（对话 ID 计数器）。
+   * 单调递增的对话身份代次。
    *
-   * 只增不减：`newConversation` 与每次首轮请求分配都会推进它，`reset` 保留它。
+   * 只增不减：`newConversation` 与每次首轮请求分配都会推进它，`reset` 也推进它。
    * 供在途预检在每次 `await` 之后校验自身是否已被作废（ABA 安全：代次不会回退）。
    */
   get conversationGeneration(): number {
-    return this.state.conversationContext.nextConversationId;
+    return this.state.generation;
   }
 
   get isOpen(): boolean {
     return this.state.visibility === "open";
   }
 
-  /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入预览。 */
+  private activeDiscussion() {
+    if (this.state.activeConversationId === null) return null;
+    return this.state.discussions.get(this.state.activeConversationId) ?? null;
+  }
+
+  private resolveConversationId(conversationId?: string): string | null {
+    return conversationId ?? this.state.activeConversationId;
+  }
+
+  /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入预览（旧式预检预览）。 */
   previewFirstRequest(
     snapshot: SelectionSnapshot,
     firstRequest?: FirstRoundMaterial,
@@ -128,23 +191,37 @@ export class AiPanelState {
   beginRequest(
     snapshot: SelectionSnapshot,
     firstRequest?: FirstRoundMaterial,
+    focusDocumentId: string | null = snapshot.documentId,
+    focusDocumentTitle: string | null = null,
   ): void {
-    this.dispatch({ type: "begin_request", snapshot, firstRequest });
+    this.dispatch({
+      type: "begin_request",
+      snapshot,
+      firstRequest,
+      conversationId: this.newConversationId(),
+      createdAt: this.now(),
+      focusDocumentId,
+      focusDocumentTitle,
+    });
   }
 
-  /** 生成成功：更新回复，保持当前 visibility（收起期间完成也不自动展开）。 */
-  succeed(snapshot: SelectionSnapshot, response: string): void {
-    this.dispatch({ type: "succeed", snapshot, response });
+  /** 生成成功：按讨论身份路由结果；生成期间收起也不自动展开。 */
+  succeed(snapshot: SelectionSnapshot, response: string, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "succeed", snapshot, response, conversationId: id });
   }
 
-  /** 生成失败：保留原冻结快照，保持当前 visibility。 */
-  fail(snapshot: SelectionSnapshot, error: GenerateAiError): void {
-    this.dispatch({ type: "fail", snapshot, error });
+  /** 生成失败：按讨论身份路由，保留原冻结快照，保持当前 visibility。 */
+  fail(snapshot: SelectionSnapshot, error: GenerateAiError, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId) ?? "";
+    return this.dispatch({ type: "fail", snapshot, error, conversationId: id });
   }
 
-  /** 缺少 LLM 配置：保留快照并进入配置引导状态，保持当前 visibility。 */
-  requireConfiguration(snapshot: SelectionSnapshot): void {
-    this.dispatch({ type: "require_configuration", snapshot });
+  /** 缺少 LLM 配置：按讨论身份路由。 */
+  requireConfiguration(snapshot: SelectionSnapshot, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId) ?? "";
+    return this.dispatch({ type: "require_configuration", snapshot, conversationId: id });
   }
 
   beginFollowUp(question: string): number | null {
@@ -152,27 +229,38 @@ export class AiPanelState {
     if (next === this.state) return null;
     this.state = next;
     this.emit();
-    return next.conversationContext.conversation?.pending?.id ?? null;
+    const discussion = this.state.activeConversationId === null
+      ? null
+      : this.state.discussions.get(this.state.activeConversationId) ?? null;
+    return discussion?.conversation?.pending?.id ?? null;
   }
 
-  succeedFollowUp(turnId: number, response: string): boolean {
-    return this.dispatch({ type: "succeed_follow_up", turnId, response });
+  succeedFollowUp(turnId: number, response: string, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "succeed_follow_up", turnId, response, conversationId: id });
   }
 
-  failFollowUp(turnId: number, error: GenerateAiError): boolean {
-    return this.dispatch({ type: "fail_follow_up", turnId, error });
+  failFollowUp(turnId: number, error: GenerateAiError, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "fail_follow_up", turnId, error, conversationId: id });
   }
 
-  requireFollowUpConfiguration(turnId: number): boolean {
-    return this.dispatch({ type: "require_follow_up_configuration", turnId });
+  requireFollowUpConfiguration(turnId: number, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "require_follow_up_configuration", turnId, conversationId: id });
   }
 
   retryFollowUpQuestion(): string | null {
-    return retryFollowUpQuestionOf(this.state.conversationContext.conversation);
+    const discussion = this.activeDiscussion();
+    return retryFollowUpQuestionOf(discussion?.conversation ?? null);
   }
 
   followUpRequestForQuestion(question: string): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
-    return followUpRequestForQuestionOf(this.state.conversationContext.conversation, question);
+    const discussion = this.activeDiscussion();
+    return followUpRequestForQuestionOf(discussion?.conversation ?? null, question);
   }
 
   acceptEditedFollowUp(question: string): boolean {
@@ -184,7 +272,8 @@ export class AiPanelState {
   }
 
   retryFollowUpRequest(): GenerateAiRequest | null {
-    const pending = this.state.conversationContext.conversation?.pending;
+    const discussion = this.activeDiscussion();
+    const pending = discussion?.conversation?.pending;
     if (!pending?.error) return null;
     return this.followUpRequest();
   }
@@ -198,7 +287,8 @@ export class AiPanelState {
   }
 
   followUpRequest(): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
-    return followUpRequestOf(this.state.conversationContext.conversation);
+    const discussion = this.activeDiscussion();
+    return followUpRequestOf(discussion?.conversation ?? null);
   }
 
   /** 收起面板：只改 visibility，不清除当前请求/回复。 */
@@ -212,37 +302,70 @@ export class AiPanelState {
   }
 
   /**
-   * 用户主动“新建对话”：结束当前唯一的临时对话并回到空白直接提问状态。
+   * 用户主动“新建对话”：开启一个新讨论并保留旧讨论为档案，面板保持展开。
    *
-   * 清除请求显示、临时对话、追问与直接提问草稿、待附带选区；面板保持展开。
-   * 仅当存在可结束的内容（临时对话或进行中的首轮/追问请求）时有效；
-   * 纯空 idle 状态原样返回 false，不触发通知。与项目生命周期 `reset`（关闭面板）
-   * 语义分离，保留单调递增的对话身份计数器。
+   * 仅当存在可归档的内容（任一讨论有对话或进行中请求）时有效；纯空状态原样返回 false。
    */
-  newConversation(): boolean {
-    return this.dispatch({ type: "new_conversation" });
+  newConversation(
+    focusDocumentId: string | null = null,
+    focusDocumentTitle: string | null = null,
+  ): boolean {
+    return this.dispatch({
+      type: "new_conversation",
+      conversationId: this.newConversationId(),
+      createdAt: this.now(),
+      focusDocumentId,
+      focusDocumentTitle,
+    });
   }
 
-  /**
-   * 返回重新发起请求所用的快照。仅当处于 error / configuration_required 时有效，
-   * 始终来自原冻结快照，不读取当前编辑器选区。需要用户明确点击“重新请求”。
-   */
+  /** 返回重新发起请求所用的快照（仅 error / configuration_required 时有效）。 */
   retrySnapshot(): SelectionSnapshot | null {
-    if (this.state.request.kind === "error") return this.state.request.snapshot;
-    if (this.state.request.kind === "configuration_required") return this.state.request.snapshot;
+    const request = activeRequestOf(this.state);
+    if (request.kind === "error") return request.snapshot;
+    if (request.kind === "configuration_required") return request.snapshot;
     return null;
   }
 
   retryFirstRequest(): FirstRoundMaterial | null {
-    if (this.state.request.kind !== "error" && this.state.request.kind !== "configuration_required") {
+    const request = activeRequestOf(this.state);
+    if (request.kind !== "error" && request.kind !== "configuration_required") {
       return null;
     }
-    return this.state.pendingFirstRequest;
+    const discussion = this.activeDiscussion();
+    return discussion?.pendingFirstRequest ?? null;
   }
 
   /** 作品卸载或替换后清空面板状态，避免旧内容污染新作品。 */
   reset(): void {
     this.dispatch({ type: "reset" });
+  }
+
+  /** 切换作品后加载新作品的讨论列表（归档档案重建为可重开讨论）。 */
+  loadDiscussions(summaries: readonly ConversationSummary[], skipped: readonly string[]): void {
+    this.dispatch({ type: "load_discussions", summaries, skipped });
+  }
+
+  /** 从列表重开一个讨论：以已保存轮次重建显示数据。 */
+  openDiscussion(
+    conversation: TemporaryConversation,
+    focusDocumentId: string | null,
+    focusDocumentTitle: string | null,
+  ): boolean {
+    return this.dispatch({ type: "open_discussion", conversation, focusDocumentId, focusDocumentTitle });
+  }
+
+  /** 删除讨论是独立的明确动作：移除其内存记录与档案。 */
+  deleteDiscussion(conversationId: string): boolean {
+    return this.dispatch({ type: "delete_discussion", conversationId });
+  }
+
+  setSaveError(message: string): void {
+    this.dispatch({ type: "set_save_error", message });
+  }
+
+  clearSaveError(): void {
+    this.dispatch({ type: "clear_save_error" });
   }
 
   /** 更新直接提问的未发送草稿。 */
@@ -261,20 +384,39 @@ export class AiPanelState {
   }
 
   /** 提交直接提问：冻结问题与选区并进入 loading。空问题被拒绝。 */
-  beginDirectQuestion(question: string, selection: SelectionSnapshot | null): boolean {
-    return this.dispatch({ type: "begin_direct_question", question, selection });
+  beginDirectQuestion(
+    question: string,
+    selection: SelectionSnapshot | null,
+    focusDocumentId: string | null = selection?.documentId ?? null,
+    focusDocumentTitle: string | null = null,
+  ): boolean {
+    return this.dispatch({
+      type: "begin_direct_question",
+      question,
+      selection,
+      conversationId: this.newConversationId(),
+      createdAt: this.now(),
+      focusDocumentId,
+      focusDocumentTitle,
+    });
   }
 
-  succeedDirectQuestion(response: string): boolean {
-    return this.dispatch({ type: "succeed_direct_question", response });
+  succeedDirectQuestion(response: string, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "succeed_direct_question", response, conversationId: id });
   }
 
-  failDirectQuestion(error: GenerateAiError): boolean {
-    return this.dispatch({ type: "fail_direct_question", error });
+  failDirectQuestion(error: GenerateAiError, conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "fail_direct_question", error, conversationId: id });
   }
 
-  requireDirectQuestionConfiguration(): boolean {
-    return this.dispatch({ type: "require_direct_question_configuration" });
+  requireDirectQuestionConfiguration(conversationId?: string): boolean {
+    const id = this.resolveConversationId(conversationId);
+    if (id === null) return false;
+    return this.dispatch({ type: "require_direct_question_configuration", conversationId: id });
   }
 
   /** 推进一条流式增量文本（仅生成中的请求接受；其余状态原样返回 false）。 */

@@ -26,9 +26,10 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 - **AND** README 可以将"回复流式逐字呈现，追问只发送增量问题"写为已实现
 - **AND** README 可以将"首次回应成功后进行线性临时追问，可取消生成"写为已实现
 - **AND** README 可以将"驱动进程崩溃后自动重启并重放显示历史恢复会话"写为已实现
-- **AND** README 说明临时对话只在当前应用打开周期存在，不跨重启持久化，新对话会替换旧对话
+- **AND** README 可以将"讨论保存到作品文件夹、重启后按作品提供会话列表并可重开"写为已实现
+- **AND** README 说明新召唤或新建对话开启新讨论并保留旧讨论，讨论不跨重启丢失
 - **AND** README 如实说明思维扩展已退场（经用户确认），及时召唤与选区浮动入口已恢复为正式功能
-- **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、多个对话、历史、持久化、自动摘要、多 provider 或多模型支持写成已实现
+- **AND** README 不得把附近文本、整本摘要、AI 内容库、作品信息、自动摘要、多 provider 或多模型支持写成已实现
 
 #### Scenario: README refers to future direction
 - **WHEN** README 提及尚未归档进正式规格的产品方向
@@ -77,14 +78,14 @@ TBD - created by archiving change refresh-project-readme. Update Purpose after a
 - **WHEN** 读者查看 LLM 配置加载、保存或连接测试流程
 - **THEN** README 说明配置表单经 bridge 和对应 Tauri command 进入 Rust llm_config domain
 - **AND** README 说明该 domain 负责校验和应用本地配置读写，或使用当前唯一配置发出真实 OpenAI-compatible 测试请求
-- **AND** README 说明测试连接只发送固定测试语句和身份凭据，不发送用户剧本文字或临时对话
+- **AND** README 说明测试连接只发送固定测试语句和身份凭据，不发送用户剧本文字或讨论内容
 - **AND** README 说明成功状态或可读错误返回界面
 
 #### Scenario: Reader follows AI generation and follow-up data
 - **WHEN** 读者查看 AI 生成或临时追问流程
 - **THEN** README 说明直接提问发送用户问题与可选选区重点材料
 - **AND** README 说明继续追问只发送本次新增问题，此前问答由常驻会话在驱动进程内维护
-- **AND** README 说明这些创作内容会发送给用户配置的 API 服务，后端运行期维护会话上下文但不落盘，应用退出后随进程结束消失
+- **AND** README 说明这些创作内容会发送给用户配置的 API 服务，DSH 运行期会话上下文在驱动进程内存中维护，讨论记录由应用保存到作品文件夹内 next-story-system/conversations/ 并可在重启后重开，删除讨论或应用退出时结束对应会话
 - **AND** README 说明 AI 返回内容只显示在 AI 面板中，不能写回草稿本或正文本
 
 ### Requirement: README separates setup, terminating checks, and long-running development commands

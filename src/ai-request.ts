@@ -29,6 +29,8 @@ export class AiRequestCoordinator {
   private readonly inFlight: Map<string, Promise<void>> = new Map();
   private readonly inFlightProjectToken: Map<string, number> = new Map();
   private releaseEpoch = 0;
+  private cancelStampCounter = 0;
+  private readonly cancelStamps: Map<string, number> = new Map();
   private readonly generate: (selectedText: string) => Promise<GenerateAiResult>;
   private readonly callbacks: AiRequestCallbacks;
   private readonly getProjectToken: () => number;
@@ -65,6 +67,17 @@ export class AiRequestCoordinator {
   }
 
   /**
+   * 取消指定讨论的当前在途请求：释放单请求锁，并使该请求的迟到结果作废。
+   * 与状态层的「已停止」终态配合使用；不影响其他讨论。
+   */
+  cancel(conversationId: string): void {
+    this.cancelStampCounter += 1;
+    this.cancelStamps.set(conversationId, this.cancelStampCounter);
+    this.inFlight.delete(conversationId);
+    this.inFlightProjectToken.delete(conversationId);
+  }
+
+  /**
    * 发起一次首次生成请求（召唤）。若该讨论已有请求进行中，返回 `null` 且不执行第二次调用。
    * 结果按讨论身份路由（经 `onSuccess`/`onError` 携带 conversationId）。
    */
@@ -73,6 +86,15 @@ export class AiRequestCoordinator {
     firstRequest?: Extract<GenerateAiRequest, { kind: "summon" }> | Extract<GenerateAiRequest, { kind: "direct_question" }>,
   ): Promise<void> | null {
     const conversationId = this.getRequestIdentity?.()?.conversationId ?? LEGACY_CONVERSATION_ID;
+    return this.requestFor(conversationId, snapshot, firstRequest);
+  }
+
+  /** 按显式讨论身份发起一次首次生成请求（供调度器使用）。 */
+  requestFor(
+    conversationId: string,
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "summon" }> | Extract<GenerateAiRequest, { kind: "direct_question" }>,
+  ): Promise<void> | null {
     if (this.inFlight.has(conversationId)) return null;
     const token = this.getProjectToken();
     const epoch = this.releaseEpoch;
@@ -109,8 +131,13 @@ export class AiRequestCoordinator {
    * `onDirectQuestionSuccess` / `onDirectQuestionError`。
    */
   requestDirectQuestion(request: GenerateAiRequest): Promise<void> | null {
-    const generate = this.structuredGenerate;
     const conversationId = this.getRequestIdentity?.()?.conversationId ?? LEGACY_CONVERSATION_ID;
+    return this.requestDirectQuestionFor(conversationId, request);
+  }
+
+  /** 按显式讨论身份发起一次直接提问生成请求（供调度器使用）。 */
+  requestDirectQuestionFor(conversationId: string, request: GenerateAiRequest): Promise<void> | null {
+    const generate = this.structuredGenerate;
     if (this.inFlight.has(conversationId) || !generate) return null;
     const token = this.getProjectToken();
     const epoch = this.releaseEpoch;
@@ -128,12 +155,14 @@ export class AiRequestCoordinator {
     epoch: number,
     generate: () => Promise<GenerateAiResult>,
   ): Promise<void> {
+    const cancelStamp = this.cancelStamps.get(conversationId);
     let result: GenerateAiResult;
     try {
       result = await generate();
     } catch {
       this.clearRequestOwnership(conversationId, epoch);
       if (this.isStale(token, epoch)) return;
+      if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
       this.callbacks.onDirectQuestionError?.({
         code: "network",
         message: "AI 请求未能完成，请检查连接后重试",
@@ -143,6 +172,7 @@ export class AiRequestCoordinator {
 
     this.clearRequestOwnership(conversationId, epoch);
     if (this.isStale(token, epoch)) return;
+    if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
       this.callbacks.onDirectQuestionSuccess?.(result.content, conversationId);
     } else {
@@ -158,12 +188,14 @@ export class AiRequestCoordinator {
     identity: RequestIdentity | null,
     generate: () => Promise<GenerateAiResult>,
   ): Promise<void> {
+    const cancelStamp = this.cancelStamps.get(conversationId);
     let result: GenerateAiResult;
     try {
       result = await generate();
     } catch {
       this.clearRequestOwnership(conversationId, epoch);
       if (this.isStale(token, epoch)) return;
+      if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
       const error: GenerateAiError = {
         code: "network",
         message: "AI 请求未能完成，请检查连接后重试",
@@ -178,6 +210,7 @@ export class AiRequestCoordinator {
 
     this.clearRequestOwnership(conversationId, epoch);
     if (this.isStale(token, epoch)) return;
+    if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
       if (identity && this.callbacks.onStructuredSuccess) {
         this.callbacks.onStructuredSuccess(result.content, identity);

@@ -39,6 +39,10 @@ test("file management module exposes tree, recycle bin, and new-node actions", (
   assert.match(html, /<div\b[^>]*\bid="fm-recycle-list"/);
 });
 
-test("AI panel header exposes a new-conversation control beside collapse", () => {
-  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*title="新建对话"[^>]*>新建对话<\/button>/);
+test("AI dock header exposes new-conversation and collapse entries", () => {
+  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*title="新建对话"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-dock-collapse"[^>]*title="收起停靠区"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-conversation-list-toggle"[^>]*title="会话列表"/);
+  assert.match(html, /<template\b[^>]*\bid="ai-window-template"/);
+  assert.match(html, /<aside\b[^>]*\bid="ai-dock"/);
 });

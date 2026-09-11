@@ -1,58 +1,83 @@
 /**
- * AI 面板的显式 DOM 依赖契约：面板渲染、折叠、错误恢复与临时追问
- * 所需的全部节点，由 `getAppDom()` 在应用启动接线处集中解析和校验。
+ * AI 停靠区与讨论窗口的显式 DOM 依赖契约。
  *
- * 面板模块只消费本契约，不再执行散落的全局节点查询；契约不包含任何向作品
- * 文档写入、插入、替换或删除的接口（AI 输出只落在面板临时显示区域）。
+ * 窗口初始化只消费 `AiWindowDom`（按窗口根节点解析，`buildAiWindowDom`），
+ * 停靠区外壳消费 `AiDockDom`（`getAppDom()` 集中解析）。契约不包含任何向作品
+ * 文档写入、插入、替换或删除的接口（AI 输出只落在窗口临时显示区域）。
  */
-export interface AiPanelDom {
-  panel: HTMLElement;
-  panelBody: HTMLElement;
-  snapshotBlock: HTMLElement;
-  snapshotText: HTMLPreElement;
-  loading: HTMLElement;
-  response: HTMLPreElement;
-  errorBlock: HTMLElement;
-  errorMessage: HTMLElement;
-  retryBtn: HTMLButtonElement;
-  configBlock: HTMLElement;
-  goConfigBtn: HTMLButtonElement;
-  collapseBtn: HTMLButtonElement;
-  newConversationBtn: HTMLButtonElement;
-  toggleBtn: HTMLButtonElement;
-  conversation: HTMLElement;
-  followUpForm: HTMLFormElement;
-  followUpInput: HTMLTextAreaElement;
-  followUpSend: HTMLButtonElement;
-  followUpError: HTMLElement;
-  followUpErrorMessage: HTMLElement;
-  followUpRetry: HTMLButtonElement;
-  followUpEdit: HTMLButtonElement;
-  directQuestion: HTMLElement;
-  directQuestionSelection: HTMLElement;
-  directQuestionSelectionText: HTMLPreElement;
-  directQuestionSelectionRemove: HTMLButtonElement;
-  directQuestionForm: HTMLFormElement;
-  directQuestionInput: HTMLTextAreaElement;
-  directQuestionSend: HTMLButtonElement;
-  directQuestionError: HTMLElement;
-  directQuestionErrorMessage: HTMLElement;
-  directQuestionConfig: HTMLElement;
-  directQuestionGoConfig: HTMLButtonElement;
+
+/** 单个讨论窗口的 DOM 契约（从窗口根节点按 `data-role` 解析，不依赖全局 ID）。 */
+export interface AiWindowDom {
+  readonly root: HTMLElement;
+  readonly head: HTMLElement;
+  readonly grip: HTMLElement;
+  readonly statusDot: HTMLElement;
+  readonly title: HTMLElement;
+  readonly doc: HTMLElement;
+  readonly badge: HTMLElement;
+  readonly stopBtn: HTMLButtonElement;
+  readonly moreBtn: HTMLButtonElement;
+  readonly closeBtn: HTMLButtonElement;
+  readonly body: HTMLElement;
+  readonly resize: HTMLElement;
+  readonly snapshotBlock: HTMLElement;
+  readonly snapshotText: HTMLPreElement;
+  readonly loading: HTMLElement;
+  readonly response: HTMLPreElement;
+  readonly errorBlock: HTMLElement;
+  readonly errorMessage: HTMLElement;
+  readonly retryBtn: HTMLButtonElement;
+  readonly configBlock: HTMLElement;
+  readonly goConfigBtn: HTMLButtonElement;
+  readonly conversation: HTMLElement;
+  readonly followUpForm: HTMLFormElement;
+  readonly followUpInput: HTMLTextAreaElement;
+  readonly followUpSend: HTMLButtonElement;
+  readonly followUpError: HTMLElement;
+  readonly followUpErrorMessage: HTMLElement;
+  readonly followUpRetry: HTMLButtonElement;
+  readonly followUpEdit: HTMLButtonElement;
+  readonly directQuestion: HTMLElement;
+  readonly directQuestionSelection: HTMLElement;
+  readonly directQuestionSelectionText: HTMLPreElement;
+  readonly directQuestionSelectionRemove: HTMLButtonElement;
+  readonly directQuestionForm: HTMLFormElement;
+  readonly directQuestionInput: HTMLTextAreaElement;
+  readonly directQuestionSend: HTMLButtonElement;
+  readonly directQuestionError: HTMLElement;
+  readonly directQuestionErrorMessage: HTMLElement;
+  readonly directQuestionConfig: HTMLElement;
+  readonly directQuestionGoConfig: HTMLButtonElement;
   /** 空状态欢迎语（无对话轮次且无进行中请求时显示）。 */
-  welcome: HTMLElement;
-  /** 会话列表入口（展开/收起列表）。 */
-  conversationListToggleBtn: HTMLButtonElement;
-  /** 会话列表容器。 */
-  conversationList: HTMLElement;
-  /** 会话列表内的“收起”按钮。 */
-  conversationListCloseBtn: HTMLButtonElement;
-  /** 会话列表条目容器（条目由 DOM 控制器动态创建）。 */
-  conversationListItems: HTMLElement;
-  /** 会话列表空状态提示。 */
-  conversationListEmpty: HTMLElement;
-  /** 讨论档案保存失败的可见提示；无错误时隐藏。 */
-  saveErrorBlock: HTMLElement;
+  readonly welcome: HTMLElement;
+}
+
+/** AI 停靠区外壳的 DOM 契约（停靠区头、提示区、会话列表、停靠窗口容器与浮动层）。 */
+export interface AiDockDom {
+  readonly root: HTMLElement;
+  readonly rail: HTMLElement;
+  readonly count: HTMLElement;
+  readonly notice: HTMLElement;
+  readonly body: HTMLElement;
+  readonly floatLayer: HTMLElement;
+  readonly windowTemplate: HTMLTemplateElement;
+  readonly listToggleBtn: HTMLButtonElement;
+  readonly newConversationBtn: HTMLButtonElement;
+  readonly moreBtn: HTMLButtonElement;
+  readonly collapseBtn: HTMLButtonElement;
+  readonly conversationList: HTMLElement;
+  readonly conversationListCloseBtn: HTMLButtonElement;
+  readonly conversationListItems: HTMLElement;
+  readonly conversationListEmpty: HTMLElement;
+  /** 列表内「新建对话」入口。 */
+  readonly listNewConversationBtn: HTMLButtonElement;
+  /** 列表筛选输入。 */
+  readonly searchInput: HTMLInputElement;
+  readonly railNewBtn: HTMLButtonElement;
+  readonly railListBtn: HTMLButtonElement;
+  readonly railMoreBtn: HTMLButtonElement;
+  readonly railExpandBtn: HTMLButtonElement;
+  readonly railDot: HTMLElement;
 }
 
 export interface AppDom {
@@ -164,13 +189,7 @@ export interface AppDom {
   btnTestConfig: HTMLButtonElement;
   btnBackConfig: HTMLButtonElement;
   btnToggleAi: HTMLButtonElement;
-  aiPanel: HTMLElement;
-  aiResponse: HTMLPreElement;
-  aiConversation: HTMLElement;
-  aiFollowUpForm: HTMLFormElement;
-  aiFollowUpInput: HTMLTextAreaElement;
-  aiFollowUpSend: HTMLButtonElement;
-  aiPanelDom: AiPanelDom;
+  aiDock: AiDockDom;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -187,24 +206,69 @@ function requireElement<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 
-function requirePanelBody(panel: HTMLElement): HTMLElement {
-  const body = panel.querySelector<HTMLElement>(".ai-panel-body");
-
-  if (!body) {
-    throw new Error("Missing required element: .ai-panel-body");
+/** 在窗口根节点内按 `data-role` 解析必需节点；缺失抛出包含角色标识的明确错误。 */
+function requireRole<T extends HTMLElement>(root: HTMLElement, role: string): T {
+  const element = root.querySelector<T>(`[data-role="${role}"]`);
+  if (!element) {
+    throw new Error(`Missing required window node: [data-role="${role}"]`);
   }
+  return element;
+}
 
-  return body;
+/**
+ * 从窗口根节点组装单个讨论窗口的 DOM 契约（按 `data-role` 解析，不依赖全局 ID）。
+ * 窗口模板结构见 `index.html` 的 `#ai-window-template`。
+ */
+export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
+  return {
+    root,
+    head: requireRole(root, "drag-handle"),
+    grip: requireRole(root, "grip"),
+    statusDot: requireRole(root, "status-dot"),
+    title: requireRole(root, "title"),
+    doc: requireRole(root, "doc"),
+    badge: requireRole(root, "badge"),
+    stopBtn: requireRole<HTMLButtonElement>(root, "stop"),
+    moreBtn: requireRole<HTMLButtonElement>(root, "more"),
+    closeBtn: requireRole<HTMLButtonElement>(root, "close"),
+    body: requireRole(root, "body"),
+    resize: requireRole(root, "resize"),
+    snapshotBlock: requireRole(root, "snapshot-block"),
+    snapshotText: requireRole<HTMLPreElement>(root, "snapshot-text"),
+    loading: requireRole(root, "loading"),
+    response: requireRole<HTMLPreElement>(root, "response"),
+    errorBlock: requireRole(root, "error-block"),
+    errorMessage: requireRole(root, "error-message"),
+    retryBtn: requireRole<HTMLButtonElement>(root, "retry"),
+    configBlock: requireRole(root, "config-block"),
+    goConfigBtn: requireRole<HTMLButtonElement>(root, "go-config"),
+    conversation: requireRole(root, "conversation"),
+    followUpForm: requireRole<HTMLFormElement>(root, "follow-up-form"),
+    followUpInput: requireRole<HTMLTextAreaElement>(root, "follow-up-input"),
+    followUpSend: requireRole<HTMLButtonElement>(root, "follow-up-send"),
+    followUpError: requireRole(root, "follow-up-error"),
+    followUpErrorMessage: requireRole(root, "follow-up-error-message"),
+    followUpRetry: requireRole<HTMLButtonElement>(root, "follow-up-retry"),
+    followUpEdit: requireRole<HTMLButtonElement>(root, "follow-up-edit"),
+    directQuestion: requireRole(root, "direct-question"),
+    directQuestionSelection: requireRole(root, "direct-question-selection"),
+    directQuestionSelectionText: requireRole<HTMLPreElement>(root, "direct-question-selection-text"),
+    directQuestionSelectionRemove: requireRole<HTMLButtonElement>(root, "direct-question-selection-remove"),
+    directQuestionForm: requireRole<HTMLFormElement>(root, "direct-question-form"),
+    directQuestionInput: requireRole<HTMLTextAreaElement>(root, "direct-question-input"),
+    directQuestionSend: requireRole<HTMLButtonElement>(root, "direct-question-send"),
+    directQuestionError: requireRole(root, "direct-question-error"),
+    directQuestionErrorMessage: requireRole(root, "direct-question-error-message"),
+    directQuestionConfig: requireRole(root, "direct-question-config"),
+    directQuestionGoConfig: requireRole<HTMLButtonElement>(root, "direct-question-go-config"),
+    welcome: requireRole(root, "welcome"),
+  };
 }
 
 export function getAppDom(): AppDom {
-  const aiPanel = requireElement("ai-panel");
-  const aiResponse = requireElement<HTMLPreElement>("ai-response");
   const btnToggleAi = requireElement<HTMLButtonElement>("btn-toggle-ai");
-  const aiConversation = requireElement("ai-conversation");
-  const aiFollowUpForm = requireElement<HTMLFormElement>("ai-follow-up-form");
-  const aiFollowUpInput = requireElement<HTMLTextAreaElement>("ai-follow-up-input");
-  const aiFollowUpSend = requireElement<HTMLButtonElement>("ai-follow-up-send");
+  const aiDock = requireElement("ai-dock");
+  const aiDockRail = requireElement("ai-dock-rail");
 
   return {
     welcomePage: requireElement("welcome-page"),
@@ -315,53 +379,29 @@ export function getAppDom(): AppDom {
     btnTestConfig: requireElement("btn-test-config"),
     btnBackConfig: requireElement("btn-back-config"),
     btnToggleAi,
-    aiPanel,
-    aiResponse,
-    aiConversation,
-    aiFollowUpForm,
-    aiFollowUpInput,
-    aiFollowUpSend,
-    aiPanelDom: {
-      panel: aiPanel,
-      panelBody: requirePanelBody(aiPanel),
-      snapshotBlock: requireElement("ai-snapshot-block"),
-      snapshotText: requireElement<HTMLPreElement>("ai-snapshot-text"),
-      loading: requireElement("ai-loading"),
-      response: aiResponse,
-      errorBlock: requireElement("ai-error-block"),
-      errorMessage: requireElement("ai-error-message"),
-      retryBtn: requireElement<HTMLButtonElement>("ai-retry"),
-      configBlock: requireElement("ai-config-block"),
-      goConfigBtn: requireElement<HTMLButtonElement>("ai-go-config"),
-      collapseBtn: requireElement<HTMLButtonElement>("ai-panel-collapse"),
+    aiDock: {
+      root: aiDock,
+      rail: aiDockRail,
+      count: requireElement("ai-dock-count"),
+      notice: requireElement("ai-dock-notice"),
+      body: requireElement("ai-dock-body"),
+      floatLayer: requireElement("ai-dock-float-layer"),
+      windowTemplate: requireElement<HTMLTemplateElement>("ai-window-template"),
+      listToggleBtn: requireElement<HTMLButtonElement>("ai-conversation-list-toggle"),
       newConversationBtn: requireElement<HTMLButtonElement>("ai-new-conversation"),
-      toggleBtn: btnToggleAi,
-      conversation: aiConversation,
-      followUpForm: aiFollowUpForm,
-      followUpInput: aiFollowUpInput,
-      followUpSend: aiFollowUpSend,
-      followUpError: requireElement("ai-follow-up-error"),
-      followUpErrorMessage: requireElement("ai-follow-up-error-message"),
-      followUpRetry: requireElement<HTMLButtonElement>("ai-follow-up-retry"),
-      followUpEdit: requireElement<HTMLButtonElement>("ai-follow-up-edit"),
-      directQuestion: requireElement("ai-direct-question"),
-      directQuestionSelection: requireElement("ai-direct-question-selection"),
-      directQuestionSelectionText: requireElement<HTMLPreElement>("ai-direct-question-selection-text"),
-      directQuestionSelectionRemove: requireElement<HTMLButtonElement>("ai-direct-question-selection-remove"),
-      directQuestionForm: requireElement<HTMLFormElement>("ai-direct-question-form"),
-      directQuestionInput: requireElement<HTMLTextAreaElement>("ai-direct-question-input"),
-      directQuestionSend: requireElement<HTMLButtonElement>("ai-direct-question-send"),
-      directQuestionError: requireElement("ai-direct-question-error"),
-      directQuestionErrorMessage: requireElement("ai-direct-question-error-message"),
-      directQuestionConfig: requireElement("ai-direct-question-config"),
-      directQuestionGoConfig: requireElement<HTMLButtonElement>("ai-direct-question-go-config"),
-      welcome: requireElement("ai-welcome"),
-      conversationListToggleBtn: requireElement<HTMLButtonElement>("ai-conversation-list-toggle"),
+      moreBtn: requireElement<HTMLButtonElement>("ai-dock-more"),
+      collapseBtn: requireElement<HTMLButtonElement>("ai-dock-collapse"),
       conversationList: requireElement("ai-conversation-list"),
       conversationListCloseBtn: requireElement<HTMLButtonElement>("ai-conversation-list-close"),
       conversationListItems: requireElement("ai-conversation-list-items"),
       conversationListEmpty: requireElement("ai-conversation-list-empty"),
-      saveErrorBlock: requireElement("ai-save-error"),
+      listNewConversationBtn: requireElement<HTMLButtonElement>("ai-list-new-conversation"),
+      searchInput: requireElement<HTMLInputElement>("ai-conversation-list-filter"),
+      railNewBtn: requireElement<HTMLButtonElement>("ai-rail-new"),
+      railListBtn: requireElement<HTMLButtonElement>("ai-rail-list"),
+      railMoreBtn: requireElement<HTMLButtonElement>("ai-rail-more"),
+      railExpandBtn: requireElement<HTMLButtonElement>("ai-rail-expand"),
+      railDot: requireElement("ai-rail-dot"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

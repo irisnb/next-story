@@ -42,22 +42,31 @@ import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.t
  * 讨论集合模型（change: add-conversation-persistence-and-isolation）：
  * - `discussions`：当前作品内各讨论的完整运行期数据（身份、时间、关注文档、请求状态、
  *   已建立对话、首轮材料与锚点）。
- * - `activeConversationId`：当前显示的讨论；一次显示一个，其余保留为档案。
+ * - `windows`：当前打开的窗口集合（以讨论 id 为键，一讨论至多一个窗口）；
+ *   `focusedConversationId`：当前聚焦窗口的讨论，替代旧单一 `activeConversationId`
+ *   的显示语义。窗口几何（位置/尺寸/层叠）留在窗口层，不进状态、不持久化。
  * - `previewRequest`：首轮预检预览 / 阻塞提示等瞬态请求状态（不归属任何讨论）。
  * - `generation`：单调递增的代次计数器（ABA 安全：`newConversation` / 首轮接受 / reset 推进）。
  * - `nextTurnId`：讨论内追问轮次的单调编号。
  * - `saveError`：讨论档案保存失败时对用户可见的提示位。
  */
+
+/** 窗口的停靠状态；浮动行为后续 wave 实现，本 wave 全部为「停靠」。 */
+export type WindowPlacement = "docked" | "floating";
+
 export interface AiPanelCoreState {
   readonly visibility: PanelVisibility;
   readonly previewRequest: PanelRequestState | null;
   readonly discussions: ReadonlyMap<string, Discussion>;
-  readonly activeConversationId: string | null;
+  /** 当前打开的窗口（键为讨论 id，一讨论至多一个窗口）。 */
+  readonly windows: ReadonlyMap<string, WindowPlacement>;
+  /** 当前聚焦窗口的讨论；无窗口时为 null。 */
+  readonly focusedConversationId: string | null;
   readonly generation: number;
   readonly nextTurnId: number;
   readonly saveError: string | null;
-  /** 直接提问的未发送草稿。 */
-  readonly directQuestionDraft: string;
+  /** 各讨论的直接提问未发送草稿（键为讨论 id；缺省为空串）。 */
+  readonly directQuestionDrafts: ReadonlyMap<string, string>;
   /** 当前待附带的选区重点材料；无选区时为 null。 */
   readonly pendingSelection: SelectionSnapshot | null;
   /** 用户主动移除后应保持忽略的选区身份；新选区出现时清除。 */
@@ -69,11 +78,12 @@ export function initialAiPanelCoreState(): AiPanelCoreState {
     visibility: "closed",
     previewRequest: null,
     discussions: new Map(),
-    activeConversationId: null,
+    windows: new Map(),
+    focusedConversationId: null,
     generation: 1,
     nextTurnId: 1,
     saveError: null,
-    directQuestionDraft: "",
+    directQuestionDrafts: new Map(),
     pendingSelection: null,
     ignoredSelection: null,
   };
@@ -138,7 +148,7 @@ export type AiPanelEvent =
   | { readonly type: "cancel_follow_up"; readonly turnId: number }
   | { readonly type: "accept_follow_up_retry" }
   | { readonly type: "accept_first_retry" }
-  | { readonly type: "update_direct_question_draft"; readonly question: string }
+  | { readonly type: "update_direct_question_draft"; readonly conversationId: string; readonly question: string }
   | { readonly type: "set_pending_selection"; readonly snapshot: SelectionSnapshot | null }
   | { readonly type: "remove_pending_selection" }
   | {
@@ -153,10 +163,10 @@ export type AiPanelEvent =
   | { readonly type: "succeed_direct_question"; readonly response: string; readonly conversationId: string }
   | { readonly type: "fail_direct_question"; readonly error: GenerateAiError; readonly conversationId: string }
   | { readonly type: "require_direct_question_configuration"; readonly conversationId: string }
-  | { readonly type: "append_stream_text"; readonly text: string }
-  | { readonly type: "begin_recovery" }
-  | { readonly type: "complete_recovery" }
-  | { readonly type: "fail_recovery" }
+  | { readonly type: "append_stream_text"; readonly conversationId: string; readonly text: string }
+  | { readonly type: "begin_recovery"; readonly conversationId: string }
+  | { readonly type: "complete_recovery"; readonly conversationId: string }
+  | { readonly type: "fail_recovery"; readonly conversationId: string }
   | { readonly type: "close" }
   | { readonly type: "open" }
   | {
@@ -176,11 +186,22 @@ export type AiPanelEvent =
     }
   | { readonly type: "delete_discussion"; readonly conversationId: string }
   | { readonly type: "set_save_error"; readonly message: string }
-  | { readonly type: "clear_save_error" };
+  | { readonly type: "clear_save_error" }
+  | { readonly type: "stop_request"; readonly conversationId: string }
+  | { readonly type: "focus_window"; readonly conversationId: string }
+  | { readonly type: "close_window"; readonly conversationId: string }
+  | { readonly type: "retry_direct_question"; readonly conversationId: string }
+  | { readonly type: "retry_stopped_follow_up" }
+  | { readonly type: "set_window_placement"; readonly conversationId: string; readonly placement: WindowPlacement }
+  | { readonly type: "reset_layout" }
+  | { readonly type: "queue_request"; readonly conversationId: string }
+  | { readonly type: "start_queued_request"; readonly conversationId: string }
+  | { readonly type: "rename_discussion"; readonly conversationId: string; readonly title: string }
+  | { readonly type: "set_discussion_pinned"; readonly conversationId: string; readonly pinned: boolean };
 
 function activeDiscussion(state: AiPanelCoreState): Discussion | null {
-  if (state.activeConversationId === null) return null;
-  return state.discussions.get(state.activeConversationId) ?? null;
+  if (state.focusedConversationId === null) return null;
+  return state.discussions.get(state.focusedConversationId) ?? null;
 }
 
 function discussionById(state: AiPanelCoreState, id: string): Discussion | null {
@@ -209,14 +230,6 @@ function isEmptyDiscussion(discussion: Discussion): boolean {
     discussion.pendingFirstRequest === null &&
     discussion.request.kind === "idle"
   );
-}
-
-/** 是否存在可归档的内容：任一讨论已有对话、待首轮材料或非空闲请求。 */
-function hasEndableConversationWork(state: AiPanelCoreState): boolean {
-  for (const discussion of state.discussions.values()) {
-    if (!isEmptyDiscussion(discussion)) return true;
-  }
-  return false;
 }
 
 /** 在目标讨论上创建首轮成功后的对话，返回更新后的讨论。 */
@@ -296,7 +309,8 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        activeConversationId: discussion.id,
+        windows: new Map(state.windows).set(discussion.id, "docked"),
+        focusedConversationId: discussion.id,
         generation: state.generation + 1,
       };
     }
@@ -461,6 +475,12 @@ export function reduceAiPanelState(
       const discussion = activeDiscussion(state);
       if (!discussion) return state;
       const request = discussion.request;
+      if (request.kind === "stopped" && request.phase === "first") {
+        return setDiscussion(state, {
+          ...discussion,
+          request: firstRetryLoadingRequest(request.snapshot, discussion.id),
+        });
+      }
       if (request.kind !== "error" && request.kind !== "configuration_required") return state;
       if (request.conversationId === undefined) return state;
       return setDiscussion(state, {
@@ -468,8 +488,10 @@ export function reduceAiPanelState(
         request: firstRetryLoadingRequest(request.snapshot, request.conversationId),
       });
     }
-    case "update_direct_question_draft":
-      return { ...state, directQuestionDraft: event.question };
+    case "update_direct_question_draft": {
+      const drafts = new Map(state.directQuestionDrafts).set(event.conversationId, event.question);
+      return { ...state, directQuestionDrafts: drafts };
+    }
     case "set_pending_selection": {
       if (event.snapshot === null) {
         return { ...state, pendingSelection: null };
@@ -529,7 +551,8 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        activeConversationId: discussion.id,
+        windows: new Map(state.windows).set(discussion.id, "docked"),
+        focusedConversationId: discussion.id,
         generation: state.generation + 1,
         pendingSelection: null,
       };
@@ -540,10 +563,12 @@ export function reduceAiPanelState(
       const request = discussion.request;
       if (request.kind !== "direct_question" || request.status !== "loading") return state;
       const created = applyFirstSuccess(discussion, event.response);
+      const drafts = new Map(state.directQuestionDrafts);
+      drafts.delete(discussion.id);
       return {
         ...state,
         discussions: new Map(state.discussions).set(discussion.id, created),
-        directQuestionDraft: "",
+        directQuestionDrafts: drafts,
       };
     }
     case "fail_direct_question": {
@@ -569,7 +594,8 @@ export function reduceAiPanelState(
       });
     }
     case "append_stream_text": {
-      const discussion = activeDiscussion(state);
+      // 按讨论身份路由增量：只写入发起请求的讨论，不写入「当前活动讨论」。
+      const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;
       const request = discussion.request;
       if (request.kind === "direct_question" && request.status === "loading") {
@@ -598,7 +624,7 @@ export function reduceAiPanelState(
       return state;
     }
     case "begin_recovery": {
-      const discussion = activeDiscussion(state);
+      const discussion = discussionById(state, event.conversationId);
       const conversation = discussion?.conversation;
       if (!discussion || !conversation) return state;
       return setDiscussion(state, {
@@ -607,7 +633,7 @@ export function reduceAiPanelState(
       });
     }
     case "complete_recovery": {
-      const discussion = activeDiscussion(state);
+      const discussion = discussionById(state, event.conversationId);
       const conversation = discussion?.conversation;
       if (!discussion || !conversation) return state;
       if (discussion.request.kind !== "recovering") return state;
@@ -617,7 +643,7 @@ export function reduceAiPanelState(
       });
     }
     case "fail_recovery": {
-      const discussion = activeDiscussion(state);
+      const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;
       if (discussion.request.kind !== "recovering") return state;
       return setDiscussion(state, {
@@ -633,7 +659,9 @@ export function reduceAiPanelState(
     case "open":
       return state.visibility === "open" ? state : { ...state, visibility: "open" };
     case "new_conversation": {
-      if (!hasEndableConversationWork(state)) return state;
+      // 聚焦窗口已是空窗口：复用它，避免空窗口堆积。
+      const current = activeDiscussion(state);
+      if (current && isEmptyDiscussion(current)) return state;
       const discussion: Discussion = {
         id: event.conversationId,
         createdAt: event.createdAt,
@@ -650,9 +678,9 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        activeConversationId: discussion.id,
+        windows: new Map(state.windows).set(discussion.id, "docked"),
+        focusedConversationId: discussion.id,
         generation: state.generation + 1,
-        directQuestionDraft: "",
         pendingSelection: null,
         ignoredSelection: null,
         saveError: null,
@@ -664,10 +692,11 @@ export function reduceAiPanelState(
         visibility: "closed",
         previewRequest: null,
         discussions: new Map(),
-        activeConversationId: null,
+        windows: new Map(),
+        focusedConversationId: null,
         generation: state.generation + 1,
         saveError: null,
-        directQuestionDraft: "",
+        directQuestionDrafts: new Map(),
         pendingSelection: null,
         ignoredSelection: null,
       };
@@ -692,10 +721,11 @@ export function reduceAiPanelState(
         visibility: "closed",
         previewRequest: null,
         discussions,
-        activeConversationId: null,
+        windows: new Map(),
+        focusedConversationId: null,
         generation: state.generation + 1,
         saveError: null,
-        directQuestionDraft: "",
+        directQuestionDrafts: new Map(),
         pendingSelection: null,
         ignoredSelection: null,
       };
@@ -718,7 +748,9 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        activeConversationId: discussion.id,
+        // 一讨论至多一个窗口：已打开则聚焦，不重复创建。
+        windows: new Map(state.windows).set(discussion.id, "docked"),
+        focusedConversationId: discussion.id,
         generation: state.generation + 1,
         saveError: null,
       };
@@ -727,18 +759,177 @@ export function reduceAiPanelState(
       if (!state.discussions.has(event.conversationId)) return state;
       const discussions = new Map(state.discussions);
       discussions.delete(event.conversationId);
-      const activeConversationId =
-        state.activeConversationId === event.conversationId ? null : state.activeConversationId;
+      const windows = new Map(state.windows);
+      windows.delete(event.conversationId);
+      const drafts = new Map(state.directQuestionDrafts);
+      drafts.delete(event.conversationId);
+      const focusedConversationId =
+        state.focusedConversationId === event.conversationId ? null : state.focusedConversationId;
       return {
         ...state,
         discussions,
-        activeConversationId,
-        ...(activeConversationId === null ? { previewRequest: null } : {}),
+        windows,
+        directQuestionDrafts: drafts,
+        focusedConversationId,
+        ...(focusedConversationId === null ? { previewRequest: null } : {}),
       };
     }
     case "set_save_error":
       return { ...state, saveError: event.message };
     case "clear_save_error":
       return state.saveError === null ? state : { ...state, saveError: null };
+    case "stop_request": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      if (request.kind === "direct_question" && (request.status === "loading" || request.queued)) {
+        // 直接提问首轮停止（含排队中）：保留问题与已流式内容，标记为「已停止」。
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, status: "stopped", queued: undefined },
+        });
+      }
+      if (request.kind === "loading" && request.phase === "first") {
+        // 召唤首轮停止：保留冻结材料与已流式内容。
+        return setDiscussion(state, {
+          ...discussion,
+          request: {
+            kind: "stopped",
+            snapshot: request.snapshot,
+            conversationId: request.conversationId,
+            phase: "first",
+            streamedText: request.streamedText,
+          },
+        });
+      }
+      if (request.kind === "loading" && request.phase === "follow_up") {
+        const conversation = discussion.conversation;
+        const pending = conversation?.pending;
+        if (!conversation || !pending || pending.error || pending.interrupted) return state;
+        return setDiscussion(state, {
+          ...discussion,
+          conversation: { ...conversation, pending: { ...pending, interrupted: true } },
+          request: {
+            kind: "stopped",
+            snapshot: conversation.anchor,
+            conversationId: discussion.id,
+            phase: "follow_up",
+            turnId: pending.id,
+          },
+        });
+      }
+      return state;
+    }
+    case "focus_window": {
+      if (!state.windows.has(event.conversationId)) return state;
+      if (state.focusedConversationId === event.conversationId) return state;
+      return { ...state, focusedConversationId: event.conversationId };
+    }
+    case "close_window": {
+      if (!state.windows.has(event.conversationId)) return state;
+      const windows = new Map(state.windows);
+      windows.delete(event.conversationId);
+      const focusedConversationId =
+        state.focusedConversationId === event.conversationId ? null : state.focusedConversationId;
+      return {
+        ...state,
+        windows,
+        focusedConversationId,
+        ...(focusedConversationId === null ? { previewRequest: null } : {}),
+      };
+    }
+    case "retry_direct_question": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      if (request.kind !== "direct_question" || request.status !== "stopped") return state;
+      return setDiscussion(state, {
+        ...discussion,
+        request: { ...request, status: "loading", streamedText: "" },
+      });
+    }
+    case "retry_stopped_follow_up": {
+      const discussion = activeDiscussion(state);
+      const conversation = discussion?.conversation;
+      const pending = conversation?.pending;
+      if (!discussion || !conversation || !pending || !pending.interrupted) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: { ...conversation, pending: { id: pending.id, question: pending.question, streamedText: "" } },
+        request: followUpLoadingRequest(conversation.anchor, discussion.id, pending.id),
+      });
+    }
+    case "set_window_placement": {
+      if (!state.windows.has(event.conversationId)) return state;
+      if (state.windows.get(event.conversationId) === event.placement) return state;
+      return {
+        ...state,
+        windows: new Map(state.windows).set(event.conversationId, event.placement),
+      };
+    }
+    case "reset_layout": {
+      let changed = false;
+      const windows = new Map<string, WindowPlacement>();
+      for (const [id, placement] of state.windows) {
+        if (placement !== "docked") changed = true;
+        windows.set(id, "docked");
+      }
+      if (!changed) return state;
+      return { ...state, windows };
+    }
+    case "queue_request": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      if (request.kind === "direct_question" && request.status === "loading" && !request.queued) {
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, queued: true },
+        });
+      }
+      if (request.kind === "loading" && !request.queued) {
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, queued: true },
+        });
+      }
+      return state;
+    }
+    case "start_queued_request": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      if (request.kind === "direct_question" && request.status === "loading" && request.queued) {
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, queued: undefined },
+        });
+      }
+      if (request.kind === "loading" && request.queued) {
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, queued: undefined },
+        });
+      }
+      return state;
+    }
+    case "rename_discussion": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion || !discussion.conversation) return state;
+      if (discussion.conversation.customTitle === event.title) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: { ...discussion.conversation, customTitle: event.title },
+      });
+    }
+    case "set_discussion_pinned": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion || !discussion.conversation) return state;
+      if ((discussion.conversation.pinned ?? false) === event.pinned) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: { ...discussion.conversation, pinned: event.pinned },
+      });
+    }
   }
 }

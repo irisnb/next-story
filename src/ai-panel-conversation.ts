@@ -45,6 +45,10 @@ export interface TemporaryConversation {
   firstRoundInterrupted?: boolean;
   turns: SuccessfulFollowUpTurn[];
   pending: PendingFollowUpTurn | null;
+  /** 用户自定义标题；null/空白表示未重命名，回退到派生标题。 */
+  customTitle?: string | null;
+  /** 置顶标记；缺失表示未置顶。 */
+  pinned?: boolean;
 }
 
 export type ReadonlyTemporaryConversation = Readonly<{
@@ -57,6 +61,8 @@ export type ReadonlyTemporaryConversation = Readonly<{
   firstRoundInterrupted?: boolean;
   turns: ReadonlyArray<Readonly<SuccessfulFollowUpTurn>>;
   pending: Readonly<PendingFollowUpTurn> | null;
+  customTitle?: string | null;
+  pinned?: boolean;
 }>;
 
 /**
@@ -125,6 +131,8 @@ export function createConversationFromFirstSuccess(
     firstRoundInterrupted: false,
     turns: [],
     pending: null,
+    customTitle: null,
+    pinned: false,
   };
 }
 
@@ -356,6 +364,8 @@ export function buildConversationRecord(
     focus_document_title: focusDocumentTitle,
     first_round_material: material,
     turns,
+    ...(conversation.customTitle?.trim() ? { title: conversation.customTitle } : {}),
+    ...(conversation.pinned ? { pinned: true } : {}),
   };
 }
 
@@ -419,6 +429,8 @@ export function conversationFromRecord(
     firstRoundInterrupted,
     turns: followUps,
     pending,
+    customTitle: record.title ?? null,
+    pinned: record.pinned ?? false,
   };
 }
 
@@ -472,7 +484,9 @@ export function summaryOf(  conversation: TemporaryConversation,
       : "done";
   return {
     conversation_id: conversation.id,
-    title: deriveConversationTitle(material, conversation.createdAt),
+    title: conversation.customTitle?.trim()
+      ? conversation.customTitle
+      : deriveConversationTitle(material, conversation.createdAt),
     created_at: conversation.createdAt,
     updated_at: conversation.createdAt,
     last_status: lastStatus,
@@ -480,5 +494,7 @@ export function summaryOf(  conversation: TemporaryConversation,
     focus_document_title: focusDocumentTitle,
     first_round_material: material,
     turns: buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle).turns,
+    custom_title: conversation.customTitle ?? null,
+    pinned: conversation.pinned ?? false,
   };
 }

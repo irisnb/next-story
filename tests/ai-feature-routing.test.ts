@@ -11,7 +11,7 @@ import {
   followUpAcceptedRequest,
   retryFollowUpAcceptedRequest,
 } from "../src/ai-feature-follow-up.ts";
-import { createPreflightGate, startSummon } from "../src/ai-feature-first-round.ts";
+import { startSummon } from "../src/ai-feature-first-round.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type {
   GenerateAiError,
@@ -88,7 +88,6 @@ test("discards the preflight result when the project changes during config loadi
   const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
     configDeferred.resolve = resolve;
   });
-  const preflight = createPreflightGate();
   let requestedSnapshot: SelectionSnapshot | null = null;
 
   assert.equal(startSummon({
@@ -99,10 +98,8 @@ test("discards the preflight result when the project changes during config loadi
       requestedSnapshot = snapshot(request.selected_text);
       return Promise.resolve();
     },
-    preflight,
     getProjectToken: () => projectToken,
   }), true);
-  assert.equal(preflight.owner, 1, "预检进行中应锁定单飞");
 
   // 预检期间切换到作品 B：令牌变化后，迟到的配置结果必须被丢弃。
   projectToken = 2;
@@ -112,7 +109,6 @@ test("discards the preflight result when the project changes during config loadi
   await Promise.resolve();
 
   assert.equal(requestedSnapshot, null, "不得把旧作品的冻结选区作为请求发出");
-  assert.equal(preflight.owner, null);
   // 预检结果被丢弃：面板停留在预览态（作品切换后由应用层 reset），不进入 loading/error。
   assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: "1", phase: "first" });
 });
@@ -148,7 +144,7 @@ test("preflight failure after a project switch is discarded too", async () => {
   assert.deepEqual(state.view.request, { kind: "loading", snapshot: snap, conversationId: "1", phase: "first" });
 });
 
-test("a preflight invalidated by newConversation does not re-activate the cleared request", async () => {
+test("a preflight is not invalidated by newConversation and still sends", async () => {
   const state = new AiPanelState();
   const snap = snapshot("冻结选区");
   let requested = 0;
@@ -171,21 +167,19 @@ test("a preflight invalidated by newConversation does not re-activate the cleare
   }), true);
   assert.equal(state.view.request.kind, "loading");
 
-  // 预检期间用户新建对话：清空为空白直接提问状态
+  // 预检期间用户新建对话：不使原讨论的在途预检作废。
   assert.equal(state.newConversation(), true);
-  assert.deepEqual(state.view.request, { kind: "idle" });
 
-  // 随后预检返回有配置：不得重新激活已清空的请求
   configDeferred.resolve?.({ api_base_url: "https://api.example.com", model: "m", has_api_key: true });
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
 
-  assert.equal(requested, 0, "不得发送网络请求");
-  assert.deepEqual(state.view.request, { kind: "idle" }, "面板保持空白直接提问状态");
+  assert.equal(requested, 1, "原讨论的预检照常发送");
 });
 
-test("a preflight invalidated by newConversation does not enter configuration-required on missing config", async () => {
+test("a preflight still enters configuration-required after newConversation", async () => {
   const state = new AiPanelState();
   const snap = snapshot("冻结选区");
   const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
@@ -210,11 +204,13 @@ test("a preflight invalidated by newConversation does not enter configuration-re
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
 
-  assert.deepEqual(state.view.request, { kind: "idle" }, "不得进入配置引导状态");
+  const request = state.viewOf("1").request;
+  assert.equal(request.kind, "configuration_required", "配置引导作用于原讨论");
 });
 
-test("a preflight invalidated by newConversation does not surface a late loadConfig rejection", async () => {
+test("a preflight still surfaces a late loadConfig rejection after newConversation", async () => {
   const state = new AiPanelState();
   const snap = snapshot("冻结选区");
   const configDeferred: { reject: ((error: Error) => void) | null } = {
@@ -239,39 +235,10 @@ test("a preflight invalidated by newConversation does not surface a late loadCon
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
-
-  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到的预检失败不得污染空状态");
-});
-
-test("preflight gate is released when a preflight is invalidated by newConversation", async () => {
-  const state = new AiPanelState();
-  const snap = snapshot("冻结选区");
-  const preflight = createPreflightGate();
-  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
-    resolve: null,
-  };
-  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
-    configDeferred.resolve = resolve;
-  });
-
-  assert.equal(startSummon({
-    state,
-    snapshot: snap,
-    loadConfig: () => configPromise,
-    request: () => Promise.resolve(),
-    preflight,
-    getProjectToken: () => 1,
-  }), true);
-  assert.equal(preflight.owner, 1, "预检进行中应锁定单飞");
-
-  state.newConversation();
-  configDeferred.resolve?.({ api_base_url: "https://api.example.com", model: "m", has_api_key: true });
-  await Promise.resolve();
-  await Promise.resolve();
   await Promise.resolve();
 
-  assert.equal(preflight.owner, null, "finally 应释放预检门禁");
-  assert.deepEqual(state.view.request, { kind: "idle" });
+  const request = state.viewOf("1").request;
+  assert.equal(request.kind, "error", "迟到的预检失败作用于原讨论");
 });
 
 test("first request keeps the submitted snapshot after the editor selection changes", async () => {

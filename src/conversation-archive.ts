@@ -46,6 +46,10 @@ export interface ConversationRecord {
   focus_document_title: string | null;
   first_round_material: FirstRoundMaterial;
   turns: ConversationTurn[];
+  /** 可选自定义标题；缺失/空白表示未重命名。 */
+  title?: string;
+  /** 置顶标记；缺失表示未置顶。 */
+  pinned?: boolean;
 }
 
 /**
@@ -63,6 +67,10 @@ export interface ConversationSummary {
   focus_document_title: string | null;
   first_round_material: FirstRoundMaterial;
   turns: ConversationTurn[];
+  /** 用户自定义标题原值；null 表示未重命名。 */
+  custom_title?: string | null;
+  /** 置顶标记；false 表示未置顶。 */
+  pinned?: boolean;
 }
 
 /** `conversation_list` 的稳定返回：当前作品的讨论列表 + 被跳过（损坏/超限）的档案。 */
@@ -150,4 +158,17 @@ export async function conversationDelete(
     }
   }
   await call("conversation_delete", { projectPath, conversationId });
+}
+
+/**
+ * 撤销删除：清除前端的「已删除」守卫与后端的删除墓碑，使该讨论可被再次保存。
+ * 调用后需重新 `conversationSave` 把内存副本写回档案。仅用于删除撤销路径。
+ */
+export async function conversationRestore(
+  projectPath: string,
+  conversationId: string,
+  call: ConversationInvokeFn = tauriInvoke,
+): Promise<void> {
+  deletedConversationIds.delete(conversationId);
+  await call("conversation_restore", { projectPath, conversationId });
 }

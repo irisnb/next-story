@@ -9,8 +9,12 @@ import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
 import { setupProjectFlow } from "./new-project-form";
 import { setupAiFeature } from "./ai-feature";
+import { waitTiming } from "./ai-timing";
 import { showModule, showPage, type ModuleId, type ModuleViews } from "./views";
 import type { ProjectTreeState } from "./types";
+
+// 等待计时采集仅供真实接入验证（第 10 组）：暴露到 devtools 控制台取数。
+(globalThis as Record<string, unknown>).__waitTiming = waitTiming;
 
 window.addEventListener("DOMContentLoaded", () => {
   const dom = getAppDom();

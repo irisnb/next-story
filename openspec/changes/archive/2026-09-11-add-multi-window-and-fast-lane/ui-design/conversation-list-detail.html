@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Next Story · 会话列表细节稿</title>
+<style>
+  :root{
+    --primary:#2743e0; --primary-hover:#1f38c0; --on-primary:#fff; --accent:#f0b429;
+    --ink:#171717; --surface:#fff; --surface-subtle:#f5f5f5; --surface-hover:#f0f0f0;
+    --text:#1a1a1a; --text-body:#333; --muted:#8a8a8a;
+    --success:#1e9e5a; --danger:#d6361e; --warning:#c77800;
+    --hairline:1px solid rgba(23,23,23,.1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:#e6e6e6;}
+  body{font-family:"Microsoft YaHei","PingFang SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text-body);font-size:14px;line-height:1.5;padding:36px 24px 72px;}
+  .ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:square;stroke-linejoin:miter;display:inline-block;vertical-align:middle;}
+  .ic-sm{width:14px;height:14px;}
+  .ic-xs{width:12px;height:12px;}
+  .page-head{max-width:1180px;margin:0 auto 26px;}
+  .page-head h1{font-size:22px;color:var(--ink);}
+  .page-head p{color:var(--muted);font-size:13px;margin-top:6px;}
+  .wrap{max-width:1180px;margin:0 auto;display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+  .col{display:flex;flex-direction:column;gap:14px;}
+  .cap{font-size:13px;color:#555;}
+  .cap b{color:var(--ink);}
+  .frame{background:var(--surface);border:2px solid var(--ink);box-shadow:6px 6px 0 rgba(0,0,0,.4);}
+  .panel{width:440px;display:flex;flex-direction:column;height:720px;}
+
+  .list-head{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:2px solid rgba(23,23,23,.8);}
+  .list-head .title{font-weight:600;font-size:14px;color:var(--ink);}
+  .list-head .spacer{flex:1;}
+  .btn-text{font-size:11.5px;padding:3px 10px;border:1.5px solid rgba(23,23,23,.7);border-radius:2px;background:var(--surface);color:var(--text);box-shadow:1px 1px 0 rgba(0,0,0,.16);}
+  .btn-text.primary{background:var(--primary);color:var(--on-primary);border-color:var(--ink);}
+  .icon-btn{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(23,23,23,.7);border-radius:2px;background:var(--surface);color:var(--text);box-shadow:1px 1px 0 rgba(0,0,0,.16);}
+  .search{padding:8px 10px;border-bottom:1px solid rgba(23,23,23,.25);}
+  .search-field{display:flex;align-items:center;gap:7px;padding:0 9px;border:2px solid rgba(23,23,23,.6);border-radius:2px;background:var(--surface);}
+  .search-field .ic{color:var(--muted);}
+  .search-field input{flex:1;min-width:0;padding:6px 0;font-size:12.5px;border:none;outline:none;background:transparent;color:var(--text);}
+  .search-field input::placeholder{color:var(--muted);}
+  .filter-hint{padding:7px 12px;font-size:11.5px;color:var(--muted);border-bottom:1px solid rgba(23,23,23,.18);}
+  .dock-notice{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;border-bottom:1px solid rgba(23,23,23,.2);}
+  .dock-notice.warn{color:var(--warning);background:#fffaf0;border-left:3px solid var(--warning);}
+  .dock-notice.ok{color:var(--text);background:#f2f2f2;border-left:3px solid var(--success);}
+  .dock-notice .undo{margin-left:auto;color:var(--success);font-weight:600;}
+  .filter-hint b{color:var(--primary);}
+  .list-scroll{flex:1;min-height:0;overflow:auto;padding:4px 6px 8px;}
+  .group-h{display:flex;align-items:center;gap:6px;padding:9px 6px 5px;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--muted);}
+  .group-h .ic{color:var(--muted);}
+  .group-h .pin{color:var(--warning);}
+  .group-h .count{margin-left:auto;font-weight:400;letter-spacing:0;display:inline-flex;align-items:center;gap:4px;}
+  .group-h.sub{padding-left:18px;letter-spacing:.04em;color:#a0a0a0;}
+  .row{position:relative;display:flex;gap:9px;align-items:flex-start;padding:7px 8px 7px 9px;border-radius:3px;cursor:default;}
+  .row + .row{border-top:var(--hairline);}
+  .row:hover{background:var(--surface-hover);}
+  .row.active{background:#eef1ff;}
+  .row.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--primary);border-radius:2px;}
+  .row .rdot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;}
+  .row-main{flex:1;min-width:0;}
+  .row-title{font-size:13px;font-weight:500;color:var(--text);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .row.active .row-title{font-weight:600;}
+  .row-meta{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row-time{font-size:11.5px;color:var(--muted);flex:none;margin-top:1px;}
+  .row-actions{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:none;gap:3px;background:linear-gradient(90deg,transparent,var(--surface-hover) 22%);padding-left:16px;}
+  .row:hover .row-actions,.row:focus-within .row-actions{display:flex;}
+  .row.active:hover .row-actions{background:linear-gradient(90deg,transparent,#eef1ff 22%);}
+  .row.show-actions .row-actions{display:flex;}
+  .act{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(23,23,23,.55);border-radius:2px;background:var(--surface);color:#444;cursor:pointer;}
+  .act.del{color:var(--danger);border-color:rgba(214,54,30,.5);}
+  .row-edit input{width:100%;font:inherit;font-size:13px;font-weight:600;padding:3px 6px;border:2px solid var(--primary);border-radius:2px;background:var(--surface);color:var(--text);}
+  .confirm{display:flex;align-items:center;gap:6px;margin-top:6px;padding:5px 7px;border:1px solid rgba(214,54,30,.5);border-left:3px solid var(--danger);border-radius:2px;background:#fff5f3;}
+  .confirm span{font-size:11.5px;color:var(--text);margin-right:auto;}
+  .mini-btn{font-size:11px;padding:2px 8px;border:1.5px solid rgba(23,23,23,.6);border-radius:2px;background:var(--surface);color:var(--text);cursor:pointer;}
+  .mini-btn.danger{background:var(--danger);color:#fff;border-color:var(--ink);}
+  .list-foot{flex:none;border-top:2px solid rgba(23,23,23,.8);padding:7px 10px;display:flex;align-items:center;gap:8px;}
+  .foot-btn{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 10px;border:1.5px solid rgba(23,23,23,.6);border-radius:2px;background:var(--surface);color:var(--text);cursor:pointer;}
+  .toast{margin-left:auto;display:inline-flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text);background:#f2f2f2;border:1px solid rgba(23,23,23,.35);border-left:3px solid var(--success);border-radius:2px;padding:4px 9px;}
+  .toast b{color:var(--success);font-weight:600;}
+
+  .dot{width:8px;height:8px;border-radius:50%;}
+  .d-generating{background:var(--primary);}
+  .d-queued{background:var(--warning);}
+  .d-stopped{background:var(--muted);}
+  .d-failed{background:var(--danger);}
+  .d-done{background:var(--success);}
+
+  .batch-bar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:2px solid var(--ink);background:#f7f7ff;}
+  .batch-bar .sel{font-size:12px;color:var(--text);}
+  .batch-bar .sel b{color:var(--primary);}
+  .batch-bar .spacer{flex:1;}
+  .check{width:16px;height:16px;flex:none;border:2px solid rgba(23,23,23,.7);border-radius:2px;margin-top:5px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--surface);}
+  .check.on{background:var(--primary);border-color:var(--primary);}
+  .check .ic{color:#fff;}
+
+  .old .list-scroll{padding:8px;}
+  .old-item{border:2px solid rgba(23,23,23,.9);border-radius:2px;box-shadow:1.5px 1.5px 0 rgba(0,0,0,.2);margin-bottom:8px;overflow:hidden;}
+  .old-main{display:flex;flex-direction:column;gap:2px;padding:8px 12px;}
+  .old-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+  .old-meta{display:flex;gap:8px;align-items:center;}
+  .old-time{font-size:11.5px;color:var(--muted);}
+  .old-status{font-size:11px;font-weight:600;padding:0 5px;border:1px solid rgba(23,23,23,.42);border-radius:2px;color:var(--muted);}
+  .old-del{align-self:flex-end;margin:0 8px 8px 0;font-size:11.5px;padding:2px 8px;border:2px solid rgba(23,23,23,.9);border-radius:2px;background:var(--surface);color:var(--danger);box-shadow:1.5px 1.5px 0 rgba(0,0,0,.2);}
+  .bad{color:var(--danger);}
+  .good{color:var(--success);}
+  .issue-list{font-size:12.5px;line-height:2;color:#555;max-width:440px;}
+  .issue-list b{color:var(--ink);}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--muted);padding-top:280px;}
+  .arrow .ic{width:26px;height:26px;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M6 4h7M6 8h7M6 12h7"/><rect x="2.4" y="3.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="7.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="11.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 16 16"><path d="M3.5 6L8 10.5 12.5 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M6.2 2.8h3.6v2.4l1.7 1.7H4.5l1.7-1.7z"/><path d="M8 6.9v6.3"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M2.8 13.2l.8-3L11.4 2.4a1.4 1.4 0 0 1 2 2L5.8 12.4z"/><path d="M10.4 3.4l2 2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10"/><path d="M6 4.5V3h4v1.5"/><path d="M4.6 4.5l.7 9h5.4l.7-9"/><path d="M6.8 7v3.8M9.2 7v3.8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+  <symbol id="i-empty" viewBox="0 0 16 16"><path d="M3 4.5h10v6H8l-3 2.5V10.5H3z"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 16 16"><path d="M3 8h9"/><path d="M8.5 4.5L12 8l-3.5 3.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>会话列表细节稿</h1>
+  <p>重做前 vs 重做后 · 天/周/月分组、条目间轻分隔线、统一图标、悬停操作、重命名、置顶、删除确认与撤销、批量管理、空状态、筛选。</p>
+</div>
+
+<div class="wrap">
+
+  <!-- 旧版 -->
+  <div class="col">
+    <div class="cap"><b>重做前</b> · 一堵带边框和硬阴影的卡片墙，时间还是创建时间，删除按钮常显</div>
+    <div class="frame panel old" style="height:520px;">
+      <div class="list-head"><span class="title">会话列表</span><span class="spacer"></span><button class="btn-text">收起</button></div>
+      <div class="list-scroll">
+        <div class="old-item">
+          <div class="old-main"><div class="old-title">第三幕主角动机的追问</div><div class="old-meta"><span class="old-time">09-10 14:20</span><span class="old-status">状态未知</span></div></div>
+          <button class="old-del">删除</button>
+        </div>
+        <div class="old-item">
+          <div class="old-main"><div class="old-title">开场白节奏</div><div class="old-meta"><span class="old-time">09-10 11:02</span><span class="old-status">完成</span></div></div>
+          <button class="old-del">删除</button>
+        </div>
+        <div class="old-item">
+          <div class="old-main"><div class="old-title">关于结尾的两版处理是不是都可以保留下来比较</div><div class="old-meta"><span class="old-time">09-09 21:05</span><span class="old-status">中断</span></div></div>
+          <button class="old-del">删除</button>
+        </div>
+        <div class="old-item">
+          <div class="old-main"><div class="old-title">雨夜门廊的意象</div><div class="old-meta"><span class="old-time">08-12 09:48</span><span class="old-status">失败</span></div></div>
+          <button class="old-del">删除</button>
+        </div>
+      </div>
+      <div class="issue-list" style="padding:10px 12px;border-top:1px solid rgba(23,23,23,.25)">
+        <span class="bad">✕</span> 显示创建时间，不是最后活动时间<br/>
+        <span class="bad">✕</span> 每行卡片 + 阴影，一屏放不下几条<br/>
+        <span class="bad">✕</span> 没有分组，讨论多了只能滚<br/>
+        <span class="bad">✕</span> 标题一行硬切、不能改<br/>
+        <span class="bad">✕</span> 删除按钮常显，容易误点<br/>
+        <span class="bad">✕</span> 图标用字符/emoji，风格不统一
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"><svg class="ic"><use href="#i-arrow-right"/></svg></div>
+
+  <!-- 新版 -->
+  <div class="col">
+    <div class="cap"><b>重做后</b> · 天/周/月分组 + 条目间轻分隔线 + 统一描边图标 + 悬停操作</div>
+    <div class="frame panel">
+      <div class="list-head">
+        <span class="title">讨论</span><span class="spacer"></span>
+        <button class="btn-text primary">新建对话</button>
+        <button class="icon-btn" title="更多（停靠区）"><svg class="ic ic-sm"><use href="#i-more"/></svg></button>
+        <button class="btn-text">收起</button>
+      </div>
+      <div class="dock-notice ok">已删除「雨夜门廊的意象」<span class="undo">撤销</span></div>
+      <div class="search"><label class="search-field"><svg class="ic ic-sm"><use href="#i-search"/></svg><input type="text" placeholder="筛选讨论…（标题或文档名）" /></label></div>
+      <div class="list-scroll">
+
+        <div class="group-h"><span class="pin"><svg class="ic ic-sm"><use href="#i-pin"/></svg></span>置顶</div>
+        <div class="row show-actions">
+          <span class="rdot d-generating"></span>
+          <div class="row-main"><div class="row-title">第三幕主角动机的追问</div><div class="row-meta">第三幕 · 生成中</div></div>
+          <span class="row-time">3 分钟前</span>
+          <div class="row-actions"><span class="act" title="重命名"><svg class="ic ic-sm"><use href="#i-pencil"/></svg></span><span class="act" title="取消置顶"><svg class="ic ic-sm"><use href="#i-pin"/></svg></span><span class="act del" title="删除"><svg class="ic ic-sm"><use href="#i-trash"/></svg></span></div>
+        </div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">结尾两版处理哪个更收得住</div><div class="row-meta">第三幕 · 已完成</div></div>
+          <span class="row-time">昨天 21:05</span>
+        </div>
+
+        <div class="group-h">今天</div>
+        <div class="row active show-actions">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">开场白节奏</div><div class="row-meta">第一幕 · 已完成</div></div>
+          <span class="row-time">14:20</span>
+          <div class="row-actions"><span class="act" title="重命名"><svg class="ic ic-sm"><use href="#i-pencil"/></svg></span><span class="act" title="置顶"><svg class="ic ic-sm"><use href="#i-pin"/></svg></span><span class="act del" title="删除"><svg class="ic ic-sm"><use href="#i-trash"/></svg></span></div>
+        </div>
+        <div class="row">
+          <span class="rdot d-stopped"></span>
+          <div class="row-main"><div class="row-title">关于结尾的两版处理</div><div class="row-meta">第三幕 · 已停止</div></div>
+          <span class="row-time">11:02</span>
+        </div>
+        <div class="row">
+          <span class="rdot d-failed"></span>
+          <div class="row-main"><div class="row-title">雨夜门廊的意象还能怎么用</div><div class="row-meta">第一幕 · 失败</div></div>
+          <span class="row-time">09:48</span>
+        </div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main">
+            <div class="row-edit"><input type="text" value="开场白节奏（改）" /></div>
+            <div class="row-meta">第一幕 · 已完成 · 回车保存，Esc 取消</div>
+          </div>
+        </div>
+
+        <div class="group-h">昨天</div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">林砚这个人物的前史要不要提前交代</div><div class="row-meta">人物小传 · 已完成</div></div>
+          <span class="row-time">昨天 09:15</span>
+        </div>
+
+        <div class="group-h">本周</div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">门廊那场戏的空间关系</div><div class="row-meta">场景笔记 · 已完成</div></div>
+          <span class="row-time">周一</span>
+        </div>
+
+        <div class="group-h">上周</div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">第一稿结尾的备选</div><div class="row-meta">第一幕 · 已完成</div></div>
+          <span class="row-time">上周五</span>
+        </div>
+
+        <div class="group-h">上月</div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">第二幕转场的两种接法</div><div class="row-meta">第二幕 · 已完成</div></div>
+          <span class="row-time">8月28日</span>
+        </div>
+
+        <div class="group-h">更早 <span class="count">12 条 <svg class="ic ic-xs"><use href="#i-chevron-down"/></svg></span></div>
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main"><div class="row-title">旧的人物关系草稿</div><div class="row-meta">人物小传 · 已完成</div></div>
+          <span class="row-time">7月30日</span>
+        </div>
+
+        <div class="row">
+          <span class="rdot d-done"></span>
+          <div class="row-main">
+            <div class="row-title">废弃的开场三版</div>
+            <div class="confirm"><span>删除这个讨论？</span><button class="mini-btn">取消</button><button class="mini-btn danger">删除</button></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="list-foot">
+        <button class="foot-btn"><svg class="ic ic-sm"><use href="#i-check"/></svg>批量管理</button>
+      </div>
+    </div>
+    <div class="issue-list">
+      <span class="good">✓</span> 最后活动时间 + 相对时间（刚刚 / 3 分钟前 / 昨天 21:05 / 周一 / 上周五 / 8月28日）<br/>
+      <span class="good">✓</span> 天 / 周 / 月粒度分组；置顶独立区默认展开；空分组不显示<br/>
+      <span class="good">✓</span> 条目之间一条极轻的 1px 横线，不加重边框感<br/>
+      <span class="good">✓</span> 统一描边图标（搜索 / 置顶 / 重命名 / 删除 / 折叠），不再用 emoji<br/>
+      <span class="good">✓</span> 悬停才出现行操作；删除先确认、可撤销<br/>
+      <span class="good">✓</span> 不再有「只显示最近 5 条 + 查看更多」
+    </div>
+  </div>
+</div>
+
+<!-- 分组规则 + 更早展开 + 批量管理 + 空状态 + 筛选 -->
+<div class="wrap" style="margin-top:34px;">
+
+  <div class="col">
+    <div class="cap"><b>分组规则</b> · 天 / 周 / 月三档，按顺序第一个命中</div>
+    <div class="frame" style="padding:16px;width:440px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <tr style="background:var(--surface-subtle)"><th style="border:1px solid rgba(23,23,23,.3);padding:6px 9px;text-align:left">分组</th><th style="border:1px solid rgba(23,23,23,.3);padding:6px 9px;text-align:left">含义</th></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">今天</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">当天 00:00 起</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">昨天</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">昨天 00:00–24:00</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">本周</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">本周一至今，不含今天/昨天</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">上周</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">上周一至上周日</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">本月</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">本月 1 日至今，不含以上</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">上月</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">上一个自然月</td></tr>
+        <tr><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">更早</td><td style="border:1px solid rgba(23,23,23,.3);padding:6px 9px">再往前；展开后按自然月分节</td></tr>
+      </table>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.9;">每个讨论只落入<b style="color:var(--ink)">第一个命中</b>的分组；<b style="color:var(--ink)">空分组不显示</b>。</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>「更早」展开</b> · 按月分节（月粒度）</div>
+    <div class="frame" style="width:400px;">
+      <div class="list-scroll" style="padding:8px 8px 12px;">
+        <div class="group-h">更早 <span class="count">按月份 <svg class="ic ic-xs"><use href="#i-chevron-down"/></svg></span></div>
+        <div class="group-h sub">2026 年 7 月</div>
+        <div class="row"><span class="rdot d-done"></span><div class="row-main"><div class="row-title">旧的人物关系草稿</div><div class="row-meta">人物小传 · 已完成</div></div><span class="row-time">7月30日</span></div>
+        <div class="row"><span class="rdot d-done"></span><div class="row-main"><div class="row-title">开场三版的取舍</div><div class="row-meta">第一幕 · 已完成</div></div><span class="row-time">7月12日</span></div>
+        <div class="group-h sub">2026 年 6 月</div>
+        <div class="row"><span class="rdot d-done"></span><div class="row-main"><div class="row-title">最早的人物小传</div><div class="row-meta">人物小传 · 已完成</div></div><span class="row-time">6月21日</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>批量管理</b> · 多选后底部统一删除</div>
+    <div class="frame" style="width:380px;height:260px;display:flex;flex-direction:column;">
+      <div class="list-head"><span class="title">讨论 · 批量管理</span><span class="spacer"></span><button class="btn-text">退出</button></div>
+      <div class="list-scroll" style="flex:1;">
+        <div class="row"><span class="check on"><svg class="ic ic-xs"><use href="#i-check"/></svg></span><span class="rdot d-done"></span><div class="row-main"><div class="row-title">第一稿结尾的备选</div><div class="row-meta">第一幕 · 已完成</div></div></div>
+        <div class="row"><span class="check on"><svg class="ic ic-xs"><use href="#i-check"/></svg></span><span class="rdot d-done"></span><div class="row-main"><div class="row-title">旧的人物关系草稿</div><div class="row-meta">人物小传 · 已完成</div></div></div>
+        <div class="row"><span class="check"></span><span class="rdot d-done"></span><div class="row-main"><div class="row-title">门廊那场戏的空间关系</div><div class="row-meta">场景笔记 · 已完成</div></div></div>
+      </div>
+      <div class="batch-bar"><span class="sel">已选 <b>2</b> 项</span><span class="spacer"></span><button class="mini-btn">取消</button><button class="mini-btn danger">删除所选</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" style="margin-top:34px;">
+  <div class="col">
+    <div class="cap"><b>空状态</b> · 首次使用，入口仍在（不隐藏）</div>
+    <div class="frame" style="width:400px;">
+      <div class="list-head"><span class="title">讨论</span><span class="spacer"></span><button class="btn-text primary">新建对话</button><button class="icon-btn" title="更多（停靠区）"><svg class="ic ic-sm"><use href="#i-more"/></svg></button><button class="btn-text">收起</button></div>
+      <div class="search"><label class="search-field"><svg class="ic ic-sm"><use href="#i-search"/></svg><input type="text" placeholder="筛选讨论…（标题或文档名）" /></label></div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:44px 24px;color:var(--muted);font-size:13px;line-height:2;text-align:center;">
+        <svg class="ic" style="width:28px;height:28px;color:var(--muted)"><use href="#i-empty"/></svg>
+        还没有讨论。<br/>在正文里选中一段，点旁边的「AI」，<br/>或者直接在面板提问，就会开始第一个讨论。
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>筛选</b> · 输入即时过滤标题与文档名</div>
+    <div class="frame" style="width:400px;">
+      <div class="list-head"><span class="title">讨论</span><span class="spacer"></span><button class="btn-text primary">新建对话</button><button class="icon-btn" title="更多（停靠区）"><svg class="ic ic-sm"><use href="#i-more"/></svg></button><button class="btn-text">收起</button></div>
+      <div class="search"><label class="search-field"><svg class="ic ic-sm"><use href="#i-search"/></svg><input type="text" value="门廊" /></label></div>
+      <div class="filter-hint">匹配 <b>2</b> 条 · <b>保留分组</b> · 清除筛选</div>
+      <div class="list-scroll">
+        <div class="group-h">今天</div>
+        <div class="row"><span class="rdot d-failed"></span><div class="row-main"><div class="row-title">雨夜门廊的意象还能怎么用</div><div class="row-meta">第一幕 · 失败</div></div><span class="row-time">09:48</span></div>
+        <div class="group-h">本周</div>
+        <div class="row"><span class="rdot d-done"></span><div class="row-main"><div class="row-title">门廊那场戏的空间关系</div><div class="row-meta">场景笔记 · 已完成</div></div><span class="row-time">周一</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>图标对照</b> · 统一 1.5px 描边、16px 网格、方角、currentColor</div>
+    <div class="frame" style="padding:16px;width:380px;">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;font-size:10.5px;color:#555;text-align:center;">
+        <div><svg class="ic"><use href="#i-list"/></svg><div>列表</div></div>
+        <div><svg class="ic"><use href="#i-search"/></svg><div>搜索</div></div>
+        <div><svg class="ic"><use href="#i-pin"/></svg><div>置顶</div></div>
+        <div><svg class="ic"><use href="#i-pencil"/></svg><div>重命名</div></div>
+        <div><svg class="ic"><use href="#i-trash"/></svg><div>删除</div></div>
+        <div><svg class="ic"><use href="#i-chevron-down"/></svg><div>折叠</div></div>
+        <div><svg class="ic"><use href="#i-check"/></svg><div>选中</div></div>
+        <div><svg class="ic"><use href="#i-empty"/></svg><div>空状态</div></div>
+        <div><svg class="ic"><use href="#i-arrow-right"/></svg><div>方向</div></div>
+        <div><svg class="ic"><use href="#i-close"/></svg><div>关闭</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 停靠区提示区 -->
+<div class="wrap" style="margin-top:34px;">
+  <div class="col">
+    <div class="cap"><b>停靠区提示区</b> · 保存失败与删除撤销都在停靠区层，<b>不依赖列表是否打开</b></div>
+    <div class="frame" style="width:440px;">
+      <div class="list-head"><span class="title">AI 思考</span><span class="spacer"></span><button class="btn-text primary">新建对话</button><button class="icon-btn" title="更多（停靠区）"><svg class="ic ic-sm"><use href="#i-more"/></svg></button><button class="btn-text">收起</button></div>
+      <div class="dock-notice warn">讨论档案保存失败，正在重试…（不影响写作）</div>
+      <div class="dock-notice ok">已删除「雨夜门廊的意象」<span class="undo">撤销</span></div>
+      <div style="padding:14px 12px;font-size:12px;color:var(--muted);line-height:1.9;">
+        打开窗口时也看得到；停靠区收起时，窄轨上显示一个小圆点标记，展开后可见完整提示。
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="cap"><b>无匹配结果</b> · 过滤后仍保留分组结构</div>
+    <div class="frame" style="width:400px;">
+      <div class="list-head"><span class="title">讨论</span><span class="spacer"></span><button class="btn-text primary">新建对话</button><button class="icon-btn" title="更多（停靠区）"><svg class="ic ic-sm"><use href="#i-more"/></svg></button><button class="btn-text">收起</button></div>
+      <div class="search"><label class="search-field"><svg class="ic ic-sm"><use href="#i-search"/></svg><input type="text" value="不存在的词" /></label></div>
+      <div class="filter-hint">匹配 <b>0</b> 条 · 清除筛选</div>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 24px;color:var(--muted);font-size:13px;">
+        <svg class="ic" style="width:26px;height:26px"><use href="#i-empty"/></svg>
+        没有匹配的讨论
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,4 +1,5 @@
 import {
+  aiCancelMessage,
   aiEndSession,
   aiReplayDone,
   aiReplayHistory,
@@ -27,13 +28,25 @@ export type { AiReplayOrigin, AiReplayTurn } from "./project-api.ts";
 
 /** 当前流式传输的路由目标：只有匹配的增量才通知订阅者。 */
 interface StreamTarget {
+  readonly conversationId: string;
   readonly sessionId: string;
   readonly messageId: string;
+}
+
+/**
+ * 流式增量事件：携带讨论身份（`conversationId`）与消息身份（`messageId`），
+ * 供编排层按讨论把增量写入对应讨论，替代「统一写入当前活动讨论」。
+ */
+export interface StreamTextEvent {
+  readonly conversationId: string;
+  readonly messageId: string;
+  readonly text: string;
 }
 
 export interface ResidentSessionDependencies {
   startSession?: typeof aiStartSession;
   sendMessage?: typeof aiSendMessage;
+  cancelMessage?: typeof aiCancelMessage;
   endSession?: typeof aiEndSession;
   replayHistory?: typeof aiReplayHistory;
   replayDone?: typeof aiReplayDone;
@@ -46,10 +59,12 @@ export interface ResidentSessionDependencies {
 /** 常驻会话传输层的公开接口（供编排层与测试注入使用）。 */
 export interface AiSessionTransport {
   sendViaResidentSession(conversationId: string, request: GenerateAiRequest): Promise<GenerateAiResult>;
+  /** 取消指定讨论的当前在途生成（`ai_cancel_message`，幂等 fire-and-forget）。 */
+  cancelMessage(conversationId: string): void;
   endSession(conversationId: string): void;
   endAllSessions(): void;
   replaySession(conversationId: string, turns: readonly AiReplayTurn[], origin: AiReplayOrigin): Promise<void>;
-  onStreamText(listener: (text: string) => void): () => void;
+  onStreamText(listener: (event: StreamTextEvent) => void): () => void;
   onDriverLost(listener: () => void): () => void;
   installSessionEventRouting(): void;
 }
@@ -73,7 +88,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly sessions: Map<string, string> = new Map();
   private messageCounter = 0;
   private readonly currentStreams: Map<string, StreamTarget> = new Map();
-  private readonly streamListeners: Array<(text: string) => void> = [];
+  private readonly inFlightByConversation: Map<string, StreamTarget> = new Map();
+  private readonly streamListeners: Array<(event: StreamTextEvent) => void> = [];
   private readonly driverLostListeners: Array<() => void> = [];
   private eventRoutingInstalled = false;
 
@@ -81,6 +97,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     this.deps = {
       startSession: dependencies.startSession ?? aiStartSession,
       sendMessage: dependencies.sendMessage ?? aiSendMessage,
+      cancelMessage: dependencies.cancelMessage ?? aiCancelMessage,
       endSession: dependencies.endSession ?? aiEndSession,
       replayHistory: dependencies.replayHistory ?? aiReplayHistory,
       replayDone: dependencies.replayDone ?? aiReplayDone,
@@ -103,9 +120,19 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     return sessionId;
   }
 
+  /** 记录一条在途流式目标（用于增量路由与取消）。 */
+  private beginStreamTarget(target: StreamTarget): void {
+    this.currentStreams.set(target.messageId, target);
+    this.inFlightByConversation.set(target.conversationId, target);
+  }
+
   /** 流式目标只在仍属于本次发送时清空：被更新的发送替换后不得误清。 */
-  private clearStreamTarget(messageId: string): void {
-    this.currentStreams.delete(messageId);
+  private clearStreamTarget(target: StreamTarget): void {
+    this.currentStreams.delete(target.messageId);
+    const existing = this.inFlightByConversation.get(target.conversationId);
+    if (existing !== undefined && existing.messageId === target.messageId) {
+      this.inFlightByConversation.delete(target.conversationId);
+    }
   }
 
   /**
@@ -118,8 +145,9 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     const sessionId = await this.ensureSessionStarted(conversationId);
     this.messageCounter += 1;
     const messageId = `${conversationId}:msg-${this.messageCounter}`;
+    const target: StreamTarget = { conversationId, sessionId, messageId };
     if (request.kind === "direct_question") {
-      this.currentStreams.set(messageId, { sessionId, messageId });
+      this.beginStreamTarget(target);
       try {
         return await this.deps.sendMessage(
           sessionId,
@@ -129,11 +157,11 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           request.selected_text,
         );
       } finally {
-        this.clearStreamTarget(messageId);
+        this.clearStreamTarget(target);
       }
     }
     if (request.kind === "summon") {
-      this.currentStreams.set(messageId, { sessionId, messageId });
+      this.beginStreamTarget(target);
       try {
         return await this.deps.sendMessage(
           sessionId,
@@ -143,16 +171,23 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           request.selected_text,
         );
       } finally {
-        this.clearStreamTarget(messageId);
+        this.clearStreamTarget(target);
       }
     }
     const question = lastUserQuestionOf(request.messages);
-    this.currentStreams.set(messageId, { sessionId, messageId });
+    this.beginStreamTarget(target);
     try {
       return await this.deps.sendMessage(sessionId, messageId, "follow_up", question);
     } finally {
-      this.clearStreamTarget(messageId);
+      this.clearStreamTarget(target);
     }
+  }
+
+  /** 取消指定讨论的当前在途生成（幂等 fire-and-forget，失败静默）。 */
+  cancelMessage(conversationId: string): void {
+    const target = this.inFlightByConversation.get(conversationId);
+    if (target === undefined) return;
+    void this.deps.cancelMessage(target.sessionId, target.messageId).catch(() => {});
   }
 
   /** 结束某个讨论的常驻会话（`ai_end_session` 幂等且 fire-and-forget）。 */
@@ -186,8 +221,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     this.sessions.set(conversationId, sessionId);
   }
 
-  /** 订阅流式增量文本（仅匹配当前在途消息的增量会到达），返回退订函数。 */
-  onStreamText(listener: (text: string) => void): () => void {
+  /** 订阅流式增量事件（仅匹配当前在途消息的增量会到达），返回退订函数。 */
+  onStreamText(listener: (event: StreamTextEvent) => void): () => void {
     this.streamListeners.push(listener);
     return () => {
       const index = this.streamListeners.indexOf(listener);
@@ -214,7 +249,13 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
       if (payload.session_id !== stream.sessionId || payload.message_id !== stream.messageId) {
         return;
       }
-      for (const listener of this.streamListeners) listener(payload.text);
+      for (const listener of this.streamListeners) {
+        listener({
+          conversationId: stream.conversationId,
+          messageId: stream.messageId,
+          text: payload.text,
+        });
+      }
     });
     void this.deps.listenDriverLost(() => {
       // 驱动进程丢失：所有会话失效，清空会话映射。

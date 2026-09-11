@@ -14,7 +14,10 @@ import type {
   GenerateAiResult,
   LlmConfigSummary,
 } from "../src/types.ts";
-import { createAiPanelDomFixture, FakeElement } from "./ai-panel-dom-fixture.ts";
+import {
+  FakeElement,
+  installAiFeatureEnvironment,
+} from "./ai-panel-dom-fixture.ts";
 
 async function flush(): Promise<void> {
   for (let i = 0; i < 64; i += 1) await Promise.resolve();
@@ -43,16 +46,8 @@ function persistenceHarness(overrides: {
   readonly failSave?: boolean;
   readonly list?: { conversations: ConversationSummary[]; skipped: string[] };
 } = {}): PersistenceHarness {
-  const { elements, dom } = createAiPanelDomFixture();
-  const editor = new FakeElement("editor-textarea");
-  editor.value = "用户正文";
-  elements.set("editor-textarea", editor);
-
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    getElementById: (id: string) => elements.get(id) ?? null,
-    createElement: (tag: string) => new FakeElement(tag),
-  } as unknown as Document;
+  const env = installAiFeatureEnvironment();
+  const elements = env.elements;
 
   const results = [...(overrides.results ?? [{ ok: true, content: "回答" }])];
   const saves: ConversationRecord[] = [];
@@ -67,6 +62,7 @@ function persistenceHarness(overrides: {
       if (!result) return Promise.resolve({ ok: true, content: "回答" });
       return Promise.resolve(result);
     },
+    cancelMessage: () => {},
     endSession: () => { endSessionCalls += 1; },
     endAllSessions: () => { endSessionCalls += 1; },
     replaySession: () => Promise.resolve(),
@@ -77,11 +73,9 @@ function persistenceHarness(overrides: {
 
   const listResult = overrides.list ?? { conversations: [], skipped: [] };
   const controller = setupAiFeature({
-    aiPanelDom: dom,
-    aiPanel: dom.panel,
-    aiResponse: dom.response,
-    btnToggleAi: dom.toggleBtn,
-    editorTextarea: editor,
+    aiDock: env.dom,
+    editorTextarea: env.editor,
+    btnToggleAi: env.btnToggleAi,
   } as unknown as AppDom, {
     getCurrentDocumentId: () => "doc-1",
     getCurrentEditor: () => null,
@@ -113,14 +107,15 @@ function persistenceHarness(overrides: {
     listResult,
     saveError: () => controller.state.saveError,
     submitDirectQuestion(question: string): void {
-      const toggle = elements.get("btn-toggle-ai")!;
-      toggle.dispatch("click");
-      const input = elements.get("ai-direct-question-input")!;
+      // 新建对话 → 空窗口 → 在窗口内直接提问。
+      elements.get("ai-new-conversation")!.dispatch("click");
+      const win = env.windowRoots[env.windowRoots.length - 1];
+      const input = win.queryResults.get('[data-role="direct-question-input"]')!;
       input.value = question;
       input.dispatch("input");
-      elements.get("ai-direct-question-form")!.dispatch("submit");
+      win.queryResults.get('[data-role="direct-question-form"]')!.dispatch("submit");
     },
-    restore: () => { globalThis.document = previousDocument; },
+    restore: () => { env.restore(); },
   };
 }
 

@@ -3,11 +3,6 @@ import type {
   PanelStateView,
 } from "./ai-panel-request-state.ts";
 import type { ReadonlyTemporaryConversation } from "./ai-panel-conversation.ts";
-import type { ConversationSummary } from "./conversation-archive.ts";
-import {
-  buildConversationListItems,
-  type ConversationListItem,
-} from "./ai-panel-conversation-list.ts";
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -55,7 +50,7 @@ export interface DirectQuestionView {
    */
   readonly inputValue: string;
   readonly pendingSelection: SnapshotView | null;
-  readonly status: "idle" | "loading" | "error" | "configuration_required";
+  readonly status: "idle" | "loading" | "error" | "configuration_required" | "stopped";
   readonly errorMessage: string | null;
   /** 生成中禁用输入：避免打字被渲染覆盖，与发送按钮的禁用语义一致。 */
   readonly inputEnabled: boolean;
@@ -75,6 +70,8 @@ export interface AiPanelView {
   readonly errorBlock: ErrorBlockView | null;
   readonly configBlock: boolean;
   readonly followUpError: FollowUpErrorView | null;
+  /** 追问轮被用户停止（显示「已停止」+「重试」）。 */
+  readonly followUpStopped: boolean;
   readonly followUpForm: FollowUpFormView | null;
   readonly retryAvailable: boolean;
   readonly directQuestion: DirectQuestionView | null;
@@ -82,10 +79,6 @@ export interface AiPanelView {
   readonly newConversationVisible: boolean;
   /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
   readonly saveError: string | null;
-  /** 当前显示的讨论身份；无活动讨论时为 null。 */
-  readonly activeConversationId: string | null;
-  /** 当前作品的会话列表条目（供会话列表 UI 展示）。 */
-  readonly conversations: ReadonlyArray<ConversationListItem>;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -153,6 +146,9 @@ function requestFacts(request: PanelRequestState): RequestDisplayFacts {
     case "direct_question":
       // 直接提问的状态由 DirectQuestionView 单独呈现，不占用旧请求区。
       return EMPTY_FACTS;
+    case "stopped":
+      // 已停止终态：内容由对话流视图（或直接提问统一轮次）渲染，本区块不占用。
+      return EMPTY_FACTS;
     case "recovering":
       // 驱动进程丢失后的对话恢复：复用生成中占位样式，显示恢复文案。
       return {
@@ -167,6 +163,7 @@ function requestFacts(request: PanelRequestState): RequestDisplayFacts {
 
 function buildConversationView(
   conversation: ReadonlyTemporaryConversation | null,
+  interruptedLabel: string = "中断",
 ): ConversationView | null {
   if (!conversation) return null;
   const messages: ConversationMessageView[] = [];
@@ -182,7 +179,7 @@ function buildConversationView(
     messages.push({ role: "assistant", text: conversation.firstResponse });
   }
   if (conversation.firstRoundInterrupted) {
-    messages.push({ role: "status", text: "中断" });
+    messages.push({ role: "status", text: interruptedLabel });
   }
   for (const turn of conversation.turns) {
     messages.push({ role: "user", text: turn.question });
@@ -191,8 +188,8 @@ function buildConversationView(
   if (conversation.pending) {
     messages.push({ role: "user", text: conversation.pending.question });
     if (conversation.pending.interrupted) {
-      // 重开时未完成轮显示「中断」，不自动重发。
-      messages.push({ role: "status", text: "中断" });
+      // 重开时未完成轮显示「中断」（用户停止显示「已停止」）。
+      messages.push({ role: "status", text: interruptedLabel });
     } else if (!conversation.pending.error) {
       // 流式增量草稿逐字追加为助手消息；尚未有增量时只显示思考中状态。
       if (conversation.pending.streamedText) {
@@ -201,6 +198,20 @@ function buildConversationView(
       messages.push({ role: "status", text: "正在思考…" });
     }
   }
+  return { messages };
+}
+
+function buildFirstRoundStoppedView(
+  request: Extract<PanelRequestState, { kind: "stopped" }>,
+): ConversationView {
+  const messages: ConversationMessageView[] = [];
+  if (request.snapshot?.selectedText) {
+    messages.push({ role: "user", text: request.snapshot.selectedText });
+  }
+  if (request.streamedText) {
+    messages.push({ role: "assistant", text: request.streamedText });
+  }
+  messages.push({ role: "status", text: "已停止" });
   return { messages };
 }
 
@@ -227,6 +238,10 @@ function buildDirectQuestionView(panelState: PanelStateView): DirectQuestionView
   const request = panelState.request;
   const isDirectQuestion = request.kind === "direct_question";
   if (panelState.visibility !== "open" || (request.kind !== "idle" && !isDirectQuestion)) {
+    return null;
+  }
+  // 已停止：问题已作为用户消息进入对话流，入口表单隐藏（与成功一致）。
+  if (isDirectQuestion && request.status === "stopped") {
     return null;
   }
 
@@ -263,21 +278,20 @@ function buildDirectQuestionConversationView(
       messages.push({ role: "assistant", text: request.streamedText });
     }
     messages.push({ role: "status", text: "正在思考…" });
+  } else if (request.status === "stopped") {
+    // 用户停止：保留已流式内容，显示「已停止」。
+    if (request.streamedText) {
+      messages.push({ role: "assistant", text: request.streamedText });
+    }
+    messages.push({ role: "status", text: "已停止" });
   }
   // 错误 / 缺配置状态由对话流内对应轮次位置的独立反馈区块呈现（见渲染层）。
   return { messages };
 }
 
-/** 从当前作品投影会话列表所需的额外信息（由 DOM 控制器从 state 传入）。 */
-interface ConversationListExtras {
-  readonly conversations: readonly ConversationSummary[];
-  readonly activeConversationId: string | null;
-}
-
 export function buildAiPanelView(
   panelState: PanelStateView,
   conversation: ReadonlyTemporaryConversation | null,
-  extras?: ConversationListExtras,
 ): AiPanelView {
   const facts = requestFacts(panelState.request);
   // 统一对话视图（D1）：直接提问请求从被接受起就产出对话流；
@@ -290,11 +304,19 @@ export function buildAiPanelView(
     panelState.request.streamedText
       ? panelState.request
       : null;
+  const stoppedFirstRequest =
+    panelState.request.kind === "stopped" && panelState.request.phase === "first"
+      ? panelState.request
+      : null;
+  const stoppedFollowUp =
+    panelState.request.kind === "stopped" && panelState.request.phase === "follow_up";
   const conversationView = directQuestionRequest
     ? buildDirectQuestionConversationView(directQuestionRequest)
     : firstRoundLoadingRequest
       ? buildFirstRoundLoadingView(firstRoundLoadingRequest)
-      : buildConversationView(conversation);
+      : stoppedFirstRequest
+        ? buildFirstRoundStoppedView(stoppedFirstRequest)
+        : buildConversationView(conversation, stoppedFollowUp ? "已停止" : "中断");
   const hasConversation = conversation !== null;
   const directQuestion = buildDirectQuestionView(panelState);
 
@@ -318,8 +340,11 @@ export function buildAiPanelView(
   const hasPending = conversation !== null && conversation.pending !== null && !conversation.pending.interrupted;
   const followUpForm = hasConversation ? { inputEnabled: !hasPending } : null;
 
+  const stoppedDirect =
+    panelState.request.kind === "direct_question" && panelState.request.status === "stopped";
   const retryAvailable =
-    (facts.errorMessage !== null || facts.configRequired) && !hasConversation;
+    !hasConversation &&
+    (facts.errorMessage !== null || facts.configRequired || stoppedFirstRequest !== null || stoppedDirect);
 
   // 空状态欢迎语（D5）：无任何对话轮次（含直接提问进行中的统一轮次）且无进行中请求。
   const welcomeVisible = panelState.request.kind === "idle" && conversation === null;
@@ -344,14 +369,11 @@ export function buildAiPanelView(
     errorBlock,
     configBlock: facts.configRequired,
     followUpError,
+    followUpStopped: stoppedFollowUp,
     followUpForm,
     retryAvailable,
     directQuestion,
     newConversationVisible,
     saveError: panelState.saveError,
-    activeConversationId: extras?.activeConversationId ?? null,
-    conversations: extras
-      ? buildConversationListItems(extras.conversations, extras.activeConversationId)
-      : [],
   };
 }

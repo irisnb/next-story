@@ -21,6 +21,8 @@ export type PanelRequestState =
       turnId?: number;
       /** 流式增量草稿（仅首轮 loading 阶段逐字追加；done 全文到达后整体替换）。 */
       streamedText?: string;
+      /** 达到全局并发上限时排队等待；排队中不显示为生成中。 */
+      queued?: boolean;
     }
   | {
       kind: "success";
@@ -48,9 +50,20 @@ export type PanelRequestState =
       kind: "direct_question";
       question: string;
       selection: SelectionSnapshot | null;
-      status: "loading" | "error" | "configuration_required";
+      status: "loading" | "error" | "configuration_required" | "stopped";
       error?: GenerateAiError;
       /** 流式增量草稿（仅 loading 阶段逐字追加；done 全文到达后整体替换）。 */
+      streamedText?: string;
+      /** 达到全局并发上限时排队等待；排队中不显示为生成中。 */
+      queued?: boolean;
+    }
+  | {
+      /** 用户停止生成后的终态：已完成内容保留为显示草稿，不产生成功轮次。 */
+      kind: "stopped";
+      snapshot: SelectionSnapshot | null;
+      conversationId?: string;
+      phase?: "first" | "follow_up";
+      turnId?: number;
       streamedText?: string;
     }
   | {

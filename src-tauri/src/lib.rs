@@ -461,6 +461,25 @@ async fn conversation_delete(
     .map_err(|e| format!("删除讨论任务执行失败: {e}"))?
 }
 
+/// 撤销删除：清除该讨论的删除墓碑（供前端在撤销期内恢复档案）。
+#[tauri::command]
+async fn conversation_restore(
+    app: tauri::AppHandle,
+    project_path: String,
+    conversation_id: String,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::restore_conversation(&project_root, &conversation_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("恢复讨论任务执行失败: {e}"))?
+}
+
 /// 导出当前作品为 Word 文档：只读取已保存内容，生成真正的 `.docx` 并写入
 /// 用户选择的目标路径。命令始终返回稳定的 `ExportWordResult`（成功 / 失败
 /// 都带中文说明），前端据此区分结果，不依赖 Tauri 错误序列化细节。
@@ -724,7 +743,8 @@ pub fn run() {
             ai_replay_done,
             conversation_list,
             conversation_save,
-            conversation_delete
+            conversation_delete,
+            conversation_restore
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

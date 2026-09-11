@@ -17,7 +17,8 @@
         "width": 1024,
         "height": 768,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "devtools": true
       }
     ],
     "security": {

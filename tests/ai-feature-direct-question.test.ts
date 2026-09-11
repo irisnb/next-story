@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { startDirectQuestion } from "../src/ai-feature-direct-question.ts";
-import { createPreflightGate, startSummon } from "../src/ai-feature-first-round.ts";
+import { startSummon } from "../src/ai-feature-first-round.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type {
   GenerateAiRequest,
@@ -228,92 +228,48 @@ test("blocked direct question (single-flight) reports an error without sending",
   });
 });
 
-test("direct question preflight holds the shared gate and blocks a first-request preflight", async () => {
+test("different discussions preflight concurrently without a shared gate", async () => {
   const state = new AiPanelState();
-  const preflight = createPreflightGate();
-  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
-    resolve: null,
+  const configDeferredA: { resolve: ((config: LlmConfigSummary | null) => void) | null } = { resolve: null };
+  const configDeferredB: { resolve: ((config: LlmConfigSummary | null) => void) | null } = { resolve: null };
+  const configPromiseA = new Promise<LlmConfigSummary | null>((resolve) => { configDeferredA.resolve = resolve; });
+  const configPromiseB = new Promise<LlmConfigSummary | null>((resolve) => { configDeferredB.resolve = resolve; });
+  let loadCalls = 0;
+  const loadConfig = () => {
+    loadCalls += 1;
+    return loadCalls === 1 ? configPromiseA : configPromiseB;
   };
-  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
-    configDeferred.resolve = resolve;
-  });
-  let sent = 0;
+  const sent: string[] = [];
 
-  // 直接提问预检开始（配置加载挂起）
+  // 讨论 A 直接提问预检挂起。
   assert.equal(startDirectQuestion({
     state,
-    question: "问题",
+    question: "问题A",
     selection: null,
-    loadConfig: () => configPromise,
-    request: () => { sent += 1; return Promise.resolve(); },
+    loadConfig,
     getProjectToken: () => 1,
-    preflight,
+    request: (req) => { sent.push(req.kind); return Promise.resolve(); },
   }), true);
-  assert.equal(preflight.owner, 1, "直接提问预检应占用共享门禁");
-
-  // 预检期间发起旧选区首轮预检：应被门禁拒绝
+  // 讨论 B 召唤预检：不因作品级门禁被拒绝，独立发起。
   assert.equal(startSummon({
     state,
     snapshot: snapshot("旧选区"),
-    loadConfig: () => Promise.resolve(savedConfig),
-    request: () => { sent += 1; return Promise.resolve(); },
-    preflight,
+    loadConfig,
     getProjectToken: () => 1,
-  }), false, "门禁被占用时首轮预检应被拒绝");
-
-  configDeferred.resolve?.(savedConfig);
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-
-  assert.equal(preflight.owner, null, "完成后应释放门禁");
-  assert.equal(sent, 1, "只有直接提问真正发送");
-});
-
-test("direct question preflight is rejected when another first-round preflight holds the gate", async () => {
-  const state = new AiPanelState();
-  const preflight = createPreflightGate();
-  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
-    resolve: null,
-  };
-  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
-    configDeferred.resolve = resolve;
-  });
-  let sent = 0;
-
-  // 旧选区首轮预检先开始（配置加载挂起）
-  assert.equal(startSummon({
-    state,
-    snapshot: snapshot("旧选区"),
-    loadConfig: () => configPromise,
-    request: () => { sent += 1; return Promise.resolve(); },
-    preflight,
-    getProjectToken: () => 1,
+    request: (req) => { sent.push(req.kind); return Promise.resolve(); },
   }), true);
-  assert.equal(preflight.owner, 1);
 
-  // 门禁被占用时直接提问应被拒绝，且不进入 loading
-  assert.equal(startDirectQuestion({
-    state,
-    question: "问题",
-    selection: null,
-    loadConfig: () => Promise.resolve(savedConfig),
-    request: () => { sent += 1; return Promise.resolve(); },
-    getProjectToken: () => 1,
-    preflight,
-  }), false, "门禁被占用时直接提问应被拒绝");
-  assert.equal(state.view.request.kind, "loading", "直接提问不应污染召唤 loading 状态");
-
-  configDeferred.resolve?.(savedConfig);
+  configDeferredA.resolve?.(savedConfig);
+  configDeferredB.resolve?.(savedConfig);
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
 
-  assert.equal(preflight.owner, null);
-  assert.equal(sent, 1, "只有首轮预检真正发送");
+  assert.equal(sent.length, 2, "不同讨论的首轮各自发送，互不阻塞");
 });
 
-test("a direct question preflight invalidated by newConversation does not send the cleared request", async () => {
+test("a direct question preflight is not invalidated by newConversation and still sends", async () => {
   const state = new AiPanelState();
   const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
     resolve: null,
@@ -334,28 +290,19 @@ test("a direct question preflight invalidated by newConversation does not send t
     },
     getProjectToken: () => 1,
   }), true);
-  assert.deepEqual(state.view.request, {
-    kind: "direct_question",
-    question: "旧问题",
-    selection: null,
-    status: "loading",
-    streamedText: "",
-  });
 
-  // 预检期间用户新建对话：清空为空白直接提问状态
+  // 预检期间新建对话：不使原讨论的在途预检作废。
   assert.equal(state.newConversation(), true);
-  assert.deepEqual(state.view.request, { kind: "idle" });
-
   configDeferred.resolve?.(savedConfig);
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
 
-  assert.equal(sent, 0, "不得发送已清空的直接提问");
-  assert.deepEqual(state.view.request, { kind: "idle" });
+  assert.equal(sent, 1, "原讨论的预检照常发送，不因新建对话作废");
 });
 
-test("a direct question preflight invalidated by newConversation does not enter configuration-required", async () => {
+test("a direct question preflight still enters configuration-required after newConversation", async () => {
   const state = new AiPanelState();
   const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
     resolve: null,
@@ -380,11 +327,16 @@ test("a direct question preflight invalidated by newConversation does not enter 
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
 
-  assert.deepEqual(state.view.request, { kind: "idle" }, "不得进入配置引导状态");
+  const request = state.viewOf("1").request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "configuration_required", "配置引导作用于原讨论");
+  }
 });
 
-test("a direct question preflight invalidated by newConversation does not surface a late loadConfig rejection", async () => {
+test("a direct question preflight still surfaces a late loadConfig rejection after newConversation", async () => {
   const state = new AiPanelState();
   const configDeferred: { reject: ((error: Error) => void) | null } = {
     reject: null,
@@ -409,37 +361,12 @@ test("a direct question preflight invalidated by newConversation does not surfac
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
-
-  assert.deepEqual(state.view.request, { kind: "idle" }, "迟到的预检失败不得污染空状态");
-});
-
-test("preflight gate is released when a direct question preflight is invalidated by newConversation", async () => {
-  const state = new AiPanelState();
-  const preflight = createPreflightGate();
-  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
-    resolve: null,
-  };
-  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
-    configDeferred.resolve = resolve;
-  });
-
-  assert.equal(startDirectQuestion({
-    state,
-    question: "旧问题",
-    selection: null,
-    loadConfig: () => configPromise,
-    request: () => Promise.resolve(),
-    getProjectToken: () => 1,
-    preflight,
-  }), true);
-  assert.equal(preflight.owner, 1, "预检进行中应锁定单飞");
-
-  state.newConversation();
-  configDeferred.resolve?.(savedConfig);
-  await Promise.resolve();
-  await Promise.resolve();
   await Promise.resolve();
 
-  assert.equal(preflight.owner, null, "finally 应释放预检门禁");
-  assert.deepEqual(state.view.request, { kind: "idle" });
+  const request = state.viewOf("1").request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "error", "迟到的预检失败作用于原讨论");
+    assert.match(request.error?.message ?? "", /配置读取失败/);
+  }
 });

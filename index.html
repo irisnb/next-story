@@ -9,6 +9,27 @@
   </head>
 
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-list" viewBox="0 0 16 16"><path d="M6 4h7M6 8h7M6 12h7"/><rect x="2.4" y="3.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="7.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="11.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.2v9.6M3.2 8h9.6"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></symbol>
+      <symbol id="i-chevron-left" viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5"/></symbol>
+      <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4.5" y="4.5" width="7" height="7"/></symbol>
+      <symbol id="i-grip" viewBox="0 0 16 16"><circle cx="6" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-float" viewBox="0 0 16 16"><path d="M12 9.5V13H3V4h3.5"/><path d="M7 9l6-6"/><path d="M9.5 3H13v3.5"/></symbol>
+      <symbol id="i-dock" viewBox="0 0 16 16"><path d="M4 3h8v10H4z"/><path d="M11 8H5.5"/><path d="M8 5.5L5.5 8 8 10.5"/></symbol>
+      <symbol id="i-sbs" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="4.5" height="9"/><rect x="9" y="3.5" width="4.5" height="9"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.3-3.2"/><path d="M3 2.5v3h3"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10"/><path d="M6 4.5V3h4v1.5"/><path d="M4.6 4.5l.7 9h5.4l.7-9"/><path d="M6.8 7v3.8M9.2 7v3.8"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 16 16"><path d="M6.2 2.8h3.6v2.4l1.7 1.7H4.5l1.7-1.7z"/><path d="M8 6.9v6.3"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M2.8 13.2l.8-3L11.4 2.4a1.4 1.4 0 0 1 2 2L5.8 12.4z"/><path d="M10.4 3.4l2 2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></symbol>
+      <symbol id="i-empty" viewBox="0 0 16 16"><path d="M3 4.5h10v6H8l-3 2.5V10.5H3z"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 16 16"><path d="M3.5 6L8 10.5 12.5 6"/></symbol>
+    </svg>
+
     <!-- Welcome Page -->
     <main id="welcome-page" class="container">
       <h1 class="app-title">Next Story</h1>
@@ -124,76 +145,134 @@
               <div id="writing-empty-state" class="writing-empty-state hidden">这里还没有文档，去文件管理新建一篇吧</div>
             </div>
 
-            <aside id="ai-panel" class="ai-panel hidden" aria-live="polite">
-              <div class="ai-panel-header">
-                <span class="ai-panel-title">AI 思考</span>
-              <div class="ai-panel-header-actions">
-                <button id="ai-conversation-list-toggle" class="ai-panel-btn hidden" type="button" title="会话列表">会话列表</button>
-                <button id="ai-new-conversation" class="ai-panel-btn hidden" type="button" title="新建对话">新建对话</button>
-                <button id="ai-panel-collapse" class="ai-panel-btn" type="button" title="收起">收起</button>
-              </div>
-              </div>
-              <div class="ai-panel-body">
-                <div id="ai-save-error" class="ai-save-error hidden" role="status" aria-live="polite"></div>
-                <div id="ai-conversation-list" class="ai-conversation-list hidden" aria-label="会话列表">
-                  <div class="ai-conversation-list-header">
-                    <span class="ai-conversation-list-title">会话列表</span>
-                    <button id="ai-conversation-list-close" class="ai-panel-btn ai-conversation-list-close" type="button">收起</button>
-                  </div>
-                  <div id="ai-conversation-list-items" class="ai-conversation-list-items"></div>
-                  <div id="ai-conversation-list-empty" class="ai-conversation-list-empty hidden">还没有会话，直接提问开始一个讨论。</div>
-                </div>
-                <div id="ai-snapshot-block" class="ai-block hidden">
-                  <div class="ai-block-label">本次选区</div>
-                  <pre id="ai-snapshot-text" class="ai-snapshot"></pre>
-                </div>
-                <div id="ai-welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
-                <div id="ai-loading" class="ai-loading hidden">正在思考…</div>
-                <pre id="ai-response" class="ai-response hidden"></pre>
-                <div id="ai-conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
-                <div id="ai-error-block" class="ai-error-block hidden">
-                  <div id="ai-error-message" class="ai-error-message"></div>
-                  <button id="ai-retry" class="ai-panel-btn" type="button">重新请求</button>
-                </div>
-                <div id="ai-config-block" class="ai-config-block hidden">
-                  <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
-                  <button id="ai-go-config" class="ai-panel-btn" type="button">前往配置</button>
-                </div>
-                <div id="ai-direct-question-error" class="ai-error-block hidden">
-                  <div id="ai-direct-question-error-message" class="ai-error-message"></div>
-                </div>
-                <div id="ai-direct-question-config" class="ai-config-block hidden">
-                  <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
-                  <button id="ai-direct-question-go-config" class="ai-panel-btn" type="button">前往配置</button>
-                </div>
-                <div id="ai-follow-up-error" class="ai-follow-up-error hidden">
-                  <div id="ai-follow-up-error-message" class="ai-error-message"></div>
-                  <div class="ai-follow-up-error-actions">
-                    <button id="ai-follow-up-retry" class="ai-panel-btn" type="button">原样重试</button>
-                    <button id="ai-follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
-                  </div>
+            <aside id="ai-dock" class="ai-dock" aria-live="polite">
+              <div class="ai-dock-header">
+                <span class="ai-dock-title">AI 思考</span>
+                <span id="ai-dock-count" class="ai-dock-count">0 个讨论</span>
+                <span class="spacer"></span>
+                <div class="ai-dock-header-actions">
+                  <button id="ai-conversation-list-toggle" class="ai-icon-btn" type="button" title="会话列表">
+                    <svg class="ai-ic"><use href="#i-list"></use></svg>
+                  </button>
+                  <button id="ai-new-conversation" class="ai-icon-btn ai-icon-btn-primary" type="button" title="新建对话">
+                    <svg class="ai-ic"><use href="#i-plus"></use></svg>
+                  </button>
+                  <button id="ai-dock-more" class="ai-icon-btn" type="button" title="更多">
+                    <svg class="ai-ic"><use href="#i-more"></use></svg>
+                  </button>
+                  <button id="ai-dock-collapse" class="ai-icon-btn" type="button" title="收起停靠区">
+                    <svg class="ai-ic"><use href="#i-chevron-right"></use></svg>
+                  </button>
                 </div>
               </div>
-              <div class="ai-panel-input">
-                <form id="ai-follow-up-form" class="ai-follow-up-form hidden">
-                  <label class="ai-follow-up-label" for="ai-follow-up-input">继续追问</label>
-                  <textarea id="ai-follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
-                  <button id="ai-follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
-                </form>
-                <div id="ai-direct-question" class="ai-direct-question hidden">
-                  <div id="ai-direct-question-selection" class="ai-direct-question-selection hidden">
-                    <span class="ai-direct-question-selection-label">重点提示</span>
-                    <pre id="ai-direct-question-selection-text" class="ai-direct-question-selection-text"></pre>
-                    <button id="ai-direct-question-selection-remove" class="ai-panel-btn" type="button">移除</button>
-                  </div>
-                  <form id="ai-direct-question-form" class="ai-direct-question-form">
-                    <label class="ai-direct-question-label" for="ai-direct-question-input">直接提问</label>
-                    <textarea id="ai-direct-question-input" class="ai-direct-question-input" rows="3" placeholder="直接向 AI 提问…"></textarea>
-                    <button id="ai-direct-question-send" class="ai-direct-question-send" type="submit" disabled>提问</button>
-                  </form>
+              <div id="ai-dock-notice" class="ai-dock-notice hidden" role="status" aria-live="polite"></div>
+              <div id="ai-conversation-list" class="ai-conversation-list hidden" aria-label="会话列表">
+                <div class="ai-conversation-list-header">
+                  <span class="ai-conversation-list-title">讨论</span>
+                  <button id="ai-list-new-conversation" class="ai-panel-btn ai-panel-btn-primary" type="button">新建对话</button>
+                  <button id="ai-conversation-list-close" class="ai-panel-btn" type="button">收起</button>
+                </div>
+                <div class="ai-conversation-list-search">
+                  <label class="ai-conversation-list-search-field">
+                    <svg class="ai-ic"><use href="#i-search"></use></svg>
+                    <input id="ai-conversation-list-filter" type="text" placeholder="筛选讨论…（标题或文档名）" />
+                  </label>
+                </div>
+                <div id="ai-conversation-list-items" class="ai-conversation-list-items"></div>
+                <div id="ai-conversation-list-empty" class="ai-conversation-list-empty hidden">
+                  <svg class="ai-ic ai-empty-icon"><use href="#i-empty"></use></svg>
+                  <p>还没有讨论。在正文里选中一段，点旁边的「AI」，或者直接在面板提问，就会开始第一个讨论。</p>
                 </div>
               </div>
+              <div id="ai-dock-body" class="ai-dock-body"></div>
             </aside>
+
+            <div id="ai-dock-float-layer" class="ai-dock-float-layer"></div>
+
+            <aside id="ai-dock-rail" class="ai-dock-rail hidden" aria-label="AI 停靠区窄轨">
+              <span class="ai-rail-label">AI 已收起</span>
+              <span id="ai-rail-dot" class="ai-rail-dot hidden" title="有提示：展开后查看"></span>
+              <button id="ai-rail-new" class="ai-rail-btn ai-rail-btn-primary" type="button" title="新建对话">
+                <svg class="ai-ic"><use href="#i-plus"></use></svg>
+              </button>
+              <button id="ai-rail-list" class="ai-rail-btn" type="button" title="会话列表">
+                <svg class="ai-ic"><use href="#i-list"></use></svg>
+              </button>
+              <button id="ai-rail-more" class="ai-rail-btn" type="button" title="更多">
+                <svg class="ai-ic"><use href="#i-more"></use></svg>
+              </button>
+              <button id="ai-rail-expand" class="ai-rail-btn" type="button" title="展开停靠区">
+                <svg class="ai-ic"><use href="#i-chevron-left"></use></svg>
+              </button>
+            </aside>
+
+            <template id="ai-window-template">
+              <div class="ai-window">
+                <div class="ai-window-head" data-role="drag-handle">
+                  <span class="ai-window-grip" data-role="grip"><svg class="ai-ic"><use href="#i-grip"></use></svg></span>
+                  <span class="ai-window-status-dot" data-role="status-dot"></span>
+                  <span class="ai-window-title" data-role="title"></span>
+                  <span class="ai-window-doc" data-role="doc"></span>
+                  <span class="spacer"></span>
+                  <span class="ai-window-badge hidden" data-role="badge"></span>
+                  <button class="ai-win-btn ai-win-btn-stop hidden" data-role="stop" type="button">停止</button>
+                  <button class="ai-win-btn ai-win-btn-icon" data-role="more" type="button" title="更多"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
+                  <button class="ai-win-btn ai-win-btn-close" data-role="close" type="button" title="关闭窗口"><svg class="ai-ic"><use href="#i-close"></use></svg></button>
+                </div>
+                <div class="ai-window-body" data-role="body">
+                  <div data-role="snapshot-block" class="ai-block hidden">
+                    <div class="ai-block-label">本次选区</div>
+                    <pre data-role="snapshot-text" class="ai-snapshot"></pre>
+                  </div>
+                  <div data-role="welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
+                  <div data-role="loading" class="ai-loading hidden">正在思考…</div>
+                  <pre data-role="response" class="ai-response hidden"></pre>
+                  <div data-role="conversation" class="ai-conversation hidden" aria-label="当前临时对话"></div>
+                  <div data-role="error-block" class="ai-error-block hidden">
+                    <div data-role="error-message" class="ai-error-message"></div>
+                    <button data-role="retry" class="ai-panel-btn" type="button">重试</button>
+                  </div>
+                  <div data-role="config-block" class="ai-config-block hidden">
+                    <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+                    <button data-role="go-config" class="ai-panel-btn" type="button">前往配置</button>
+                  </div>
+                  <div data-role="follow-up-error" class="ai-follow-up-error hidden">
+                    <div data-role="follow-up-error-message" class="ai-error-message"></div>
+                    <div class="ai-follow-up-error-actions">
+                      <button data-role="follow-up-retry" class="ai-panel-btn" type="button">重试</button>
+                      <button data-role="follow-up-edit" class="ai-panel-btn" type="button">修改问题</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="ai-window-input" data-role="input">
+                  <form data-role="follow-up-form" class="ai-follow-up-form hidden">
+                    <label class="ai-follow-up-label" for="">继续追问</label>
+                    <textarea data-role="follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
+                    <button data-role="follow-up-send" class="ai-follow-up-send" type="submit" disabled>发送</button>
+                  </form>
+                  <div data-role="direct-question" class="ai-direct-question hidden">
+                    <div data-role="direct-question-selection" class="ai-direct-question-selection hidden">
+                      <span class="ai-direct-question-selection-label">重点提示</span>
+                      <pre data-role="direct-question-selection-text" class="ai-direct-question-selection-text"></pre>
+                      <button data-role="direct-question-selection-remove" class="ai-panel-btn" type="button">移除</button>
+                    </div>
+                    <form data-role="direct-question-form" class="ai-direct-question-form">
+                      <label class="ai-direct-question-label">直接提问</label>
+                      <textarea data-role="direct-question-input" class="ai-direct-question-input" rows="3" placeholder="直接向 AI 提问…"></textarea>
+                      <button data-role="direct-question-send" class="ai-direct-question-send" type="submit" disabled>提问</button>
+                    </form>
+                    <div data-role="direct-question-error" class="ai-error-block hidden">
+                      <div data-role="direct-question-error-message" class="ai-error-message"></div>
+                    </div>
+                    <div data-role="direct-question-config" class="ai-config-block hidden">
+                      <div class="ai-config-message">还没有配置 AI 使用的 LLM。请先填写并保存配置，AI 才能工作。</div>
+                      <button data-role="direct-question-go-config" class="ai-panel-btn" type="button">前往配置</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="ai-window-resize" data-role="resize"></div>
+              </div>
+            </template>
 
             <aside id="format-drawer" class="format-drawer" aria-hidden="true" aria-label="格式面板">
               <div class="format-drawer-header">

@@ -56,6 +56,11 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
     },
+    cancelMessage: (sessionId, messageId) => {
+      commands.push({ cmd: "ai_cancel_message", args: { sessionId, messageId } });
+      if (failure !== null) return Promise.reject(failure);
+      return Promise.resolve(okResult());
+    },
     endSession: (sessionId) => {
       commands.push({ cmd: "ai_end_session", args: { sessionId } });
       if (failure !== null) return Promise.reject(failure);
@@ -192,7 +197,7 @@ test("a failed send clears the in-flight stream target", async () => {
   );
 
   const received: string[] = [];
-  ui.transport.onStreamText((text) => received.push(text));
+  ui.transport.onStreamText((event) => received.push(event.text));
   ui.transport.installSessionEventRouting();
   ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 0, text: "迟到" });
   assert.deepEqual(received, []);
@@ -262,7 +267,7 @@ test("replaySession starts a new session, replays turns with origin, and marks d
 test("stream text routes only deltas matching the in-flight message", async () => {
   const ui = harness();
   const received: string[] = [];
-  ui.transport.onStreamText((text) => received.push(text));
+  ui.transport.onStreamText((event) => received.push(event.text));
   ui.transport.installSessionEventRouting();
 
   const sendPromise = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
@@ -278,10 +283,33 @@ test("stream text routes only deltas matching the in-flight message", async () =
   assert.deepEqual(received, ["她可能", "在隐瞒"]);
 });
 
+test("stream text carries the conversation identity so concurrent streams do not cross", async () => {
+  const ui = harness();
+  const received: Array<{ conversationId: string; messageId: string; text: string }> = [];
+  ui.transport.onStreamText((event) => received.push(event));
+  ui.transport.installSessionEventRouting();
+
+  const sendA = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题A"));
+  const sendB = ui.transport.sendViaResidentSession("c-2", directQuestionRequest("问题B"));
+  await Promise.resolve();
+  await Promise.resolve();
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 0, text: "A1" });
+  ui.deltaHandlers[0]({ session_id: "session-2", message_id: "c-2:msg-2", seq: 1, text: "B1" });
+  ui.deltaHandlers[0]({ session_id: "session-1", message_id: "c-1:msg-1", seq: 2, text: "A2" });
+  await sendA;
+  await sendB;
+
+  assert.deepEqual(received, [
+    { conversationId: "c-1", messageId: "c-1:msg-1", text: "A1" },
+    { conversationId: "c-2", messageId: "c-2:msg-2", text: "B1" },
+    { conversationId: "c-1", messageId: "c-1:msg-1", text: "A2" },
+  ]);
+});
+
 test("onStreamText unsubscribe stops delivering deltas", async () => {
   const ui = harness();
   const received: string[] = [];
-  const unsubscribe = ui.transport.onStreamText((text) => received.push(text));
+  const unsubscribe = ui.transport.onStreamText((event) => received.push(event.text));
   ui.transport.installSessionEventRouting();
 
   const sendPromise = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
@@ -313,4 +341,25 @@ test("installSessionEventRouting is idempotent and installs each listener once",
 
   assert.equal(ui.deltaHandlers.length, 1);
   assert.equal(ui.driverLostHandlers.length, 1);
+});
+
+test("cancelMessage sends ai_cancel_message for the in-flight message of the conversation", async () => {
+  const ui = harness();
+  const sendPromise = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
+  await Promise.resolve();
+  await Promise.resolve();
+  ui.transport.cancelMessage("c-1");
+
+  const cancel = ui.commands.find((entry) => entry.cmd === "ai_cancel_message");
+  assert.deepEqual(cancel, {
+    cmd: "ai_cancel_message",
+    args: { sessionId: "session-1", messageId: "c-1:msg-1" },
+  });
+  await sendPromise;
+});
+
+test("cancelMessage for a conversation without an in-flight message sends nothing", () => {
+  const ui = harness();
+  ui.transport.cancelMessage("c-unknown");
+  assert.equal(ui.commands.some((entry) => entry.cmd === "ai_cancel_message"), false);
 });

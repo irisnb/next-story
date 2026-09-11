@@ -1,9 +1,9 @@
-import type { AiPanelDom } from "../src/dom.ts";
+import type { AiDockDom, AiWindowDom } from "../src/dom.ts";
 
 export type Listener = (event: FakeEvent) => void;
 
 export class FakeClassList {
-  private readonly values = new Set<string>();
+  readonly values = new Set<string>();
 
   constructor(initial: string[] = []) {
     for (const value of initial) this.values.add(value);
@@ -26,12 +26,34 @@ export class FakeEvent {
   readonly key: string;
   readonly shiftKey: boolean;
   readonly isComposing: boolean;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly button: number;
+  readonly pointerId: number;
+  readonly target: unknown;
 
-  constructor(type: string, key = "", shiftKey = false, isComposing = false) {
+  constructor(
+    type: string,
+    options: {
+      key?: string;
+      shiftKey?: boolean;
+      isComposing?: boolean;
+      clientX?: number;
+      clientY?: number;
+      button?: number;
+      pointerId?: number;
+      target?: unknown;
+    } = {},
+  ) {
     this.type = type;
-    this.key = key;
-    this.shiftKey = shiftKey;
-    this.isComposing = isComposing;
+    this.key = options.key ?? "";
+    this.shiftKey = options.shiftKey ?? false;
+    this.isComposing = options.isComposing ?? false;
+    this.clientX = options.clientX ?? 0;
+    this.clientY = options.clientY ?? 0;
+    this.button = options.button ?? 0;
+    this.pointerId = options.pointerId ?? 1;
+    this.target = options.target;
   }
 
   preventDefault(): void { this.defaultPrevented = true; }
@@ -42,16 +64,23 @@ export class FakeElement {
   readonly children: FakeElement[] = [];
   readonly listeners = new Map<string, Listener[]>();
   readonly queryResults = new Map<string, FakeElement | null>();
+  readonly style: Record<string, string> = {};
+  readonly dataset: Record<string, string> = {};
   textContent = "";
   value = "";
   disabled = false;
   focusCount = 0;
   scrollTop = 0;
   querySelectorCalls = 0;
+  parentElement: FakeElement | null = null;
   readonly id: string;
+  tag: string;
+  /** 模板元素的内容（供 cloneWindowRoot 使用）。 */
+  content: { firstElementChild: FakeElement | null } | null = null;
 
   constructor(id: string, classes: string[] = []) {
     this.id = id;
+    this.tag = "div";
     this.classList = new FakeClassList(classes);
   }
 
@@ -63,130 +92,209 @@ export class FakeElement {
 
   dispatch(
     type: string,
-    options: { key?: string; shiftKey?: boolean; isComposing?: boolean } = {},
+    options: { key?: string; shiftKey?: boolean; isComposing?: boolean; clientX?: number; clientY?: number; button?: number; pointerId?: number; target?: unknown } = {},
   ): FakeEvent {
-    const event = new FakeEvent(type, options.key, options.shiftKey, options.isComposing);
+    const event = new FakeEvent(type, options);
     for (const listener of this.listeners.get(type) ?? []) listener(event);
     return event;
   }
 
-  append(...children: FakeElement[]): void { this.children.push(...children); }
+  append(...children: FakeElement[]): void {
+    for (const child of children) {
+      child.parentElement = this;
+      this.children.push(child);
+    }
+  }
+  appendChild(child: FakeElement): void { this.append(child); }
   replaceChildren(...children: FakeElement[]): void {
+    for (const child of this.children) child.parentElement = null;
     this.children.length = 0;
-    this.children.push(...children);
+    this.append(...children);
+  }
+  remove(): void {
+    if (this.parentElement) {
+      const index = this.parentElement.children.indexOf(this);
+      if (index !== -1) this.parentElement.children.splice(index, 1);
+      this.parentElement = null;
+    }
+  }
+  contains(node: unknown): boolean {
+    return this === node || this.children.some((child) => child.contains(node));
   }
   focus(): void { this.focusCount += 1; }
   querySelector<T>(selector: string): T | null {
     this.querySelectorCalls += 1;
     return (this.queryResults.get(selector) ?? null) as T | null;
   }
+  getBoundingClientRect(): DOMRect {
+    return { left: 0, top: 0, right: 420, bottom: 800, width: 420, height: 800 } as DOMRect;
+  }
+  setPointerCapture(): void {}
+  setAttribute(): void {}
+  cloneNode(): FakeElement {
+    const copy = new FakeElement(this.id);
+    for (const cls of this.classList.values) copy.classList.add(cls);
+    copy.textContent = this.textContent;
+    copy.value = this.value;
+    copy.disabled = this.disabled;
+    for (const [selector, result] of this.queryResults) {
+      copy.queryResults.set(selector, result ? result.cloneNode() : null);
+    }
+    for (const child of this.children) {
+      copy.append(child.cloneNode());
+    }
+    return copy;
+  }
 }
 
-/** AI 面板契约所需的全部节点 ID（与 index.html 保持一致）。 */
-export const AI_PANEL_NODE_IDS = [
-  "ai-panel", "ai-snapshot-block", "ai-snapshot-text", "ai-welcome", "ai-loading",
-  "ai-response",
-  "ai-error-block", "ai-error-message", "ai-retry", "ai-config-block",
-  "ai-go-config", "ai-panel-collapse", "ai-new-conversation", "ai-conversation",
-  "ai-follow-up-form",
-  "ai-follow-up-input", "ai-follow-up-send", "ai-follow-up-error",
-  "ai-follow-up-error-message", "ai-follow-up-retry", "ai-follow-up-edit",
-  "ai-direct-question", "ai-direct-question-selection",
-  "ai-direct-question-selection-text", "ai-direct-question-selection-remove",
-  "ai-direct-question-form", "ai-direct-question-input", "ai-direct-question-send",
-  "ai-direct-question-error", "ai-direct-question-error-message",
-  "ai-direct-question-config", "ai-direct-question-go-config",
-  "btn-toggle-ai",
-  "ai-conversation-list-toggle", "ai-conversation-list", "ai-conversation-list-close",
-  "ai-conversation-list-items", "ai-conversation-list-empty", "ai-save-error",
+/** 窗口模板里所需的全部 `data-role`。 */
+export const AI_WINDOW_ROLES = [
+  "drag-handle", "grip", "status-dot", "title", "doc", "badge",
+  "stop", "more", "close", "body", "resize",
+  "snapshot-block", "snapshot-text", "welcome", "loading", "response",
+  "error-block", "error-message", "retry", "config-block", "go-config",
+  "conversation",
+  "follow-up-form", "follow-up-input", "follow-up-send",
+  "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit",
+  "direct-question", "direct-question-selection", "direct-question-selection-text",
+  "direct-question-selection-remove", "direct-question-form", "direct-question-input",
+  "direct-question-send", "direct-question-error", "direct-question-error-message",
+  "direct-question-config", "direct-question-go-config",
 ] as const;
 
-/**
- * 构造一份完整的 AI 面板 DOM 契约 fixture。
- *
- * `elements` 以节点 ID 为键，供断言按 ID 读取；`dom` 是可直接传给
- * `setupAiPanel` 的显式契约。面板的 `.ai-panel-body` 由契约的 `panelBody`
- * 字段提供，不再依赖面板内部查询。
- */
-export function createAiPanelDomFixture(): {
+/** 构造一个窗口根节点 fixture（含全部 data-role 子节点的 queryResults）。 */
+export function createAiWindowFixture(conversationId: string): {
+  root: FakeElement;
+  roles: Map<string, FakeElement>;
+} {
+  const root = new FakeElement(`ai-window-${conversationId}`, ["ai-window"]);
+  const roles = new Map<string, FakeElement>();
+  for (const role of AI_WINDOW_ROLES) {
+    const el = new FakeElement(`role-${role}`);
+    if (role === "snapshot-text" || role === "response" || role === "direct-question-selection-text") {
+      el.tag = "pre";
+    } else if (role === "follow-up-form" || role === "direct-question-form") {
+      el.tag = "form";
+    } else if (role === "follow-up-input" || role === "direct-question-input") {
+      el.tag = "textarea";
+    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config") {
+      el.tag = "button";
+    }
+    roles.set(role, el);
+    root.queryResults.set(`[data-role="${role}"]`, el);
+  }
+  // 嵌套结构：body 内是各区块，input 内是追问/直接提问表单。
+  const body = roles.get("body")!;
+  for (const role of ["snapshot-block", "snapshot-text", "welcome", "loading", "response", "conversation", "error-block", "error-message", "retry", "config-block", "go-config", "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit"]) {
+    body.append(roles.get(role)!);
+  }
+  const input = new FakeElement("role-input");
+  roles.set("input", input);
+  root.queryResults.set('[data-role="input"]', input);
+  input.append(
+    roles.get("follow-up-form")!,
+    roles.get("direct-question")!,
+  );
+  const head = roles.get("drag-handle")!;
+  head.append(
+    roles.get("grip")!, roles.get("status-dot")!, roles.get("title")!,
+    roles.get("doc")!, roles.get("badge")!, roles.get("stop")!,
+    roles.get("more")!, roles.get("close")!,
+  );
+  root.append(head, body, input, roles.get("resize")!);
+  return { root, roles };
+}
+
+/** 构造一个停靠区 DOM 契约 fixture（含窗口模板，clone 产生新窗口 fixture）。 */
+export function createAiDockDomFixture(): {
   elements: Map<string, FakeElement>;
-  dom: AiPanelDom;
+  dom: AiDockDom;
+  windowRoots: FakeElement[];
 } {
   const elements = new Map<string, FakeElement>();
-  for (const id of AI_PANEL_NODE_IDS) {
-    elements.set(id, new FakeElement(id, ["hidden"]));
+  const windowRoots: FakeElement[] = [];
+
+  const dock = new FakeElement("ai-dock", ["ai-dock"]);
+  const rail = new FakeElement("ai-dock-rail", ["ai-dock-rail", "hidden"]);
+  const count = new FakeElement("ai-dock-count");
+  const notice = new FakeElement("ai-dock-notice", ["hidden"]);
+  const body = new FakeElement("ai-dock-body", ["ai-dock-body"]);
+  const floatLayer = new FakeElement("ai-dock-float-layer", ["ai-dock-float-layer"]);
+  const listToggleBtn = new FakeElement("ai-conversation-list-toggle");
+  const newConversationBtn = new FakeElement("ai-new-conversation");
+  const moreBtn = new FakeElement("ai-dock-more");
+  const collapseBtn = new FakeElement("ai-dock-collapse");
+  const conversationList = new FakeElement("ai-conversation-list", ["hidden"]);
+  const conversationListCloseBtn = new FakeElement("ai-conversation-list-close");
+  const conversationListItems = new FakeElement("ai-conversation-list-items");
+  const conversationListEmpty = new FakeElement("ai-conversation-list-empty", ["hidden"]);
+  const listNewConversationBtn = new FakeElement("ai-list-new-conversation");
+  const searchInput = new FakeElement("ai-conversation-list-filter");
+  const railNewBtn = new FakeElement("ai-rail-new");
+  const railListBtn = new FakeElement("ai-rail-list");
+  const railMoreBtn = new FakeElement("ai-rail-more");
+  const railExpandBtn = new FakeElement("ai-rail-expand");
+  const railDot = new FakeElement("ai-rail-dot", ["hidden"]);
+
+  const template = new FakeElement("ai-window-template");
+  const templateRoot = createAiWindowFixture("__template__").root;
+  template.content = { firstElementChild: templateRoot };
+  // cloneWindowRoot 克隆 template.content.firstElementChild；每次克隆生成全新窗口 fixture 并记录。
+  templateRoot.cloneNode = () => {
+    const win = createAiWindowFixture(`w${windowRoots.length + 1}`);
+    windowRoots.push(win.root);
+    return win.root;
+  };
+
+  for (const el of [dock, rail, count, notice, body, floatLayer, listToggleBtn, newConversationBtn, moreBtn, collapseBtn, conversationList, conversationListCloseBtn, conversationListItems, conversationListEmpty, listNewConversationBtn, searchInput, railNewBtn, railListBtn, railMoreBtn, railExpandBtn, railDot, template]) {
+    elements.set(el.id, el);
   }
-  const panelBody = new FakeElement("ai-panel-body", ["ai-panel-body"]);
-  const panel = elements.get("ai-panel")!;
-  panel.queryResults.set(".ai-panel-body", panelBody);
 
   const dom = {
-    panel,
-    panelBody,
-    snapshotBlock: elements.get("ai-snapshot-block")!,
-    snapshotText: elements.get("ai-snapshot-text")!,
-    loading: elements.get("ai-loading")!,
-    response: elements.get("ai-response")!,
-    errorBlock: elements.get("ai-error-block")!,
-    errorMessage: elements.get("ai-error-message")!,
-    retryBtn: elements.get("ai-retry")!,
-    configBlock: elements.get("ai-config-block")!,
-    goConfigBtn: elements.get("ai-go-config")!,
-    collapseBtn: elements.get("ai-panel-collapse")!,
-    newConversationBtn: elements.get("ai-new-conversation")!,
-    toggleBtn: elements.get("btn-toggle-ai")!,
-    conversation: elements.get("ai-conversation")!,
-    followUpForm: elements.get("ai-follow-up-form")!,
-    followUpInput: elements.get("ai-follow-up-input")!,
-    followUpSend: elements.get("ai-follow-up-send")!,
-    followUpError: elements.get("ai-follow-up-error")!,
-    followUpErrorMessage: elements.get("ai-follow-up-error-message")!,
-    followUpRetry: elements.get("ai-follow-up-retry")!,
-    followUpEdit: elements.get("ai-follow-up-edit")!,
-    directQuestion: elements.get("ai-direct-question")!,
-    directQuestionSelection: elements.get("ai-direct-question-selection")!,
-    directQuestionSelectionText: elements.get("ai-direct-question-selection-text")!,
-    directQuestionSelectionRemove: elements.get("ai-direct-question-selection-remove")!,
-    directQuestionForm: elements.get("ai-direct-question-form")!,
-    directQuestionInput: elements.get("ai-direct-question-input")!,
-    directQuestionSend: elements.get("ai-direct-question-send")!,
-    directQuestionError: elements.get("ai-direct-question-error")!,
-    directQuestionErrorMessage: elements.get("ai-direct-question-error-message")!,
-    directQuestionConfig: elements.get("ai-direct-question-config")!,
-    directQuestionGoConfig: elements.get("ai-direct-question-go-config")!,
-    welcome: elements.get("ai-welcome")!,
-    conversationListToggleBtn: elements.get("ai-conversation-list-toggle")!,
-    conversationList: elements.get("ai-conversation-list")!,
-    conversationListCloseBtn: elements.get("ai-conversation-list-close")!,
-    conversationListItems: elements.get("ai-conversation-list-items")!,
-    conversationListEmpty: elements.get("ai-conversation-list-empty")!,
-    saveErrorBlock: elements.get("ai-save-error")!,
-  } as unknown as AiPanelDom;
+    root: dock as unknown as HTMLElement,
+    rail: rail as unknown as HTMLElement,
+    count: count as unknown as HTMLElement,
+    notice: notice as unknown as HTMLElement,
+    body: body as unknown as HTMLElement,
+    floatLayer: floatLayer as unknown as HTMLElement,
+    windowTemplate: template as unknown as HTMLTemplateElement,
+    listToggleBtn: listToggleBtn as unknown as HTMLButtonElement,
+    newConversationBtn: newConversationBtn as unknown as HTMLButtonElement,
+    moreBtn: moreBtn as unknown as HTMLButtonElement,
+    collapseBtn: collapseBtn as unknown as HTMLButtonElement,
+    conversationList: conversationList as unknown as HTMLElement,
+    conversationListCloseBtn: conversationListCloseBtn as unknown as HTMLButtonElement,
+    conversationListItems: conversationListItems as unknown as HTMLElement,
+    conversationListEmpty: conversationListEmpty as unknown as HTMLElement,
+    listNewConversationBtn: listNewConversationBtn as unknown as HTMLButtonElement,
+    searchInput: searchInput as unknown as HTMLInputElement,
+    railNewBtn: railNewBtn as unknown as HTMLButtonElement,
+    railListBtn: railListBtn as unknown as HTMLButtonElement,
+    railMoreBtn: railMoreBtn as unknown as HTMLButtonElement,
+    railExpandBtn: railExpandBtn as unknown as HTMLButtonElement,
+    railDot: railDot as unknown as HTMLElement,
+  } as unknown as AiDockDom;
 
-  return { elements, dom };
+  return { elements, dom, windowRoots };
+}
+
+/** 构造单个窗口的 DOM 契约（直接给 root，不经过模板）。 */
+export function createAiWindowDomFixture(conversationId: string): {
+  root: FakeElement;
+  roles: Map<string, FakeElement>;
+} {
+  return createAiWindowFixture(conversationId);
 }
 
 /**
  * 安装一个按需返回 `FakeElement` 的全局 `document`，用于 `getAppDom()` 组装测试。
- *
- * - `missingIds`：这些 ID 的 `getElementById` 返回 `null`，模拟页面缺节点。
- * - `panelBody`：`#ai-panel` 的 `.ai-panel-body` 查询结果；传 `null` 模拟缺 body。
+ * `missingIds` 中列出的 ID 返回 null，模拟页面缺节点。
  */
 export function installFakeDocument(options: {
   missingIds?: readonly string[];
-  panelBody?: FakeElement | null;
 } = {}): { elements: Map<string, FakeElement>; restore(): void } {
   const elements = new Map<string, FakeElement>();
   const missing = new Set(options.missingIds ?? []);
-  const panelBody = options.panelBody === undefined
-    ? new FakeElement("ai-panel-body", ["ai-panel-body"])
-    : options.panelBody;
-  if (!missing.has("ai-panel")) {
-    const panel = new FakeElement("ai-panel", ["hidden"]);
-    panel.queryResults.set(".ai-panel-body", panelBody);
-    elements.set("ai-panel", panel);
-  }
-
   const previousDocument = globalThis.document;
   globalThis.document = {
     getElementById: (id: string) => {
@@ -199,10 +307,57 @@ export function installFakeDocument(options: {
       return element;
     },
     createElement: (tag: string) => new FakeElement(tag),
+    createElementNS: (_ns: string, tag: string) => new FakeElement(tag),
   } as unknown as Document;
-
   return {
     elements,
     restore: () => { globalThis.document = previousDocument; },
+  };
+}
+
+/** 导出给测试断言用的窗口契约类型引用（避免误用）。 */
+export type { AiWindowDom };
+
+/** 安装供窗口渲染使用的假全局 document（createElement 返回 FakeElement）。 */
+export function installDocument(): { restore(): void } {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: () => null,
+    createElement: (tag: string) => new FakeElement(tag),
+    createElementNS: (_ns: string, tag: string) => new FakeElement(tag),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    body: {
+      classList: new FakeClassList(),
+      appendChild: () => {},
+      removeChild: () => {},
+    },
+  } as unknown as Document;
+  return { restore: () => { globalThis.document = previousDocument; } };
+}
+
+/** 安装 AI feature 集成测试所需的完整假 DOM 环境（停靠区 + 编辑器 + 全局 document）。 */
+export function installAiFeatureEnvironment(): {
+  elements: Map<string, FakeElement>;
+  dom: AiDockDom;
+  windowRoots: FakeElement[];
+  editor: FakeElement;
+  btnToggleAi: FakeElement;
+  restore(): void;
+} {
+  const { elements, dom, windowRoots } = createAiDockDomFixture();
+  const editor = new FakeElement("editor-textarea");
+  editor.value = "用户正文";
+  elements.set("editor-textarea", editor);
+  const btnToggleAi = new FakeElement("btn-toggle-ai");
+  elements.set("btn-toggle-ai", btnToggleAi);
+  const documentRestore = installDocument();
+  return {
+    elements,
+    dom,
+    windowRoots,
+    editor,
+    btnToggleAi,
+    restore: () => { documentRestore.restore(); },
   };
 }

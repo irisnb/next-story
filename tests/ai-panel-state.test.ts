@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { ReadonlyTemporaryConversation } from "../src/ai-panel-state.ts";
+import { buildDiscussionRecord, conversationFromRecord } from "../src/ai-panel-conversation.ts";
+import { summaryToRecord } from "../src/ai-feature.ts";
 import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
@@ -303,10 +305,10 @@ test("direct question draft updates and notifies once", () => {
   const state = new AiPanelState();
   let calls = 0;
   const tracked = new AiPanelState(() => { calls += 1; });
-
-  tracked.updateDirectQuestionDraft("这个角色为什么犹豫？");
+  tracked.newConversation();
+  tracked.updateDirectQuestionDraft("1", "这个角色为什么犹豫？");
   assert.equal(tracked.view.directQuestionDraft, "这个角色为什么犹豫？");
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(state.view.directQuestionDraft, "");
 });
 
@@ -327,7 +329,8 @@ test("beginDirectQuestion freezes question and selection into loading and clears
   const state = new AiPanelState();
   const selection = snapshot("待附带选区");
   state.setPendingSelection(selection);
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
 
   assert.equal(state.beginDirectQuestion("问题", selection), true);
   assert.equal(state.isOpen, true);
@@ -343,7 +346,8 @@ test("beginDirectQuestion freezes question and selection into loading and clears
 
 test("empty direct question is rejected without entering loading", () => {
   const state = new AiPanelState();
-  state.updateDirectQuestionDraft("   ");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "   ");
   assert.equal(state.beginDirectQuestion("   \n", null), false);
   assert.deepEqual(state.view.request, { kind: "idle" });
 });
@@ -377,7 +381,8 @@ test("beginDirectQuestion freezes the selection so later mutation of the origina
 test("direct question success enters the unified conversation and clears the draft", () => {
   const state = new AiPanelState();
   const selection = snapshot("选区");
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", selection);
 
   assert.equal(state.succeedDirectQuestion("回答"), true);
@@ -434,7 +439,8 @@ test("direct question success enables follow-up turns in the unified conversatio
 
 test("direct question failure keeps the draft for retry", () => {
   const state = new AiPanelState();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", null);
 
   assert.equal(state.failDirectQuestion(authError), true);
@@ -450,7 +456,8 @@ test("direct question failure keeps the draft for retry", () => {
 
 test("direct question configuration-required keeps the draft and question", () => {
   const state = new AiPanelState();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", null);
 
   assert.equal(state.requireDirectQuestionConfiguration(), true);
@@ -474,7 +481,8 @@ test("direct question transitions are inert outside loading", () => {
 test("collapse and reopen preserve direct question draft and pending selection", () => {
   const state = new AiPanelState();
   const selection = snapshot("选区");
-  state.updateDirectQuestionDraft("未发送的问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "未发送的问题");
   state.setPendingSelection(selection);
   state.open();
 
@@ -491,7 +499,8 @@ test("collapse and reopen preserve direct question draft and pending selection",
 
 test("reset clears direct question draft and pending selection", () => {
   const state = new AiPanelState();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.setPendingSelection(snapshot("选区"));
   state.beginDirectQuestion("问题", snapshot("选区"));
   state.succeedDirectQuestion("回答");
@@ -570,7 +579,7 @@ test("newConversation opens a new empty discussion and keeps the old one archive
   state.succeed(anchor, "首答");
   state.beginFollowUp("追问");
   state.succeedFollowUp(1, "追问回答");
-  state.updateDirectQuestionDraft("未发送草稿");
+  state.updateDirectQuestionDraft("1", "未发送草稿");
   assert.equal(state.isOpen, true);
 
   assert.equal(state.newConversation(), true);
@@ -579,7 +588,9 @@ test("newConversation opens a new empty discussion and keeps the old one archive
   assert.equal(state.conversation, null);
   assert.equal(state.followUpAvailable, false);
   assert.equal(state.conversationIdentity, null);
-  assert.equal(state.view.directQuestionDraft, "", "直接提问草稿被清空");
+  assert.equal(state.view.directQuestionDraft, "", "新讨论草稿为空");
+  // 旧讨论的草稿按窗口独立保留，不被新建对话清空。
+  assert.equal(state.viewOf("1").directQuestionDraft, "未发送草稿");
   // 旧讨论保留为档案
   assert.equal(state.conversations.length, 1);
   assert.equal(state.conversations[0].conversation_id, "1");
@@ -639,36 +650,38 @@ test("newConversation notifies exactly once when it changes state", () => {
   assert.equal(calls, 2, "新建对话只通知一次");
 });
 
-test("newConversation is inert on a pure empty idle state without notification", () => {
+test("newConversation opens an empty discussion window even at zero discussions", () => {
   let calls = 0;
   const state = new AiPanelState(() => {
     calls += 1;
   });
 
-  assert.equal(state.newConversation(), false);
-  assert.equal(calls, 0, "空 idle 状态不应通知");
+  assert.equal(state.newConversation(), true);
+  assert.equal(calls, 1, "新建空讨论窗口通知一次");
   assert.deepEqual(state.view.request, { kind: "idle" });
-  assert.equal(state.isOpen, false, "空状态操作不改动任何维度");
+  assert.equal(state.windows.size, 1, "0 条讨论时也打开一个空窗口");
 
-  state.open();
-  assert.equal(calls, 1);
+  // 聚焦窗口已是空窗口：复用，不新建第二个。
   assert.equal(state.newConversation(), false);
-  assert.equal(calls, 1, "空白直接提问状态没有可结束的内容");
-  assert.equal(state.isOpen, true);
+  assert.equal(calls, 1, "复用空窗口不通知");
+  assert.equal(state.windows.size, 1);
 });
 
-test("newConversation is inert with only an unsent draft and no conversation or request", () => {
-  let calls = 0;
-  const state = new AiPanelState(() => {
-    calls += 1;
-  });
-  state.open();
-  state.updateDirectQuestionDraft("未发送的问题");
-  assert.equal(calls, 2);
+test("drafts are isolated per discussion window", () => {
+  const state = new AiPanelState();
+  // 窗口 1：直接提问失败，草稿保留供重试。
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题一");
+  state.beginDirectQuestion("问题一", null);
+  state.failDirectQuestion(authError);
+  assert.equal(state.viewOf("1").directQuestionDraft, "问题一");
 
-  assert.equal(state.newConversation(), false);
-  assert.equal(calls, 2);
-  assert.equal(state.view.directQuestionDraft, "未发送的问题", "只有草稿时不清空草稿");
+  // 窗口 2：新窗口草稿为空，切窗口不串草稿。
+  assert.equal(state.newConversation(), true);
+  const secondId = state.activeConversationId!;
+  state.updateDirectQuestionDraft(secondId, "问题二");
+  assert.equal(state.view.directQuestionDraft, "问题二");
+  assert.equal(state.viewOf("1").directQuestionDraft, "问题一", "逐窗口草稿互不串用");
 });
 
 test("newConversation reopens a collapsed panel that has an existing conversation", () => {
@@ -692,10 +705,11 @@ test("newConversation clears drafts, pending selection and ignored selection mar
   state.setPendingSelection(selection);
   assert.equal(state.view.pendingSelection, null, "被忽略的选区在清除前保持忽略");
 
-  state.updateDirectQuestionDraft("草稿");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "草稿");
   state.beginDirectQuestion("草稿", null);
   assert.equal(state.newConversation(), true);
-  assert.equal(state.view.directQuestionDraft, "");
+  assert.equal(state.view.directQuestionDraft, "", "新讨论草稿为空");
   assert.equal(state.view.pendingSelection, null);
 
   state.setPendingSelection(selection);
@@ -754,11 +768,11 @@ test("a result arriving while the panel shows a blocked request is still applied
 
 test("appendStreamText advances the direct question loading draft and is inert elsewhere", () => {
   const state = new AiPanelState();
-  assert.equal(state.appendStreamText("迟到"), false);
+  assert.equal(state.appendStreamText("unknown", "迟到"), false);
 
   state.beginDirectQuestion("问题", null);
-  assert.equal(state.appendStreamText("她可能"), true);
-  assert.equal(state.appendStreamText("\n在隐瞒"), true);
+  assert.equal(state.appendStreamText("1", "她可能"), true);
+  assert.equal(state.appendStreamText("1", "\n在隐瞒"), true);
   const request = state.view.request;
   assert.equal(request.kind, "direct_question");
   if (request.kind === "direct_question") {
@@ -766,7 +780,7 @@ test("appendStreamText advances the direct question loading draft and is inert e
   }
 
   state.succeedDirectQuestion("最终回答");
-  assert.equal(state.appendStreamText("迟到"), false);
+  assert.equal(state.appendStreamText("1", "迟到"), false);
 });
 
 test("appendStreamText advances the pending follow-up draft and resets on retry", () => {
@@ -774,23 +788,23 @@ test("appendStreamText advances the pending follow-up draft and resets on retry"
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
   state.succeed(anchor, "首答");
-  assert.equal(state.appendStreamText("无主增量"), false);
+  assert.equal(state.appendStreamText("unknown", "无主增量"), false);
 
   state.beginFollowUp("追问");
-  assert.equal(state.appendStreamText("部分"), true);
+  assert.equal(state.appendStreamText("1", "部分"), true);
   assert.equal(state.conversation?.pending?.streamedText, "部分");
 
   state.failFollowUp(1, authError);
-  assert.equal(state.appendStreamText("迟到"), false);
+  assert.equal(state.appendStreamText("1", "迟到"), false);
   state.acceptFollowUpRetry();
   assert.equal(state.conversation?.pending?.streamedText, "");
-  assert.equal(state.appendStreamText("重新开始"), true);
+  assert.equal(state.appendStreamText("1", "重新开始"), true);
   assert.equal(state.conversation?.pending?.streamedText, "重新开始");
 });
 
 test("driver recovery keeps the conversation and returns to success display", () => {
   const state = new AiPanelState();
-  assert.equal(state.beginRecovery(), false);
+  assert.equal(state.beginRecovery("unknown"), false);
 
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
@@ -798,7 +812,7 @@ test("driver recovery keeps the conversation and returns to success display", ()
   state.beginFollowUp("第一问");
   state.succeedFollowUp(1, "第一答");
 
-  assert.equal(state.beginRecovery(), true);
+  assert.equal(state.beginRecovery("1"), true);
   assert.deepEqual(state.view.request, {
     kind: "recovering",
     snapshot: anchor,
@@ -806,7 +820,7 @@ test("driver recovery keeps the conversation and returns to success display", ()
   });
   assert.ok(state.conversation, "恢复期间保留对话与锚点");
 
-  assert.equal(state.completeRecovery(), true);
+  assert.equal(state.completeRecovery("1"), true);
   assert.deepEqual(state.view.request, {
     kind: "success",
     snapshot: anchor,
@@ -822,15 +836,15 @@ test("failed recovery enters the error state with a new-conversation guidance me
   state.beginDirectQuestion("问题", anchor);
   state.succeedDirectQuestion("首答");
 
-  assert.equal(state.beginRecovery(), true);
-  assert.equal(state.failRecovery(), true);
+  assert.equal(state.beginRecovery("1"), true);
+  assert.equal(state.failRecovery("1"), true);
   const request = state.view.request;
   assert.equal(request.kind, "error");
   if (request.kind === "error") {
     assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
     assert.equal(request.conversationId, "1");
   }
-  assert.equal(state.completeRecovery(), false);
+  assert.equal(state.completeRecovery("1"), false);
 });
 
 test("deleteDiscussion removes the discussion and drops its late results", () => {
@@ -904,4 +918,382 @@ test("setSaveError and clearSaveError expose the save error bit", () => {
   assert.equal(state.view.saveError, "讨论保存失败");
   state.clearSaveError();
   assert.equal(state.saveError, null);
+});
+
+// ========== 阶段 3：流式与终态按讨论身份路由（任务 1.4 / 1.5） ==========
+
+test("concurrent streams in two discussions route increments to their own discussion", () => {
+  const state = new AiPanelState();
+  state.beginRequest(snapshot("选区一")); // 讨论 "1"（召唤首轮 loading）
+  state.beginDirectQuestion("问题二", null); // 讨论 "2"（直接提问 loading，且成为聚焦讨论）
+
+  assert.equal(state.appendStreamText("1", "甲"), true);
+  assert.equal(state.appendStreamText("2", "乙"), true);
+  assert.equal(state.appendStreamText("1", "丙"), true);
+
+  const discussionA = state.getDiscussion("1")!;
+  const discussionB = state.getDiscussion("2")!;
+  assert.equal(discussionA.request.kind, "loading");
+  assert.equal(discussionB.request.kind, "direct_question");
+  if (discussionA.request.kind === "loading") {
+    assert.equal(discussionA.request.streamedText, "甲丙");
+  }
+  if (discussionB.request.kind === "direct_question") {
+    assert.equal(discussionB.request.streamedText, "乙");
+  }
+});
+
+test("late increments and terminal results for a removed discussion do not pollute others", () => {
+  const state = new AiPanelState();
+  state.beginRequest(snapshot("选区一")); // 讨论 "1"
+  state.succeed(snapshot("选区一"), "首答一");
+  state.beginRequest(snapshot("选区二")); // 讨论 "2"（新讨论，聚焦）
+  state.deleteDiscussion("1"); // 移除讨论 "1" 及其窗口
+
+  // 迟到增量与终态按已删除讨论身份路由：无匹配讨论，不污染讨论 "2"
+  assert.equal(state.appendStreamText("1", "迟到增量"), false);
+  assert.equal(state.succeed(snapshot("选区一"), "迟到成功", "1"), false);
+
+  // 讨论 "2" 仍为 loading，且无被污染文本；其增量仍正常路由
+  const after = state.getDiscussion("2")!;
+  assert.equal(after.request.kind, "loading");
+  if (after.request.kind === "loading") {
+    assert.equal(after.request.streamedText, undefined);
+  }
+  assert.equal(state.appendStreamText("2", "乙"), true);
+  const discussionB = state.getDiscussion("2")!;
+  if (discussionB.request.kind === "loading") {
+    assert.equal(discussionB.request.streamedText, "乙");
+  }
+});
+
+// ========== 阶段 3：窗口结构状态（任务 2.5） ==========
+
+test("window structure opens a docked window and focuses it on first request", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+
+  assert.equal(state.windows.size, 1);
+  assert.equal(state.windows.get("1"), "docked");
+  assert.equal(state.focusedConversationId, "1");
+  assert.equal(state.activeConversationId, "1");
+});
+
+test("window structure reopens an open discussion by focusing without duplicating", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题一", null);
+  state.succeedDirectQuestion("回答一");
+  state.beginDirectQuestion("问题二", null); // 讨论 "2"
+  assert.equal(state.windows.size, 2);
+  assert.equal(state.focusedConversationId, "2");
+
+  state.openDiscussion(
+    {
+      id: "1",
+      createdAt: "t0",
+      anchor: null,
+      initialUserMaterial: { kind: "direct_question", question: "问题一" },
+      firstResponse: "回答一",
+      turns: [],
+      pending: null,
+    },
+    null,
+    null,
+  );
+  assert.equal(state.windows.size, 2, "重开已打开讨论不创建第二个窗口");
+  assert.equal(state.windows.get("1"), "docked");
+  assert.equal(state.focusedConversationId, "1");
+});
+
+test("window structure removes the window on delete and focuses nothing when it was focused", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  assert.equal(state.windows.size, 1);
+
+  state.deleteDiscussion("1");
+  assert.equal(state.windows.size, 0);
+  assert.equal(state.focusedConversationId, null);
+  assert.equal(state.activeConversationId, null);
+});
+
+test("window structure clears all windows on reset and loadDiscussions", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("回答");
+  assert.equal(state.windows.size, 1);
+
+  state.reset();
+  assert.equal(state.windows.size, 0);
+  assert.equal(state.focusedConversationId, null);
+
+  state.beginDirectQuestion("问题二", null);
+  state.succeedDirectQuestion("回答二");
+  state.loadDiscussions([], []);
+  assert.equal(state.windows.size, 0);
+  assert.equal(state.focusedConversationId, null);
+});
+
+test("window structure notifies once per transition and is silent on illegal transitions", () => {
+  let calls = 0;
+  const state = new AiPanelState(() => { calls += 1; });
+  state.beginDirectQuestion("问题", null);
+  assert.equal(calls, 1);
+
+  // 非法迁移（未知讨论的增量 / 删除未知讨论）不改变状态、不通知
+  assert.equal(state.appendStreamText("unknown", "迟到"), false);
+  assert.equal(calls, 1);
+  assert.equal(state.deleteDiscussion("unknown"), false);
+  assert.equal(calls, 1);
+
+  // 合法迁移通知一次
+  assert.equal(state.appendStreamText("1", "增量"), true);
+  assert.equal(calls, 2);
+});
+
+// ========== 阶段 3：停止生成 / 聚焦 / 关闭窗口（任务 3.5、5.8） ==========
+
+test("stopRequest marks a loading first round stopped and preserves streamed text", () => {
+  const state = new AiPanelState();
+  state.beginRequest(snapshot("选区"));
+  state.appendStreamText("1", "部分回答");
+
+  assert.equal(state.stopRequest("1"), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "stopped");
+  if (request.kind === "stopped") {
+    assert.equal(request.phase, "first");
+    assert.equal(request.streamedText, "部分回答");
+  }
+  // 迟到终态不把「已停止」改回失败/成功
+  assert.equal(state.succeed(snapshot("选区"), "迟到成功", "1"), false);
+});
+
+test("stopRequest marks a loading direct question stopped and preserves its question", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.appendStreamText("1", "草稿");
+
+  assert.equal(state.stopRequest("1"), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "stopped");
+    assert.equal(request.question, "问题");
+    assert.equal(request.streamedText, "草稿");
+  }
+  assert.equal(state.succeedDirectQuestion("迟到", "1"), false);
+});
+
+test("stopRequest marks a loading follow-up stopped and keeps the pending question", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("首答");
+  state.beginFollowUp("追问");
+  state.appendStreamText("1", "部分");
+
+  assert.equal(state.stopRequest("1"), true);
+  assert.equal(state.getDiscussion("1")!.request.kind, "stopped");
+  assert.equal(state.conversation?.pending?.interrupted, true);
+  assert.equal(state.conversation?.pending?.question, "追问");
+  assert.equal(state.conversation?.pending?.streamedText, "部分");
+});
+
+test("stopRequest only affects the target discussion, not others generating in parallel", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题一", null); // "1" loading
+  state.beginDirectQuestion("问题二", null); // "2" loading
+
+  assert.equal(state.stopRequest("1"), true);
+  const discussionB = state.getDiscussion("2")!;
+  assert.equal(discussionB.request.kind, "direct_question");
+  if (discussionB.request.kind === "direct_question") {
+    assert.equal(discussionB.request.status, "loading", "其他讨论不受停止影响");
+  }
+});
+
+test("retryStoppedFollowUp resumes the interrupted pending turn into loading", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("首答");
+  state.beginFollowUp("追问");
+  state.stopRequest("1");
+
+  assert.equal(state.retryStoppedFollowUp(), true);
+  assert.equal(state.getDiscussion("1")!.request.kind, "loading");
+  assert.equal(state.conversation?.pending?.interrupted, undefined);
+  assert.equal(state.conversation?.pending?.question, "追问");
+});
+
+test("retryDirectQuestion re-enters loading with the same question and selection", () => {
+  const state = new AiPanelState();
+  const selection = snapshot("选区");
+  state.beginDirectQuestion("问题", selection);
+  state.stopRequest("1");
+
+  assert.equal(state.retryDirectQuestion("1"), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "loading");
+    assert.equal(request.question, "问题");
+  }
+});
+
+test("focusWindow focuses an open window and is inert for non-window discussions", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题一", null); // "1"
+  state.beginDirectQuestion("问题二", null); // "2" 聚焦
+  assert.equal(state.focusedConversationId, "2");
+
+  assert.equal(state.focusWindow("1"), true);
+  assert.equal(state.focusedConversationId, "1");
+  // 非法：未打开窗口的讨论
+  assert.equal(state.focusWindow("unknown"), false);
+});
+
+test("closeWindow ends display but keeps the discussion; reopen re-adds a window", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("首答");
+  assert.equal(state.windows.size, 1);
+
+  assert.equal(state.closeWindow("1"), true);
+  assert.equal(state.windows.size, 0, "关闭窗口不删除讨论");
+  assert.equal(state.getDiscussion("1") !== null, true, "讨论保留");
+  assert.equal(state.focusedConversationId, null);
+
+  // 重开：重新打开窗口
+  state.openDiscussion(
+    {
+      id: "1",
+      createdAt: "t0",
+      anchor: null,
+      initialUserMaterial: { kind: "direct_question", question: "问题" },
+      firstResponse: "首答",
+      turns: [],
+      pending: null,
+    },
+    null,
+    null,
+  );
+  assert.equal(state.windows.size, 1);
+  assert.equal(state.focusedConversationId, "1");
+});
+
+test("closeWindow is inert for a discussion without an open window", () => {
+  const state = new AiPanelState();
+  assert.equal(state.closeWindow("unknown"), false);
+});
+
+// ========== 阶段 3：排队与恢复覆盖（第 6、7 组） ==========
+
+test("queueRequest marks a loading request queued and startQueuedRequest resumes it", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+
+  assert.equal(state.queueRequest("1"), true);
+  let request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") assert.equal(request.queued, true);
+
+  assert.equal(state.startQueuedRequest("1"), true);
+  request = state.getDiscussion("1")!.request;
+  if (request.kind === "direct_question") assert.equal(request.queued, undefined);
+});
+
+test("stopRequest marks a queued request stopped", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.queueRequest("1");
+
+  assert.equal(state.stopRequest("1"), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") assert.equal(request.status, "stopped");
+});
+
+test("recovery covers each open discussion independently", () => {
+  const state = new AiPanelState();
+  // 讨论 1：有对话。
+  state.beginDirectQuestion("问题一", null);
+  state.succeedDirectQuestion("回答一");
+  // 讨论 2：有对话。
+  state.beginDirectQuestion("问题二", null);
+  state.succeedDirectQuestion("回答二");
+
+  assert.equal(state.beginRecovery("1"), true);
+  assert.equal(state.beginRecovery("2"), true);
+  assert.equal(state.getDiscussion("1")!.request.kind, "recovering");
+  assert.equal(state.getDiscussion("2")!.request.kind, "recovering");
+
+  assert.equal(state.completeRecovery("1"), true);
+  assert.equal(state.getDiscussion("1")!.request.kind, "success");
+  assert.equal(state.getDiscussion("2")!.request.kind, "recovering", "其他讨论恢复状态不受影响");
+  assert.equal(state.completeRecovery("2"), true);
+});
+
+// ========== 阶段 3：会话列表重做（第 8、9 组） ==========
+
+test("renameDiscussion updates the list title and persists the custom title", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("回答");
+  assert.equal(state.conversations[0].title, "问题");
+
+  assert.equal(state.renameDiscussion("1", "第二幕转折"), true);
+  assert.equal(state.conversations[0].title, "第二幕转折");
+  assert.equal(state.conversations[0].custom_title, "第二幕转折");
+
+  // 空白标题按未重命名处理。
+  assert.equal(state.renameDiscussion("1", "   "), true);
+  assert.equal(state.conversations[0].title, "问题");
+});
+
+test("setDiscussionPinned toggles the pinned flag", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("回答");
+  assert.equal(state.conversations[0].pinned, false);
+
+  assert.equal(state.setDiscussionPinned("1", true), true);
+  assert.equal(state.conversations[0].pinned, true);
+  assert.equal(state.setDiscussionPinned("1", false), true);
+  assert.equal(state.conversations[0].pinned, false);
+});
+
+test("custom title and pinned survive a record round-trip", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.succeedDirectQuestion("回答");
+  state.renameDiscussion("1", "第二幕转折");
+  state.setDiscussionPinned("1", true);
+
+  const record = buildDiscussionRecord(state.getDiscussion("1")!);
+  assert.equal(record.title, "第二幕转折");
+  assert.equal(record.pinned, true);
+
+  const reopened = conversationFromRecord(record);
+  assert.equal(reopened.customTitle, "第二幕转折");
+  assert.equal(reopened.pinned, true);
+});
+
+test("summaryToRecord restores an archive record from a list summary", () => {
+  const summary = {
+    conversation_id: "c-1",
+    title: "我的标题",
+    created_at: "t0",
+    updated_at: "t1",
+    last_status: "done" as const,
+    focus_document_id: "doc-1",
+    focus_document_title: "草稿",
+    first_round_material: { kind: "direct_question" as const, question: "问题", selection_text: null },
+    turns: [{ role: "assistant" as const, text: "回答", status: "done" as const }],
+    custom_title: "我的标题",
+    pinned: true,
+  };
+  const record = summaryToRecord(summary);
+  assert.equal(record.conversation_id, "c-1");
+  assert.equal(record.title, "我的标题");
+  assert.equal(record.pinned, true);
+  assert.deepEqual(record.turns, summary.turns);
 });

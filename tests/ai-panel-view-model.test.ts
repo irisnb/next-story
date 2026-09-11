@@ -400,7 +400,8 @@ test("idle open panel shows the direct question input with submit disabled for b
 test("direct question input enables submit once the draft is non-blank", () => {
   const state = new AiPanelState();
   state.open();
-  state.updateDirectQuestionDraft("这个角色为什么犹豫？");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "这个角色为什么犹豫？");
 
   const view = viewOf(state);
   assert.ok(view.directQuestion);
@@ -421,7 +422,8 @@ test("direct question shows the attached pending selection as focus material", (
 test("direct question loading disables duplicate submission", () => {
   const state = new AiPanelState();
   state.open();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", null);
 
   const view = viewOf(state);
@@ -433,7 +435,8 @@ test("direct question loading disables duplicate submission", () => {
 test("direct question success enters the unified conversation and hides the direct question form", () => {
   const state = new AiPanelState();
   state.open();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", null);
   state.succeedDirectQuestion("回答");
 
@@ -475,7 +478,8 @@ test("direct question conversation shows original question, first answer, then f
 test("direct question error shows the error message and keeps submit enabled", () => {
   const state = new AiPanelState();
   state.open();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
   state.beginDirectQuestion("问题", null);
   state.failDirectQuestion(authError);
 
@@ -510,7 +514,9 @@ test("direct question entry is hidden during a legacy selection-summon request",
 
 test("direct question entry is hidden while the panel is collapsed", () => {
   const state = new AiPanelState();
-  state.updateDirectQuestionDraft("问题");
+  state.newConversation();
+  state.updateDirectQuestionDraft("1", "问题");
+  state.close();
   const view = viewOf(state);
   assert.equal(view.directQuestion, null);
 });
@@ -606,7 +612,7 @@ test("recovering request reuses the loading placeholder with the recovery messag
   const anchor = snapshot("锚点");
   state.beginRequest(anchor);
   state.succeed(anchor, "首答");
-  state.beginRecovery();
+  state.beginRecovery("1");
 
   // When: 构建显示 view model
   const view = viewOf(state);
@@ -634,7 +640,7 @@ test("direct question loading renders the unified turn with the streamed draft i
   ]);
 
   // 流式增量经状态推进后，逐字追加为该轮次的助手消息，占位保持在正下方
-  state.appendStreamText("她可能\n在隐瞒");
+  state.appendStreamText("1", "她可能\n在隐瞒");
   view = viewOf(state);
   assert.ok(view.conversation);
   assert.deepEqual(view.conversation.messages, [

@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Next Story · 窗口头与交互细节稿</title>
+<style>
+  :root{
+    --primary:#2743e0; --primary-hover:#1f38c0; --on-primary:#fff; --accent:#f0b429;
+    --ink:#171717; --surface:#fff; --surface-subtle:#f5f5f5; --surface-hover:#f0f0f0;
+    --text:#1a1a1a; --text-body:#333; --muted:#8a8a8a;
+    --success:#1e9e5a; --danger:#d6361e; --warning:#c77800;
+    --win-shadow-rest:2px 2px 0 rgba(0,0,0,.16);
+    --win-shadow-active:3px 3px 0 rgba(0,0,0,.30);
+    --win-shadow-float:4px 4px 0 rgba(0,0,0,.26);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:#e6e6e6;}
+  body{font-family:"Microsoft YaHei","PingFang SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text-body);font-size:14px;line-height:1.5;padding:36px 24px 72px;}
+  .ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:square;stroke-linejoin:miter;display:inline-block;vertical-align:middle;}
+  .ic-sm{width:14px;height:14px;}
+  .ic-xs{width:12px;height:12px;}
+  .page-head{max-width:1180px;margin:0 auto 26px;}
+  .page-head h1{font-size:22px;color:var(--ink);}
+  .page-head p{color:var(--muted);font-size:13px;margin-top:6px;}
+  .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:34px;}
+  .block{display:flex;flex-direction:column;gap:12px;}
+  .cap{font-size:13px;color:#555;}
+  .cap b{color:var(--ink);}
+  .stage{background:var(--surface);border:2px solid var(--ink);box-shadow:6px 6px 0 rgba(0,0,0,.4);padding:30px;position:relative;overflow:hidden;}
+  .stage.soft{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 10px,#f4f4f4 10px,#f4f4f4 20px);}
+  .row-of{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+
+  .win{display:flex;flex-direction:column;background:var(--surface);border:2px solid rgba(23,23,23,.55);border-radius:4px;box-shadow:var(--win-shadow-rest);overflow:hidden;position:relative;}
+  .win.active{border:2px solid var(--primary);box-shadow:var(--win-shadow-active);}
+  .win.inactive{border-color:rgba(23,23,23,.35);box-shadow:1px 1px 0 rgba(0,0,0,.12);}
+  .win-head{position:relative;height:32px;flex:none;display:flex;align-items:center;gap:7px;padding:0 6px 0 10px;border-bottom:1px solid rgba(23,23,23,.28);background:var(--surface);}
+  .win.inactive .win-head{background:#fafafa;}
+  .win.active .win-head::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary);}
+  .win-title{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;}
+  .win-doc{font-size:11px;color:var(--muted);white-space:nowrap;}
+  .spacer{flex:1;min-width:6px;}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .d-generating{background:var(--primary);animation:pulse 1.4s ease-out infinite;}
+  .d-queued{background:var(--warning);}
+  .d-stopped{background:var(--muted);}
+  .d-failed{background:var(--danger);}
+  .d-done{background:var(--success);}
+  .d-recovering{background:var(--primary);animation:pulse 1.4s ease-out infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(39,67,224,.35);}70%{box-shadow:0 0 0 6px rgba(39,67,224,0);}100%{box-shadow:0 0 0 0 rgba(39,67,224,0);}}
+  .badge{font-size:11px;font-weight:600;line-height:1.5;padding:0 6px;border-radius:2px;border:1px solid currentColor;white-space:nowrap;}
+  .b-generating{color:var(--primary);}
+  .b-queued{color:var(--warning);}
+  .b-stopped{color:var(--muted);}
+  .b-failed{color:var(--danger);}
+  .b-recovering{color:var(--primary);}
+  .win-btn{font-size:11px;line-height:1.4;padding:2px 7px;border:1px solid rgba(23,23,23,.5);border-radius:2px;background:var(--surface);color:#333;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
+  .win-btn.icon{padding:3px 5px;}
+  .win-btn.stop{color:var(--danger);border-color:rgba(214,54,30,.55);}
+  .win-btn.close{padding:3px 5px;color:#555;}
+  .win-btn[disabled]{opacity:.4;}
+  .grip{color:rgba(23,23,23,.5);}
+  .win-body{padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text-body);}
+  .msg-user{background:var(--surface-subtle);border-radius:2px;padding:7px 9px;color:var(--text);}
+  .msg-status{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+
+  .anno{position:relative;padding-top:26px;}
+  .anno-line{position:absolute;top:12px;height:14px;border-left:1px solid var(--primary);}
+  .anno-label{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;font-size:10.5px;color:var(--primary);font-weight:600;background:#eef1ff;border:1px solid rgba(39,67,224,.35);border-radius:2px;padding:0 5px;}
+  .callout{font-size:11.5px;color:#555;line-height:1.9;}
+  .callout b{color:var(--ink);}
+  .callout code{background:#efefef;padding:1px 4px;border-radius:2px;}
+
+  .dropzone{border:2px dashed var(--accent);background:#fffaf0;border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--warning);font-size:12px;font-weight:600;text-align:center;}
+  .resize{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;border-right:2px solid rgba(23,23,23,.5);border-bottom:2px solid rgba(23,23,23,.5);}
+  .resize::before{content:"";position:absolute;right:3px;bottom:3px;width:6px;height:6px;border-right:2px solid rgba(23,23,23,.35);border-bottom:2px solid rgba(23,23,23,.35);}
+  .snap-guide{position:absolute;border-left:2px dashed var(--accent);pointer-events:none;}
+  .snap-tag{position:absolute;background:var(--accent);color:#171717;font-size:10px;font-weight:600;padding:1px 6px;border-radius:2px;}
+
+  .menu{position:absolute;min-width:168px;background:var(--surface);border:2px solid rgba(23,23,23,.9);border-radius:2px;box-shadow:3px 3px 0 rgba(0,0,0,.28);padding:3px;z-index:5;}
+  .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;font-size:12.5px;padding:5px 9px;border:none;background:transparent;color:var(--text);border-radius:2px;cursor:default;}
+  .menu button:hover{background:var(--surface-hover);}
+  .menu .ic{color:#555;}
+  .menu .sep{border-top:1px solid rgba(23,23,23,.25);margin:3px 0;}
+  .menu .danger{color:var(--danger);}
+  .menu .danger .ic{color:var(--danger);}
+
+  .rail{width:46px;border-left:2px solid rgba(23,23,23,.8);background:var(--surface);display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0;}
+  .rail-btn{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:2px solid rgba(23,23,23,.85);border-radius:2px;background:var(--surface);color:#333;box-shadow:1.5px 1.5px 0 rgba(0,0,0,.2);}
+  .rail-btn.primary{background:var(--primary);color:#fff;}
+  .rail-label{writing-mode:vertical-rl;font-size:11px;color:var(--muted);letter-spacing:.1em;}
+
+  .dock-head{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:2px solid rgba(23,23,23,.8);background:var(--surface);}
+  .dock-title{font-weight:600;font-size:14px;color:var(--ink);}
+  .dock-count{font-size:11.5px;color:var(--muted);}
+  .icon-btn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(23,23,23,.7);border-radius:2px;background:var(--surface);color:#333;box-shadow:1px 1px 0 rgba(0,0,0,.16);cursor:default;}
+  .icon-btn.primary{background:var(--primary);color:var(--on-primary);border-color:var(--ink);}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--surface);}
+  th,td{border:1px solid rgba(23,23,23,.4);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--surface-subtle);color:var(--ink);font-weight:600;}
+  td.mid{text-align:center;}
+  .yes{color:var(--success);font-weight:600;}
+  .no{color:var(--muted);}
+  .must{color:var(--danger);font-weight:600;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M6 4h7M6 8h7M6 12h7"/><rect x="2.4" y="3.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="7.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/><rect x="2.4" y="11.2" width="1.6" height="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.2v9.6M3.2 8h9.6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M6.2 2.8h3.6v2.4l1.7 1.7H4.5l1.7-1.7z"/><path d="M8 6.9v6.3"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M2.8 13.2l.8-3L11.4 2.4a1.4 1.4 0 0 1 2 2L5.8 12.4z"/><path d="M10.4 3.4l2 2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10"/><path d="M6 4.5V3h4v1.5"/><path d="M4.6 4.5l.7 9h5.4l.7-9"/><path d="M6.8 7v3.8M9.2 7v3.8"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 16 16"><circle cx="6" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-float" viewBox="0 0 16 16"><path d="M12 9.5V13H3V4h3.5"/><path d="M7 9l6-6"/><path d="M9.5 3H13v3.5"/></symbol>
+  <symbol id="i-dock" viewBox="0 0 16 16"><path d="M4 3h8v10H4z"/><path d="M11 8H5.5"/><path d="M8 5.5L5.5 8 8 10.5"/></symbol>
+  <symbol id="i-sbs" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="4.5" height="9"/><rect x="9" y="3.5" width="4.5" height="9"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.3-3.2"/><path d="M3 2.5v3h3"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>窗口头与交互细节稿</h1>
+  <p>窗口头结构、活动/非活动、拖 / 缩 / 吸 / 回、更多菜单、停靠区收起、恢复默认布局、拖动中的冲突处理、常驻入口。窗口均为应用内窗口。</p>
+</div>
+
+<div class="wrap">
+
+  <!-- 1. 窗口头结构 -->
+  <div class="block">
+    <div class="cap"><b>1 · 窗口头结构（高 32px，整条可拖）</b></div>
+    <div class="stage">
+      <div style="position:relative;padding-top:30px;width:540px;max-width:100%;">
+        <span class="anno-line" style="left:14px;"></span><span class="anno-label" style="left:14px;">状态点</span>
+        <span class="anno-line" style="left:70px;"></span><span class="anno-label" style="left:70px;">标题（省略号）</span>
+        <span class="anno-line" style="left:260px;"></span><span class="anno-label" style="left:260px;">关注文档</span>
+        <span class="anno-line" style="left:370px;"></span><span class="anno-label" style="left:370px;">状态徽标</span>
+        <span class="anno-line" style="left:460px;"></span><span class="anno-label" style="left:460px;">停止 / 更多 / 关闭</span>
+        <div class="win active">
+          <div class="win-head">
+            <span class="dot d-generating"></span>
+            <span class="win-title">第三幕主角动机的追问</span>
+            <span class="win-doc">第三幕</span>
+            <span class="spacer"></span>
+            <span class="badge b-generating">生成中</span>
+            <button class="win-btn stop">停止</button>
+            <button class="win-btn icon" title="更多"><svg class="ic"><use href="#i-more"/></svg></button>
+            <button class="win-btn close" title="关闭窗口"><svg class="ic"><use href="#i-close"/></svg></button>
+          </div>
+          <div class="win-body">
+            <div class="msg-user">他为什么在雨里停下？</div>
+            <div>因为他其实已经读过那封信了——他停下来，不是犹豫要不要进去，而是在想进门之后第一句话该怎么说。</div>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:16px;">
+        <b>动作优先级：</b>停止、更多（⋯）、关闭（×）常显在右；重命名 / 置顶 / 浮动或停靠 / 并排 / 删除 收进「更多」菜单，可发现又不抢位。<br/>
+        <b>图标：</b>统一 1.5px 描边、16px 网格、方角、<code>currentColor</code>，与停靠区头、列表共用一套。<br/>
+        <b>拖动：</b>按住标题栏任意位置拖动；光标 <code>grab</code> → 拖动时 <code>grabbing</code>。<b>双击标题栏</b> = 停靠 / 浮动切换。
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 活动 / 非活动 -->
+  <div class="block">
+    <div class="cap"><b>2 · 活动窗口 vs 非活动窗口</b></div>
+    <div class="stage soft">
+      <div class="row-of">
+        <div style="flex:1;min-width:300px;">
+          <div class="win active">
+            <div class="win-head">
+              <span class="dot d-generating"></span><span class="win-title">活动窗口</span><span class="spacer"></span>
+              <span class="badge b-generating">生成中</span>
+              <button class="win-btn stop">停止</button>
+              <button class="win-btn icon"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button>
+            </div>
+            <div class="win-body"><div class="msg-user">主色边框 + 更重阴影 + 左侧主色竖条</div></div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:300px;">
+          <div class="win inactive">
+            <div class="win-head">
+              <span class="dot d-done"></span><span class="win-title">非活动窗口</span><span class="spacer"></span>
+              <button class="win-btn icon"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button>
+            </div>
+            <div class="win-body"><div class="msg-user">弱化边框 + 轻阴影 + 标题栏降低对比（正文仍清晰）</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:16px;">刻意<b>不整体降透明度</b>：写作工具里正文要一直读得清，只弱化窗口头做区分。活动窗口的强调也<b>不盖过编辑区</b>的边框和阴影。</div>
+    </div>
+  </div>
+
+  <!-- 3. 拖出 / 拖回 -->
+  <div class="block">
+    <div class="cap"><b>3 · 拖出停靠区（左）与拖回停靠区（右，出现虚线放置区）</b></div>
+    <div class="stage">
+      <div class="row-of">
+        <div style="flex:1;min-width:300px;">
+          <div class="win" style="width:100%;box-shadow:var(--win-shadow-float);transform:rotate(-1.5deg);">
+            <div class="win-head">
+              <svg class="ic grip"><use href="#i-grip"/></svg>
+              <span class="dot d-done"></span><span class="win-title">拖动中</span><span class="spacer"></span>
+              <button class="win-btn icon"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button>
+            </div>
+            <div class="win-body"><div class="msg-user">光标 grabbing · 窗口实时跟随 · 限制在应用窗口内</div></div>
+            <div class="resize"></div>
+          </div>
+          <div class="callout" style="margin-top:10px;">拖出停靠区边界即转为浮动窗口（VS Code 式）。</div>
+        </div>
+        <div style="flex:1;min-width:300px;display:flex;gap:12px;">
+          <div class="dropzone" style="width:150px;min-height:190px;">拖到此处停靠</div>
+          <div style="flex:1;">
+            <div class="win active">
+              <div class="win-head">
+                <svg class="ic grip"><use href="#i-grip"/></svg>
+                <span class="dot d-done"></span><span class="win-title">浮动窗口</span><span class="spacer"></span>
+                <button class="win-btn icon"><svg class="ic"><use href="#i-more"/></svg></button>
+                <button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button>
+              </div>
+              <div class="win-body"><div class="msg-user">拖回停靠区，或双击标题栏</div></div>
+            </div>
+            <div class="callout" style="margin-top:10px;">停靠区高亮显示放置区；松手即归位。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 拖动中的冲突处理 -->
+  <div class="block">
+    <div class="cap"><b>4 · 拖动/缩放进行中发生其他事件（内容更新不打断手势）</b></div>
+    <div class="stage soft">
+      <div class="row-of" style="align-items:flex-start;">
+        <div style="width:340px;">
+          <div class="win active" style="box-shadow:var(--win-shadow-float);transform:rotate(-1deg);">
+            <div class="win-head">
+              <svg class="ic grip"><use href="#i-grip"/></svg>
+              <span class="dot d-done"></span><span class="win-title">正在被拖动</span><span class="spacer"></span>
+              <span class="badge b-generating">生成中 → 已完成</span>
+              <button class="win-btn icon"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button>
+            </div>
+            <div class="win-body">
+              <div class="msg-user">拖动中生成完成：徽标更新，窗口不动</div>
+              <div class="msg-status"><span class="dot d-done"></span>已完成 · 窗口几何不变</div>
+            </div>
+            <div class="resize"></div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:320px;">
+          <table>
+            <tr><th>拖动中发生的事件</th><th>处理</th></tr>
+            <tr><td>生成完成 / 失败 / 排队开始 / 按停止</td><td class="yes">忽略（不打断）</td></tr>
+            <tr><td>另一个窗口被关闭</td><td class="yes">忽略（不打断）</td></tr>
+            <tr><td>驱动丢失，进入恢复</td><td class="yes">忽略（不打断）</td></tr>
+            <tr><td>新讨论打开（新窗口插入）</td><td class="yes">忽略；被拖窗口脱离停靠流</td></tr>
+            <tr><td>停靠区重排（他窗增删）</td><td>延迟到松手后</td></tr>
+            <tr><td>按「关闭 ×」（自己）</td><td class="must">中断拖动</td></tr>
+            <tr><td>按「收起停靠区」（停靠窗口）</td><td class="must">中断拖动</td></tr>
+            <tr><td>切换作品 / 删除该讨论</td><td class="must">中断拖动</td></tr>
+            <tr><td>「恢复默认布局」</td><td class="must">中断拖动</td></tr>
+            <tr><td>按 Esc</td><td>取消拖动（回起点）</td></tr>
+          </table>
+          <div class="callout" style="margin-top:10px;">完整规则见 <code>interaction-rules.md</code> 第 A、B 章。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 缩放 + 最小尺寸 -->
+  <div class="block">
+    <div class="cap"><b>5 · 缩放与最小尺寸（右下角手柄；最小 300 × 200）</b></div>
+    <div class="stage soft">
+      <div class="row-of">
+        <div style="width:300px;height:200px;">
+          <div class="win" style="width:100%;height:100%;">
+            <div class="win-head"><svg class="ic grip"><use href="#i-grip"/></svg><span class="dot d-done"></span><span class="win-title">最小尺寸 300×200</span><span class="spacer"></span><button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+            <div class="win-body" style="font-size:11.5px;color:var(--muted);">拖到手柄的极限即停，动作按钮不会被压没。</div>
+            <div class="resize"></div>
+          </div>
+        </div>
+        <div style="width:360px;height:240px;">
+          <div class="win active" style="width:100%;height:100%;">
+            <div class="win-head"><svg class="ic grip"><use href="#i-grip"/></svg><span class="dot d-done"></span><span class="win-title">放大后</span><span class="spacer"></span><button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+            <div class="win-body"><div class="msg-user">内容区独立滚动，输入区固定在底部。</div></div>
+            <div class="resize"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. 吸附对齐 -->
+  <div class="block">
+    <div class="cap"><b>6 · 吸附对齐（靠近 8px 内自动吸附，出现参考线）</b></div>
+    <div class="stage soft" style="height:340px;">
+      <div class="snap-guide" style="left:50%;top:40px;height:250px;"></div>
+      <div class="snap-tag" style="left:calc(50% + 8px);top:26px;">对齐</div>
+      <div class="row-of" style="gap:0;">
+        <div style="width:calc(50% - 8px);">
+          <div class="win active">
+            <div class="win-head"><svg class="ic grip"><use href="#i-grip"/></svg><span class="dot d-generating"></span><span class="win-title">讨论 A</span><span class="spacer"></span><span class="badge b-generating">生成中</span><button class="win-btn stop">停止</button><button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+            <div class="win-body"><div class="msg-user">顶边与 B 对齐</div><div>吸附到停靠区边缘、其他窗口边缘、应用边缘。</div></div>
+            <div class="resize"></div>
+          </div>
+        </div>
+        <div style="width:16px;"></div>
+        <div style="width:calc(50% - 8px);">
+          <div class="win">
+            <div class="win-head"><svg class="ic grip"><use href="#i-grip"/></svg><span class="dot d-done"></span><span class="win-title">讨论 B</span><span class="spacer"></span><button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+            <div class="win-body"><div class="msg-user">等宽并排</div><div>并排时自动对齐顶边与高度。</div></div>
+            <div class="resize"></div>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:14px;">完整吸附（含四边与多窗对齐）复杂度较高；<b>轻量替代</b>：只吸附应用边缘、停靠区边缘，并对齐其他窗口的顶边 / 左边。</div>
+    </div>
+  </div>
+
+  <!-- 7. 更多菜单 -->
+  <div class="block">
+    <div class="cap"><b>7 · 「更多」菜单（收纳次要动作，图标与全局统一）</b></div>
+    <div class="stage soft" style="height:320px;">
+      <div style="position:relative;width:380px;">
+        <div class="win">
+          <div class="win-head"><svg class="ic grip"><use href="#i-grip"/></svg><span class="dot d-done"></span><span class="win-title">开场白节奏</span><span class="spacer"></span><button class="win-btn close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+          <div class="win-body"><div class="msg-user">点「⋯」展开菜单</div></div>
+        </div>
+        <div class="menu" style="right:10px;top:36px;">
+          <button><svg class="ic ic-sm"><use href="#i-pencil"/></svg>重命名讨论</button>
+          <button><svg class="ic ic-sm"><use href="#i-pin"/></svg>置顶讨论</button>
+          <button><svg class="ic ic-sm"><use href="#i-float"/></svg>浮动窗口</button>
+          <button><svg class="ic ic-sm"><use href="#i-sbs"/></svg>与…并排对照</button>
+          <div class="sep"></div>
+          <button><svg class="ic ic-sm"><use href="#i-reset"/></svg>恢复默认布局</button>
+          <div class="sep"></div>
+          <button class="danger"><svg class="ic ic-sm"><use href="#i-trash"/></svg>删除讨论…</button>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:14px;">「删除讨论…」永远在菜单最后且标红，点击后仍需确认。<b>关闭窗口</b>不在菜单里——它是标题栏最右的 ×，语义是「结束显示」。</div>
+    </div>
+  </div>
+
+  <!-- 8. 常驻入口 -->
+  <div class="block">
+    <div class="cap"><b>8 · 停靠区头是常驻工具栏（入口不随讨论数量变化）</b></div>
+    <div class="stage soft">
+      <div class="row-of">
+        <div style="width:300px;">
+          <div class="dock-head" style="border:2px solid var(--ink);"><span class="dock-title">AI 思考</span><span class="dock-count">0 个讨论</span><span class="spacer"></span>
+            <div style="display:flex;gap:6px;">
+              <button class="icon-btn" title="会话列表"><svg class="ic"><use href="#i-list"/></svg></button>
+              <button class="icon-btn primary" title="新建对话"><svg class="ic"><use href="#i-plus"/></svg></button>
+              <button class="icon-btn" title="更多（停靠区）"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="icon-btn" title="收起"><svg class="ic"><use href="#i-chevron-right"/></svg></button>
+            </div>
+          </div>
+          <div class="callout" style="margin-top:8px;"><b>0 条</b>：四个入口都在；列表打开显示空状态引导。</div>
+        </div>
+        <div style="width:300px;">
+          <div class="dock-head" style="border:2px solid var(--ink);"><span class="dock-title">AI 思考</span><span class="dock-count">1 个讨论</span><span class="spacer"></span>
+            <div style="display:flex;gap:6px;">
+              <button class="icon-btn" title="会话列表"><svg class="ic"><use href="#i-list"/></svg></button>
+              <button class="icon-btn primary" title="新建对话"><svg class="ic"><use href="#i-plus"/></svg></button>
+              <button class="icon-btn" title="更多（停靠区）"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="icon-btn" title="收起"><svg class="ic"><use href="#i-chevron-right"/></svg></button>
+            </div>
+          </div>
+          <div class="callout" style="margin-top:8px;"><b>1 条 / 多条</b>：入口完全一致，不出现「突然冒出」。</div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:12px;">现状问题：<code>ai-panel.ts:301</code> 在 0 条时隐藏「会话列表」，<code>ai-panel-view-model.ts:330</code> 在空白空闲时隐藏「新建对话」→ 第一条讨论后按钮突然出现。新规则：<b>入口常驻，永不按数量隐藏</b>。</div>
+    </div>
+  </div>
+
+  <!-- 8b. 停靠区 ⋯ 菜单与提示区 -->
+  <div class="block">
+    <div class="cap"><b>8b · 停靠区头 <code>⋯</code> 菜单 + 停靠区提示区</b></div>
+    <div class="stage soft">
+      <div class="row-of" style="align-items:flex-start;">
+        <div style="width:320px;position:relative;">
+          <div class="dock-head" style="border:2px solid var(--ink);"><span class="dock-title">AI 思考</span><span class="dock-count">2 个讨论</span><span class="spacer"></span>
+            <div style="display:flex;gap:6px;">
+              <button class="icon-btn" title="会话列表"><svg class="ic"><use href="#i-list"/></svg></button>
+              <button class="icon-btn primary" title="新建对话"><svg class="ic"><use href="#i-plus"/></svg></button>
+              <button class="icon-btn" title="更多（停靠区）"><svg class="ic"><use href="#i-more"/></svg></button>
+              <button class="icon-btn" title="收起"><svg class="ic"><use href="#i-chevron-right"/></svg></button>
+            </div>
+          </div>
+          <div class="menu" style="right:8px;top:46px;min-width:190px;">
+            <button><svg class="ic ic-sm"><use href="#i-dock"/></svg>停靠所有浮动窗口</button>
+            <button><svg class="ic ic-sm"><use href="#i-reset"/></svg>恢复默认布局</button>
+          </div>
+          <div class="callout" style="margin-top:96px;">停靠区 <code>⋯</code> 收纳<b>全局显示层动作</b>，始终显示，与窗口 <code>⋯</code> 同一套图标。</div>
+        </div>
+        <div style="flex:1;min-width:320px;">
+          <div style="border:2px solid var(--ink);">
+            <div class="dock-head" style="border-bottom:1px solid rgba(23,23,23,.4);"><span class="dock-title">AI 思考</span><span class="spacer"></span><span class="dock-count">提示区</span></div>
+            <div class="dock-notice warn" style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;color:var(--warning);background:#fffaf0;border-left:3px solid var(--warning);">讨论档案保存失败，正在重试…（不影响写作）</div>
+            <div class="dock-notice ok" style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;border-left:3px solid var(--success);background:#f2f2f2;">已删除「雨夜门廊的意象」<span style="margin-left:auto;color:var(--success);font-weight:600;">撤销</span></div>
+            <div style="padding:12px;font-size:11.5px;color:var(--muted);line-height:1.9;">保存失败与删除撤销都在<b style="color:var(--ink)">停靠区层</b>，打开窗口时也可见，<b style="color:var(--ink)">不依赖列表是否打开</b>；停靠区收起时窄轨显示小圆点。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. 停靠区收起 -->
+  <div class="block">
+    <div class="cap"><b>9 · 停靠区收起为窄轨（生成继续、状态保留、入口仍在）</b></div>
+    <div class="stage soft">
+      <div class="row-of" style="align-items:stretch;">
+        <div style="flex:1;min-width:280px;border:2px dashed rgba(23,23,23,.35);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;padding:40px;">编辑区保持完整宽度</div>
+        <div class="rail" style="height:250px;">
+          <span class="rail-label">AI 已收起</span>
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--warning);" title="有提示：展开后查看"></span>
+          <button class="rail-btn primary" title="新建对话"><svg class="ic"><use href="#i-plus"/></svg></button>
+          <button class="rail-btn" title="会话列表"><svg class="ic"><use href="#i-list"/></svg></button>
+          <button class="rail-btn" title="更多（停靠区）"><svg class="ic"><use href="#i-more"/></svg></button>
+          <button class="rail-btn" title="展开停靠区"><svg class="ic"><use href="#i-chevron-left"/></svg></button>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:14px;">收起 ≠ 关闭：生成继续、窗口状态保留；展开后原样恢复。窄轨上保留「新建对话 / 会话列表 / ⋯ / 展开」四个入口，并用一个小圆点提示「有保存失败或可撤销」；窄窗口下停靠区变为覆盖式抽屉。</div>
+    </div>
+  </div>
+
+  <!-- 10. 四态速查表 -->
+  <div class="block">
+    <div class="cap"><b>10 · 按钮状态速查（窗口头 / 输入区）</b></div>
+    <table>
+      <tr><th>按钮</th><th class="mid">空闲</th><th class="mid">排队中</th><th class="mid">生成中</th><th class="mid">已停止</th><th class="mid">失败</th><th class="mid">恢复中</th></tr>
+      <tr><td>停止</td><td class="mid no">隐藏</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid no">隐藏</td><td class="mid no">隐藏</td><td class="mid no">隐藏</td></tr>
+      <tr><td>重试</td><td class="mid no">隐藏</td><td class="mid no">隐藏</td><td class="mid no">隐藏</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid no">隐藏</td></tr>
+      <tr><td>发送 / 追问</td><td class="mid">有草稿启用</td><td class="mid no">禁用</td><td class="mid no">禁用</td><td class="mid">启用</td><td class="mid">启用</td><td class="mid no">禁用</td></tr>
+      <tr><td>输入框</td><td class="mid">启用</td><td class="mid no">禁用</td><td class="mid no">禁用</td><td class="mid">启用</td><td class="mid">启用</td><td class="mid no">禁用</td></tr>
+      <tr><td>⋯ 更多</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td></tr>
+      <tr><td>关闭 ×</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td></tr>
+      <tr><td>停靠区 ⋯（全局）</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td></tr>
+      <tr><td>停靠区 收起/展开</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td><td class="mid yes">显示</td></tr>
+    </table>
+    <div class="callout" style="margin-top:10px;">完整按钮状态表与冲突规则见 <code>interaction-rules.md</code> 第 D 章。</div>
+  </div>
+
+</div>
+</body>
+</html>

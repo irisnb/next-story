@@ -16,8 +16,10 @@ import {
   reduceAiPanelState,
   type AiPanelCoreState,
   type AiPanelEvent,
+  type WindowPlacement,
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
+import { idleRequest } from "./ai-panel-request-state.ts";
 import type { ConversationSummary } from "./conversation-archive.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
@@ -41,9 +43,10 @@ export type {
  * 由 reducer 决定迁移是否合法（非法迁移原样返回，不触发通知）。因此非法操作的结构性
  * 约束在 reducer 里是可见的分支，而不是散落在各方法里的隐式布尔判断。
  *
- * 讨论集合模型：面板一次显示一个当前讨论（`activeConversationId`），其余讨论保留为档案；
+ * 讨论集合模型：面板一次显示一个当前讨论（聚焦窗口的讨论），其余讨论保留为档案；
  * 新召唤 / 直接提问首轮 / 新建对话开启新讨论并保留旧讨论。结果按 `conversationId` 路由，
- * 迟到结果若所属讨论已删除或已切换作品则被丢弃。
+ * 迟到结果若所属讨论已删除或已切换作品则被丢弃。窗口结构状态（打开窗口 + 聚焦窗口）
+ * 作为唯一事实源的一部分随迁移更新；窗口几何留在窗口层，不进状态、不持久化。
  */
 export class AiPanelState {
   private state: AiPanelCoreState = initialAiPanelCoreState();
@@ -97,14 +100,43 @@ export class AiPanelState {
     return {
       visibility: this.state.visibility,
       request: activeRequestOf(this.state),
-      directQuestionDraft: this.state.directQuestionDraft,
+      directQuestionDraft: this.draftOf(this.state.focusedConversationId),
       pendingSelection: this.state.pendingSelection,
       saveError: this.state.saveError,
     };
   }
 
+  /**
+   * 指定讨论窗口的只读显示输入：以该讨论的请求状态为输入，而非全局聚焦讨论。
+   * 供每个窗口各自派生显示决策（纯派生、单一事实源）；草稿按讨论归属，
+   * 待附带选区只附着聚焦窗口。
+   */
+  viewOf(conversationId: string): PanelStateView {
+    const discussion = this.state.discussions.get(conversationId);
+    return {
+      visibility: "open",
+      request: discussion?.request ?? idleRequest(),
+      directQuestionDraft: this.draftOf(conversationId),
+      pendingSelection: this.state.focusedConversationId === conversationId
+        ? this.state.pendingSelection
+        : null,
+      saveError: this.state.saveError,
+    };
+  }
+
+  private draftOf(conversationId: string | null): string {
+    if (conversationId === null) return "";
+    return this.state.directQuestionDrafts.get(conversationId) ?? "";
+  }
+
+  /** 指定讨论的只读对话视图（供窗口渲染）。 */
+  conversationOf(conversationId: string): ReadonlyTemporaryConversation | null {
+    const discussion = this.state.discussions.get(conversationId);
+    return readonlyConversationView(discussion?.conversation ?? null);
+  }
+
   get conversation(): ReadonlyTemporaryConversation | null {
-    const active = this.state.activeConversationId;
+    const active = this.state.focusedConversationId;
     const discussion = active === null ? null : this.state.discussions.get(active) ?? null;
     return readonlyConversationView(discussion?.conversation ?? null);
   }
@@ -121,16 +153,27 @@ export class AiPanelState {
 
   /** 当前显示的讨论身份（首轮在途也携带，供单请求协调器按讨论隔离）。 */
   get requestIdentity(): { conversationId: string; turnId?: number } | null {
-    if (this.state.activeConversationId === null) return null;
+    if (this.state.focusedConversationId === null) return null;
     const discussion = this.activeDiscussion();
     const turnId = discussion?.conversation?.pending?.id;
     return turnId === undefined
-      ? { conversationId: this.state.activeConversationId }
-      : { conversationId: this.state.activeConversationId, turnId };
+      ? { conversationId: this.state.focusedConversationId }
+      : { conversationId: this.state.focusedConversationId, turnId };
   }
 
+  /** 当前显示的讨论（即聚焦窗口的讨论）；无窗口时为 null。 */
   get activeConversationId(): string | null {
-    return this.state.activeConversationId;
+    return this.state.focusedConversationId;
+  }
+
+  /** 当前聚焦窗口的讨论身份；无窗口时为 null。 */
+  get focusedConversationId(): string | null {
+    return this.state.focusedConversationId;
+  }
+
+  /** 当前打开的窗口集合（键为讨论 id，一讨论至多一个窗口）。 */
+  get windows(): ReadonlyMap<string, WindowPlacement> {
+    return this.state.windows;
   }
 
   /** 当前作品的讨论集合（轻量视图：身份、标题、时间、终态 + 重开所需完整轮次）。 */
@@ -167,12 +210,12 @@ export class AiPanelState {
   }
 
   private activeDiscussion() {
-    if (this.state.activeConversationId === null) return null;
-    return this.state.discussions.get(this.state.activeConversationId) ?? null;
+    if (this.state.focusedConversationId === null) return null;
+    return this.state.discussions.get(this.state.focusedConversationId) ?? null;
   }
 
   private resolveConversationId(conversationId?: string): string | null {
-    return conversationId ?? this.state.activeConversationId;
+    return conversationId ?? this.state.focusedConversationId;
   }
 
   /** 用户点击“召唤 AI”：展开面板并以本次冻结快照进入预览（旧式预检预览）。 */
@@ -229,9 +272,9 @@ export class AiPanelState {
     if (next === this.state) return null;
     this.state = next;
     this.emit();
-    const discussion = this.state.activeConversationId === null
+    const discussion = this.state.focusedConversationId === null
       ? null
-      : this.state.discussions.get(this.state.activeConversationId) ?? null;
+      : this.state.discussions.get(this.state.focusedConversationId) ?? null;
     return discussion?.conversation?.pending?.id ?? null;
   }
 
@@ -319,17 +362,22 @@ export class AiPanelState {
     });
   }
 
-  /** 返回重新发起请求所用的快照（仅 error / configuration_required 时有效）。 */
+  /** 返回重新发起请求所用的快照（error / configuration_required / stopped 首轮时有效）。 */
   retrySnapshot(): SelectionSnapshot | null {
     const request = activeRequestOf(this.state);
     if (request.kind === "error") return request.snapshot;
     if (request.kind === "configuration_required") return request.snapshot;
+    if (request.kind === "stopped" && request.phase === "first") return request.snapshot;
     return null;
   }
 
   retryFirstRequest(): FirstRoundMaterial | null {
     const request = activeRequestOf(this.state);
-    if (request.kind !== "error" && request.kind !== "configuration_required") {
+    if (
+      request.kind !== "error" &&
+      request.kind !== "configuration_required" &&
+      !(request.kind === "stopped" && request.phase === "first")
+    ) {
       return null;
     }
     const discussion = this.activeDiscussion();
@@ -368,9 +416,9 @@ export class AiPanelState {
     this.dispatch({ type: "clear_save_error" });
   }
 
-  /** 更新直接提问的未发送草稿。 */
-  updateDirectQuestionDraft(question: string): void {
-    this.dispatch({ type: "update_direct_question_draft", question });
+  /** 更新指定讨论的直接提问未发送草稿（逐窗口归属）。 */
+  updateDirectQuestionDraft(conversationId: string, question: string): void {
+    this.dispatch({ type: "update_direct_question_draft", conversationId, question });
   }
 
   /** 替换或清除当前待附带的选区重点材料。 */
@@ -419,23 +467,88 @@ export class AiPanelState {
     return this.dispatch({ type: "require_direct_question_configuration", conversationId: id });
   }
 
-  /** 推进一条流式增量文本（仅生成中的请求接受；其余状态原样返回 false）。 */
-  appendStreamText(text: string): boolean {
-    return this.dispatch({ type: "append_stream_text", text });
+  /** 推进一条流式增量文本到指定讨论（仅生成中的请求接受；其余状态原样返回 false）。 */
+  appendStreamText(conversationId: string, text: string): boolean {
+    return this.dispatch({ type: "append_stream_text", conversationId, text });
+  }
+
+  /** 停止指定讨论的当前生成：进入「已停止」终态，保留已流式内容，不产生成功轮次。 */
+  stopRequest(conversationId: string): boolean {
+    return this.dispatch({ type: "stop_request", conversationId });
+  }
+
+  /** 聚焦指定讨论的窗口（仅已打开窗口有效；非法迁移原样返回 false）。 */
+  focusWindow(conversationId: string): boolean {
+    return this.dispatch({ type: "focus_window", conversationId });
+  }
+
+  /** 关闭指定讨论的窗口（只结束显示，不删除讨论与档案）。 */
+  closeWindow(conversationId: string): boolean {
+    return this.dispatch({ type: "close_window", conversationId });
+  }
+
+  /** 设置指定窗口的停靠/浮动归属（拖动 / 双击标题栏切换）。 */
+  setWindowPlacement(conversationId: string, placement: WindowPlacement): boolean {
+    return this.dispatch({ type: "set_window_placement", conversationId, placement });
+  }
+
+  /** 恢复默认布局：所有窗口回到停靠（几何由窗口层重置，不进状态）。 */
+  resetLayout(): boolean {
+    return this.dispatch({ type: "reset_layout" });
+  }
+
+  /** 重命名讨论（自定义标题持久化到档案）。 */
+  renameDiscussion(conversationId: string, title: string): boolean {
+    return this.dispatch({ type: "rename_discussion", conversationId, title });
+  }
+
+  /** 置顶 / 取消置顶讨论（持久化到档案）。 */
+  setDiscussionPinned(conversationId: string, pinned: boolean): boolean {
+    return this.dispatch({ type: "set_discussion_pinned", conversationId, pinned });
+  }
+
+  /** 直接提问首轮「已停止」后重试：以原问题与选区重新进入生成。 */
+  retryDirectQuestion(conversationId: string): boolean {
+    return this.dispatch({ type: "retry_direct_question", conversationId });
+  }
+
+  /** 追问「已停止」后重试：以同一问题重新进入生成（聚焦讨论）。 */
+  retryStoppedFollowUp(): boolean {
+    return this.dispatch({ type: "retry_stopped_follow_up" });
   }
 
   /** 驱动进程丢失后进入对话恢复态（仅当存在对话时接受）。 */
-  beginRecovery(): boolean {
-    return this.dispatch({ type: "begin_recovery" });
+  beginRecovery(conversationId: string): boolean {
+    return this.dispatch({ type: "begin_recovery", conversationId });
   }
 
   /** 对话重放完成：回到对话成功显示。 */
-  completeRecovery(): boolean {
-    return this.dispatch({ type: "complete_recovery" });
+  completeRecovery(conversationId: string): boolean {
+    return this.dispatch({ type: "complete_recovery", conversationId });
   }
 
   /** 对话重放失败：进入错误态并引导新建对话。 */
-  failRecovery(): boolean {
-    return this.dispatch({ type: "fail_recovery" });
+  failRecovery(conversationId: string): boolean {
+    return this.dispatch({ type: "fail_recovery", conversationId });
+  }
+
+  /** 把指定讨论的请求标记为排队中（达到全局并发上限时）。 */
+  queueRequest(conversationId: string): boolean {
+    return this.dispatch({ type: "queue_request", conversationId });
+  }
+
+  /** 把指定讨论的排队请求恢复为生成中（名额释放后按序开始）。 */
+  startQueuedRequest(conversationId: string): boolean {
+    return this.dispatch({ type: "start_queued_request", conversationId });
+  }
+
+  /** 指定讨论是否处于首轮进行中（首轮 / 直接提问 loading；供预检过期隔离）。 */
+  isFirstRoundLoading(conversationId: string): boolean {
+    const discussion = this.state.discussions.get(conversationId);
+    if (!discussion) return false;
+    const request = discussion.request;
+    if (request.kind === "direct_question") return request.status === "loading";
+    if (request.kind === "loading") return request.phase === "first";
+    return false;
   }
 }

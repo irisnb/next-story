@@ -50,6 +50,8 @@ pub struct FirstRoundMaterial {
 }
 
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
+/// 多窗口快车道（任务 9.1）新增两个可选字段：自定义标题 `title` 与置顶标记 `pinned`，
+/// 均带 `#[serde(default)]`，缺失时按「未重命名、未置顶」处理，不视为损坏、不提升版本号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationRecord {
     pub version: u32,
@@ -60,6 +62,12 @@ pub struct ConversationRecord {
     pub focus_document_title: Option<String>,
     pub first_round_material: FirstRoundMaterial,
     pub turns: Vec<ConversationTurn>,
+    /// 可选自定义标题：`None` 表示未重命名，列表回退到由首轮材料派生的标题。
+    #[serde(default)]
+    pub title: Option<String>,
+    /// 置顶标记：缺失或 `false` 表示未置顶。
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// 会话列表条目：除列表展示所需的身份 / 标题 / 时间 / 终态外，还携带重开所需的
@@ -68,6 +76,7 @@ pub struct ConversationRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationSummary {
     pub conversation_id: String,
+    /// 列表显示标题：用户自定义标题优先，否则回退到派生标题。
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -76,6 +85,10 @@ pub struct ConversationSummary {
     pub focus_document_title: Option<String>,
     pub first_round_material: FirstRoundMaterial,
     pub turns: Vec<ConversationTurn>,
+    /// 用户自定义标题原值：`None` 表示未重命名，前端据此区分「已重命名」与「派生标题」。
+    pub custom_title: Option<String>,
+    /// 置顶标记：`false` 表示未置顶。
+    pub pinned: bool,
 }
 
 /// 会话列表结果：正常条目 + 被跳过（损坏/超限等）的可见提示。
@@ -309,6 +322,16 @@ pub fn delete_conversation(root: &Path, id: &str) -> Result<(), ConversationStor
     }
 }
 
+/// 撤销删除：清除该讨论的删除墓碑，使随后的 save 可再次写入档案。
+/// 仅用于删除撤销路径；幂等（不存在墓碑时成功）。
+pub fn restore_conversation(root: &Path, id: &str) -> Result<(), ConversationStoreError> {
+    validate_conversation_id(id)?;
+    let mut deleted = CONVERSATION_STORE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let file = conversation_file(root, id);
+    deleted.remove(&file);
+    Ok(())
+}
+
 /// 读取一份完整讨论档案（供重开查看与测试复用；当前不作为前端命令暴露）。
 pub fn read_conversation(root: &Path, id: &str) -> Result<ConversationRecord, ConversationStoreError> {
     validate_conversation_id(id)?;
@@ -338,7 +361,7 @@ pub fn read_conversation(root: &Path, id: &str) -> Result<ConversationRecord, Co
 fn summarize(record: &ConversationRecord) -> ConversationSummary {
     ConversationSummary {
         conversation_id: record.conversation_id.clone(),
-        title: derive_title(&record.first_round_material, &record.created_at),
+        title: effective_title(record),
         created_at: record.created_at.clone(),
         updated_at: record.updated_at.clone(),
         last_status: record.turns.last().map(|t| t.status.clone()),
@@ -346,6 +369,16 @@ fn summarize(record: &ConversationRecord) -> ConversationSummary {
         focus_document_title: record.focus_document_title.clone(),
         first_round_material: record.first_round_material.clone(),
         turns: record.turns.clone(),
+        custom_title: record.title.clone(),
+        pinned: record.pinned,
+    }
+}
+
+/// 列表显示标题：用户自定义标题优先（空白视为未重命名），否则回退到派生标题。
+fn effective_title(record: &ConversationRecord) -> String {
+    match record.title.as_deref() {
+        Some(t) if !t.trim().is_empty() => t.to_string(),
+        _ => derive_title(&record.first_round_material, &record.created_at),
     }
 }
 
@@ -415,6 +448,8 @@ mod tests {
                 selection_text: selection.map(String::from),
             },
             turns,
+            title: None,
+            pinned: false,
         }
     }
 
@@ -448,6 +483,92 @@ mod tests {
         // 档案落在作品系统目录的 conversations 子目录下，与正文分开。
         let path = conversations_dir(temp.path()).join("conv-1.json");
         assert!(path.is_file(), "档案文件应落在 {path:?}");
+    }
+
+    // ========== 自定义标题与置顶标记（任务 9.1） ==========
+
+    #[test]
+    fn save_then_read_round_trips_custom_title_and_pinned() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
+        rec.title = Some("第二幕转折".to_string());
+        rec.pinned = true;
+
+        save_conversation(temp.path(), &rec).expect("save");
+        let loaded = read_conversation(temp.path(), "conv-1").expect("read");
+
+        assert_eq!(loaded.title.as_deref(), Some("第二幕转折"), "自定义标题必须原样保存");
+        assert!(loaded.pinned, "置顶标记必须保存为 true");
+    }
+
+    #[test]
+    fn list_summary_returns_custom_title_and_pinned() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
+        rec.title = Some("第二幕转折".to_string());
+        rec.pinned = true;
+        save_conversation(temp.path(), &rec).expect("save");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.conversations.len(), 1);
+        let summary = &result.conversations[0];
+
+        // 列表标题取自定义标题，且自定义标题原值 / 置顶标记一并返回供前端使用。
+        assert_eq!(summary.title, "第二幕转折");
+        assert_eq!(summary.custom_title.as_deref(), Some("第二幕转折"));
+        assert!(summary.pinned);
+    }
+
+    #[test]
+    fn list_falls_back_to_derived_title_when_custom_title_is_blank() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
+        rec.title = Some("   ".to_string());
+        save_conversation(temp.path(), &rec).expect("save");
+
+        let result = list_conversations(temp.path()).expect("list");
+        // 空白自定义标题按未重命名处理，回退到派生标题。
+        assert_eq!(result.conversations[0].title, "这个角色为什么犹豫？");
+    }
+
+    #[test]
+    fn old_archive_without_extended_fields_reads_as_defaults() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        // 手工构造一份「旧档案」：只含必填字段，没有 title / pinned。
+        let rec = record(
+            "conv-old",
+            Some("旧档案问题"),
+            None,
+            vec![turn("assistant", "旧回答", "success")],
+        );
+        let mut value = serde_json::to_value(&rec).expect("to value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("title");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("pinned");
+        let dir = conversations_dir(temp.path());
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            dir.join("conv-old.json"),
+            serde_json::to_string_pretty(&value).expect("serialize"),
+        )
+        .expect("write old archive");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(
+            result.skipped.is_empty(),
+            "缺扩展字段的旧档案不得视为损坏或跳过"
+        );
+        assert_eq!(result.conversations.len(), 1);
+        let summary = &result.conversations[0];
+        assert_eq!(summary.custom_title, None, "缺 title 按未重命名处理");
+        assert!(!summary.pinned, "缺 pinned 按未置顶处理");
+        assert_eq!(summary.title, "旧档案问题", "缺自定义标题回退到派生标题");
     }
 
     // ========== 原子写不半写 ==========

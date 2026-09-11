@@ -297,3 +297,48 @@ test("direct question request shares the single-flight lock with a same-discussi
   await first;
   assert.equal(coordinator.busy, false);
 });
+
+test("cancel releases the discussion lock and drops its late result", async () => {
+  let resolve!: (value: GenerateAiResult) => void;
+  const events: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async () => ({ ok: true, content: "legacy" }),
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: () => events.push("success") },
+    () => 1,
+    async () => new Promise<GenerateAiResult>((r) => { resolve = r; }),
+  );
+
+  const pending = coordinator.requestStructured({ kind: "summon", selected_text: "锚点" }, { conversationId: "1" });
+  assert.equal(coordinator.isConversationBusy("1"), true);
+  coordinator.cancel("1");
+  assert.equal(coordinator.isConversationBusy("1"), false, "取消后释放单请求锁");
+
+  // 迟到结果按取消代次作废，不污染后续请求。
+  resolve({ ok: true, content: "迟到" });
+  await pending;
+  assert.deepEqual(events, []);
+});
+
+test("cancel only affects the target discussion and does not disturb others", async () => {
+  let resolveA!: (value: GenerateAiResult) => void;
+  let resolveB!: (value: GenerateAiResult) => void;
+  const events: string[] = [];
+  const coordinator = new AiRequestCoordinator(
+    async () => ({ ok: true, content: "legacy" }),
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, id) => events.push(`ok:${id.conversationId}`) },
+    () => 1,
+    async (conversationId) => new Promise<GenerateAiResult>((r) => {
+      if (conversationId === "a") resolveA = r;
+      else resolveB = r;
+    }),
+  );
+
+  const first = coordinator.requestStructured({ kind: "summon", selected_text: "A" }, { conversationId: "a" });
+  const second = coordinator.requestStructured({ kind: "summon", selected_text: "B" }, { conversationId: "b" });
+  coordinator.cancel("a");
+  resolveA({ ok: true, content: "A" });
+  resolveB({ ok: true, content: "B" });
+  await first;
+  await second;
+  assert.deepEqual(events, ["ok:b"], "只丢弃被取消的讨论 A 的结果");
+});

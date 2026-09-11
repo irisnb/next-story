@@ -1,9 +1,5 @@
 import type { AppDom } from "./dom.ts";
-import {
-  createPreflightGate,
-  startSummon,
-  type FirstRequestPreflightState,
-} from "./ai-feature-first-round.ts";
+import { startSummon } from "./ai-feature-first-round.ts";
 import {
   editAndResendFollowUpAcceptedRequest,
   followUpAcceptedRequest,
@@ -17,7 +13,9 @@ import {
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
-import { setupAiPanel, type AiPanelActions } from "./ai-panel.ts";
+import { AiRequestScheduler, DEFAULT_MAX_CONCURRENT } from "./ai-request-scheduler.ts";
+import { waitTiming } from "./ai-timing.ts";
+import { setupAiDock, type AiDockActions } from "./ai-dock.ts";
 import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
 import { setupSelectionEntry, type SelectionEntryEditor } from "./selection-entry.ts";
 import {
@@ -30,8 +28,10 @@ import { loadLlmConfig } from "./project-api.ts";
 import {
   conversationDelete,
   conversationList,
+  conversationRestore,
   conversationSave,
   generateConversationId,
+  type ConversationRecord,
   type ConversationSummary,
 } from "./conversation-archive.ts";
 import type {
@@ -73,9 +73,7 @@ export function openAiConfiguration(
   openConfigPage();
 }
 
-/**
- * 把当前讨论的显示历史投影为会话重放轮次（崩溃恢复用）。
- */
+/** 把讨论的显示历史投影为会话重放轮次（崩溃恢复用）。 */
 export function historyTurnsOf(
   conversation: ReadonlyTemporaryConversation,
 ): AiReplayTurn[] {
@@ -105,43 +103,51 @@ export function originOf(conversation: ReadonlyTemporaryConversation): AiReplayO
   return conversation.initialUserMaterial.kind === "direct_question" ? "direct_question" : "summon";
 }
 
+/** 把会话列表摘要还原为档案保存契约（删除撤销用内存副本重新写回）。 */
+export function summaryToRecord(summary: ConversationSummary): ConversationRecord {
+  return {
+    version: 1,
+    conversation_id: summary.conversation_id,
+    created_at: summary.created_at,
+    updated_at: summary.updated_at,
+    focus_document_id: summary.focus_document_id,
+    focus_document_title: summary.focus_document_title,
+    first_round_material: summary.first_round_material,
+    turns: summary.turns,
+    ...(summary.custom_title?.trim() ? { title: summary.custom_title } : {}),
+    ...(summary.pinned ? { pinned: true } : {}),
+  };
+}
+
 export interface AiFeatureHooks {
   getCurrentDocumentId: () => string | null;
   getCurrentEditor: () => SelectionEntryEditor | null;
   openConfigPage: () => void;
-  /** 当前作品路径（讨论档案归属）；省略时讨论不落盘。 */
   getCurrentProjectPath?: () => string | null;
   getCurrentDocumentTitle?: () => string | null;
 }
 
 export interface AiFeatureController {
-  /** 新作品进入编辑器：结束全部会话、清空面板并加载新作品讨论列表。 */
   beginProject(): void;
-  /** 作品卸载（返回欢迎页）：使在途请求失效、结束会话并清空面板。 */
   endProject(): void;
   submitFollowUp(question: string): Promise<boolean>;
   retryFollowUp(): Promise<boolean>;
   editFollowUp(question: string): Promise<boolean>;
-  /** 面板状态（供会话列表 UI 订阅与读取）。 */
   readonly state: AiPanelState;
-  /** 当前作品的讨论列表。 */
   getConversations(): ConversationSummary[];
-  /** 从列表重开讨论。 */
   openDiscussion(summary: ConversationSummary): void;
-  /** 删除讨论（独立动作，结束对应会话并移除档案）。 */
   deleteDiscussion(conversationId: string): Promise<void>;
 }
 
 export interface AiFeatureDependencies {
   loadConfig?: typeof loadLlmConfig;
-  /** 常驻会话传输层；默认用应用内共享单例，测试可注入假实现。 */
   transport?: AiSessionTransport;
-  /** 讨论档案命令；默认用真实 Tauri 命令，测试可注入假实现。 */
   conversationList?: typeof conversationList;
   conversationSave?: typeof conversationSave;
   conversationDelete?: typeof conversationDelete;
-  /** 全局唯一 conversation_id 生成器；默认时间戳 + 随机段。 */
+  conversationRestore?: typeof conversationRestore;
   newConversationId?: () => string;
+  maxConcurrent?: number;
 }
 
 type StructuredRequestSender = (
@@ -149,7 +155,7 @@ type StructuredRequestSender = (
   identity: RequestIdentity,
 ) => Promise<void> | null;
 
-interface AiPanelWiring {
+interface AiFeatureWiring {
   readonly state: AiPanelState;
   readonly openConfigPage: AiFeatureHooks["openConfigPage"];
   readonly requestStructured: StructuredRequestSender;
@@ -158,9 +164,16 @@ interface AiPanelWiring {
   readonly persistCurrentDiscussion: () => void;
   readonly openDiscussion: (summary: ConversationSummary) => void;
   readonly deleteDiscussion: (conversationId: string) => Promise<void>;
+  readonly stopGeneration: (conversationId: string) => void;
+  readonly closeWindow: (conversationId: string) => void;
+  readonly retryFirstRound: () => void;
+  readonly renameDiscussion: (conversationId: string, title: string) => Promise<boolean>;
+  readonly togglePin: (conversationId: string) => Promise<boolean>;
+  readonly undoDelete: () => void;
+  readonly getUndoNotice: () => { title: string } | null;
 }
 
-function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
+function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
   const {
     state,
     openConfigPage,
@@ -170,14 +183,17 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
     persistCurrentDiscussion,
     openDiscussion,
     deleteDiscussion,
+    stopGeneration,
+    closeWindow,
+    retryFirstRound,
+    renameDiscussion,
+    togglePin,
+    undoDelete,
+    getUndoNotice,
   } = wiring;
 
   return {
-    // 常驻会话首轮失败后不通过旧的一次性请求协调器重试。
-    onRetry: () => {
-      retryAcceptedRequest(state, () => null);
-    },
-    onGoToConfig: () => openAiConfiguration(openConfigPage),
+    openConfigPage,
     onSubmitFollowUp: async (question) => {
       const accepted = followUpAcceptedRequest(state, question, requestStructured);
       if (accepted) persistCurrentDiscussion();
@@ -193,28 +209,47 @@ function buildAiPanelActions(wiring: AiPanelWiring): AiPanelActions {
       if (accepted) persistCurrentDiscussion();
       return accepted;
     },
+    onRetryStoppedFollowUp: async () => {
+      const identity = state.conversationIdentity;
+      const payload = state.followUpRequest();
+      if (!identity || identity.turnId === undefined || !payload) return false;
+      const accepted = requestStructured(payload, {
+        conversationId: identity.conversationId,
+        turnId: identity.turnId,
+      });
+      if (accepted === null) return false;
+      const ok = state.retryStoppedFollowUp();
+      if (ok) persistCurrentDiscussion();
+      return ok;
+    },
+    onRetry: retryFirstRound,
     onSubmitDirectQuestion: async (question) => {
       const accepted = submitDirectQuestion(question);
       if (accepted) persistCurrentDiscussion();
       return accepted;
     },
-    // 新建对话：开启新讨论并保留旧讨论；旧讨论会话不被结束。
+    onRemoveDirectQuestionSelection: () => state.removePendingSelection(),
+    onDirectQuestionFocus: () => syncPendingSelection(),
+    onStop: stopGeneration,
+    onClose: closeWindow,
+    onDelete: deleteDiscussion,
+    onOpenDiscussion: openDiscussion,
     onNewConversation: () => {
       state.newConversation();
     },
-    onOpenDiscussion: openDiscussion,
-    onDeleteDiscussion: deleteDiscussion,
-    onRemoveDirectQuestionSelection: () => state.removePendingSelection(),
-    onDirectQuestionFocus: () => syncPendingSelection(),
-    onOpenPanel: () => syncPendingSelection(),
+    onRename: renameDiscussion,
+    onTogglePin: togglePin,
+    onUndoDelete: undoDelete,
+    getUndoNotice,
   };
 }
 
 /**
- * 把常驻会话传输层、按讨论隔离的单请求协调器、生成桥接、讨论档案与面板状态接入编辑器。
+ * 把常驻会话传输层、按讨论隔离的单请求协调器、全局调度器、生成桥接、讨论档案与
+ * 窗口管理器接入编辑器。
  *
  * 模块边界（零写回）：本模块不持有 `saveProject`、编辑器 DOM 写入函数或任何“应用到正文”
- * 回调。生成只提交问题与选区原文，结果只显示在独立面板里；讨论档案由受控命令写入作品文件夹。
+ * 回调。生成只提交问题与选区原文，结果只显示在独立窗口里；讨论档案由受控命令写入作品文件夹。
  */
 export function setupAiFeature(
   dom: AppDom,
@@ -231,7 +266,7 @@ export function setupAiFeature(
   const listConversations = dependencies.conversationList ?? conversationList;
   const saveConversation = dependencies.conversationSave ?? conversationSave;
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;
-  const firstRequestPreflight: FirstRequestPreflightState = createPreflightGate();
+  const restoreConversation = dependencies.conversationRestore ?? conversationRestore;
 
   /** 保存指定讨论：接受即存（pending），终态原子更新；失败对用户可见。 */
   function persistDiscussion(conversationId: string | null): void {
@@ -256,15 +291,47 @@ export function setupAiFeature(
     persistDiscussion(state.activeConversationId);
   }
 
-  /** 从会话列表重开讨论：以已保存轮次重建显示数据并设为当前讨论。 */
   function openDiscussion(summary: ConversationSummary): void {
     const conversation = conversationFromRecord(summary);
     state.openDiscussion(conversation, summary.focus_document_id, summary.focus_document_title);
   }
 
-  /** 删除讨论（独立动作）：结束其会话、移除内存记录与档案，失败对用户可见。 */
+  // 删除撤销：删除立即生效，前端保留内存副本，提示期内可撤销（约 6 秒）。
+  const UNDO_TIMEOUT_MS = 6000;
+  let pendingUndo: { conversationId: string; summary: ConversationSummary; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  function clearUndo(): void {
+    if (pendingUndo) {
+      clearTimeout(pendingUndo.timer);
+      pendingUndo = null;
+    }
+  }
+
+  function getUndoNotice(): { title: string } | null {
+    return pendingUndo ? { title: pendingUndo.summary.title } : null;
+  }
+
+  async function undoDelete(): Promise<void> {
+    if (!pendingUndo) return;
+    const { conversationId, summary } = pendingUndo;
+    clearUndo();
+    const projectPath = getCurrentProjectPath();
+    if (projectPath === null) return;
+    try {
+      await restoreConversation(projectPath, conversationId);
+      await saveConversation(projectPath, summaryToRecord(summary));
+    } catch {
+      state.setSaveError("撤销删除失败");
+      return;
+    }
+    loadDiscussions();
+  }
+
   async function deleteDiscussion(conversationId: string): Promise<void> {
+    const summary = state.conversations.find((c) => c.conversation_id === conversationId);
+    transport.cancelMessage(conversationId);
     transport.endSession(conversationId);
+    scheduler.cancelQueued(conversationId);
     state.deleteDiscussion(conversationId);
     const projectPath = getCurrentProjectPath();
     if (projectPath === null) return;
@@ -272,10 +339,38 @@ export function setupAiFeature(
       await deleteConversation(projectPath, conversationId);
     } catch {
       state.setSaveError("删除讨论失败");
+      return;
+    }
+    if (summary) {
+      clearUndo();
+      const timer = setTimeout(() => { pendingUndo = null; }, UNDO_TIMEOUT_MS);
+      timer.unref?.();
+      pendingUndo = {
+        conversationId,
+        summary,
+        timer,
+      };
     }
   }
 
-  /** 切换作品后加载新作品的讨论列表。 */
+  /** 重命名讨论：更新内存标题并持久化到档案。 */
+  async function renameDiscussion(conversationId: string, title: string): Promise<boolean> {
+    if (!state.renameDiscussion(conversationId, title)) return false;
+    persistDiscussion(conversationId);
+    return true;
+  }
+
+  /** 置顶 / 取消置顶讨论：更新内存标记并持久化。 */
+  async function togglePin(conversationId: string): Promise<boolean> {
+    const discussion = state.getDiscussion(conversationId);
+    if (!discussion?.conversation) return false;
+    if (!state.setDiscussionPinned(conversationId, !(discussion.conversation.pinned ?? false))) {
+      return false;
+    }
+    persistDiscussion(conversationId);
+    return true;
+  }
+
   function loadDiscussions(): void {
     const projectPath = getCurrentProjectPath();
     if (projectPath === null) return;
@@ -302,18 +397,22 @@ export function setupAiFeature(
       }),
     {
       onSuccess: (snapshot: SelectionSnapshot, content: string, conversationId: string) => {
+        waitTiming.complete(conversationId);
         state.succeed(snapshot, content, conversationId);
         persistDiscussion(conversationId);
       },
       onError: (snapshot: SelectionSnapshot, error, conversationId: string) => {
+        waitTiming.complete(conversationId);
         applyGenerateError(state, snapshot, error, conversationId);
         persistDiscussion(conversationId);
       },
       onStructuredSuccess: (content, identity) => {
+        waitTiming.complete(identity.conversationId);
         state.succeedFollowUp(identity.turnId ?? -1, content, identity.conversationId);
         persistDiscussion(identity.conversationId);
       },
       onStructuredError: (error, identity) => {
+        waitTiming.complete(identity.conversationId);
         if (error.code === "configuration_required") {
           state.requireFollowUpConfiguration(identity.turnId ?? -1, identity.conversationId);
         } else {
@@ -322,10 +421,12 @@ export function setupAiFeature(
         persistDiscussion(identity.conversationId);
       },
       onDirectQuestionSuccess: (content, conversationId) => {
+        waitTiming.complete(conversationId);
         state.succeedDirectQuestion(content, conversationId);
         persistDiscussion(conversationId);
       },
       onDirectQuestionError: (error, conversationId) => {
+        waitTiming.complete(conversationId);
         if (error.code === "configuration_required") {
           state.requireDirectQuestionConfiguration(conversationId);
         } else {
@@ -338,10 +439,62 @@ export function setupAiFeature(
     (conversationId, request) => transport.sendViaResidentSession(conversationId, request),
     () => state.requestIdentity,
   );
-  const requestStructured: StructuredRequestSender = (request, identity) =>
-    coordinator.requestStructured(request, identity);
-  const requestDirectQuestion = (request: GenerateAiRequest) =>
-    coordinator.requestDirectQuestion(request);
+
+  // 全局调度器：名额释放时把排队请求恢复为生成中。
+  const scheduler = new AiRequestScheduler(
+    dependencies.maxConcurrent ?? DEFAULT_MAX_CONCURRENT,
+    (conversationId) => {
+      state.startQueuedRequest(conversationId);
+      waitTiming.started(conversationId);
+    },
+  );
+
+  /** 记录提交/排队/开始时间，并返回调度结果。 */
+  function scheduleTracked(
+    conversationId: string,
+    kind: string,
+    run: () => Promise<void> | null,
+  ): "started" | "queued" | "busy" {
+    waitTiming.submit(conversationId, kind);
+    const result = scheduler.submit({ conversationId, run });
+    if (result === "started") waitTiming.started(conversationId);
+    else if (result === "queued") waitTiming.queued(conversationId);
+    return result;
+  }
+
+  /** 经调度器发送结构化请求（追问 / 重试 / 编辑重发）。 */
+  const requestStructured: StructuredRequestSender = (request, identity) => {
+    const result = scheduleTracked(identity.conversationId, request.kind, () =>
+      coordinator.requestStructured(request, identity),
+    );
+    if (result === "busy") return null;
+    if (result === "queued") state.queueRequest(identity.conversationId);
+    return Promise.resolve();
+  };
+
+  /** 经调度器发送召唤首轮（首轮始终归属聚焦讨论）。 */
+  const requestSummon = (
+    conversationId: string,
+    snapshot: SelectionSnapshot,
+    firstRequest?: Extract<GenerateAiRequest, { kind: "summon" }> | Extract<GenerateAiRequest, { kind: "direct_question" }>,
+  ): Promise<void> | null => {
+    const result = scheduleTracked(conversationId, "summon", () =>
+      coordinator.requestFor(conversationId, snapshot, firstRequest),
+    );
+    if (result === "busy") return null;
+    if (result === "queued") state.queueRequest(conversationId);
+    return Promise.resolve();
+  };
+
+  /** 经调度器发送直接提问（首轮 / 重试）。 */
+  const requestDirectQuestion = (conversationId: string, request: GenerateAiRequest): Promise<void> | null => {
+    const result = scheduleTracked(conversationId, request.kind, () =>
+      coordinator.requestDirectQuestionFor(conversationId, request),
+    );
+    if (result === "busy") return null;
+    if (result === "queued") state.queueRequest(conversationId);
+    return Promise.resolve();
+  };
 
   const selectionEntry = setupSelectionEntry({
     dom,
@@ -353,9 +506,12 @@ export function setupAiFeature(
         state,
         snapshot,
         loadConfig,
-        request: (request) => coordinator.request(snapshot, request),
+        request: (request) => {
+          const conversationId = state.activeConversationId;
+          if (conversationId === null) return Promise.resolve();
+          return requestSummon(conversationId, snapshot, request);
+        },
         getProjectToken: () => projectToken,
-        preflight: firstRequestPreflight,
         focusDocumentId: snapshot.documentId,
         focusDocumentTitle: getCurrentDocumentTitle(),
       });
@@ -377,12 +533,54 @@ export function setupAiFeature(
       question,
       selection: state.view.pendingSelection,
       loadConfig,
-      request: requestDirectQuestion,
+      request: (request) => {
+        const conversationId = state.activeConversationId;
+        if (conversationId === null) return Promise.resolve();
+        return requestDirectQuestion(conversationId, request);
+      },
       getProjectToken: () => projectToken,
-      preflight: firstRequestPreflight,
       focusDocumentId: hooks.getCurrentDocumentId(),
       focusDocumentTitle: getCurrentDocumentTitle(),
     });
+  }
+
+  function stopGeneration(conversationId: string): void {
+    scheduler.cancelQueued(conversationId);
+    transport.cancelMessage(conversationId);
+    coordinator.cancel(conversationId);
+    waitTiming.complete(conversationId);
+    state.stopRequest(conversationId);
+    persistDiscussion(conversationId);
+  }
+
+  function closeWindow(conversationId: string): void {
+    scheduler.cancelQueued(conversationId);
+    transport.cancelMessage(conversationId);
+    coordinator.cancel(conversationId);
+    state.stopRequest(conversationId);
+    state.closeWindow(conversationId);
+  }
+
+  function retryFirstRound(): void {
+    const conversationId = state.activeConversationId;
+    if (conversationId === null) return;
+    const request = state.view.request;
+    if (request.kind === "direct_question") {
+      if (!state.retryDirectQuestion(conversationId)) return;
+      const payload: GenerateAiRequest = {
+        kind: "direct_question",
+        question: request.question,
+        ...(request.selection ? { selected_text: request.selection.selectedText } : {}),
+      };
+      const accepted = requestDirectQuestion(conversationId, payload);
+      if (accepted === null) {
+        state.failDirectQuestion({ code: "network", message: "已有 AI 请求正在进行，本次请求没有发出。" }, conversationId);
+      }
+      return;
+    }
+    retryAcceptedRequest(state, (snapshot, firstRequest) =>
+      requestSummon(conversationId, snapshot, firstRequest),
+    );
   }
 
   // 面板打开期间，编辑器选区变化会同步为待附带的重点材料（替换旧选区或清除）。
@@ -393,28 +591,47 @@ export function setupAiFeature(
     });
   }
 
-  // 常驻会话事件路由：流式增量推进面板状态；驱动丢失进入恢复流程。
+  // 常驻会话事件路由：流式增量按讨论身份推进对应讨论状态；驱动丢失进入恢复流程。
   transport.installSessionEventRouting();
-  transport.onStreamText((text) => {
-    state.appendStreamText(text);
+  transport.onStreamText(({ conversationId, text }) => {
+    waitTiming.firstResponse(conversationId);
+    state.appendStreamText(conversationId, text);
   });
   transport.onDriverLost(() => {
-    const conversation = state.conversation;
-    if (conversation === null) {
+    // 驱动进程丢失：所有会话失效，在途请求作废；对每个打开窗口的讨论执行重放恢复。
+    coordinator.releaseStaleRequestOwnership();
+    const recoverable = [...state.windows.keys()].filter((id) => {
+      const discussion = state.getDiscussion(id);
+      return discussion !== null && discussion.conversation !== null;
+    });
+    if (recoverable.length === 0) {
       transport.endAllSessions();
       return;
     }
-    if (!state.beginRecovery()) return;
-    transport.replaySession(conversation.id, historyTurnsOf(conversation), originOf(conversation))
-      .then(() => {
-        state.completeRecovery();
-      })
-      .catch(() => {
-        state.failRecovery();
-      });
+    for (const conversationId of recoverable) {
+      const discussion = state.getDiscussion(conversationId)!;
+      if (!state.beginRecovery(conversationId)) continue;
+      transport.replaySession(
+        conversationId,
+        historyTurnsOf(discussion.conversation!),
+        originOf(discussion.conversation!),
+      )
+        .then(() => {
+          state.completeRecovery(conversationId);
+        })
+        .catch(() => {
+          state.failRecovery(conversationId);
+        });
+    }
   });
 
-  setupAiPanel(dom.aiPanelDom, state, buildAiPanelActions({
+  // 编辑器头「AI 面板」按钮：切换停靠区展开/收起。
+  dom.btnToggleAi.addEventListener("click", () => {
+    if (state.isOpen) state.close();
+    else state.open();
+  });
+
+  setupAiDock(dom.aiDock, state, buildAiDockActions({
     state,
     openConfigPage: hooks.openConfigPage,
     requestStructured,
@@ -423,10 +640,18 @@ export function setupAiFeature(
     persistCurrentDiscussion,
     openDiscussion,
     deleteDiscussion,
+    stopGeneration,
+    closeWindow,
+    retryFirstRound,
+    renameDiscussion,
+    togglePin,
+    undoDelete,
+    getUndoNotice,
   }));
 
   function resetProjectScopedAi(): void {
     projectToken += 1;
+    clearUndo();
     coordinator.releaseStaleRequestOwnership();
     selectionEntry.reset();
     transport.endAllSessions();

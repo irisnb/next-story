@@ -260,6 +260,10 @@ pub async fn ai_start_session_in_dir(
 /// - `SummonFirst`：后端按召唤语义组装系统提示词 + 冻结选区材料，
 ///   不包含用户问题文本（前端传空字符串）。
 /// - `FollowUp`：只发送本次新增的问题，历史由常驻会话维护。
+///
+/// `material` 是命令层经 `authorize_selection` 授权通过的选区材料内容，
+/// 生成层只使用该授权内容，绝不回读前端请求中的原始 `selected_text` 字段；
+/// 无选区（直接提问 / 追问）时为 `None`。
 pub async fn ai_send_message_in_dir(
     base_dir: &Path,
     resource_dir: Option<&Path>,
@@ -267,9 +271,9 @@ pub async fn ai_send_message_in_dir(
     message_id: String,
     kind: AiMessageKind,
     question: String,
-    selected_text: Option<String>,
+    material: Option<String>,
 ) -> GenerateAiResult {
-    let text = match compose_message_text(kind, &question, selected_text.as_deref()) {
+    let text = match compose_message_text(kind, &question, material.as_deref()) {
         Ok(text) => text,
         Err(error) => return GenerateAiResult::failure(error),
     };
@@ -425,16 +429,21 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
         GenerateAiRequest::First {
             selected_text,
             thinking_direction,
+            ..
         } => {
             task.push_str(&compose_system_prompt(PromptEntry::Summon));
             task.push_str("\n\n");
-            task.push_str(&first_user_content(selected_text, thinking_direction.as_deref()));
+            task.push_str(&first_user_content(
+                selected_text,
+                thinking_direction.as_deref(),
+            ));
         }
         GenerateAiRequest::FollowUp {
             selected_text,
             thinking_direction,
             origin,
             messages,
+            ..
         } => {
             let is_direct = matches!(origin, Some(FollowUpOrigin::DirectQuestion));
             if is_direct {
@@ -446,7 +455,10 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
                 }
                 let trimmed_selection = selected_text.trim();
                 if !trimmed_selection.is_empty() {
-                    task.push_str(&format!("\n\n重点参考材料（可选）：\n{}", trimmed_selection));
+                    task.push_str(&format!(
+                        "\n\n重点参考材料（可选）：\n{}",
+                        trimmed_selection
+                    ));
                 }
                 for turn in messages.iter().skip(1) {
                     task.push_str("\n\n");
@@ -462,7 +474,10 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
             } else {
                 task.push_str(&compose_system_prompt(PromptEntry::Summon));
                 task.push_str("\n\n");
-                task.push_str(&first_user_content(selected_text, thinking_direction.as_deref()));
+                task.push_str(&first_user_content(
+                    selected_text,
+                    thinking_direction.as_deref(),
+                ));
                 for turn in messages {
                     task.push_str("\n\n");
                     match turn.role {
@@ -479,10 +494,14 @@ pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, Generate
         GenerateAiRequest::DirectQuestion {
             question,
             selected_text,
+            ..
         } => {
             task.push_str(&compose_system_prompt(PromptEntry::DirectQuestion));
             task.push_str("\n\n");
-            task.push_str(&direct_question_user_content(question, selected_text.as_deref()));
+            task.push_str(&direct_question_user_content(
+                question,
+                selected_text.as_deref(),
+            ));
         }
     }
 
@@ -496,9 +515,7 @@ fn invalid_request() -> GenerateAiError {
     )
 }
 
-pub fn validate_generate_ai_request(
-    request: &GenerateAiRequest,
-) -> Result<(), GenerateAiError> {
+pub fn validate_generate_ai_request(request: &GenerateAiRequest) -> Result<(), GenerateAiError> {
     match request {
         GenerateAiRequest::First { selected_text, .. } => {
             if selected_text.trim().is_empty() {
@@ -569,9 +586,7 @@ fn first_user_content(selected_text: &str, thinking_direction: Option<&str>) -> 
 /// 直接提问的用户内容：必填问题 + 可选选区重点材料，二者明确区分。
 fn direct_question_user_content(question: &str, selected_text: Option<&str>) -> String {
     match selected_text.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(selection) => format!(
-            "用户问题：\n{question}\n\n重点参考材料（可选）：\n{selection}"
-        ),
+        Some(selection) => format!("用户问题：\n{question}\n\n重点参考材料（可选）：\n{selection}"),
         None => format!("用户问题：\n{question}"),
     }
 }
@@ -584,12 +599,15 @@ fn summon_user_content(selected_text: &str) -> String {
 
 /// 按消息种类校验并组装发送文本（纯函数，便于测试）。
 ///
+/// `material` 是已授权通过的选区材料内容（`authorize_selection` 校验后传入），
+/// 生成层只使用它，不回读原始 `selected_text`。
+///
 /// - `First` / `FollowUp`：要求 question 非空（现状不变）。
-/// - `SummonFirst`：要求 `selected_text` 非空，question 可空（前端传空字符串）。
+/// - `SummonFirst`：要求 `material` 非空，question 可空（前端传空字符串）。
 fn compose_message_text(
     kind: AiMessageKind,
     question: &str,
-    selected_text: Option<&str>,
+    material: Option<&str>,
 ) -> Result<String, GenerateAiError> {
     match kind {
         AiMessageKind::First => {
@@ -599,11 +617,11 @@ fn compose_message_text(
             Ok(format!(
                 "{}\n\n{}",
                 compose_system_prompt(PromptEntry::DirectQuestion),
-                direct_question_user_content(question, selected_text)
+                direct_question_user_content(question, material)
             ))
         }
         AiMessageKind::SummonFirst => {
-            let selection = selected_text.unwrap_or("").trim();
+            let selection = material.unwrap_or("").trim();
             if selection.is_empty() {
                 return Err(invalid_request());
             }
@@ -631,6 +649,10 @@ mod tests {
     fn build_task_string_for_first_includes_system_prompt_and_selection() {
         let request = GenerateAiRequest::First {
             selected_text: "林站在天台边。".to_string(),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
             thinking_direction: None,
         };
         let task = build_task_string(&request).expect("build task");
@@ -645,6 +667,10 @@ mod tests {
     fn build_task_string_for_follow_up_preserves_turns_and_roles() {
         let request = GenerateAiRequest::FollowUp {
             selected_text: "林站在天台边。".to_string(),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
             thinking_direction: None,
             origin: None,
             messages: vec![
@@ -668,6 +694,10 @@ mod tests {
     fn build_task_string_rejects_empty_selection() {
         let request = GenerateAiRequest::First {
             selected_text: "   ".to_string(),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
             thinking_direction: None,
         };
         let err = build_task_string(&request).expect_err("empty selection rejected");
@@ -679,6 +709,10 @@ mod tests {
         let request = GenerateAiRequest::DirectQuestion {
             question: "这个角色为什么犹豫？".to_string(),
             selected_text: None,
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
         };
         let task = build_task_string(&request).expect("build task");
         assert!(
@@ -686,7 +720,10 @@ mod tests {
             "必须包含直接提问入口组装的系统提示词"
         );
         assert!(task.contains("用户问题：\n这个角色为什么犹豫？"));
-        assert!(!task.contains("重点参考材料"), "无选区时不得出现重点参考材料");
+        assert!(
+            !task.contains("重点参考材料"),
+            "无选区时不得出现重点参考材料"
+        );
     }
 
     #[test]
@@ -694,6 +731,10 @@ mod tests {
         let request = GenerateAiRequest::DirectQuestion {
             question: "这段里人物在隐瞒什么？".to_string(),
             selected_text: Some("林站在天台边，没有回头。".to_string()),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
         };
         let task = build_task_string(&request).expect("build task");
         assert!(task.contains("用户问题：\n这段里人物在隐瞒什么？"));
@@ -705,6 +746,10 @@ mod tests {
         let request = GenerateAiRequest::DirectQuestion {
             question: "   \n  ".to_string(),
             selected_text: Some("选区".to_string()),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
         };
         let err = build_task_string(&request).expect_err("blank question rejected");
         assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
@@ -834,8 +879,14 @@ mod tests {
             text.contains("当前请求只提供冻结选区原文，没有用户问题"),
             "必须包含召唤入口层立场句"
         );
-        assert!(text.contains("林站在天台边，没有回头。"), "必须包含选区材料");
-        assert!(!text.contains("用户问题："), "召唤首轮不得出现直接提问的问题内容标签");
+        assert!(
+            text.contains("林站在天台边，没有回头。"),
+            "必须包含选区材料"
+        );
+        assert!(
+            !text.contains("用户问题："),
+            "召唤首轮不得出现直接提问的问题内容标签"
+        );
         assert!(
             !text.contains("重点参考材料"),
             "召唤首轮不得出现直接提问的重点材料标签"

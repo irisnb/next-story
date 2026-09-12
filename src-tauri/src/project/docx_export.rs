@@ -18,7 +18,9 @@ use docx::formatting::{CharacterProperty, ParagraphProperty, Underline};
 use docx::styles::{DefaultStyle, Style, StyleType, Styles};
 use docx::Docx;
 
-use super::export::{ExportBlock, ExportListItem, ExportMark, ExportNode, ExportProject, ExportText};
+use super::export::{
+    ExportBlock, ExportListItem, ExportMark, ExportNode, ExportProject, ExportText,
+};
 use super::ProjectError;
 
 /// 把导出序列渲染为 `.docx` 字节。

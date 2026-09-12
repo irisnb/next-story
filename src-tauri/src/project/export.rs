@@ -50,16 +50,28 @@ pub struct ExportListItem {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExportBlock {
     Paragraph(Vec<ExportText>),
-    Heading { level: u8, content: Vec<ExportText> },
+    Heading {
+        level: u8,
+        content: Vec<ExportText>,
+    },
     BulletList(Vec<ExportListItem>),
-    OrderedList { start: u64, items: Vec<ExportListItem> },
+    OrderedList {
+        start: u64,
+        items: Vec<ExportListItem>,
+    },
 }
 
 /// 导出序列中的节点：文件夹只承载层级与顺序，文档承载标题与正文。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExportNode {
-    Folder { name: String, children: Vec<ExportNode> },
-    Document { name: String, blocks: Vec<ExportBlock> },
+    Folder {
+        name: String,
+        children: Vec<ExportNode>,
+    },
+    Document {
+        name: String,
+        blocks: Vec<ExportBlock>,
+    },
 }
 
 /// 整部作品的导出序列：作品标题 + 按内容树顺序排列的节点。
@@ -179,7 +191,9 @@ fn parse_block(node: &Value) -> Option<ExportBlock> {
                 content: parse_inline(node.get("content")),
             })
         }
-        "bulletList" => Some(ExportBlock::BulletList(parse_list_items(node.get("content")))),
+        "bulletList" => Some(ExportBlock::BulletList(parse_list_items(
+            node.get("content"),
+        ))),
         "orderedList" => {
             let start = node
                 .get("attrs")
@@ -304,9 +318,9 @@ pub fn export_project_to_word(
 /// 把 DOCX 字节先写入目标目录下的临时文件，成功后再原子重命名到目标路径；
 /// 任何失败都清理临时文件，避免留下不完整导出文件。
 fn write_docx_atomically(target_path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
-    let parent = target_path.parent().ok_or_else(|| {
-        ProjectError::WriteError("目标文件缺少父目录".to_string())
-    })?;
+    let parent = target_path
+        .parent()
+        .ok_or_else(|| ProjectError::WriteError("目标文件缺少父目录".to_string()))?;
 
     let mut temp_file = tempfile::NamedTempFile::new_in(parent)
         .map_err(|e| ProjectError::WriteError(format!("无法创建临时文件: {e}")))?;

@@ -32,6 +32,8 @@ export interface AiWindowActions {
   onStop: () => void;
   /** 关闭本窗口（只结束显示，不删除讨论）。 */
   onClose: () => void;
+  /** 新建一个干净讨论（受限讨论的继续路径）。 */
+  onNewConversation: () => void;
 }
 
 export interface AiWindowController {
@@ -134,6 +136,7 @@ export function setupAiWindow(
 
   dom.stopBtn.addEventListener("click", () => actions.onStop());
   dom.closeBtn.addEventListener("click", () => actions.onClose());
+  dom.restrictionNewConversation.addEventListener("click", () => actions.onNewConversation());
   dom.retryBtn.addEventListener("click", () => actions.onRetry());
   dom.goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
   dom.followUpRetry.addEventListener("click", () => {
@@ -296,6 +299,13 @@ export function setupAiWindow(
     dom.followUpRetry.onclick = showFollowUpStopped
       ? () => { void actions.onRetryStoppedFollowUp(); }
       : () => { void actions.onRetryFollowUp(); };
+
+    // 受限讨论提示（材料权限已变化）：历史保留只读，引导新建干净讨论。
+    const restrictionNotice = view.restrictionNotice;
+    dom.restrictionNotice.classList.toggle("hidden", restrictionNotice === null);
+    if (restrictionNotice !== null) {
+      dom.restrictionNoticeMessage.textContent = restrictionNotice;
+    }
 
     // 追问输入区。
     const followUpFormView = view.followUpForm;

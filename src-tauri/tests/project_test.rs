@@ -2,8 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use next_story_lib::project::{
-    create_new_project, open_existing_project, read_document, save_document, validate_project_name,
-    CreateProjectParams, ProjectError,
+    create_document, create_new_project, open_content_tree, open_existing_project,
+    read_directory_projection, read_document, read_material, rename_node, save_document,
+    set_document_ai_visibility, validate_project_name, CreateProjectParams, MaterialDenialReason,
+    ProjectError, ReadMaterialRequest,
 };
 use tempfile::TempDir;
 
@@ -399,7 +401,7 @@ fn open_rejects_unknown_future_project_structure_version() {
     create_valid_project_folder(&root, "未来版本");
     write_raw_metadata(
         &root,
-        r#"{"name":"未来版本","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":4}"#,
+        r#"{"name":"未来版本","created_at":"2026-07-25T00:00:00Z","updated_at":"2026-07-25T00:00:00Z","version":5}"#,
     );
 
     reject_with_version_error(open_existing_project(&root));
@@ -863,4 +865,235 @@ fn open_rejects_committing_oversized_transaction() {
     // 打开应返回专用 ContentTooLarge，而不是把作品永久卡死
     let result = open_existing_project(&root);
     assert!(matches!(result, Err(ProjectError::ContentTooLarge(_))));
+}
+
+// ---------------------------------------------------------------------------
+// 7.3 收窄：面向前端的作品错误不得透传可能含敏感路径的底层字符串
+// ---------------------------------------------------------------------------
+
+#[test]
+fn project_error_display_never_leaks_sensitive_paths() {
+    let secret_path = r"D:\Users\李四\Documents\绝密作品";
+    for error in [
+        ProjectError::InaccessibleLocation(secret_path.to_string()),
+        ProjectError::FolderExists(secret_path.to_string()),
+        ProjectError::WriteError(format!("无法删除目标文件 {}: 拒绝访问", secret_path)),
+        ProjectError::ContentTooLarge(format!("文件过大，无法读取: {}", secret_path)),
+    ] {
+        let message = error.to_string();
+        assert!(!message.contains("李四"), "错误不得泄露路径: {message}");
+        assert!(!message.contains("绝密作品"), "错误不得泄露路径: {message}");
+        assert!(
+            !message.contains("Documents"),
+            "错误不得泄露路径: {message}"
+        );
+    }
+}
+
+#[test]
+fn project_error_keeps_existing_user_understandable_prompts() {
+    assert_eq!(ProjectError::EmptyName.to_string(), "作品名称不能为空");
+    assert!(ProjectError::InvalidNameChars("C/ON".to_string())
+        .to_string()
+        .contains("作品名称包含非法字符"));
+    assert!(
+        ProjectError::InvalidStructure("不支持的项目结构版本: 1".to_string())
+            .to_string()
+            .contains("不支持的项目结构版本")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7.3 收窄：受控可见性 / 目录命令错误不泄露作品路径或文档身份
+// ---------------------------------------------------------------------------
+
+#[test]
+fn visibility_and_directory_commands_never_leak_path_or_document_identity() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "绝密作品名".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let work_path = project_path.to_string_lossy().to_string();
+    let tree = open_content_tree(&project_path).expect("open tree");
+    let doc_id = tree.root_children[0].clone();
+    let secret_name = "绝密角色档案";
+    rename_node(&project_path, &doc_id, secret_name).expect("rename doc");
+    set_document_ai_visibility(&project_path, &doc_id, false).expect("hide doc");
+
+    // 1. 隐藏文档的受控读取拒绝：拒绝理由只含枚举，不含作品路径 / 文档名 / 文档 ID。
+    let work_id = project_path
+        .canonicalize()
+        .expect("canonicalize work path")
+        .to_string_lossy()
+        .to_string();
+    let denial = read_material(
+        &project_path,
+        &ReadMaterialRequest {
+            work_id,
+            document_id: doc_id.clone(),
+            range: None,
+            expected_version: None,
+            snapshot: None,
+        },
+    )
+    .expect_err("隐藏文档必须被拒绝");
+    let denial_text = format!("{:?}", denial.reason);
+    assert!(
+        !denial_text.contains(secret_name),
+        "拒绝理由不得泄露文档名: {denial_text}"
+    );
+    assert!(
+        !denial_text.contains(&doc_id),
+        "拒绝理由不得泄露文档 ID: {denial_text}"
+    );
+    assert!(
+        !denial_text.contains(&work_path),
+        "拒绝理由不得泄露作品路径: {denial_text}"
+    );
+
+    // 2. AI 目录投影不得泄露隐藏文档身份或作品路径，只以匿名计数提示。
+    let projection = read_directory_projection(&project_path).expect("目录投影");
+    let projection_json = serde_json::to_string(&projection).expect("序列化投影");
+    assert!(
+        !projection_json.contains(secret_name),
+        "目录投影不得泄露隐藏文档名"
+    );
+    assert!(
+        !projection_json.contains(&doc_id),
+        "目录投影不得泄露隐藏文档 ID"
+    );
+    assert!(
+        !projection_json.contains(&work_path),
+        "目录投影不得泄露作品路径"
+    );
+    assert_eq!(projection.hidden_count, 1, "隐藏文档只以匿名计数提示");
+
+    // 3. 目录命令错误（损坏内容树）不泄露作品路径或文档名。
+    fs::write(
+        project_path
+            .join("next-story-system")
+            .join("content-tree.json"),
+        "不是 JSON",
+    )
+    .expect("写坏内容树");
+    let dir_error = read_directory_projection(&project_path).expect_err("损坏内容树必须失败");
+    let dir_error_text = dir_error.to_string();
+    assert!(
+        !dir_error_text.contains(&work_path),
+        "目录命令错误不得泄露作品路径: {dir_error_text}"
+    );
+    assert!(
+        !dir_error_text.contains(secret_name),
+        "目录命令错误不得泄露文档名: {dir_error_text}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 任务 7.2：真实公共 API 串联 —— 可见性切换 / 拒绝读取 / 目录投影不改正文
+// ---------------------------------------------------------------------------
+
+#[test]
+fn real_chain_visibility_walkthrough_keeps_document_bytes_unchanged() {
+    let temp = TempDir::new().expect("create temp dir");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "可见性串联".to_string(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    // 1. 初始内容树：默认文档 ai_visible == true。
+    let initial_tree = open_content_tree(&project_path).expect("open initial tree");
+    assert_eq!(initial_tree.root_children.len(), 1, "初始应只有一篇文档");
+    let visible_id = initial_tree.root_children[0].clone();
+    assert!(
+        initial_tree.nodes[&visible_id].ai_visible,
+        "默认文档应允许 AI 查看"
+    );
+
+    // 2. 保存正文到默认文档；创建第二篇文档并保存可识别正文。
+    let visible_body = valid_notebook_json("可见正文标记\n保持可见");
+    save_document(&project_path, &visible_id, &visible_body).expect("save visible doc");
+
+    let hidden_id = create_document(&project_path, None).expect("create second document");
+    let hidden_body = valid_notebook_json("隐藏正文标记\n将会隐藏");
+    save_document(&project_path, &hidden_id, &hidden_body).expect("save hidden doc");
+
+    // 给两篇文档起可区分的名字，便于断言目录投影只含可见文档名。
+    rename_node(&project_path, &visible_id, "可见文档").expect("rename visible doc");
+    rename_node(&project_path, &hidden_id, "隐藏文档").expect("rename hidden doc");
+
+    // work_id 必须用 canonical path。
+    let work_id = project_path
+        .canonicalize()
+        .expect("canonicalize work path")
+        .to_string_lossy()
+        .to_string();
+
+    // 3. 隐藏前 read_material 成功读取，证明默认允许 AI 查看。
+    let request = ReadMaterialRequest {
+        work_id: work_id.clone(),
+        document_id: hidden_id.clone(),
+        range: None,
+        expected_version: None,
+        snapshot: None,
+    };
+    let material = read_material(&project_path, &request).expect("隐藏前默认允许读取");
+    assert_eq!(material.content, hidden_body);
+
+    // 4. 记录两个文档正文文件的原始 bytes（不是仅字符串）。
+    let visible_doc_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{visible_id}.json"));
+    let hidden_doc_path = project_path
+        .join("作品文本")
+        .join("documents")
+        .join(format!("{hidden_id}.json"));
+    let visible_before = fs::read(&visible_doc_path).expect("read visible body before");
+    let hidden_before = fs::read(&hidden_doc_path).expect("read hidden body before");
+
+    // 5. 隐藏目标文档。
+    set_document_ai_visibility(&project_path, &hidden_id, false).expect("hide doc");
+
+    // 6. read_material 必须返回 DocumentNotVisible。
+    let denial = read_material(&project_path, &request).expect_err("隐藏文档必须被拒绝");
+    assert_eq!(denial.reason, MaterialDenialReason::DocumentNotVisible);
+
+    // 7. 目录投影：hidden_count == 1；不得含隐藏文档名称 / ID / 正文；含可见文档名。
+    let projection = read_directory_projection(&project_path).expect("目录投影");
+    assert_eq!(projection.hidden_count, 1, "隐藏文档只以匿名计数提示");
+    let projection_json = serde_json::to_string(&projection).expect("序列化投影");
+    assert!(
+        !projection_json.contains("隐藏文档"),
+        "投影不得含隐藏文档名"
+    );
+    assert!(
+        !projection_json.contains(&hidden_id),
+        "投影不得含隐藏文档 ID"
+    );
+    assert!(
+        !projection_json.contains("隐藏正文标记"),
+        "投影不得含隐藏正文"
+    );
+    assert!(projection_json.contains("可见文档"), "投影应含可见文档名");
+
+    // 8. 重新 open_content_tree 确认隐藏状态持久化。
+    let reopened = open_content_tree(&project_path).expect("reopen tree");
+    assert!(!reopened.nodes[&hidden_id].ai_visible, "隐藏状态应持久化");
+    assert!(reopened.nodes[&visible_id].ai_visible, "可见文档应保持可见");
+
+    // 9. 再读两个文档文件 bytes，与步骤 4 完全相同。
+    assert_eq!(
+        fs::read(&visible_doc_path).expect("read visible body after"),
+        visible_before,
+        "可见文档正文不得被修改"
+    );
+    assert_eq!(
+        fs::read(&hidden_doc_path).expect("read hidden body after"),
+        hidden_before,
+        "隐藏文档正文不得被修改"
+    );
 }

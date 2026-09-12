@@ -67,6 +67,16 @@ const TREE: ContentTree = {
   recycle_bin: [],
 };
 
+const VISIBILITY_TREE: ContentTree = {
+  root_children: ["doc-visible", "doc-hidden", "folder-1"],
+  nodes: {
+    "doc-visible": { id: "doc-visible", name: "可见文档", kind: "Document", children: [] },
+    "doc-hidden": { id: "doc-hidden", name: "隐藏文档", kind: "Document", children: [], ai_visible: false },
+    "folder-1": { id: "folder-1", name: "文件夹", kind: "Folder", children: [] },
+  },
+  recycle_bin: [],
+};
+
 const RECYCLE_TREE: ContentTree = {
   root_children: ["doc-1"],
   nodes: {
@@ -144,6 +154,9 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     moveNode: async () => { calls.push("move_node"); },
     deleteNode: async () => { calls.push("delete_node"); },
     restoreNode: async () => { calls.push("restore_node"); },
+    setDocumentAiVisibility: async (_projectPath, _documentId, visible) => {
+      calls.push(`set_document_ai_visibility:${visible}`);
+    },
     ...initial,
   };
 
@@ -166,6 +179,13 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     treeChanges,
     restore: () => { globalThis.document = previousDocument; },
   };
+}
+
+function collectButtons(root: FakeElement, label: string): FakeElement[] {
+  const result: FakeElement[] = [];
+  if (root.type === "button" && root.textContent === label) result.push(root);
+  for (const child of root.children) result.push(...collectButtons(child, label));
+  return result;
 }
 
 function collectText(root: FakeElement): string[] {
@@ -256,5 +276,57 @@ test("rename via prompt invokes renameNode with the entered name", async () => {
     } else {
       Reflect.deleteProperty(globalThis, "window");
     }
+  }
+});
+
+test("renders an AI visibility toggle only for documents, not folders", () => {
+  const h = makeHarness(VISIBILITY_TREE);
+  try {
+    const fileTree = h.elements.get("fm-file-tree")!;
+    // 两篇文档各有一个开关；文件夹不显示开关。
+    assert.equal(collectButtons(fileTree, "允许 AI 查看").length, 1, "默认可见文档显示「允许」");
+    assert.equal(collectButtons(fileTree, "不允许 AI 查看").length, 1, "隐藏文档显示「不允许」");
+  } finally {
+    h.restore();
+  }
+});
+
+test("toggling a visible document flips to not-visible via the service", async () => {
+  const h = makeHarness(VISIBILITY_TREE);
+  try {
+    const fileTree = h.elements.get("fm-file-tree")!;
+    const toggle = collectButtons(fileTree, "允许 AI 查看")[0];
+    assert.ok(toggle);
+    toggle.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.ok(h.calls.includes("set_document_ai_visibility:false"));
+  } finally {
+    h.restore();
+  }
+});
+
+test("toggle failure keeps the original state and shows a Chinese message", async () => {
+  const h = makeHarness(VISIBILITY_TREE, {
+    setDocumentAiVisibility: async () => {
+      throw new Error("后端失败");
+    },
+  });
+  try {
+    const fileTree = h.elements.get("fm-file-tree")!;
+    const toggle = collectButtons(fileTree, "允许 AI 查看")[0];
+    assert.ok(toggle);
+    toggle.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const status = h.elements.get("fm-status")!;
+    assert.match(status.textContent, /AI 可见性保存失败/);
+    // 开关仍显示原状态（未切到「不允许」）。
+    assert.equal(collectButtons(fileTree, "允许 AI 查看").length, 1);
+    assert.equal(collectButtons(fileTree, "不允许 AI 查看").length, 1);
+  } finally {
+    h.restore();
   }
 });

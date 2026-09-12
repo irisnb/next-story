@@ -2,7 +2,10 @@ import type {
   PanelRequestState,
   PanelStateView,
 } from "./ai-panel-request-state.ts";
-import type { ReadonlyTemporaryConversation } from "./ai-panel-conversation.ts";
+import {
+  conversationRestrictionNotice,
+  type ReadonlyTemporaryConversation,
+} from "./ai-panel-conversation.ts";
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -79,6 +82,11 @@ export interface AiPanelView {
   readonly newConversationVisible: boolean;
   /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
   readonly saveError: string | null;
+  /**
+   * 材料权限已变化时的中文提示（不含隐藏文件名称 / ID / 路径）；未受限为 null。
+   * 受限讨论仍显示已有历史，但不可沿原上下文继续，提示引导用户新建干净讨论。
+   */
+  readonly restrictionNotice: string | null;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -318,6 +326,9 @@ export function buildAiPanelView(
         ? buildFirstRoundStoppedView(stoppedFirstRequest)
         : buildConversationView(conversation, stoppedFollowUp ? "已停止" : "中断");
   const hasConversation = conversation !== null;
+  // 材料权限已变化（隐藏材料 / 旧档案缺出处）：保留历史显示，但不可沿原上下文继续。
+  const restrictionNotice = conversationRestrictionNotice(conversation);
+  const isRestricted = restrictionNotice !== null;
   const directQuestion = buildDirectQuestionView(panelState);
 
   const pendingError = conversation?.pending?.error;
@@ -333,12 +344,13 @@ export function buildAiPanelView(
       : null;
 
   const followUpError =
-    pendingError !== undefined
+    pendingError !== undefined && !isRestricted
       ? { message: pendingError.message, retryAvailable: true, editAvailable: true }
       : null;
 
   const hasPending = conversation !== null && conversation.pending !== null && !conversation.pending.interrupted;
-  const followUpForm = hasConversation ? { inputEnabled: !hasPending } : null;
+  // 受限讨论禁用追问输入与发送入口；历史保留只读。
+  const followUpForm = hasConversation ? { inputEnabled: !hasPending && !isRestricted } : null;
 
   const stoppedDirect =
     panelState.request.kind === "direct_question" && panelState.request.status === "stopped";
@@ -352,7 +364,7 @@ export function buildAiPanelView(
   // “新建对话”仅在存在临时对话或存在任何非空闲请求（首轮预检/阻塞/加载/成功/失败/配置、
   // 追问或直接提问请求）时显示；空白直接提问 idle 状态隐藏。与 reducer 的
   // `hasEndableConversationWork` 语义一致（用户有“可结束的内容”才看到结束入口）。
-  const newConversationVisible = hasConversation || panelState.request.kind !== "idle";
+  const newConversationVisible = hasConversation || panelState.request.kind !== "idle" || isRestricted;
 
   return {
     panelVisible: panelState.visibility === "open",
@@ -369,11 +381,12 @@ export function buildAiPanelView(
     errorBlock,
     configBlock: facts.configRequired,
     followUpError,
-    followUpStopped: stoppedFollowUp,
+    followUpStopped: stoppedFollowUp && !isRestricted,
     followUpForm,
     retryAvailable,
     directQuestion,
     newConversationVisible,
     saveError: panelState.saveError,
+    restrictionNotice,
   };
 }

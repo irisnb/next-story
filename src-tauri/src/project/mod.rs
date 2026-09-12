@@ -16,7 +16,7 @@ pub use export::{
 pub use notebook::*;
 pub use operations::{
     create_document, create_folder, delete_node, move_node, open_content_tree, read_document,
-    rename_node, reorder_children, restore_node, save_document,
+    rename_node, reorder_children, restore_node, save_document, set_document_ai_visibility,
 };
 // 讨论档案存储复用底层事务工具：有界读取 + 原子写入（tempfile + persist），
 // 不重复造事务框架（见 `conversation_store` 模块）。
@@ -43,10 +43,11 @@ pub struct ProjectMetadata {
 }
 
 impl ProjectMetadata {
-    /// 当前作品结构版本：3 = 内容树（文件夹 + 文档）。
+    /// 当前作品结构版本：4 = 内容树（文件夹 + 文档）+ 文档级 AI 可见性。
+    /// 版本 3 = 内容树（无 ai_visible 字段），打开时由迁移框架升级到 4；
     /// 版本 2 = 固定双本子（草稿本 / 正文本），打开时由迁移框架升级到 3；
     /// 版本 1 = 旧 `.txt` 本子，无迁移步骤，继续拒绝。
-    pub const CURRENT_VERSION: u32 = 3;
+    pub const CURRENT_VERSION: u32 = 4;
 }
 
 /// 项目打开结果：元信息 + 整棵内容树。前端据此确定当前文档，再用
@@ -94,12 +95,16 @@ impl std::fmt::Display for ProjectError {
         match self {
             ProjectError::EmptyName => write!(f, "作品名称不能为空"),
             ProjectError::InvalidNameChars(chars) => write!(f, "作品名称包含非法字符: {}", chars),
-            ProjectError::InaccessibleLocation(loc) => write!(f, "保存位置不可访问: {}", loc),
-            ProjectError::FolderExists(path) => write!(f, "目标文件夹已存在: {}", path),
+            // 7.3 收窄：以下变体的负载可能含作品敏感路径，不再回显底层字符串，
+            // 改为固定可读分类，避免把用户作品路径透传到前端。
+            ProjectError::InaccessibleLocation(_) => {
+                write!(f, "保存位置不可访问，请选择其他文件夹")
+            }
+            ProjectError::FolderExists(_) => write!(f, "目标文件夹已存在，请更换名称或位置"),
             ProjectError::InvalidStructure(msg) => write!(f, "项目结构无效: {}", msg),
             ProjectError::ReadError(msg) => write!(f, "读取失败: {}", msg),
-            ProjectError::WriteError(msg) => write!(f, "写入失败: {}", msg),
-            ProjectError::ContentTooLarge(msg) => write!(f, "{msg}"),
+            ProjectError::WriteError(_) => write!(f, "写入作品失败，请重试"),
+            ProjectError::ContentTooLarge(_) => write!(f, "内容超过大小上限，请精简后重试"),
         }
     }
 }

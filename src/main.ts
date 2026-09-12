@@ -10,8 +10,20 @@ import { setupLlmConfigForm } from "./llm-config-form";
 import { setupProjectFlow } from "./new-project-form";
 import { setupAiFeature } from "./ai-feature";
 import { waitTiming } from "./ai-timing";
+import { canonicalNotebookJson } from "./structured-notebook";
 import { showModule, showPage, type ModuleId, type ModuleViews } from "./views";
-import type { ProjectTreeState } from "./types";
+import { hiddenDocumentIdsFromTree, type ProjectTreeState } from "./types";
+
+function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string | null {
+  const current = editor.getCurrentEditor();
+  if (!current) return null;
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(canonicalNotebookJson(current.getDocument()))) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16, "0");
+}
 
 // 等待计时采集仅供真实接入验证（第 10 组）：暴露到 devtools 控制台取数。
 (globalThis as Record<string, unknown>).__waitTiming = waitTiming;
@@ -37,8 +49,13 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   const editor = setupEditor(dom, leaveDialog);
+  // 延迟绑定：文件树结构变化（含 AI 可见性切换）后，同步重算已打开讨论的材料限制。
+  let ai: ReturnType<typeof setupAiFeature> | null = null;
   const fileManagement = setupFileManagement(dom, {
-    onTreeChanged: (tree) => editor.applyTree(tree),
+    onTreeChanged: (tree) => {
+      editor.applyTree(tree);
+      ai?.recomputeRestrictions();
+    },
   });
 
   const exportWord = setupExportWord(dom, {
@@ -56,17 +73,22 @@ window.addEventListener("DOMContentLoaded", () => {
     backToWriting: () => setModule("writing"),
   });
 
-  const ai = setupAiFeature(dom, {
+  ai = setupAiFeature(dom, {
     getCurrentDocumentId: () => editor.getCurrentDocumentId(),
     getCurrentEditor: () => editor.getCurrentEditor(),
     openConfigPage: () => llmConfig.open(),
     getCurrentProjectPath: () => editor.getProjectPath(),
+    getCurrentDocumentVersion: () => currentDocumentVersion(editor),
+    getCurrentTree: () => editor.getTree(),
     getCurrentDocumentTitle: () => {
       const tree = editor.getTree();
       const documentId = editor.getCurrentDocumentId();
       if (tree === null || documentId === null) return null;
       return tree.nodes[documentId]?.name ?? null;
     },
+  }, {
+    // 集成点：从当前作品树实时派生「不允许 AI 查看」的文档 ID 集合。
+    getHiddenDocumentIds: () => hiddenDocumentIdsFromTree(editor.getTree()),
   });
   editor.attachAi(ai);
 

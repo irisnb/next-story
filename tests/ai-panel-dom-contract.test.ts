@@ -102,6 +102,7 @@ test("setupAiWindow renders from the explicit contract without global lookups an
         onDirectQuestionFocus: () => {},
         onStop: () => { stopCalls += 1; },
         onClose: () => { closeCalls += 1; },
+        onNewConversation: () => {},
       },
     );
 

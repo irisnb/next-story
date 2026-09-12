@@ -5,10 +5,12 @@ import {
   beginConversationFollowUp,
   buildConversationRecord,
   buildDiscussionRecord,
+  buildFollowUpRequest,
   conversationFromRecord,
   createConversationFromFirstSuccess,
   failConversationFollowUp,
   followUpAvailableOf,
+  followUpIdentityOf,
   frozenSnapshot,
   readonlyConversationView,
   succeedConversationFollowUp,
@@ -172,6 +174,80 @@ test("summon-origin follow-up request omits origin", () => {
       { role: "assistant", content: "第一答" },
       { role: "user", content: "当前追问" },
     ]);
+  }
+});
+
+test("followUpIdentityOf passes through document, project, and version identity from the anchor", () => {
+  const anchor = snapshot("冻结选区");
+  const anchorWithIdentity: SelectionSnapshot = {
+    ...anchor,
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+    bodySnapshot: "快照JSON",
+  };
+  const value = conversation(summonRequest("冻结选区"), "首轮回应", anchorWithIdentity);
+
+  assert.deepEqual(followUpIdentityOf(value), {
+    document_id: "draft",
+    project_path: "C:/作品",
+    document_version: "v1",
+    snapshot: "快照JSON",
+  });
+});
+
+test("followUpIdentityOf returns empty for a direct question without selection", () => {
+  const value = conversation(directQuestionRequest("只问问题"), "首轮回应", null);
+
+  assert.deepEqual(followUpIdentityOf(value), {});
+});
+
+test("followUpIdentityOf omits identity when only part of the trio is present", () => {
+  const anchor = snapshot("冻结选区");
+  const anchorPartialIdentity: SelectionSnapshot = {
+    ...anchor,
+    documentVersion: "v1",
+  };
+  const value = conversation(summonRequest("冻结选区"), "首轮回应", anchorPartialIdentity);
+
+  assert.deepEqual(followUpIdentityOf(value), {});
+});
+
+test("buildFollowUpRequest carries the full identity trio with the snapshot", () => {
+  const anchor = snapshot("冻结选区");
+  const anchorWithIdentity: SelectionSnapshot = {
+    ...anchor,
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+    bodySnapshot: "快照JSON",
+  };
+  const value = conversation(
+    { kind: "summon", selected_text: "冻结选区", snapshot: "快照JSON" },
+    "首轮回应",
+    anchorWithIdentity,
+  );
+  const begun = beginConversationFollowUp(value, "追问", 1)!.conversation!;
+
+  const request = buildFollowUpRequest(begun, "追问");
+  assert.equal(request.kind, "follow_up");
+  if (request.kind === "follow_up") {
+    assert.equal(request.document_id, "draft");
+    assert.equal(request.project_path, "C:/作品");
+    assert.equal(request.document_version, "v1");
+    assert.equal(request.snapshot, "快照JSON");
+  }
+});
+
+test("buildFollowUpRequest keeps a no-selection direct-question follow-up without identity", () => {
+  const value = conversation(directQuestionRequest("只问问题"), "首轮回应", null);
+  const begun = beginConversationFollowUp(value, "追问", 1)!.conversation!;
+
+  const request = buildFollowUpRequest(begun, "追问");
+  assert.equal(request.kind, "follow_up");
+  if (request.kind === "follow_up") {
+    assert.equal(request.document_id, undefined);
+    assert.equal(request.project_path, undefined);
+    assert.equal(request.document_version, undefined);
+    assert.equal(request.snapshot, undefined);
   }
 });
 

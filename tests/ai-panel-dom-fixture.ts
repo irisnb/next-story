@@ -160,6 +160,7 @@ export const AI_WINDOW_ROLES = [
   "direct-question-selection-remove", "direct-question-form", "direct-question-input",
   "direct-question-send", "direct-question-error", "direct-question-error-message",
   "direct-question-config", "direct-question-go-config",
+  "restriction-notice", "restriction-notice-message", "restriction-new-conversation",
 ] as const;
 
 /** 构造一个窗口根节点 fixture（含全部 data-role 子节点的 queryResults）。 */
@@ -177,7 +178,7 @@ export function createAiWindowFixture(conversationId: string): {
       el.tag = "form";
     } else if (role === "follow-up-input" || role === "direct-question-input") {
       el.tag = "textarea";
-    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config") {
+    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation") {
       el.tag = "button";
     }
     roles.set(role, el);
@@ -191,7 +192,12 @@ export function createAiWindowFixture(conversationId: string): {
   const input = new FakeElement("role-input");
   roles.set("input", input);
   root.queryResults.set('[data-role="input"]', input);
+  roles.get("restriction-notice")!.append(
+    roles.get("restriction-notice-message")!,
+    roles.get("restriction-new-conversation")!,
+  );
   input.append(
+    roles.get("restriction-notice")!,
     roles.get("follow-up-form")!,
     roles.get("direct-question")!,
   );

@@ -11,8 +11,10 @@ import {
   openContentTree,
   renameNode,
   restoreNode,
+  setDocumentAiVisibility,
 } from "./project-api.ts";
 import type { ContentTree, ProjectTreeState } from "./types.ts";
+import { isDocumentAiVisible } from "./types.ts";
 
 export interface FileManagementServices {
   openContentTree(projectPath: string): Promise<ContentTree>;
@@ -22,6 +24,7 @@ export interface FileManagementServices {
   moveNode(projectPath: string, id: string, newParent: string | null): Promise<void>;
   deleteNode(projectPath: string, id: string): Promise<void>;
   restoreNode(projectPath: string, id: string): Promise<void>;
+  setDocumentAiVisibility(projectPath: string, documentId: string, visible: boolean): Promise<void>;
 }
 
 export interface FileManagementController {
@@ -37,6 +40,7 @@ const defaultServices: FileManagementServices = {
   moveNode,
   deleteNode,
   restoreNode,
+  setDocumentAiVisibility,
 };
 
 type FileManagementDom = Pick<
@@ -130,6 +134,33 @@ export function setupFileManagement(
     actions.replaceChildren(select, apply, cancel);
   }
 
+  /** 切换单篇文档的 AI 可见性：成功刷新树；失败保持原状态并显示中文提示。 */
+  async function toggleVisibility(id: string, currentVisible: boolean): Promise<void> {
+    if (projectPath === null) return;
+    const next = !currentVisible;
+    setStatus("正在保存 AI 可见性...", "busy");
+    try {
+      await services.setDocumentAiVisibility(projectPath, id, next);
+      await refreshTree();
+      setStatus("", "idle");
+    } catch {
+      // 失败回滚：不改动本地树，保持原可见性状态，只给中文可读提示。
+      setStatus("AI 可见性保存失败，已保持原状态。", "error");
+    }
+  }
+
+  /** 文档节点的 AI 可见性开关（文件夹不渲染该开关）。 */
+  function makeVisibilityToggle(id: string, visible: boolean): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "file-ai-visibility-toggle";
+    button.textContent = visible ? "允许 AI 查看" : "不允许 AI 查看";
+    button.addEventListener("click", () => {
+      void toggleVisibility(id, visible);
+    });
+    return button;
+  }
+
   function renderNodeRow(container: HTMLElement, id: string, depth: number): void {
     if (tree === null) return;
     const node = tree.nodes[id];
@@ -176,6 +207,9 @@ export function setupFileManagement(
         expanded.add(id);
         void runOperation(() => services.createFolder(projectPath as string, id));
       }));
+    } else {
+      // 文档级 AI 可见性开关：只作用于当前文档，文件夹不显示。
+      actions.appendChild(makeVisibilityToggle(id, isDocumentAiVisible(node)));
     }
     actions.appendChild(makeButton("重命名", () => startRename(id, node.name)));
     actions.appendChild(makeButton("移动", () => startMove(id, parentOf(id))));

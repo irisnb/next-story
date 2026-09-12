@@ -199,6 +199,7 @@ export function setupAiDock(
       onDirectQuestionFocus: actions.onDirectQuestionFocus,
       onStop: () => actions.onStop(conversationId),
       onClose: () => actions.onClose(conversationId),
+      onNewConversation: () => actions.onNewConversation(),
     };
   }
 

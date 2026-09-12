@@ -9,6 +9,12 @@
 export interface ScheduledRequest {
   readonly conversationId: string;
   readonly run: () => Promise<void> | null;
+  /**
+   * 派发前复核（controlled-story-read-visibility 任务 6.1）：排队请求在实际派发前
+   * 重新校验材料权限；返回 false 则不派发，改走 `onRejected`。立即开始的请求
+   * 已经过首轮预检，不受此复核影响。
+   */
+  readonly beforeDispatch?: () => boolean;
 }
 
 export type ScheduleResult = "started" | "queued" | "busy";
@@ -22,15 +28,18 @@ export const DEFAULT_MAX_CONCURRENT = 2;
 export class AiRequestScheduler {
   private readonly maxConcurrent: number;
   private readonly onStart: (conversationId: string) => void;
+  private readonly onRejected: (conversationId: string) => void;
   private readonly active = new Set<string>();
   private readonly queue: ScheduledRequest[] = [];
 
   constructor(
     maxConcurrent: number = DEFAULT_MAX_CONCURRENT,
     onStart: (conversationId: string) => void = () => {},
+    onRejected: (conversationId: string) => void = () => {},
   ) {
     this.maxConcurrent = maxConcurrent;
     this.onStart = onStart;
+    this.onRejected = onRejected;
   }
 
   /** 当前排队中的请求数。 */
@@ -64,7 +73,14 @@ export class AiRequestScheduler {
 
   private start(request: ScheduledRequest): void {
     this.active.add(request.conversationId);
-    const promise = request.run();
+    let promise: Promise<void> | null;
+    try {
+      promise = request.run();
+    } catch (error) {
+      // run() 同步抛异常：释放已占槽位，向上保留异常信号（立即派发路径由 submit 透传）。
+      this.active.delete(request.conversationId);
+      throw error;
+    }
     if (promise === null) {
       this.active.delete(request.conversationId);
       this.drain();
@@ -79,8 +95,17 @@ export class AiRequestScheduler {
   private drain(): void {
     while (this.active.size < this.maxConcurrent && this.queue.length > 0) {
       const next = this.queue.shift()!;
+      // 派发前复核：排队期间材料权限可能已变化；复核失败则不派发并通知。
+      if (next.beforeDispatch && !next.beforeDispatch()) {
+        this.onRejected(next.conversationId);
+        continue;
+      }
       this.onStart(next.conversationId);
-      this.start(next);
+      try {
+        this.start(next);
+      } catch {
+        // run() 同步抛异常：槽位已在 start 内释放，继续派发后续排队请求。
+      }
     }
   }
 }

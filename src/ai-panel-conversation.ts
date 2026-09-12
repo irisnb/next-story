@@ -4,6 +4,7 @@ import type {
   ConversationSummary,
   ConversationTurn,
   FirstRoundMaterial as ArchivedFirstRoundMaterial,
+  MaterialProvenance,
 } from "./conversation-archive.ts";
 import { deriveConversationTitle } from "./conversation-archive.ts";
 
@@ -31,6 +32,13 @@ export type FirstRoundMaterial =
   | Extract<GenerateAiRequest, { kind: "direct_question" }>;
 
 /**
+ * 讨论材料权限受限的原因（controlled-story-read-visibility 任务 5.2/5.4）：
+ * - `hidden_material`：出处引用后来被关闭 AI 可见性的文档；
+ * - `missing_provenance`：旧档案缺少材料出处，按保守策略无法确认所用材料是否仍可查看。
+ */
+export type RestrictionReason = "hidden_material" | "missing_provenance";
+
+/**
  * 一个讨论的完整显示数据（首轮冻结材料、首轮回应与后续问答轮次），
  * 是显示与崩溃恢复重放的运行期事实源。`id` 是全局唯一 `conversation_id`。
  */
@@ -49,6 +57,15 @@ export interface TemporaryConversation {
   customTitle?: string | null;
   /** 置顶标记；缺失表示未置顶。 */
   pinned?: boolean;
+  /** 材料权限已变化（可查看但不可沿原上下文继续 / 重放）；缺省为 false。 */
+  restricted?: boolean;
+  /** 受限原因；仅在 `restricted` 为 true 时有意义。 */
+  restrictionReason?: RestrictionReason;
+  /**
+   * 已知材料出处（重开档案时保留原档案出处；新建讨论时缺省，保存时由锚点派生）。
+   * `undefined` 仅在「旧档案缺出处」时出现（由 `restrictionReason` 区分）。
+   */
+  provenance?: MaterialProvenance[];
 }
 
 export type ReadonlyTemporaryConversation = Readonly<{
@@ -63,6 +80,9 @@ export type ReadonlyTemporaryConversation = Readonly<{
   pending: Readonly<PendingFollowUpTurn> | null;
   customTitle?: string | null;
   pinned?: boolean;
+  restricted?: boolean;
+  restrictionReason?: RestrictionReason;
+  provenance?: ReadonlyArray<Readonly<MaterialProvenance>>;
 }>;
 
 /**
@@ -114,6 +134,136 @@ export function firstRoundMaterialFromArchive(
   };
 }
 
+/**
+ * 从冻结选区锚点派生最小材料出处元数据（不复制正文）。
+ * 当前特性只有「冻结选区」一种进入模型上下文的材料；无选区 / 无来源文档时为空数组。
+ * 版本身份在当前快照契约尚未携带版本时记 null，待 selection-ai-summon 任务 4 补齐。
+ */
+export function materialProvenanceFromAnchor(
+  anchor: SelectionSnapshot | null,
+): MaterialProvenance[] {
+  if (!anchor || !anchor.documentId || !anchor.selectedText.trim()) return [];
+  return [
+    {
+      document_id: anchor.documentId,
+      material_type: "selection",
+      document_version: anchor.documentVersion ?? null,
+      turn_index: 0,
+      entered_model_context: true,
+    },
+  ];
+}
+
+/** 出处条目是否已因权限关闭被锁存（`material_type: "revoked"`，任务 5.4）。 */
+export function isRevokedMaterial(p: MaterialProvenance): boolean {
+  return p.material_type === "revoked";
+}
+
+/**
+ * 判定一份档案是否因材料权限变化而受限（controlled-story-read-visibility 任务 5.2/5.4）：
+ * - 旧档案缺少 `provenance` 字段 → 保守受限（无法确认所用材料是否仍可查看，不自动重放）；
+ * - 出处引用了当前被关闭 AI 可见性的文档 → 受限；
+ * - 出处含锁存标记（`revoked`）→ 永久受限（不因重新开启可见性解除）。
+ * `hiddenDocumentIds` 是「不允许 AI 查看」的文档 ID 集合；后端可见性 API 未接入时传空集
+ * （不引入任何受限，行为与旧版一致，见集成点注释）。
+ */
+export function isConversationMaterialRestricted(
+  record: ConversationRecord | ConversationSummary,
+  hiddenDocumentIds: ReadonlySet<string>,
+): boolean {
+  if (record.provenance === undefined || record.provenance === null) return true;
+  return record.provenance.some(
+    (p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id),
+  );
+}
+
+/** 受限原因：旧档案缺出处 / 出处引用隐藏文档 / 出处含锁存标记。 */
+export function restrictionReasonOf(
+  record: ConversationRecord | ConversationSummary,
+  hiddenDocumentIds: ReadonlySet<string>,
+): RestrictionReason | undefined {
+  if (record.provenance === undefined || record.provenance === null) return "missing_provenance";
+  return record.provenance.some(
+    (p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id),
+  )
+    ? "hidden_material"
+    : undefined;
+}
+
+/** 材料权限已变化的受限讨论提示（不泄露隐藏文件名称 / 身份 / 路径）。 */
+export const HIDDEN_MATERIAL_RESTRICTION_NOTICE =
+  "该讨论曾使用后来已隐藏的文件，无法沿原上下文继续。请新建对话继续。";
+
+/** 旧档案缺少材料出处的保守提示。 */
+export const MISSING_PROVENANCE_RESTRICTION_NOTICE =
+  "该讨论缺少材料出处记录，无法确认所用材料是否仍可查看。请新建对话继续。";
+
+/** 返回受限讨论的中文提示；未受限返回 null。接受可变或只读对话视图。 */
+export function conversationRestrictionNotice(
+  conversation: { restricted?: boolean; restrictionReason?: RestrictionReason } | null,
+): string | null {
+  if (!conversation?.restricted) return null;
+  return conversation.restrictionReason === "missing_provenance"
+    ? MISSING_PROVENANCE_RESTRICTION_NOTICE
+    : HIDDEN_MATERIAL_RESTRICTION_NOTICE;
+}
+
+/**
+ * 讨论保存时应写出的材料出处：
+ * - 旧档案缺出处（`missing_provenance`）→ `undefined`（保持缺省，不悄悄升级为「无材料」）；
+ * - 重开档案已携带出处 → 原样保留（权限变化后重存不丢失影响关系）；
+ * - 新建讨论 → 由冻结选区锚点派生。
+ */
+export function conversationProvenanceForArchive(
+  conversation: TemporaryConversation,
+): MaterialProvenance[] | undefined {
+  if (conversation.restrictionReason === "missing_provenance") return undefined;
+  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
+  // 锁存：受限讨论（hidden_material）重存时把出处标记为 `revoked`，使重新开启可见性后
+  // 重开该讨论也不会被当前可见性重算解除（任务 5.4）。
+  if (conversation.restrictionReason === "hidden_material") {
+    return provenance.map((p) => (isRevokedMaterial(p) ? p : { ...p, material_type: "revoked" }));
+  }
+  return provenance;
+}
+
+/**
+ * 崩溃恢复 / 重放前按当前 `hiddenDocumentIds` 重算讨论材料限制（任务 5.5）。
+ *
+ * 与开档时固化的 `restricted` 不同，这里用「此刻」的隐藏文档集合重新判断当前 provenance：
+ * - 旧档案缺出处（`missing_provenance`）→ 保守受限（无法确认所用材料是否仍可查看，不重放）；
+ * - 出处（档案出处，或新建讨论由冻结锚点派生）引用了当前被隐藏的文档 → 受限（不重放）；
+ * - 无材料（无选区直接提问）或出处文档仍可见 → 不受限，可恢复重放。
+ *
+ * 这样驱动进程丢失后，恢复过滤不会把打开后新隐藏的材料通过历史重放再次发送给 DSH。
+ */
+export function isConversationRestrictedForRecovery(
+  conversation: TemporaryConversation,
+  hiddenDocumentIds: ReadonlySet<string>,
+): boolean {
+  if (conversation.restrictionReason === "missing_provenance") return true;
+  // 已锁存的受限讨论（restricted / revoked 出处）永久不可重放，不因重新开启可见性解除。
+  if (conversation.restricted) return true;
+  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
+  return provenance.some((p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id));
+}
+
+/**
+ * 权限变更后重算并锁存单个讨论的材料限制（任务 5.2/5.4）：
+ * - 已受限（`restricted`）的讨论保持受限（单调，不因重新开启可见性解除）；
+ * - 未受限但出处引用了当前被隐藏的文档 → 标记受限并返回新对象；
+ * - 无材料 / 出处文档仍可见 → 原样返回（同一引用，调用方据此判定无变化）。
+ */
+export function latchConversationRestriction(
+  conversation: TemporaryConversation,
+  hiddenDocumentIds: ReadonlySet<string>,
+): TemporaryConversation {
+  if (conversation.restricted) return conversation;
+  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
+  if (!provenance.some((p) => hiddenDocumentIds.has(p.document_id))) return conversation;
+  return { ...conversation, restricted: true, restrictionReason: "hidden_material" };
+}
+
 export function createConversationFromFirstSuccess(
   conversationId: string,
   createdAt: string,
@@ -142,6 +292,8 @@ export function beginConversationFollowUp(
   turnId: number,
 ): { conversation: TemporaryConversation; turnId: number } | { conversation: null; turnId: null } {
   if (!question.trim()) return { conversation: null, turnId: null };
+  // 材料权限受限的讨论不可沿原上下文追问（须新建干净讨论）。
+  if (conversation.restricted) return { conversation: null, turnId: null };
   // 已有进行中的待答轮次时拒绝；已中断（重开）的待答轮可被新问题替换。
   if (conversation.pending && !conversation.pending.interrupted) {
     return { conversation: null, turnId: null };
@@ -196,7 +348,7 @@ export function acceptEditedConversationFollowUp(
   question: string,
 ): { conversation: TemporaryConversation | null; turnId: number | null } {
   const pending = conversation?.pending;
-  if (!conversation || !pending?.error || !question.trim()) {
+  if (!conversation || conversation.restricted || !pending?.error || !question.trim()) {
     return { conversation, turnId: null };
   }
   return {
@@ -230,7 +382,7 @@ export function acceptConversationFollowUpRetry(
   conversation: TemporaryConversation | null,
 ): { conversation: TemporaryConversation | null; turnId: number | null } {
   const pending = conversation?.pending;
-  if (!conversation || !pending?.error) {
+  if (!conversation || conversation.restricted || !pending?.error) {
     return { conversation, turnId: null };
   }
   return {
@@ -239,6 +391,42 @@ export function acceptConversationFollowUpRetry(
       pending: { id: pending.id, question: pending.question, streamedText: "" },
     },
     turnId: pending.id,
+  };
+}
+
+/**
+ * 追问请求的来源身份（作品 / 文档 / 版本身份 + 未保存正文快照）。
+ * 身份三要素必须一起透传：后端对「有选区或有快照」的请求要求三者齐全，缺一即拒。
+ * 优先取冻结锚点（`conversation.anchor`，SelectionSnapshot 携带作品/版本身份），
+ * 其次取首轮材料（`initialUserMaterial` 上的 `document_id` / `project_path` /
+ * `document_version`）；两者都缺省（无选区直接提问）时返回空对象，保持无身份。
+ */
+export function followUpIdentityOf(
+  conversation: TemporaryConversation,
+): {
+  document_id?: string;
+  project_path?: string;
+  document_version?: string;
+  snapshot?: string;
+} {
+  const anchor = conversation.anchor;
+  const material = conversation.initialUserMaterial;
+  const documentId = anchor?.documentId ?? material.document_id;
+  const projectPath = anchor?.projectPath ?? material.project_path;
+  const documentVersion = anchor?.documentVersion ?? material.document_version;
+  const snapshot = material.snapshot ?? anchor?.bodySnapshot;
+  // 无选区直接提问（无 documentId、无来源身份）保持无身份；其余至少具备文档身份。
+  if (documentId === undefined) return {};
+  // 身份三要素齐全才透传（缺任一来源身份时后端会拒绝有材料请求）；
+  // snapshot 存在时必须三项身份一起透传。
+  if (projectPath === undefined || documentVersion === undefined) {
+    return {};
+  }
+  return {
+    document_id: documentId,
+    project_path: projectPath,
+    document_version: documentVersion,
+    ...(snapshot !== undefined ? { snapshot } : {}),
   };
 }
 
@@ -264,6 +452,7 @@ export function buildFollowUpRequest(
     ...(material.kind === "direct_question"
       ? { origin: "direct_question" as const }
       : {}),
+    ...followUpIdentityOf(conversation),
     messages,
   };
 }
@@ -272,6 +461,7 @@ export function followUpRequestOf(
   conversation: TemporaryConversation | null,
 ): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
   if (!conversation?.pending) return null;
+  if (conversation.restricted) return null;
   return buildFollowUpRequest(conversation, conversation.pending.question);
 }
 
@@ -280,11 +470,15 @@ export function followUpRequestForQuestionOf(
   question: string,
 ): Extract<GenerateAiRequest, { kind: "follow_up" }> | null {
   if (!conversation?.pending || !conversation.pending.error || !question.trim()) return null;
+  if (conversation.restricted) return null;
   return buildFollowUpRequest(conversation, question);
 }
 
 export function followUpAvailableOf(conversation: TemporaryConversation | null): boolean {
-  return conversation !== null && (conversation.pending === null || conversation.pending.interrupted === true);
+  if (conversation === null) return false;
+  // 材料权限受限的讨论不可沿原上下文继续。
+  if (conversation.restricted) return false;
+  return conversation.pending === null || conversation.pending.interrupted === true;
 }
 
 export function conversationIdentityOf(
@@ -297,6 +491,7 @@ export function conversationIdentityOf(
 }
 
 export function retryFollowUpQuestionOf(conversation: TemporaryConversation | null): string | null {
+  if (conversation?.restricted) return null;
   return conversation?.pending?.error ? conversation.pending.question : null;
 }
 
@@ -323,6 +518,13 @@ export function readonlyConversationView(
     firstRoundInterrupted: conversation.firstRoundInterrupted,
     turns: Object.freeze(turns),
     pending,
+    customTitle: conversation.customTitle,
+    pinned: conversation.pinned,
+    restricted: conversation.restricted,
+    restrictionReason: conversation.restrictionReason,
+    provenance: conversation.provenance
+      ? Object.freeze(conversation.provenance.map((p) => Object.freeze({ ...p })))
+      : undefined,
   });
 }
 
@@ -366,6 +568,11 @@ export function buildConversationRecord(
     turns,
     ...(conversation.customTitle?.trim() ? { title: conversation.customTitle } : {}),
     ...(conversation.pinned ? { pinned: true } : {}),
+    // 材料出处：旧档案缺出处保持缺省；重开档案保留原出处；新建讨论由锚点派生。
+    ...(() => {
+      const provenance = conversationProvenanceForArchive(conversation);
+      return provenance !== undefined ? { provenance } : {};
+    })(),
   };
 }
 
@@ -376,7 +583,11 @@ export function buildConversationRecord(
  */
 export function conversationFromRecord(
   record: ConversationRecord | ConversationSummary,
+  options: { hiddenDocumentIds?: ReadonlySet<string> } = {},
 ): TemporaryConversation {
+  const hiddenDocumentIds = options.hiddenDocumentIds ?? new Set<string>();
+  const restricted = isConversationMaterialRestricted(record, hiddenDocumentIds);
+  const restrictionReason = restrictionReasonOf(record, hiddenDocumentIds);
   const material = firstRoundMaterialFromArchive(record.first_round_material);
   const turns = record.turns;
   const first = turns[0];
@@ -431,6 +642,9 @@ export function conversationFromRecord(
     pending,
     customTitle: record.title ?? null,
     pinned: record.pinned ?? false,
+    restricted,
+    restrictionReason,
+    provenance: record.provenance,
   };
 }
 
@@ -466,6 +680,7 @@ export function buildDiscussionRecord(discussion: Discussion): ConversationRecor
     focus_document_title: discussion.focusDocumentTitle,
     first_round_material: material,
     turns,
+    provenance: materialProvenanceFromAnchor(discussion.anchor),
   };
 }
 
@@ -496,5 +711,9 @@ export function summaryOf(  conversation: TemporaryConversation,
     turns: buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle).turns,
     custom_title: conversation.customTitle ?? null,
     pinned: conversation.pinned ?? false,
+    ...(() => {
+      const provenance = conversationProvenanceForArchive(conversation);
+      return provenance !== undefined ? { provenance } : {};
+    })(),
   };
 }

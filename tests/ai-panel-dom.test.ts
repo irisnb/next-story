@@ -5,6 +5,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiWindow } from "../src/ai-window.ts";
+import { HIDDEN_MATERIAL_RESTRICTION_NOTICE } from "../src/ai-panel-conversation.ts";
 import type { AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
@@ -42,9 +43,11 @@ async function flushAiFeatureFlow(): Promise<void> {
 function windowActions(state: AiPanelState) {
   let stopCalls = 0;
   let closeCalls = 0;
+  let newConversationCalls = 0;
   return {
     stopCalls: () => stopCalls,
     closeCalls: () => closeCalls,
+    newConversationCalls: () => newConversationCalls,
     actions: {
       onRetry: () => {},
       onRetryFollowUp: () => Promise.resolve(true),
@@ -57,6 +60,7 @@ function windowActions(state: AiPanelState) {
       onDirectQuestionFocus: () => {},
       onStop: () => { stopCalls += 1; },
       onClose: () => { closeCalls += 1; },
+      onNewConversation: () => { newConversationCalls += 1; },
     },
   };
 }
@@ -113,6 +117,61 @@ test("window stop and close buttons invoke the bound actions", () => {
     assert.equal(wa.stopCalls(), 1);
     root.queryResults.get('[data-role="close"]')!.dispatch("click");
     assert.equal(wa.closeCalls(), 1);
+  } finally {
+    doc.restore();
+  }
+});
+
+test("restricted discussion window shows a notice, disables follow-up, and offers a new conversation", () => {
+  const { root } = createAiWindowFixture("c-1");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState();
+    state.loadDiscussions(
+      [
+        {
+          conversation_id: "c-1",
+          title: "选区",
+          created_at: "t0",
+          updated_at: "t0",
+          last_status: "done",
+          focus_document_id: "doc-1",
+          focus_document_title: null,
+          first_round_material: { kind: "summon", question: "", selection_text: "选区" },
+          turns: [{ role: "assistant", text: "首答", status: "done" }],
+          provenance: [
+            {
+              document_id: "doc-1",
+              material_type: "selection",
+              document_version: null,
+              turn_index: 0,
+              entered_model_context: true,
+            },
+          ],
+        },
+      ],
+      [],
+      new Set(["doc-1"]),
+    );
+
+    const wa = windowActions(state);
+    setupAiWindow(root as unknown as HTMLElement, state, "c-1", wa.actions);
+
+    const notice = root.queryResults.get('[data-role="restriction-notice"]');
+    assert.ok(notice, "受限讨论必须有提示节点");
+    assert.equal(notice.classList.contains("hidden"), false);
+    assert.equal(
+      root.queryResults.get('[data-role="restriction-notice-message"]')!.textContent,
+      HIDDEN_MATERIAL_RESTRICTION_NOTICE,
+    );
+    // 追问输入与发送入口被禁用。
+    assert.equal(root.queryResults.get('[data-role="follow-up-input"]')!.disabled, true);
+    assert.equal(root.queryResults.get('[data-role="follow-up-send"]')!.disabled, true);
+
+    const newConversationBtn = root.queryResults.get('[data-role="restriction-new-conversation"]');
+    assert.ok(newConversationBtn, "受限提示提供新建讨论入口");
+    newConversationBtn.dispatch("click");
+    assert.equal(wa.newConversationCalls(), 1);
   } finally {
     doc.restore();
   }

@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
 import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
+import type { SelectionIdentityContext } from "./selection-adapter.ts";
 import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
 import type {
   RichTextEditorCoordinates,
@@ -220,6 +221,10 @@ export interface SelectionEntryOptions {
   getCurrentEditor: () => SelectionEntryEditor | null;
   isRequestInFlight: () => boolean;
   onSummon: (snapshot: SelectionSnapshot) => void;
+  /** 选区来源文档是否允许 AI 查看（隐藏文档不显示召唤入口）；缺省视为允许。 */
+  isCurrentDocumentAiVisible?: () => boolean;
+  /** 补充选区快照的来源作品 / 版本身份；缺省不附带。 */
+  getSelectionIdentity?: () => SelectionIdentityContext;
 }
 
 /**
@@ -236,6 +241,8 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
     getCurrentEditor,
     isRequestInFlight,
     onSummon,
+    isCurrentDocumentAiVisible,
+    getSelectionIdentity,
   } = options;
   const editorElements = [dom.editorTextarea];
   const editorEventTypes = ["mouseup", "keyup", "select", "focus", "click", "scroll", "input"] as const;
@@ -346,7 +353,12 @@ export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEn
       hideEntry();
       return;
     }
-    const snapshot = captureSelection(documentId, editor);
+    // 隐藏文档不显示召唤入口：用户无法从不可见文档发起 AI 召唤。
+    if (isCurrentDocumentAiVisible && !isCurrentDocumentAiVisible()) {
+      hideEntry();
+      return;
+    }
+    const snapshot = captureSelection(documentId, editor, getSelectionIdentity?.());
 
     // 召唤后抑制旧入口；只有形成与冻结快照不同的新选区才重新允许显示。
     if (frozen && snapshot && sameSelectionSnapshot(snapshot, frozen)) {

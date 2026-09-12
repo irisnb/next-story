@@ -49,6 +49,23 @@ pub struct FirstRoundMaterial {
     pub selection_text: Option<String>,
 }
 
+/// 最小材料出处元数据（controlled-story-read-visibility 任务 5.1）：
+/// 记录一轮讨论实际使用过的作品文档 / 选区材料来源，用于权限变化后判定受影响讨论。
+/// MUST NOT 因此保存完整正文副本；`document_version` 在快照未携带版本时为空。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterialProvenance {
+    /// 来源文档身份。
+    pub document_id: String,
+    /// 材料类型：`selection`（冻结选区）/ `snapshot`（未保存快照）/ `document`（已保存正文）。
+    pub material_type: String,
+    /// 材料版本身份；当前快照未携带版本时为 `None`。
+    pub document_version: Option<String>,
+    /// 所属轮次（首轮为 0）。
+    pub turn_index: u32,
+    /// 是否进入模型上下文。
+    pub entered_model_context: bool,
+}
+
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
 /// 多窗口快车道（任务 9.1）新增两个可选字段：自定义标题 `title` 与置顶标记 `pinned`，
 /// 均带 `#[serde(default)]`，缺失时按「未重命名、未置顶」处理，不视为损坏、不提升版本号。
@@ -68,6 +85,11 @@ pub struct ConversationRecord {
     /// 置顶标记：缺失或 `false` 表示未置顶。
     #[serde(default)]
     pub pinned: bool,
+    /// 材料出处元数据（最小）。`None` 表示旧档案缺少该字段，按保守策略处理：
+    /// 可查看但不可自动重放（无法确认所用材料是否仍可查看）；`Some(vec)` 表示新档案
+    /// （`vec` 可为空，表示本轮未使用任何作品材料）。不提升档案版本号，缺失不视为损坏。
+    #[serde(default)]
+    pub provenance: Option<Vec<MaterialProvenance>>,
 }
 
 /// 会话列表条目：除列表展示所需的身份 / 标题 / 时间 / 终态外，还携带重开所需的
@@ -89,6 +111,8 @@ pub struct ConversationSummary {
     pub custom_title: Option<String>,
     /// 置顶标记：`false` 表示未置顶。
     pub pinned: bool,
+    /// 材料出处元数据：`None` 表示旧档案缺少该字段（保守：可查看但不可自动重放）。
+    pub provenance: Option<Vec<MaterialProvenance>>,
 }
 
 /// 会话列表结果：正常条目 + 被跳过（损坏/超限等）的可见提示。
@@ -175,7 +199,8 @@ fn validate_conversation_id(id: &str) -> Result<(), ConversationStoreError> {
             "标识不能是 . 或 ..".to_string(),
         ));
     }
-    if id.chars()
+    if id
+        .chars()
         .any(|c| c == '/' || c == '\\' || c == ':' || c == '\0' || c.is_control())
     {
         return Err(ConversationStoreError::InvalidConversationId(
@@ -195,13 +220,12 @@ enum ReadFileFailure {
 /// 有界读取 + JSON 解析 + 版本校验。任何失败都归类为可跳过的读取失败，
 /// 绝不让单个损坏档案拖垮整个列表。
 fn read_record_file(path: &Path) -> Result<ConversationRecord, ReadFileFailure> {
-    let content = crate::project::read_bounded_string(path, MAX_CONVERSATION_BYTES).map_err(
-        |e| match e {
+    let content =
+        crate::project::read_bounded_string(path, MAX_CONVERSATION_BYTES).map_err(|e| match e {
             ProjectError::ContentTooLarge(_) => ReadFileFailure::TooLarge,
             ProjectError::ReadError(msg) => ReadFileFailure::Io(msg),
             other => ReadFileFailure::Io(other.to_string()),
-        },
-    )?;
+        })?;
     let record: ConversationRecord =
         serde_json::from_str(&content).map_err(|_| ReadFileFailure::Corrupt)?;
     if record.version != CONVERSATION_VERSION {
@@ -291,7 +315,9 @@ pub fn save_conversation(
 
     // save / delete 串行化：全程持锁，同一讨论的 save 与 delete 不交错；
     // 删除墓碑命中即拒绝，避免「删除后迟到的保存」复活文件。
-    let deleted = CONVERSATION_STORE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, &stamped.conversation_id);
     if deleted.contains(&file) {
         return Err(ConversationStoreError::AlreadyDeleted(
@@ -312,7 +338,9 @@ pub fn save_conversation(
 /// 先记删除墓碑再移除文件：之后迟到的 save 被墓碑拒绝，不复活档案。
 pub fn delete_conversation(root: &Path, id: &str) -> Result<(), ConversationStoreError> {
     validate_conversation_id(id)?;
-    let mut deleted = CONVERSATION_STORE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let mut deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, id);
     deleted.insert(file.clone());
     match fs::remove_file(&file) {
@@ -326,14 +354,19 @@ pub fn delete_conversation(root: &Path, id: &str) -> Result<(), ConversationStor
 /// 仅用于删除撤销路径；幂等（不存在墓碑时成功）。
 pub fn restore_conversation(root: &Path, id: &str) -> Result<(), ConversationStoreError> {
     validate_conversation_id(id)?;
-    let mut deleted = CONVERSATION_STORE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let mut deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, id);
     deleted.remove(&file);
     Ok(())
 }
 
 /// 读取一份完整讨论档案（供重开查看与测试复用；当前不作为前端命令暴露）。
-pub fn read_conversation(root: &Path, id: &str) -> Result<ConversationRecord, ConversationStoreError> {
+pub fn read_conversation(
+    root: &Path,
+    id: &str,
+) -> Result<ConversationRecord, ConversationStoreError> {
     validate_conversation_id(id)?;
     let path = conversation_file(root, id);
     if !path.is_file() {
@@ -371,6 +404,7 @@ fn summarize(record: &ConversationRecord) -> ConversationSummary {
         turns: record.turns.clone(),
         custom_title: record.title.clone(),
         pinned: record.pinned,
+        provenance: record.provenance.clone(),
     }
 }
 
@@ -450,6 +484,7 @@ mod tests {
             turns,
             title: None,
             pinned: false,
+            provenance: Some(vec![]),
         }
     }
 
@@ -473,7 +508,10 @@ mod tests {
         let loaded = read_conversation(temp.path(), "conv-1").expect("read");
         // updated_at 由服务端盖当前 UTC 时间戳，created_at 保留原值；其余字段逐字段一致。
         assert_eq!(loaded.created_at, rec.created_at, "created_at 必须保留原值");
-        assert_ne!(loaded.updated_at, rec.updated_at, "updated_at 必须被服务端覆盖");
+        assert_ne!(
+            loaded.updated_at, rec.updated_at,
+            "updated_at 必须被服务端覆盖"
+        );
         assert_eq!(loaded.conversation_id, rec.conversation_id);
         assert_eq!(loaded.focus_document_id, rec.focus_document_id);
         assert_eq!(loaded.focus_document_title, rec.focus_document_title);
@@ -497,7 +535,11 @@ mod tests {
         save_conversation(temp.path(), &rec).expect("save");
         let loaded = read_conversation(temp.path(), "conv-1").expect("read");
 
-        assert_eq!(loaded.title.as_deref(), Some("第二幕转折"), "自定义标题必须原样保存");
+        assert_eq!(
+            loaded.title.as_deref(),
+            Some("第二幕转折"),
+            "自定义标题必须原样保存"
+        );
         assert!(loaded.pinned, "置顶标记必须保存为 true");
     }
 
@@ -543,14 +585,8 @@ mod tests {
             vec![turn("assistant", "旧回答", "success")],
         );
         let mut value = serde_json::to_value(&rec).expect("to value");
-        value
-            .as_object_mut()
-            .expect("object")
-            .remove("title");
-        value
-            .as_object_mut()
-            .expect("object")
-            .remove("pinned");
+        value.as_object_mut().expect("object").remove("title");
+        value.as_object_mut().expect("object").remove("pinned");
         let dir = conversations_dir(temp.path());
         fs::create_dir_all(&dir).expect("create dir");
         fs::write(
@@ -571,12 +607,176 @@ mod tests {
         assert_eq!(summary.title, "旧档案问题", "缺自定义标题回退到派生标题");
     }
 
+    // ========== 材料出处元数据（controlled-story-read-visibility 任务 5.1） ==========
+
+    fn provenance(doc: &str, turn: u32) -> MaterialProvenance {
+        MaterialProvenance {
+            document_id: doc.to_string(),
+            material_type: "selection".to_string(),
+            document_version: None,
+            turn_index: turn,
+            entered_model_context: true,
+        }
+    }
+
+    #[test]
+    fn save_then_read_round_trips_provenance_without_body_copy() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.provenance = Some(vec![provenance("doc-1", 0)]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+        let loaded = read_conversation(temp.path(), "conv-1").expect("read");
+
+        assert_eq!(
+            loaded.provenance,
+            Some(vec![provenance("doc-1", 0)]),
+            "材料出处元数据必须原样往返"
+        );
+
+        // 档案不得复制保存完整正文：选区正文只存在于 first_round_material，不出现在出处元数据里。
+        let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("read raw");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        let provenance_value = parsed["provenance"].as_array().expect("provenance array");
+        assert_eq!(provenance_value.len(), 1);
+        assert!(
+            !provenance_value[0]
+                .as_object()
+                .expect("object")
+                .contains_key("body"),
+            "出处元数据不得包含正文副本字段"
+        );
+        assert!(
+            !provenance_value[0]
+                .as_object()
+                .expect("object")
+                .contains_key("text"),
+            "出处元数据不得包含选区正文"
+        );
+    }
+
+    #[test]
+    fn old_archive_without_provenance_reads_as_none_and_is_not_corrupt() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-old",
+            Some("旧档案问题"),
+            None,
+            vec![turn("assistant", "旧回答", "success")],
+        );
+        let mut value = serde_json::to_value(&rec).expect("to value");
+        value.as_object_mut().expect("object").remove("provenance");
+        let dir = conversations_dir(temp.path());
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            dir.join("conv-old.json"),
+            serde_json::to_string_pretty(&value).expect("serialize"),
+        )
+        .expect("write old archive");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(
+            result.skipped.is_empty(),
+            "缺 provenance 的旧档案不得视为损坏或跳过"
+        );
+        assert_eq!(result.conversations.len(), 1);
+        assert_eq!(
+            result.conversations[0].provenance, None,
+            "缺 provenance 字段按保守策略读取为 None"
+        );
+    }
+
+    #[test]
+    fn list_summary_carries_provenance_for_reopen() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
+        rec.provenance = Some(vec![provenance("doc-9", 0)]);
+        save_conversation(temp.path(), &rec).expect("save");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert_eq!(result.conversations.len(), 1);
+        assert_eq!(
+            result.conversations[0].provenance,
+            Some(vec![provenance("doc-9", 0)]),
+            "摘要必须携带材料出处供前端判定权限影响"
+        );
+    }
+
+    // ========== 7.3 收窄：出处元数据字段白名单（不落正文副本字段） ==========
+
+    #[test]
+    fn provenance_metadata_contains_only_allowed_fields_and_no_body_copy_keys() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        // 覆盖三种材料类型标签（selection / snapshot / document）：标签作为值存在是
+        // 合法的（判定影响关系），但绝不允许出现 snapshot / bodySnapshot / content /
+        // documents 等「正文副本」字段名。
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.provenance = Some(vec![
+            MaterialProvenance {
+                document_id: "doc-1".to_string(),
+                material_type: "selection".to_string(),
+                document_version: None,
+                turn_index: 0,
+                entered_model_context: true,
+            },
+            MaterialProvenance {
+                document_id: "doc-2".to_string(),
+                material_type: "snapshot".to_string(),
+                document_version: Some("v1".to_string()),
+                turn_index: 0,
+                entered_model_context: true,
+            },
+            MaterialProvenance {
+                document_id: "doc-3".to_string(),
+                material_type: "document".to_string(),
+                document_version: None,
+                turn_index: 0,
+                entered_model_context: false,
+            },
+        ]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+
+        let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("read raw");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        let entries = parsed["provenance"].as_array().expect("provenance array");
+
+        const ALLOWED: [&str; 5] = [
+            "document_id",
+            "material_type",
+            "document_version",
+            "turn_index",
+            "entered_model_context",
+        ];
+        const FORBIDDEN: [&str; 4] = ["snapshot", "bodySnapshot", "content", "documents"];
+
+        assert_eq!(entries.len(), 3, "三种材料类型出处都应往返保留");
+        for entry in entries {
+            let obj = entry.as_object().expect("provenance entry is object");
+            for key in obj.keys() {
+                assert!(
+                    ALLOWED.contains(&key.as_str()),
+                    "出处元数据出现未授权字段: {key}"
+                );
+                assert!(
+                    !FORBIDDEN.contains(&key.as_str()),
+                    "出处元数据不得包含正文副本字段: {key}"
+                );
+            }
+        }
+    }
+
     // ========== 原子写不半写 ==========
 
     #[test]
     fn save_is_atomic_and_leaves_no_temp_files() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let rec = record("conv-1", Some("问题"), None, vec![turn("user", "问题", "pending")]);
+        let rec = record(
+            "conv-1",
+            Some("问题"),
+            None,
+            vec![turn("user", "问题", "pending")],
+        );
 
         save_conversation(temp.path(), &rec).expect("save");
 
@@ -659,8 +859,14 @@ mod tests {
         );
 
         // last_status：a 最后一轮为 assistant/success；b 为 user/pending。
-        assert_eq!(result.conversations[1].last_status.as_deref(), Some("success"));
-        assert_eq!(result.conversations[0].last_status.as_deref(), Some("pending"));
+        assert_eq!(
+            result.conversations[1].last_status.as_deref(),
+            Some("success")
+        );
+        assert_eq!(
+            result.conversations[0].last_status.as_deref(),
+            Some("pending")
+        );
     }
 
     #[test]
@@ -688,8 +894,11 @@ mod tests {
     #[test]
     fn list_skips_corrupt_file_with_visible_hint() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        save_conversation(temp.path(), &record("conv-good", Some("正常讨论"), None, vec![]))
-            .expect("save good");
+        save_conversation(
+            temp.path(),
+            &record("conv-good", Some("正常讨论"), None, vec![]),
+        )
+        .expect("save good");
         fs::write(
             conversations_dir(temp.path()).join("conv-bad.json"),
             "这不是 JSON",
@@ -700,15 +909,21 @@ mod tests {
         assert_eq!(result.conversations.len(), 1, "损坏项不得拖垮正常项");
         assert_eq!(result.conversations[0].conversation_id, "conv-good");
         assert_eq!(result.skipped.len(), 1);
-        assert!(result.skipped[0].starts_with("conv-bad"), "跳过项必须标识来源");
+        assert!(
+            result.skipped[0].starts_with("conv-bad"),
+            "跳过项必须标识来源"
+        );
         assert!(result.skipped[0].contains("损坏"), "损坏项必须给出可见提示");
     }
 
     #[test]
     fn list_skips_over_limit_file() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        save_conversation(temp.path(), &record("conv-good", Some("正常讨论"), None, vec![]))
-            .expect("save good");
+        save_conversation(
+            temp.path(),
+            &record("conv-good", Some("正常讨论"), None, vec![]),
+        )
+        .expect("save good");
         let big = "x".repeat(MAX_CONVERSATION_BYTES as usize + 1024);
         fs::write(conversations_dir(temp.path()).join("conv-big.json"), big)
             .expect("write oversized");
@@ -751,7 +966,10 @@ mod tests {
             rec.conversation_id = bad_id.to_string();
             let result = save_conversation(temp.path(), &rec);
             assert!(
-                matches!(result, Err(ConversationStoreError::InvalidConversationId(_))),
+                matches!(
+                    result,
+                    Err(ConversationStoreError::InvalidConversationId(_))
+                ),
                 "非法标识 {bad_id:?} 必须被拒绝"
             );
         }
@@ -768,7 +986,10 @@ mod tests {
         let mut rec = record("conv-1", Some("问题"), None, vec![]);
         rec.version = 99;
         let result = save_conversation(temp.path(), &rec);
-        assert!(matches!(result, Err(ConversationStoreError::UnsupportedVersion(_))));
+        assert!(matches!(
+            result,
+            Err(ConversationStoreError::UnsupportedVersion(_))
+        ));
     }
 
     #[test]
@@ -816,17 +1037,28 @@ mod tests {
     #[test]
     fn save_stamps_updated_at_and_advances_on_repeated_saves() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let rec = record("conv-1", Some("问题"), None, vec![turn("user", "问题", "pending")]);
+        let rec = record(
+            "conv-1",
+            Some("问题"),
+            None,
+            vec![turn("user", "问题", "pending")],
+        );
 
         save_conversation(temp.path(), &rec).expect("first save");
         let first = read_conversation(temp.path(), "conv-1").expect("read after first");
         assert_eq!(first.created_at, rec.created_at, "created_at 必须保留原值");
-        assert_ne!(first.updated_at, rec.updated_at, "首次保存即由服务端盖时间戳");
+        assert_ne!(
+            first.updated_at, rec.updated_at,
+            "首次保存即由服务端盖时间戳"
+        );
 
         std::thread::sleep(std::time::Duration::from_millis(5));
         save_conversation(temp.path(), &rec).expect("second save");
         let second = read_conversation(temp.path(), "conv-1").expect("read after second");
-        assert_eq!(second.created_at, rec.created_at, "两次保存后 created_at 仍保留原值");
+        assert_eq!(
+            second.created_at, rec.created_at,
+            "两次保存后 created_at 仍保留原值"
+        );
         assert_ne!(
             second.updated_at, first.updated_at,
             "两次保存后 updated_at 必须变化，避免列表排序退化为恒等 created_at"

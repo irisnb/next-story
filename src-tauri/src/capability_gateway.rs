@@ -118,7 +118,11 @@ mod tests {
     #[test]
     fn read_only_story_tools_are_authorized_and_never_forbidden() {
         for name in READ_ONLY_STORY_TOOLS {
-            assert_eq!(authorize_tool(name), ToolAuthorization::ReadOnlyStory, "{name}");
+            assert_eq!(
+                authorize_tool(name),
+                ToolAuthorization::ReadOnlyStory,
+                "{name}"
+            );
             assert!(
                 !FORBIDDEN_TOOL_IDS.contains(&name),
                 "只读工具不应出现在禁用清单: {name}"
@@ -130,19 +134,24 @@ mod tests {
     fn forbidden_and_unknown_tools_are_rejected() {
         assert_eq!(authorize_tool("tool-fs"), ToolAuthorization::Forbidden);
         assert_eq!(authorize_tool("tool-bash"), ToolAuthorization::Forbidden);
-        assert_eq!(authorize_tool("tool-subagent"), ToolAuthorization::Forbidden);
-        assert_eq!(authorize_tool("some-unknown-tool"), ToolAuthorization::Unknown);
+        assert_eq!(
+            authorize_tool("tool-subagent"),
+            ToolAuthorization::Forbidden
+        );
+        assert_eq!(
+            authorize_tool("some-unknown-tool"),
+            ToolAuthorization::Unknown
+        );
     }
 
     #[test]
     fn read_only_tool_names_carry_no_write_semantics() {
         // 只读作品工具集合里不能出现任何写入/编辑语义的名字，守住「无写入能力」。
         for name in READ_ONLY_STORY_TOOLS {
-            for write_hint in ["write", "save", "edit", "create", "delete", "move", "rename", "replace"] {
-                assert!(
-                    !name.contains(write_hint),
-                    "{name} 疑似含写入语义"
-                );
+            for write_hint in [
+                "write", "save", "edit", "create", "delete", "move", "rename", "replace",
+            ] {
+                assert!(!name.contains(write_hint), "{name} 疑似含写入语义");
             }
         }
     }
@@ -151,7 +160,11 @@ mod tests {
     /// 绝不注册为 AI 可调用工具、不进入能力网关授权面；未知工具一律拒绝（fail closed）。
     #[test]
     fn conversation_store_commands_are_not_ai_callable_tools() {
-        for name in ["conversation_list", "conversation_save", "conversation_delete"] {
+        for name in [
+            "conversation_list",
+            "conversation_save",
+            "conversation_delete",
+        ] {
             assert!(
                 !READ_ONLY_STORY_TOOLS.contains(&name),
                 "讨论档案命令不应出现在只读作品工具集合: {name}"

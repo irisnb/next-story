@@ -10,13 +10,19 @@ import { AiPanelState } from "./ai-panel-state.ts";
 import {
   buildDiscussionRecord,
   conversationFromRecord,
+  isConversationRestrictedForRecovery,
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { AiRequestScheduler, DEFAULT_MAX_CONCURRENT } from "./ai-request-scheduler.ts";
 import { waitTiming } from "./ai-timing.ts";
 import { setupAiDock, type AiDockActions } from "./ai-dock.ts";
-import { captureSelection, isMeaningfulSelection } from "./selection-adapter.ts";
+import {
+  captureSelection,
+  authorizeSelection,
+  checkSelectionVisibility,
+  isMeaningfulSelection,
+} from "./selection-adapter.ts";
 import { setupSelectionEntry, type SelectionEntryEditor } from "./selection-entry.ts";
 import {
   aiSessionTransport,
@@ -35,6 +41,7 @@ import {
   type ConversationSummary,
 } from "./conversation-archive.ts";
 import type {
+  ContentTree,
   GenerateAiError,
   GenerateAiRequest,
   SelectionSnapshot,
@@ -116,6 +123,7 @@ export function summaryToRecord(summary: ConversationSummary): ConversationRecor
     turns: summary.turns,
     ...(summary.custom_title?.trim() ? { title: summary.custom_title } : {}),
     ...(summary.pinned ? { pinned: true } : {}),
+    ...(summary.provenance !== undefined ? { provenance: summary.provenance } : {}),
   };
 }
 
@@ -125,6 +133,8 @@ export interface AiFeatureHooks {
   openConfigPage: () => void;
   getCurrentProjectPath?: () => string | null;
   getCurrentDocumentTitle?: () => string | null;
+  getCurrentTree?: () => ContentTree | null;
+  getCurrentDocumentVersion?: () => string | null;
 }
 
 export interface AiFeatureController {
@@ -137,6 +147,8 @@ export interface AiFeatureController {
   getConversations(): ConversationSummary[];
   openDiscussion(summary: ConversationSummary): void;
   deleteDiscussion(conversationId: string): Promise<void>;
+  /** 权限变更后重算已打开讨论的材料限制并锁存（任务 5.2/5.4）。 */
+  recomputeRestrictions(): void;
 }
 
 export interface AiFeatureDependencies {
@@ -148,6 +160,12 @@ export interface AiFeatureDependencies {
   conversationRestore?: typeof conversationRestore;
   newConversationId?: () => string;
   maxConcurrent?: number;
+  /**
+   * 集成点（controlled-story-read-visibility）：返回当前作品下「不允许 AI 查看」的
+   * 文档 ID 集合。后端可见性 API 就绪后由其实名实现注入；未接入时缺省返回空集，
+   * 不引入任何受限行为（旧档案缺出处的保守受限仍生效）。
+   */
+  getHiddenDocumentIds?: () => ReadonlySet<string>;
 }
 
 type StructuredRequestSender = (
@@ -258,6 +276,8 @@ export function setupAiFeature(
 ): AiFeatureController {
   const getCurrentProjectPath = hooks.getCurrentProjectPath ?? (() => null);
   const getCurrentDocumentTitle = hooks.getCurrentDocumentTitle ?? (() => null);
+  const getCurrentTree = hooks.getCurrentTree ?? (() => null);
+  const getCurrentDocumentVersion = hooks.getCurrentDocumentVersion ?? (() => null);
   const newConversationId = dependencies.newConversationId ?? generateConversationId;
   const state = new AiPanelState(() => {}, newConversationId);
   let projectToken = 0;
@@ -267,6 +287,9 @@ export function setupAiFeature(
   const saveConversation = dependencies.conversationSave ?? conversationSave;
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;
   const restoreConversation = dependencies.conversationRestore ?? conversationRestore;
+  // 集成点：后端可见性 API 未接入时返回空集（无受限）；就绪后注入真实实现。
+  const getHiddenDocumentIds = dependencies.getHiddenDocumentIds ?? (() => new Set<string>());
+  const hiddenDocumentIds = (): ReadonlySet<string> => getHiddenDocumentIds();
 
   /** 保存指定讨论：接受即存（pending），终态原子更新；失败对用户可见。 */
   function persistDiscussion(conversationId: string | null): void {
@@ -291,8 +314,21 @@ export function setupAiFeature(
     persistDiscussion(state.activeConversationId);
   }
 
+  /**
+   * 权限变更后：按当前作品可见性重算各打开讨论的材料限制并锁存（任务 5.2/5.4）。
+   * 新被标记受限的讨论立即持久化，使锁存状态在重新开启可见性后重开也不被解除。
+   */
+  function recomputeRestrictions(): void {
+    const newlyRestricted = state.recomputeRestrictions(hiddenDocumentIds());
+    for (const conversationId of newlyRestricted) {
+      persistDiscussion(conversationId);
+    }
+  }
+
   function openDiscussion(summary: ConversationSummary): void {
-    const conversation = conversationFromRecord(summary);
+    const conversation = conversationFromRecord(summary, {
+      hiddenDocumentIds: hiddenDocumentIds(),
+    });
     state.openDiscussion(conversation, summary.focus_document_id, summary.focus_document_title);
   }
 
@@ -378,7 +414,7 @@ export function setupAiFeature(
     void listConversations(projectPath)
       .then((result) => {
         if (projectToken !== token) return;
-        state.loadDiscussions(result.conversations, result.skipped);
+        state.loadDiscussions(result.conversations, result.skipped, hiddenDocumentIds());
         if (result.skipped.length > 0) {
           state.setSaveError(`有 ${result.skipped.length} 个讨论档案无法读取，已跳过`);
         }
@@ -440,14 +476,35 @@ export function setupAiFeature(
     () => state.requestIdentity,
   );
 
-  // 全局调度器：名额释放时把排队请求恢复为生成中。
+  // 全局调度器：名额释放时把排队请求恢复为生成中；派发前复核失败的排队请求转为失败终态。
   const scheduler = new AiRequestScheduler(
     dependencies.maxConcurrent ?? DEFAULT_MAX_CONCURRENT,
     (conversationId) => {
       state.startQueuedRequest(conversationId);
       waitTiming.started(conversationId);
     },
+    (conversationId) => {
+      waitTiming.complete(conversationId);
+      state.rejectQueuedRequest(conversationId, {
+        code: "document_not_visible",
+        message: "材料文档的可见性已变化，本次请求未发送。请重新发起。",
+      });
+    },
   );
+
+  /**
+   * 派发前材料权限复核（任务 6.1）：排队请求实际派发前，重新检查其材料来源文档
+   * 是否仍允许 AI 查看。无材料来源（无选区 / 无关注文档）时不需复核，直接放行。
+   */
+  function materialDispatchGuard(conversationId: string): () => boolean {
+    return () => {
+      const discussion = state.getDiscussion(conversationId);
+      if (!discussion) return false;
+      const sourceDocumentId = discussion.anchor?.documentId ?? discussion.focusDocumentId;
+      if (sourceDocumentId === null) return true;
+      return !hiddenDocumentIds().has(sourceDocumentId);
+    };
+  }
 
   /** 记录提交/排队/开始时间，并返回调度结果。 */
   function scheduleTracked(
@@ -456,7 +513,11 @@ export function setupAiFeature(
     run: () => Promise<void> | null,
   ): "started" | "queued" | "busy" {
     waitTiming.submit(conversationId, kind);
-    const result = scheduler.submit({ conversationId, run });
+    const result = scheduler.submit({
+      conversationId,
+      run,
+      beforeDispatch: materialDispatchGuard(conversationId),
+    });
     if (result === "started") waitTiming.started(conversationId);
     else if (result === "queued") waitTiming.queued(conversationId);
     return result;
@@ -501,6 +562,19 @@ export function setupAiFeature(
     getCurrentDocumentId: hooks.getCurrentDocumentId,
     getCurrentEditor: hooks.getCurrentEditor as () => SelectionEntryEditor | null,
     isRequestInFlight: () => false,
+    isCurrentDocumentAiVisible: () => {
+      const documentId = hooks.getCurrentDocumentId();
+      return documentId !== null && checkSelectionVisibility(getCurrentTree(), {
+        documentId,
+        selectedText: "selection",
+        from: 0,
+        to: 0,
+      }).allowed;
+    },
+    getSelectionIdentity: () => ({
+      projectPath: getCurrentProjectPath() ?? undefined,
+      documentVersion: getCurrentDocumentVersion() ?? undefined,
+    }),
     onSummon: (snapshot) => {
       const accepted = startSummon({
         state,
@@ -514,6 +588,11 @@ export function setupAiFeature(
         getProjectToken: () => projectToken,
         focusDocumentId: snapshot.documentId,
         focusDocumentTitle: getCurrentDocumentTitle(),
+        checkSelectionAllowed: (selection) => authorizeSelection(selection, {
+          projectPath: getCurrentProjectPath(),
+          documentVersion: getCurrentDocumentVersion(),
+          hiddenDocumentIds: hiddenDocumentIds(),
+        }, getCurrentTree()),
       });
       if (accepted) persistCurrentDiscussion();
     },
@@ -523,7 +602,10 @@ export function setupAiFeature(
     const editor = hooks.getCurrentEditor();
     const documentId = hooks.getCurrentDocumentId();
     if (!editor || documentId === null) return;
-    const snapshot = captureSelection(documentId, editor);
+    const snapshot = captureSelection(documentId, editor, {
+      projectPath: getCurrentProjectPath() ?? undefined,
+      documentVersion: getCurrentDocumentVersion() ?? undefined,
+    });
     state.setPendingSelection(isMeaningfulSelection(snapshot) ? snapshot : null);
   }
 
@@ -541,6 +623,11 @@ export function setupAiFeature(
       getProjectToken: () => projectToken,
       focusDocumentId: hooks.getCurrentDocumentId(),
       focusDocumentTitle: getCurrentDocumentTitle(),
+      checkSelectionAllowed: (selection) => authorizeSelection(selection, {
+        projectPath: getCurrentProjectPath(),
+        documentVersion: getCurrentDocumentVersion(),
+        hiddenDocumentIds: hiddenDocumentIds(),
+      }, getCurrentTree()),
     });
   }
 
@@ -570,7 +657,13 @@ export function setupAiFeature(
       const payload: GenerateAiRequest = {
         kind: "direct_question",
         question: request.question,
-        ...(request.selection ? { selected_text: request.selection.selectedText } : {}),
+        ...(request.selection ? {
+          selected_text: request.selection.selectedText,
+          document_id: request.selection.documentId,
+          ...(request.selection.projectPath !== undefined ? { project_path: request.selection.projectPath } : {}),
+          ...(request.selection.documentVersion !== undefined ? { document_version: request.selection.documentVersion } : {}),
+          ...(request.selection.bodySnapshot !== undefined ? { snapshot: request.selection.bodySnapshot } : {}),
+        } : {}),
       };
       const accepted = requestDirectQuestion(conversationId, payload);
       if (accepted === null) {
@@ -602,7 +695,13 @@ export function setupAiFeature(
     coordinator.releaseStaleRequestOwnership();
     const recoverable = [...state.windows.keys()].filter((id) => {
       const discussion = state.getDiscussion(id);
-      return discussion !== null && discussion.conversation !== null;
+      return (
+        discussion !== null &&
+        discussion.conversation !== null &&
+        // 材料权限受限的讨论不得把显示历史重放给 DSH（保留面板历史，不重建可继续上下文）。
+        // 按当前 hiddenDocumentIds 重算：打开后新隐藏的来源文档也会被拦下，不重放。
+        !isConversationRestrictedForRecovery(discussion.conversation, hiddenDocumentIds())
+      );
     });
     if (recoverable.length === 0) {
       transport.endAllSessions();
@@ -681,5 +780,6 @@ export function setupAiFeature(
     },
     openDiscussion,
     deleteDiscussion,
+    recomputeRestrictions,
   };
 }

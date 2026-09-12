@@ -4,26 +4,17 @@
 TBD - created by archiving change add-conversation-persistence-and-isolation. Update Purpose after archive.
 ## Requirements
 ### Requirement: 讨论记录保存到作品文件夹内独立目录
+系统 SHALL 将每个讨论的档案保存为作品文件夹内 `next-story-system/conversations/<conversation_id>.json` 的独立版本化 JSON 文件，并 SHALL 在档案中记录讨论身份、创建与更新时间、关注文档身份、轮次文本与生成终态、首轮材料来源，以及能够判定权限影响的最小材料出处元数据。材料出处 SHALL 记录文档身份、材料类型、版本、所属轮次和是否进入模型上下文等信息，但 MUST NOT 因此保存完整作品正文副本。自定义标题与置顶标记 SHALL 可由用户更新并持久化。
 
-系统 SHALL 将每个讨论的档案保存为作品文件夹内 `next-story-system/conversations/<conversation_id>.json` 的独立版本化 JSON 文件，MUST 与作品正文分开存放，并 SHALL 在档案中记录讨论身份、创建与更新时间、关注文档身份、轮次文本与生成终态、首轮材料来源，以及可选的自定义标题与置顶标记。自定义标题与置顶标记 SHALL 可由用户更新并持久化；字段缺失时 SHALL 按「未重命名、未置顶」处理，不视为损坏。
+#### Scenario: 新讨论记录材料出处
+- **WHEN** 一轮讨论实际使用了某篇作品文档、未保存快照或选区材料
+- **THEN** 讨论档案记录该材料的来源文档、材料类型、版本和所属轮次
+- **AND** 讨论档案不因此复制保存完整正文
 
-#### Scenario: 讨论档案写入作品文件夹
-
-- **WHEN** 一个讨论产生需要保存的内容
-- **THEN** 该讨论的档案写入其所属作品文件夹的 `next-story-system/conversations/` 目录
-- **AND** 档案不写入作品正文目录，也不写入应用数据目录
-
-#### Scenario: 重命名与置顶持久化
-
-- **WHEN** 用户重命名或置顶一个讨论
-- **THEN** 该讨论档案中的自定义标题或置顶标记被更新
-- **AND** 重启后列表与窗口仍显示重命名后的标题与置顶状态
-
-#### Scenario: 旧档案缺少扩展字段
-
-- **WHEN** 读取一个没有自定义标题或置顶标记字段的旧档案
-- **THEN** 系统按「未重命名、未置顶」处理并正常显示
-- **AND** 不将该档案视为损坏或跳过
+#### Scenario: 旧档案缺少材料出处
+- **WHEN** 读取没有材料出处字段的旧讨论档案
+- **THEN** 系统允许用户查看其已保存内容
+- **AND** 系统不得自动将该旧档案完整重放给模型
 
 ### Requirement: 用户轮接受即保存，终态原子更新
 
@@ -46,19 +37,13 @@ TBD - created by archiving change add-conversation-persistence-and-isolation. Up
 - **AND** 界面不显示「已保存」状态
 
 ### Requirement: 重启后按作品提供会话列表与重开
+系统 SHALL 在应用重启后为当前作品列出已保存的讨论，并 SHALL 支持查看讨论内容。若讨论因其材料出处涉及已关闭 AI 可见性的文档，系统 SHALL 将其永久标记为材料权限已变化，允许查看历史但不得沿原上下文自动恢复或继续追问；该受限状态不因之后重新开启可见性而解除，用户须新建讨论才能按当前权限继续。
 
-系统 SHALL 在应用重启后为当前作品列出已保存的讨论，并 SHALL 支持从列表打开查看。列表 MUST 只列出当前作品的讨论，MUST NOT 混入其他作品。
-
-#### Scenario: 重启后列表恢复
-
-- **WHEN** 应用重启后打开一部有已保存讨论的作品
-- **THEN** 系统列出该作品的已保存讨论
-- **AND** 用户可打开任一讨论查看已保存内容
-
-#### Scenario: 列表不混入其他作品
-
-- **WHEN** 当前作品切换为另一部
-- **THEN** 列表只显示该作品的讨论
+#### Scenario: 受限讨论重开
+- **WHEN** 用户重启应用后打开曾使用已隐藏文档的讨论
+- **THEN** 系统显示保存的讨论内容和权限变化提示
+- **AND** 系统不把原历史重放给 DSH
+- **AND** 系统提供新建讨论入口
 
 ### Requirement: 读取容错不拖垮列表
 

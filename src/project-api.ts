@@ -170,6 +170,19 @@ export async function restoreNode(projectPath: string, id: string): Promise<void
   await tauriInvoke("restore_node", { projectPath, id });
 }
 
+/**
+ * 设置单篇文档的 AI 可见性（文档级二元开关，文件夹不拥有该语义）。
+ * 后端是唯一授权事实源；失败抛错，前端据以回滚开关状态并显示中文提示。
+ */
+export async function setDocumentAiVisibility(
+  projectPath: string,
+  documentId: string,
+  visible: boolean,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call("set_document_ai_visibility", { projectPath, documentId, aiVisible: visible });
+}
+
 /** 在系统默认浏览器中打开 http/https 链接（后端会再次校验协议）。 */
 export async function openUrl(url: string): Promise<void> {
   await tauriInvoke("open_url", { url });
@@ -239,11 +252,25 @@ export async function aiSendMessage(
   kind: "first" | "follow_up" | "summon_first",
   question: string,
   selectedText?: string,
-  call: InvokeFn = defaultInvoke,
+  identityOrCall: {
+    documentId?: string;
+    projectPath?: string;
+    documentVersion?: string;
+    /** 未保存正文快照（`canonicalNotebookJson` 输出的合法 Tiptap JSON 字符串）。 */
+    snapshot?: string;
+  } | InvokeFn = defaultInvoke,
+  maybeCall: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
+  const call = typeof identityOrCall === "function" ? identityOrCall : maybeCall;
   const args: Record<string, unknown> = { sessionId, messageId, kind, question };
   if (selectedText !== undefined) {
     args.selectedText = selectedText;
+  }
+  if (typeof identityOrCall !== "function") {
+    if (identityOrCall.documentId !== undefined) args.documentId = identityOrCall.documentId;
+    if (identityOrCall.projectPath !== undefined) args.projectPath = identityOrCall.projectPath;
+    if (identityOrCall.documentVersion !== undefined) args.documentVersion = identityOrCall.documentVersion;
+    if (identityOrCall.snapshot !== undefined) args.snapshot = identityOrCall.snapshot;
   }
   return call<GenerateAiResult>("ai_send_message", args);
 }

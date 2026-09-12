@@ -852,6 +852,24 @@
   gap: var(--space-2);
 }
 
+/* 受限讨论提示：材料权限已变化时提示历史只读并引导新建干净讨论。 */
+.ai-restriction-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-subtle);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+}
+
+.ai-restriction-notice-message {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
 .ai-follow-up-error-actions {
   display: flex;
   flex-wrap: wrap;

@@ -41,12 +41,28 @@ const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DriverCommand {
-    StartSession { session_id: String },
-    SendMessage { session_id: String, message_id: String, text: String },
-    ReplayHistory { session_id: String, turns: Vec<DriverReplayTurn> },
-    ReplayDone { session_id: String },
-    CancelMessage { session_id: String, message_id: String },
-    EndSession { session_id: String },
+    StartSession {
+        session_id: String,
+    },
+    SendMessage {
+        session_id: String,
+        message_id: String,
+        text: String,
+    },
+    ReplayHistory {
+        session_id: String,
+        turns: Vec<DriverReplayTurn>,
+    },
+    ReplayDone {
+        session_id: String,
+    },
+    CancelMessage {
+        session_id: String,
+        message_id: String,
+    },
+    EndSession {
+        session_id: String,
+    },
     Shutdown,
 }
 
@@ -60,14 +76,41 @@ pub struct DriverReplayTurn {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DriverEvent {
-    Ready { protocol_version: u32 },
-    SessionStarted { session_id: String },
-    Delta { session_id: String, message_id: String, seq: u64, text: String },
-    MessageDone { session_id: String, message_id: String, text: String },
-    MessageFailed { session_id: String, message_id: String, code: String, message: String },
-    ReplayOk { session_id: String },
-    SessionEnded { session_id: String },
-    Error { session_id: Option<String>, message_id: Option<String>, code: String, message: String },
+    Ready {
+        protocol_version: u32,
+    },
+    SessionStarted {
+        session_id: String,
+    },
+    Delta {
+        session_id: String,
+        message_id: String,
+        seq: u64,
+        text: String,
+    },
+    MessageDone {
+        session_id: String,
+        message_id: String,
+        text: String,
+    },
+    MessageFailed {
+        session_id: String,
+        message_id: String,
+        code: String,
+        message: String,
+    },
+    ReplayOk {
+        session_id: String,
+    },
+    SessionEnded {
+        session_id: String,
+    },
+    Error {
+        session_id: Option<String>,
+        message_id: Option<String>,
+        code: String,
+        message: String,
+    },
 }
 
 /// 流式增量回调负载：宿主把它转发给前端（Tauri event）。
@@ -96,10 +139,7 @@ pub struct DriverParams {
 pub fn map_driver_failure(code: &str, _raw_message: &str) -> GenerateAiError {
     let upper = code.to_uppercase();
     let (code, message) = if code == "cancelled" {
-        (
-            GenerateAiErrorCode::Timeout,
-            "生成已取消",
-        )
+        (GenerateAiErrorCode::Timeout, "生成已取消")
     } else if upper.contains("INVALID_CREDENTIAL")
         || upper.contains("AUTH")
         || upper.contains("401")
@@ -109,7 +149,10 @@ pub fn map_driver_failure(code: &str, _raw_message: &str) -> GenerateAiError {
             GenerateAiErrorCode::Authentication,
             "认证失败：API Key 可能无效或没有权限",
         )
-    } else if upper.contains("CONTEXT_WINDOW") || upper.contains("TOO_LARGE") || upper.contains("413") {
+    } else if upper.contains("CONTEXT_WINDOW")
+        || upper.contains("TOO_LARGE")
+        || upper.contains("413")
+    {
         (
             GenerateAiErrorCode::RequestTooLarge,
             "对话内容过长，请新建对话后重试",
@@ -125,20 +168,14 @@ pub fn map_driver_failure(code: &str, _raw_message: &str) -> GenerateAiError {
             "无法连接到服务，请检查 API 地址是否正确",
         )
     } else if upper.contains("QUOTA") {
-        (
-            GenerateAiErrorCode::Service,
-            "服务配额不足或已达上限",
-        )
+        (GenerateAiErrorCode::Service, "服务配额不足或已达上限")
     } else if code == "busy" {
         (
             GenerateAiErrorCode::Service,
             "当前会话已有生成中的请求，请稍候",
         )
     } else {
-        (
-            GenerateAiErrorCode::Service,
-            "生成失败，请稍后重试",
-        )
+        (GenerateAiErrorCode::Service, "生成失败，请稍后重试")
     };
     GenerateAiError::new(code, message)
 }
@@ -149,6 +186,46 @@ fn timeout_error() -> GenerateAiError {
 
 fn service_error(message: impl Into<String>) -> GenerateAiError {
     GenerateAiError::new(GenerateAiErrorCode::Service, message)
+}
+
+/// DSH stderr 单行诊断收窄（7.3）：
+/// 原始 stderr 行可能包含请求正文、文件路径或 API Key，绝不能原样写入宿主日志。
+/// 这里按关键词把行映射为固定诊断分类，只记录分类与原文长度，不回显任何原文。
+fn sanitize_stderr_diagnostic(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let category = if lower.contains("no api key")
+        || lower.contains("missing_credential")
+        || lower.contains("not configured")
+    {
+        "缺配置"
+    } else if lower.contains("api key")
+        || lower.contains("401")
+        || lower.contains("403")
+        || lower.contains("auth")
+        || lower.contains("unauthorized")
+    {
+        "认证失败"
+    } else if lower.contains("timeout") || lower.contains("timed out") {
+        "超时"
+    } else if lower.contains("context_window")
+        || lower.contains("too large")
+        || lower.contains("413")
+    {
+        "请求过长"
+    } else if lower.contains("connect")
+        || lower.contains("network")
+        || lower.contains("econnrefused")
+        || lower.contains("dns")
+        || lower.contains("enotfound")
+    {
+        "网络"
+    } else {
+        "其它"
+    };
+    format!(
+        "dsh-driver stderr 诊断：类别={category}，原文 {} 字符（正文/路径/密钥不记录）",
+        raw.chars().count()
+    )
 }
 
 // ========== 管理器 ==========
@@ -227,7 +304,12 @@ impl Inner {
 
     fn route(&self, event: DriverEvent) {
         match &event {
-            DriverEvent::Delta { session_id, message_id, seq, text } => {
+            DriverEvent::Delta {
+                session_id,
+                message_id,
+                seq,
+                text,
+            } => {
                 let sink = self.sink.lock().unwrap().clone();
                 if let Some(sink) = sink {
                     sink(DeltaPayload {
@@ -241,7 +323,8 @@ impl Inner {
             DriverEvent::Ready { .. } => {
                 self.deliver("ready", event);
             }
-            DriverEvent::MessageDone { message_id, .. } | DriverEvent::MessageFailed { message_id, .. } => {
+            DriverEvent::MessageDone { message_id, .. }
+            | DriverEvent::MessageFailed { message_id, .. } => {
                 let key = message_key(message_id);
                 if !self.deliver(&key, event) {
                     eprintln!("dsh_driver: 无等待者的消息终态（{}）", key);
@@ -256,7 +339,12 @@ impl Inner {
             DriverEvent::SessionEnded { session_id } => {
                 self.deliver(&format!("session:{session_id}:end"), event);
             }
-            DriverEvent::Error { session_id, message_id, code, .. } => {
+            DriverEvent::Error {
+                session_id,
+                message_id,
+                code,
+                ..
+            } => {
                 let delivered = message_id
                     .as_ref()
                     .map(|mid| self.deliver(&format!("msg:{mid}"), event.clone()))
@@ -264,9 +352,9 @@ impl Inner {
                     || session_id
                         .as_ref()
                         .map(|sid| {
-                            ["start", "replay", "end"]
-                                .iter()
-                                .any(|suffix| self.deliver(&format!("session:{sid}:{suffix}"), event.clone()))
+                            ["start", "replay", "end"].iter().any(|suffix| {
+                                self.deliver(&format!("session:{sid}:{suffix}"), event.clone())
+                            })
                         })
                         .unwrap_or(false);
                 if !delivered {
@@ -339,7 +427,11 @@ impl DshDriverManager {
 
     /// 确保驱动进程存活且以 `params` 启动。进程存活且参数一致时复用；
     /// 参数变化时优雅重启；进程已死时重新拉起。
-    pub fn ensure_started(&self, params: &DriverParams, paths: &DshRuntimePaths) -> Result<(), GenerateAiError> {
+    pub fn ensure_started(
+        &self,
+        params: &DriverParams,
+        paths: &DshRuntimePaths,
+    ) -> Result<(), GenerateAiError> {
         let _guard = self.inner.spawn_lock.lock().unwrap();
         {
             let mut state = self.inner.state.lock().unwrap();
@@ -360,7 +452,11 @@ impl DshDriverManager {
         self.spawn_locked(params, paths)
     }
 
-    fn spawn_locked(&self, params: &DriverParams, paths: &DshRuntimePaths) -> Result<(), GenerateAiError> {
+    fn spawn_locked(
+        &self,
+        params: &DriverParams,
+        paths: &DshRuntimePaths,
+    ) -> Result<(), GenerateAiError> {
         if !paths.driver_entry.exists() {
             return Err(service_error(
                 "常驻驱动脚本缺失，请确认 sidecar/driver 目录完整",
@@ -403,11 +499,13 @@ impl DshDriverManager {
         let stdin = child.stdin.take().expect("stdin 已 piped");
         let stdout = child.stdout.take().expect("stdout 已 piped");
         // stderr 独立排空：诊断进宿主 stderr，不进协议。
+        // 7.3 收窄：绝不原样回显 stderr 行（可能含正文/路径/密钥），
+        // 只记录固定分类 + 长度的脱敏诊断。
         if let Some(stderr) = child.stderr.take() {
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("dsh-driver: {line}");
+                    eprintln!("{}", sanitize_stderr_diagnostic(&line));
                 }
             });
         }
@@ -422,7 +520,9 @@ impl DshDriverManager {
         });
 
         match ready_rx.recv_timeout(READY_TIMEOUT) {
-            Ok(DriverEvent::Ready { protocol_version }) if protocol_version == PROTOCOL_VERSION => Ok(()),
+            Ok(DriverEvent::Ready { protocol_version }) if protocol_version == PROTOCOL_VERSION => {
+                Ok(())
+            }
             Ok(DriverEvent::Ready { protocol_version }) => {
                 self.kill_current();
                 self.unregister("ready");
@@ -463,7 +563,11 @@ impl DshDriverManager {
 
     fn register(&self, key: &str) -> std::sync::mpsc::Receiver<DriverEvent> {
         let (tx, rx) = channel();
-        self.inner.pending.lock().unwrap().insert(key.to_string(), tx);
+        self.inner
+            .pending
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), tx);
         rx
     }
 
@@ -476,7 +580,9 @@ impl DshDriverManager {
             .map_err(|e| service_error(format!("协议序列化失败: {e}")))?;
         line.push('\n');
         let mut state = self.inner.state.lock().unwrap();
-        let live = state.as_mut().ok_or_else(|| service_error("常驻驱动进程未启动"))?;
+        let live = state
+            .as_mut()
+            .ok_or_else(|| service_error("常驻驱动进程未启动"))?;
         live.write_line(&line)
             .map_err(|e| service_error(format!("向驱动写入命令失败: {e}")))
     }
@@ -485,7 +591,9 @@ impl DshDriverManager {
 
     pub fn start_session(&self, session_id: &str) -> Result<(), GenerateAiError> {
         let rx = self.register(&format!("session:{session_id}:start"));
-        if let Err(e) = self.write_command(&DriverCommand::StartSession { session_id: session_id.to_string() }) {
+        if let Err(e) = self.write_command(&DriverCommand::StartSession {
+            session_id: session_id.to_string(),
+        }) {
             self.unregister(&format!("session:{session_id}:start"));
             return Err(e);
         }
@@ -557,7 +665,11 @@ impl DshDriverManager {
     }
 
     /// 取消进行中的生成。进程未启动时为无操作（幂等）。
-    pub fn cancel_message(&self, session_id: &str, message_id: &str) -> Result<(), GenerateAiError> {
+    pub fn cancel_message(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> Result<(), GenerateAiError> {
         {
             let state = self.inner.state.lock().unwrap();
             if state.is_none() {
@@ -580,7 +692,9 @@ impl DshDriverManager {
         }
         let rx = self.register(&format!("session:{session_id}:end"));
         if self
-            .write_command(&DriverCommand::EndSession { session_id: session_id.to_string() })
+            .write_command(&DriverCommand::EndSession {
+                session_id: session_id.to_string(),
+            })
             .is_err()
         {
             self.unregister(&format!("session:{session_id}:end"));
@@ -599,14 +713,23 @@ impl DshDriverManager {
     }
 
     /// 注入崩溃恢复历史（增量轮次）。需要进程存活（崩溃后由本方法前先 ensure_started）。
-    pub fn replay_history(&self, session_id: &str, turns: Vec<DriverReplayTurn>) -> Result<(), GenerateAiError> {
-        self.write_command(&DriverCommand::ReplayHistory { session_id: session_id.to_string(), turns })
+    pub fn replay_history(
+        &self,
+        session_id: &str,
+        turns: Vec<DriverReplayTurn>,
+    ) -> Result<(), GenerateAiError> {
+        self.write_command(&DriverCommand::ReplayHistory {
+            session_id: session_id.to_string(),
+            turns,
+        })
     }
 
     /// 历史注入完成：驱动以 seed 建会话并确认。
     pub fn replay_done(&self, session_id: &str) -> Result<(), GenerateAiError> {
         let rx = self.register(&format!("session:{session_id}:replay"));
-        if let Err(e) = self.write_command(&DriverCommand::ReplayDone { session_id: session_id.to_string() }) {
+        if let Err(e) = self.write_command(&DriverCommand::ReplayDone {
+            session_id: session_id.to_string(),
+        }) {
             self.unregister(&format!("session:{session_id}:replay"));
             return Err(e);
         }
@@ -676,7 +799,10 @@ mod tests {
     #[test]
     fn protocol_surface_has_no_document_write_channel() {
         let commands = vec![
-            serde_json::to_value(DriverCommand::StartSession { session_id: "s".into() }).unwrap(),
+            serde_json::to_value(DriverCommand::StartSession {
+                session_id: "s".into(),
+            })
+            .unwrap(),
             serde_json::to_value(DriverCommand::SendMessage {
                 session_id: "s".into(),
                 message_id: "m".into(),
@@ -685,17 +811,36 @@ mod tests {
             .unwrap(),
             serde_json::to_value(DriverCommand::ReplayHistory {
                 session_id: "s".into(),
-                turns: vec![DriverReplayTurn { role: "user".into(), text: "t".into() }],
+                turns: vec![DriverReplayTurn {
+                    role: "user".into(),
+                    text: "t".into(),
+                }],
             })
             .unwrap(),
-            serde_json::to_value(DriverCommand::ReplayDone { session_id: "s".into() }).unwrap(),
-            serde_json::to_value(DriverCommand::CancelMessage { session_id: "s".into(), message_id: "m".into() }).unwrap(),
-            serde_json::to_value(DriverCommand::EndSession { session_id: "s".into() }).unwrap(),
+            serde_json::to_value(DriverCommand::ReplayDone {
+                session_id: "s".into(),
+            })
+            .unwrap(),
+            serde_json::to_value(DriverCommand::CancelMessage {
+                session_id: "s".into(),
+                message_id: "m".into(),
+            })
+            .unwrap(),
+            serde_json::to_value(DriverCommand::EndSession {
+                session_id: "s".into(),
+            })
+            .unwrap(),
             serde_json::to_value(DriverCommand::Shutdown).unwrap(),
         ];
         for value in commands {
             let text = value.to_string();
-            for forbidden in ["draft_content", "main_content", "project_path", "file_path", "save"] {
+            for forbidden in [
+                "draft_content",
+                "main_content",
+                "project_path",
+                "file_path",
+                "save",
+            ] {
                 assert!(
                     !text.contains(forbidden),
                     "协议命令面出现疑似文档写入字段: {forbidden} in {text}"
@@ -710,7 +855,10 @@ mod tests {
             ("cancelled", GenerateAiErrorCode::Timeout),
             ("INVALID_CREDENTIAL", GenerateAiErrorCode::Authentication),
             ("TRANSPORT", GenerateAiErrorCode::Network),
-            ("CONTEXT_WINDOW_EXCEEDED", GenerateAiErrorCode::RequestTooLarge),
+            (
+                "CONTEXT_WINDOW_EXCEEDED",
+                GenerateAiErrorCode::RequestTooLarge,
+            ),
             ("QUOTA", GenerateAiErrorCode::Service),
             ("busy", GenerateAiErrorCode::Service),
             ("internal", GenerateAiErrorCode::Service),
@@ -718,7 +866,10 @@ mod tests {
         for (code, expected) in cases {
             let err = map_driver_failure(code, "raw detail must not leak");
             assert_eq!(err.code, expected, "code={code}");
-            assert!(!err.message.contains("raw detail"), "message 不得透传驱动原文");
+            assert!(
+                !err.message.contains("raw detail"),
+                "message 不得透传驱动原文"
+            );
         }
     }
 
@@ -753,7 +904,9 @@ mod tests {
             r#"{"type":"message_failed","session_id":"s1","message_id":"m1","code":"cancelled","message":"x"}"#,
         )
         .unwrap();
-        assert!(matches!(failed, DriverEvent::MessageFailed { ref code, .. } if code == "cancelled"));
+        assert!(
+            matches!(failed, DriverEvent::MessageFailed { ref code, .. } if code == "cancelled")
+        );
     }
 
     /// 集成验证（resident-ai-session 任务 6.2 的 Rust 链路段）：
@@ -798,5 +951,25 @@ mod tests {
             counter.load(Ordering::SeqCst) >= 1,
             "驱动进程丢失必须触发 loss 回调"
         );
+    }
+
+    /// 7.3 收窄：DSH stderr 诊断绝不含正文、路径或密钥原文，且长度受限。
+    #[test]
+    fn stderr_diagnostic_never_leaks_body_path_or_key() {
+        let cases = [
+            "sk-abcdef1234567890 authentication failed",
+            "DEEPSEEK_API_KEY=sk-secret-key-123",
+            r#"error reading D:\Users\李四\Documents\绝密作品\正文.json"#,
+            "request body: 林站在天台边，他决定跳下去。",
+            "some unrelated diagnostic",
+        ];
+        for raw in cases {
+            let diag = sanitize_stderr_diagnostic(raw);
+            assert!(!diag.contains("sk-"), "诊断不得含密钥痕迹: {diag}");
+            assert!(!diag.contains("绝密作品"), "诊断不得含路径: {diag}");
+            assert!(!diag.contains("李四"), "诊断不得含路径: {diag}");
+            assert!(!diag.contains("林站在天台边"), "诊断不得含正文: {diag}");
+            assert!(diag.chars().count() <= 160, "诊断长度受限: {diag}");
+        }
     }
 }

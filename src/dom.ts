@@ -50,6 +50,11 @@ export interface AiWindowDom {
   readonly directQuestionGoConfig: HTMLButtonElement;
   /** 空状态欢迎语（无对话轮次且无进行中请求时显示）。 */
   readonly welcome: HTMLElement;
+  /** 受限讨论提示容器（材料权限已变化时显示，不泄露隐藏文件身份）。 */
+  readonly restrictionNotice: HTMLElement;
+  readonly restrictionNoticeMessage: HTMLElement;
+  /** 受限提示内的「新建对话」入口（新建干净讨论的继续路径）。 */
+  readonly restrictionNewConversation: HTMLButtonElement;
 }
 
 /** AI 停靠区外壳的 DOM 契约（停靠区头、提示区、会话列表、停靠窗口容器与浮动层）。 */
@@ -117,6 +122,8 @@ export interface AppDom {
   fmRecycleBin: HTMLElement;
   fmBackFromRecycle: HTMLButtonElement;
   fmRecycleList: HTMLElement;
+  /** 文件管理区域中关于文档 AI 可见性开关的说明文案。 */
+  fmAiVisibilityHelp: HTMLElement;
   paragraphStyle: HTMLSelectElement;
   btnBold: HTMLButtonElement;
   btnItalic: HTMLButtonElement;
@@ -262,6 +269,9 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     directQuestionConfig: requireRole(root, "direct-question-config"),
     directQuestionGoConfig: requireRole<HTMLButtonElement>(root, "direct-question-go-config"),
     welcome: requireRole(root, "welcome"),
+    restrictionNotice: requireRole(root, "restriction-notice"),
+    restrictionNoticeMessage: requireRole(root, "restriction-notice-message"),
+    restrictionNewConversation: requireRole<HTMLButtonElement>(root, "restriction-new-conversation"),
   };
 }
 
@@ -307,6 +317,7 @@ export function getAppDom(): AppDom {
     fmRecycleBin: requireElement("fm-recycle-bin"),
     fmBackFromRecycle: requireElement("fm-back-from-recycle"),
     fmRecycleList: requireElement("fm-recycle-list"),
+    fmAiVisibilityHelp: requireElement("fm-ai-visibility-help"),
     paragraphStyle: requireElement("paragraph-style"),
     btnBold: requireElement("btn-bold"),
     btnItalic: requireElement("btn-italic"),

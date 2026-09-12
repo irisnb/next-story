@@ -7,6 +7,7 @@ import {
   createConversationFromFirstSuccess,
   failConversationFollowUp,
   frozenSnapshot,
+  latchConversationRestriction,
   succeedConversationFollowUp,
   type Discussion,
   type FirstRoundMaterial,
@@ -177,7 +178,13 @@ export type AiPanelEvent =
       readonly focusDocumentTitle: string | null;
     }
   | { readonly type: "reset" }
-  | { readonly type: "load_discussions"; readonly summaries: readonly ConversationSummary[]; readonly skipped: readonly string[] }
+  | {
+      readonly type: "load_discussions";
+      readonly summaries: readonly ConversationSummary[];
+      readonly skipped: readonly string[];
+      readonly hiddenDocumentIds: ReadonlySet<string>;
+    }
+  | { readonly type: "recompute_restrictions"; readonly hiddenDocumentIds: ReadonlySet<string> }
   | {
       readonly type: "open_discussion";
       readonly conversation: TemporaryConversation;
@@ -196,6 +203,7 @@ export type AiPanelEvent =
   | { readonly type: "reset_layout" }
   | { readonly type: "queue_request"; readonly conversationId: string }
   | { readonly type: "start_queued_request"; readonly conversationId: string }
+  | { readonly type: "reject_queued_request"; readonly conversationId: string; readonly error: GenerateAiError }
   | { readonly type: "rename_discussion"; readonly conversationId: string; readonly title: string }
   | { readonly type: "set_discussion_pinned"; readonly conversationId: string; readonly pinned: boolean };
 
@@ -523,6 +531,9 @@ export function reduceAiPanelState(
         kind: "direct_question",
         question: event.question,
         ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
+        ...(frozenSelection?.bodySnapshot !== undefined
+          ? { snapshot: frozenSelection.bodySnapshot }
+          : {}),
       };
       const current = activeDiscussion(state);
       let discussion: Discussion;
@@ -703,7 +714,9 @@ export function reduceAiPanelState(
     case "load_discussions": {
       const discussions = new Map<string, Discussion>();
       for (const summary of event.summaries) {
-        const conversation = conversationFromRecord(summary);
+        const conversation = conversationFromRecord(summary, {
+          hiddenDocumentIds: event.hiddenDocumentIds,
+        });
         discussions.set(summary.conversation_id, {
           id: summary.conversation_id,
           createdAt: summary.created_at,
@@ -729,6 +742,22 @@ export function reduceAiPanelState(
         pendingSelection: null,
         ignoredSelection: null,
       };
+    }
+    case "recompute_restrictions": {
+      // 权限变更后重算各已打开讨论的材料限制并锁存（任务 5.2/5.4）：
+      // 出处引用当前隐藏文档的讨论被标记受限；已受限讨论保持受限（单调）。
+      let changed = false;
+      const discussions = new Map(state.discussions);
+      for (const [id, discussion] of state.discussions) {
+        const conversation = discussion.conversation;
+        if (!conversation) continue;
+        const latched = latchConversationRestriction(conversation, event.hiddenDocumentIds);
+        if (latched !== conversation) {
+          discussions.set(id, { ...discussion, conversation: latched });
+          changed = true;
+        }
+      }
+      return changed ? { ...state, discussions } : state;
     }
     case "open_discussion": {
       const conversation = event.conversation;
@@ -852,7 +881,7 @@ export function reduceAiPanelState(
       const discussion = activeDiscussion(state);
       const conversation = discussion?.conversation;
       const pending = conversation?.pending;
-      if (!discussion || !conversation || !pending || !pending.interrupted) return state;
+      if (!discussion || !conversation || conversation.restricted || !pending || !pending.interrupted) return state;
       return setDiscussion(state, {
         ...discussion,
         conversation: { ...conversation, pending: { id: pending.id, question: pending.question, streamedText: "" } },
@@ -909,6 +938,49 @@ export function reduceAiPanelState(
         return setDiscussion(state, {
           ...discussion,
           request: { ...request, queued: undefined },
+        });
+      }
+      return state;
+    }
+    case "reject_queued_request": {
+      // 排队请求在派发前重新校验材料权限失败：不派发，转为可读失败终态（任务 6.1）。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request = discussion.request;
+      if (request.kind === "direct_question" && request.status === "loading" && request.queued) {
+        return setDiscussion(state, {
+          ...discussion,
+          request: { ...request, status: "error", error: event.error, queued: undefined },
+        });
+      }
+      if (request.kind === "loading" && request.queued) {
+        if (request.phase === "follow_up" && request.turnId !== undefined) {
+          const outcome = failConversationFollowUp(
+            discussion.conversation,
+            request.turnId,
+            event.error,
+          );
+          if (outcome.ok && outcome.conversation !== null) {
+            return setDiscussion(state, {
+              ...discussion,
+              conversation: outcome.conversation,
+              request: followUpErrorRequest(
+                request.snapshot,
+                event.error,
+                discussion.id,
+                request.turnId,
+              ),
+            });
+          }
+          return state;
+        }
+        // 首轮召唤排队中被拒。
+        return setDiscussion(state, {
+          ...discussion,
+          request: firstErrorRequest(request.snapshot, event.error, {
+            conversationId: discussion.id,
+            phase: "first",
+          }),
         });
       }
       return state;

@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use super::{ContentTree, ContentTreeNode, NodeKind, ProjectPaths};
+use super::{ContentTree, ContentTreeNode, NodeKind, ProjectError, ProjectPaths};
 
 // ========== 身份与材料类型 ==========
 
@@ -147,12 +147,21 @@ fn read_material_from_tree(
 
     // 可见性：必须从根可达（隐藏 / 游离节点拒绝）。
     if !is_visible(tree, document_id) {
-        return Err(MaterialDenial::new(MaterialDenialReason::DocumentNotVisible));
+        return Err(MaterialDenial::new(
+            MaterialDenialReason::DocumentNotVisible,
+        ));
     }
 
     // 类型：必须是文档节点，文件夹不承载正文。
     if node.kind != NodeKind::Document {
         return Err(MaterialDenial::new(MaterialDenialReason::NotADocument));
+    }
+
+    // AI 可见性：文档被用户关闭「允许 AI 查看」时拒绝，且不泄露其身份/正文。
+    if !node.ai_visible {
+        return Err(MaterialDenial::new(
+            MaterialDenialReason::DocumentNotVisible,
+        ));
     }
 
     // 正文与版本：合法快照优先于磁盘稿（未保存内容最新）。
@@ -171,7 +180,9 @@ fn read_material_from_tree(
     // 期望版本：与返回版本不一致即拒绝（旧版本 / 不可用版本）。
     if let Some(expected) = &request.expected_version {
         if expected != &version {
-            return Err(MaterialDenial::new(MaterialDenialReason::VersionUnavailable));
+            return Err(MaterialDenial::new(
+                MaterialDenialReason::VersionUnavailable,
+            ));
         }
     }
 
@@ -201,6 +212,88 @@ fn read_material_from_tree(
         version,
         content: content[range.start..range.end].to_string(),
     })
+}
+
+// ========== AI 目录投影 ==========
+
+/// AI 目录投影中的单个节点：只含允许查看的文档及其必要文件夹路径。
+/// 文档的 `children` 恒为空；文件夹的 `children` 只含仍能到达可见文档的路径。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectedNode {
+    pub id: String,
+    pub name: String,
+    pub kind: NodeKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<ProjectedNode>,
+}
+
+/// 提供给 AI 读取路径的作品目录投影。
+///
+/// 只列允许查看且不在回收站的文档及其必要文件夹路径；隐藏文档的名称、ID、
+/// 路径、正文和仅含隐藏内容的文件夹都不出现在投影中，只以匿名数量提示存在。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectoryProjection {
+    pub root_children: Vec<ProjectedNode>,
+    /// 匿名隐藏文件数量（不含回收站内文档），不携带任何可推断身份的信息。
+    pub hidden_count: usize,
+}
+
+/// 在内容树上生成 AI 目录投影（纯函数，供磁盘入口与测试复用）。
+pub fn project_directory(tree: &ContentTree) -> DirectoryProjection {
+    let mut hidden_count = 0usize;
+    let root_children = tree
+        .root_children
+        .iter()
+        .filter_map(|id| project_node(tree, id, &mut hidden_count))
+        .collect();
+    DirectoryProjection {
+        root_children,
+        hidden_count,
+    }
+}
+
+/// 递归投影单个节点：隐藏文档只增加匿名计数并返回 `None`；文件夹仅当其子树
+/// 仍包含可见文档时才保留（必要路径），否则连同仅含隐藏内容的文件夹一起隐藏。
+fn project_node(tree: &ContentTree, id: &str, hidden_count: &mut usize) -> Option<ProjectedNode> {
+    let node = tree.nodes.get(id)?;
+    match node.kind {
+        NodeKind::Document => {
+            if node.ai_visible {
+                Some(ProjectedNode {
+                    id: node.id.clone(),
+                    name: node.name.clone(),
+                    kind: NodeKind::Document,
+                    children: Vec::new(),
+                })
+            } else {
+                *hidden_count += 1;
+                None
+            }
+        }
+        NodeKind::Folder => {
+            let children: Vec<ProjectedNode> = node
+                .children
+                .iter()
+                .filter_map(|child| project_node(tree, child, hidden_count))
+                .collect();
+            if children.is_empty() {
+                None
+            } else {
+                Some(ProjectedNode {
+                    id: node.id.clone(),
+                    name: node.name.clone(),
+                    kind: NodeKind::Folder,
+                    children,
+                })
+            }
+        }
+    }
+}
+
+/// 读取作品并生成 AI 目录投影（磁盘入口，供命令层调用）。
+pub fn read_directory_projection(project_root: &Path) -> Result<DirectoryProjection, ProjectError> {
+    let tree = super::open_content_tree(project_root)?;
+    Ok(project_directory(&tree))
 }
 
 // ========== 校验助手 ==========
@@ -255,6 +348,11 @@ fn validate_snapshot(
         .map_err(|_| MaterialDenial::new(MaterialDenialReason::InvalidSnapshot))?;
     super::validate_notebook_document(&value)
         .map_err(|_| MaterialDenial::new(MaterialDenialReason::InvalidSnapshot))?;
+    // 版本身份必须由内容派生：即便 work_id / document_id 合法、版本非空，只要
+    // version 与 compute_version(content) 不一致即拒绝，防止伪造版本身份。
+    if snapshot.version != compute_version(&snapshot.content) {
+        return Err(MaterialDenial::new(MaterialDenialReason::InvalidSnapshot));
+    }
     Ok(())
 }
 
@@ -262,8 +360,9 @@ fn validate_snapshot(
 mod tests {
     use super::*;
     use crate::project::{
-        create_new_project, open_content_tree, read_document, save_document, ContentTree,
-        ContentTreeNode, CreateProjectParams, NodeKind, ProjectPaths,
+        create_new_project, open_content_tree, read_document, save_document,
+        set_document_ai_visibility, ContentTree, ContentTreeNode, CreateProjectParams, NodeKind,
+        ProjectPaths,
     };
     use std::path::PathBuf;
 
@@ -373,10 +472,9 @@ mod tests {
         tree.create_document(None).unwrap();
         let req = request("w", "not-there");
 
-        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
-            panic!("缺失文档不得读取正文")
-        })
-        .expect_err("missing document must be denied");
+        let denial =
+            read_material_from_tree("w", &tree, &req, &|_node| panic!("缺失文档不得读取正文"))
+                .expect_err("missing document must be denied");
         assert_eq!(denial.reason, MaterialDenialReason::DocumentMissing);
     }
 
@@ -393,14 +491,14 @@ mod tests {
                 name: "隐藏文档".to_string(),
                 kind: NodeKind::Document,
                 children: Vec::new(),
+                ai_visible: true,
             },
         );
         let req = request("w", &hidden_id);
 
-        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
-            panic!("隐藏文档不得读取正文")
-        })
-        .expect_err("hidden document must be denied");
+        let denial =
+            read_material_from_tree("w", &tree, &req, &|_node| panic!("隐藏文档不得读取正文"))
+                .expect_err("hidden document must be denied");
         assert_eq!(denial.reason, MaterialDenialReason::DocumentNotVisible);
     }
 
@@ -411,10 +509,9 @@ mod tests {
         tree.delete_to_recycle_bin(&doc).unwrap();
         let req = request("w", &doc);
 
-        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
-            panic!("回收站文档不得读取正文")
-        })
-        .expect_err("recycled document must be denied");
+        let denial =
+            read_material_from_tree("w", &tree, &req, &|_node| panic!("回收站文档不得读取正文"))
+                .expect_err("recycled document must be denied");
         assert_eq!(denial.reason, MaterialDenialReason::DocumentRecycled);
     }
 
@@ -424,11 +521,119 @@ mod tests {
         let folder = tree.create_folder(None).unwrap();
         let req = request("w", &folder);
 
-        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
-            panic!("文件夹不得读取正文")
-        })
-        .expect_err("folder must be denied");
+        let denial =
+            read_material_from_tree("w", &tree, &req, &|_node| panic!("文件夹不得读取正文"))
+                .expect_err("folder must be denied");
         assert_eq!(denial.reason, MaterialDenialReason::NotADocument);
+    }
+
+    // ========== 失败关闭：文档 AI 可见性（ai_visible） ==========
+
+    #[test]
+    fn ai_visible_false_document_fails_closed_without_content() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let content = notebook_with_text("将被隐藏的正文");
+        let (root, work_id, doc_id) = setup_work_with_doc(&temp, &content);
+
+        // 关闭可见性后读取被拒绝，且不返回正文。
+        set_document_ai_visibility(&root, &doc_id, false).expect("关闭可见性");
+        let denial =
+            read_material(&root, &request(&work_id, &doc_id)).expect_err("隐藏文档必须被拒绝");
+        assert_eq!(denial.reason, MaterialDenialReason::DocumentNotVisible);
+
+        // 重新允许后恢复读取。
+        set_document_ai_visibility(&root, &doc_id, true).expect("恢复可见性");
+        assert!(read_material(&root, &request(&work_id, &doc_id)).is_ok());
+    }
+
+    #[test]
+    fn snapshot_from_ai_visible_false_document_fails_closed() {
+        let mut tree = ContentTree::new();
+        let doc = tree.create_document(None).unwrap();
+        tree.set_ai_visibility(&doc, false).unwrap();
+        let mut req = request("w", &doc);
+        req.snapshot = Some(MaterialSnapshot {
+            work_id: "w".to_string(),
+            document_id: doc.clone(),
+            version: "v1".to_string(),
+            content: notebook_with_text("快照正文"),
+        });
+
+        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
+            panic!("隐藏文档的快照不得读取正文")
+        })
+        .expect_err("hidden document snapshot must be denied");
+        assert_eq!(denial.reason, MaterialDenialReason::DocumentNotVisible);
+    }
+
+    // ========== AI 目录投影：匿名隐藏计数 ==========
+
+    #[test]
+    fn directory_projection_hides_hidden_docs_and_counts_them_anonymously() {
+        let mut tree = ContentTree::new();
+        let visible = tree.create_document(None).unwrap();
+        tree.rename(&visible, "可见文档").unwrap();
+        let hidden = tree.create_document(None).unwrap();
+        tree.rename(&hidden, "隐藏文档").unwrap();
+        tree.set_ai_visibility(&hidden, false).unwrap();
+
+        let projection = project_directory(&tree);
+        assert_eq!(projection.hidden_count, 1);
+        assert_eq!(projection.root_children.len(), 1);
+        assert_eq!(projection.root_children[0].name, "可见文档");
+        assert_eq!(projection.root_children[0].kind, NodeKind::Document);
+
+        // 序列化不得泄露隐藏文档名称 / ID。
+        let json = serde_json::to_string(&projection).unwrap();
+        assert!(!json.contains("隐藏文档"));
+        assert!(!json.contains(&hidden));
+    }
+
+    #[test]
+    fn directory_projection_drops_folder_with_only_hidden_content() {
+        let mut tree = ContentTree::new();
+        let folder = tree.create_folder(None).unwrap();
+        tree.rename(&folder, "仅隐藏的文件夹").unwrap();
+        let hidden = tree.create_document(Some(&folder)).unwrap();
+        tree.rename(&hidden, "隐藏文档").unwrap();
+        tree.set_ai_visibility(&hidden, false).unwrap();
+
+        let projection = project_directory(&tree);
+        assert!(
+            projection.root_children.is_empty(),
+            "仅含隐藏内容的文件夹不得暴露路径"
+        );
+        assert_eq!(projection.hidden_count, 1);
+
+        let json = serde_json::to_string(&projection).unwrap();
+        assert!(!json.contains("仅隐藏的文件夹"));
+        assert!(!json.contains("隐藏文档"));
+    }
+
+    #[test]
+    fn directory_projection_keeps_necessary_folder_paths() {
+        let mut tree = ContentTree::new();
+        let folder = tree.create_folder(None).unwrap();
+        tree.rename(&folder, "角色").unwrap();
+        let visible = tree.create_document(Some(&folder)).unwrap();
+        tree.rename(&visible, "小芳").unwrap();
+        let hidden = tree.create_document(Some(&folder)).unwrap();
+        tree.rename(&hidden, "小刚").unwrap();
+        tree.set_ai_visibility(&hidden, false).unwrap();
+
+        let projection = project_directory(&tree);
+        assert_eq!(projection.root_children.len(), 1);
+        let role = &projection.root_children[0];
+        assert_eq!(role.kind, NodeKind::Folder);
+        assert_eq!(role.name, "角色");
+        assert_eq!(role.children.len(), 1);
+        assert_eq!(role.children[0].name, "小芳");
+        assert_eq!(projection.hidden_count, 1);
+
+        let json = serde_json::to_string(&projection).unwrap();
+        assert!(json.contains("角色"));
+        assert!(json.contains("小芳"));
+        assert!(!json.contains("小刚"));
     }
 
     // ========== 失败关闭：旧版本 / 非法范围 ==========
@@ -467,8 +672,11 @@ mod tests {
         let (root, work_id, doc_id) = setup_work_with_doc(&temp, &content);
 
         for bad in [
-            MaterialRange { start: 5, end: 3 },              // start > end
-            MaterialRange { start: 0, end: content.len() + 8 }, // end 越界
+            MaterialRange { start: 5, end: 3 }, // start > end
+            MaterialRange {
+                start: 0,
+                end: content.len() + 8,
+            }, // end 越界
         ] {
             let mut req = request(&work_id, &doc_id);
             req.range = Some(bad);
@@ -554,6 +762,32 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_version_must_match_snapshot_content() {
+        let mut tree = ContentTree::new();
+        let doc = tree.create_document(None).unwrap();
+        let snapshot_content = notebook_with_text("快照正文");
+        // 伪造版本：非空、且与 expected_version 一致，但并非由内容派生。
+        let forged_version = "forged-version".to_string();
+
+        let mut req = request("w", &doc);
+        req.expected_version = Some(forged_version.clone());
+        req.snapshot = Some(MaterialSnapshot {
+            work_id: "w".to_string(),
+            document_id: doc.clone(),
+            version: forged_version,
+            content: snapshot_content,
+        });
+
+        // 即便快照身份合法、版本非空且与 expected_version 相同，只要它不等于
+        // compute_version(content)，就必须失败关闭为 InvalidSnapshot，且不读磁盘正文。
+        let denial = read_material_from_tree("w", &tree, &req, &|_node| {
+            panic!("伪造版本快照不得读取磁盘正文")
+        })
+        .expect_err("forged snapshot version must be denied");
+        assert_eq!(denial.reason, MaterialDenialReason::InvalidSnapshot);
+    }
+
+    #[test]
     fn snapshot_with_invalid_content_fails_closed() {
         let temp = tempfile::TempDir::new().unwrap();
         let content = notebook_with_text("磁盘旧稿");
@@ -578,17 +812,18 @@ mod tests {
         let snapshot_content = notebook_with_text("快照新稿");
         let (root, work_id, doc_id) = setup_work_with_doc(&temp, &disk_content);
 
+        let snapshot_version = compute_version(&snapshot_content);
         let mut req = request(&work_id, &doc_id);
         req.snapshot = Some(MaterialSnapshot {
             work_id: work_id.clone(),
             document_id: doc_id.clone(),
-            version: "snapshot-v1".to_string(),
+            version: snapshot_version.clone(),
             content: snapshot_content.clone(),
         });
 
         let material = read_material(&root, &req).expect("valid snapshot read");
         assert_eq!(material.content, snapshot_content);
-        assert_eq!(material.version, "snapshot-v1");
+        assert_eq!(material.version, snapshot_version);
 
         // 磁盘稿仍是旧内容：快照只读传递，绝不写回磁盘。
         assert_eq!(read_document(&root, &doc_id).unwrap(), disk_content);

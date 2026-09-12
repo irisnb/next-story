@@ -49,9 +49,15 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
     },
-    sendMessage: (sessionId, messageId, kind, question, selectedText) => {
+    sendMessage: (sessionId, messageId, kind, question, selectedText, identityOrCall) => {
       const args: Record<string, unknown> = { sessionId, messageId, kind, question };
       if (selectedText !== undefined) args.selectedText = selectedText;
+      if (identityOrCall && typeof identityOrCall !== "function") {
+        if (identityOrCall.documentId !== undefined) args.documentId = identityOrCall.documentId;
+        if (identityOrCall.projectPath !== undefined) args.projectPath = identityOrCall.projectPath;
+        if (identityOrCall.documentVersion !== undefined) args.documentVersion = identityOrCall.documentVersion;
+        if (identityOrCall.snapshot !== undefined) args.snapshot = identityOrCall.snapshot;
+      }
       commands.push({ cmd: "ai_send_message", args });
       if (failure !== null) return Promise.reject(failure);
       return Promise.resolve(okResult());
@@ -140,12 +146,149 @@ test("first direct question starts a session and sends kind first with a convers
   ]);
 });
 
+test("first selection sends its frozen work, document, and version identity through the transport", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "direct_question",
+    question: "这个问题",
+    selected_text: "冻结选区",
+    document_id: "doc-1",
+    project_path: "C:/作品",
+    document_version: "v1",
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "first",
+    question: "这个问题",
+    selectedText: "冻结选区",
+    documentId: "doc-1",
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+  });
+});
+
 test("direct question without selection omits the selectedText argument", async () => {
   const ui = harness();
   await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("只问问题"));
 
   const send = ui.commands.find((entry) => entry.cmd === "ai_send_message")!;
   assert.equal("selectedText" in send.args, false);
+});
+
+test("first round forwards the unsaved body snapshot through the transport", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "direct_question",
+    question: "这个问题",
+    selected_text: "冻结选区",
+    document_id: "doc-1",
+    project_path: "C:/作品",
+    document_version: "v1",
+    snapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "first",
+    question: "这个问题",
+    selectedText: "冻结选区",
+    documentId: "doc-1",
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+    snapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  });
+});
+
+test("summon first round forwards the unsaved body snapshot", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "summon",
+    selected_text: "冻结选区",
+    document_id: "doc-1",
+    document_version: "v1",
+    snapshot: "快照JSON",
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "summon_first",
+    question: "",
+    selectedText: "冻结选区",
+    documentId: "doc-1",
+    documentVersion: "v1",
+    snapshot: "快照JSON",
+  });
+});
+
+test("follow_up forwards the retained snapshot when present", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "follow_up",
+    selected_text: "冻结选区",
+    snapshot: "快照JSON",
+    messages: [
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "当前问题" },
+    ],
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "follow_up",
+    question: "当前问题",
+    snapshot: "快照JSON",
+  });
+});
+
+test("follow_up forwards document, project, and version identity together with the snapshot", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "follow_up",
+    selected_text: "冻结选区",
+    document_id: "doc-1",
+    project_path: "C:/作品",
+    document_version: "v1",
+    snapshot: "快照JSON",
+    messages: [
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "当前问题" },
+    ],
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "follow_up",
+    question: "当前问题",
+    documentId: "doc-1",
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+    snapshot: "快照JSON",
+  });
+});
+
+test("follow_up without selection or snapshot forwards no identity", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("当前问题"));
+
+  const send = ui.commands.find((entry) => entry.cmd === "ai_send_message")!;
+  assert.equal("documentId" in send.args, false);
+  assert.equal("projectPath" in send.args, false);
+  assert.equal("documentVersion" in send.args, false);
+  assert.equal("snapshot" in send.args, false);
+});
+
+test("a request without a snapshot omits the snapshot argument", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("只问问题"));
+
+  const send = ui.commands.find((entry) => entry.cmd === "ai_send_message")!;
+  assert.equal("snapshot" in send.args, false);
 });
 
 test("follow_up sends only the last user message as the incremental question", async () => {

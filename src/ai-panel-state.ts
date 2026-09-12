@@ -1,8 +1,10 @@
 import {
   conversationIdentityOf,
+  conversationRestrictionNotice,
   followUpAvailableOf,
   followUpRequestForQuestionOf,
   followUpRequestOf,
+  latchConversationRestriction,
   readonlyConversationView,
   retryFollowUpQuestionOf,
   summaryOf,
@@ -144,6 +146,16 @@ export class AiPanelState {
   get followUpAvailable(): boolean {
     const discussion = this.activeDiscussion();
     return followUpAvailableOf(discussion?.conversation ?? null);
+  }
+
+  /** 当前聚焦讨论的受限提示；未受限为 null。 */
+  get restrictionNotice(): string | null {
+    return conversationRestrictionNotice(this.conversation);
+  }
+
+  /** 指定讨论的受限提示；未受限为 null。 */
+  restrictionNoticeOf(conversationId: string): string | null {
+    return conversationRestrictionNotice(this.conversationOf(conversationId));
   }
 
   get conversationIdentity(): { conversationId: string; turnId?: number } | null {
@@ -389,9 +401,33 @@ export class AiPanelState {
     this.dispatch({ type: "reset" });
   }
 
-  /** 切换作品后加载新作品的讨论列表（归档档案重建为可重开讨论）。 */
-  loadDiscussions(summaries: readonly ConversationSummary[], skipped: readonly string[]): void {
-    this.dispatch({ type: "load_discussions", summaries, skipped });
+  /** 切换作品后加载新作品的讨论列表（归档档案重建为可重开讨论；携带隐藏文档身份判定受限）。 */
+  loadDiscussions(
+    summaries: readonly ConversationSummary[],
+    skipped: readonly string[],
+    hiddenDocumentIds: ReadonlySet<string> = new Set(),
+  ): void {
+    this.dispatch({ type: "load_discussions", summaries, skipped, hiddenDocumentIds });
+  }
+
+  /**
+   * 权限变更后重算各已打开讨论的材料限制并锁存（任务 5.2/5.4）：
+   * 出处引用当前隐藏文档的讨论被标记受限；已受限讨论保持受限（单调，不因重新开启可见性解除）。
+   * 返回本次新标记受限的讨论 ID 集合，供编排层持久化锁存状态。
+   */
+  recomputeRestrictions(hiddenDocumentIds: ReadonlySet<string>): string[] {
+    const newlyRestricted: string[] = [];
+    for (const [id, discussion] of this.state.discussions) {
+      const conversation = discussion.conversation;
+      if (!conversation) continue;
+      if (latchConversationRestriction(conversation, hiddenDocumentIds) !== conversation) {
+        newlyRestricted.push(id);
+      }
+    }
+    if (newlyRestricted.length > 0) {
+      this.dispatch({ type: "recompute_restrictions", hiddenDocumentIds });
+    }
+    return newlyRestricted;
   }
 
   /** 从列表重开一个讨论：以已保存轮次重建显示数据。 */
@@ -540,6 +576,11 @@ export class AiPanelState {
   /** 把指定讨论的排队请求恢复为生成中（名额释放后按序开始）。 */
   startQueuedRequest(conversationId: string): boolean {
     return this.dispatch({ type: "start_queued_request", conversationId });
+  }
+
+  /** 排队请求派发前复核失败（材料权限已变化）：转为可读失败终态，不派发。 */
+  rejectQueuedRequest(conversationId: string, error: GenerateAiError): boolean {
+    return this.dispatch({ type: "reject_queued_request", conversationId, error });
   }
 
   /** 指定讨论是否处于首轮进行中（首轮 / 直接提问 loading；供预检过期隔离）。 */

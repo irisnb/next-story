@@ -77,3 +77,104 @@ test("cancelQueued removes a queued request without starting it", async () => {
   await Promise.resolve();
   assert.equal(bRan, false, "被取消的排队请求不发起生成");
 });
+
+test("a queued request is revalidated before dispatch and rejected when beforeDispatch returns false", async () => {
+  const rejected: string[] = [];
+  const scheduler = new AiRequestScheduler(1, () => {}, (id) => rejected.push(id));
+  const a = deferred();
+  let bRan = false;
+  assert.equal(scheduler.submit({ conversationId: "a", run: () => a.promise }), "started");
+  assert.equal(
+    scheduler.submit({
+      conversationId: "b",
+      run: () => { bRan = true; return Promise.resolve(); },
+      beforeDispatch: () => false,
+    }),
+    "queued",
+  );
+
+  a.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(bRan, false, "复核失败的排队请求不得派发");
+  assert.deepEqual(rejected, ["b"], "复核失败必须通知 onRejected");
+});
+
+test("a queued request whose beforeDispatch passes still starts", async () => {
+  const scheduler = new AiRequestScheduler(1);
+  const a = deferred();
+  let bRan = false;
+  assert.equal(scheduler.submit({ conversationId: "a", run: () => a.promise }), "started");
+  assert.equal(
+    scheduler.submit({
+      conversationId: "b",
+      run: () => { bRan = true; return Promise.resolve(); },
+      beforeDispatch: () => true,
+    }),
+    "queued",
+  );
+
+  a.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(bRan, true, "复核通过的排队请求照常派发");
+});
+
+test("an immediately-started request ignores beforeDispatch (already preflighted)", () => {
+  const scheduler = new AiRequestScheduler(2);
+  let ran = false;
+  const result = scheduler.submit({
+    conversationId: "a",
+    run: () => { ran = true; return Promise.resolve(); },
+    beforeDispatch: () => false,
+  });
+  assert.equal(result, "started");
+  assert.equal(ran, true, "立即开始的请求已经过首轮预检，不受派发前复核影响");
+});
+
+test("a synchronous throw on immediate dispatch propagates and releases the slot", () => {
+  const scheduler = new AiRequestScheduler(1);
+  assert.throws(
+    () => scheduler.submit({
+      conversationId: "a",
+      run: () => { throw new Error("boom"); },
+    }),
+    /boom/,
+    "立即派发的同步异常必须向上抛出",
+  );
+  assert.equal(scheduler.isBusy("a"), false, "同步异常后必须释放 active 槽位");
+  let ran = false;
+  assert.equal(
+    scheduler.submit({ conversationId: "a", run: () => { ran = true; return Promise.resolve(); } }),
+    "started",
+    "槽位释放后同一讨论可再次立即开始",
+  );
+  assert.equal(ran, true);
+});
+
+test("a synchronous throw from a queued request releases the slot and the queue continues", async () => {
+  const runs: string[] = [];
+  const scheduler = new AiRequestScheduler(1);
+  const a = deferred();
+  assert.equal(
+    scheduler.submit({ conversationId: "a", run: () => { runs.push("a"); return a.promise; } }),
+    "started",
+  );
+  assert.equal(
+    scheduler.submit({ conversationId: "b", run: () => { runs.push("b"); throw new Error("boom"); } }),
+    "queued",
+  );
+  let cRan = false;
+  assert.equal(
+    scheduler.submit({ conversationId: "c", run: () => { cRan = true; runs.push("c"); return Promise.resolve(); } }),
+    "queued",
+  );
+
+  a.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(runs, ["a", "b", "c"], "b 同步抛异常后，c 仍应继续派发");
+  assert.equal(cRan, true);
+  assert.equal(scheduler.queueLength, 0);
+});

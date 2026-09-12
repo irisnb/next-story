@@ -12,6 +12,7 @@ import {
   type SelectionEntryEditor,
 } from "../src/selection-entry.ts";
 import { sameSelectionSnapshot } from "../src/shared-storage-and-selection-identity.ts";
+import { canonicalNotebookJson } from "../src/structured-notebook.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { JSONContent } from "@tiptap/core";
 import type {
@@ -334,6 +335,14 @@ function snapshot(text: string): SelectionSnapshot {
   return { documentId: "draft", selectedText: text, from: 0, to: text.length };
 }
 
+/** 与 `FakeSelectionEditor.getDocument()` 同形的正文，用于推导冻结快照的正文快照。 */
+function paragraphBodySnapshot(text: string): string {
+  return canonicalNotebookJson({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+}
+
 test("shows the entry for a meaningful selection whose focus end is visible", () => {
   assert.equal(
     decideSummonVisibility({ hasMeaningfulSelection: true, focusEndVisible: true }),
@@ -375,7 +384,13 @@ test("selection entry summons directly and freezes the editor selection", () => 
     assert.equal(entry.children.length, 1);
     trigger.dispatch("click");
 
-    assert.deepEqual(summons, [{ documentId: "doc-1", selectedText: "冻结选区", from: 3, to: 7 }]);
+    assert.deepEqual(summons, [{
+      documentId: "doc-1",
+      selectedText: "冻结选区",
+      from: 3,
+      to: 7,
+      bodySnapshot: paragraphBodySnapshot("开头冻结选区结尾"),
+    }]);
     assert.equal(entry.classList.contains("hidden"), true);
   } finally {
     ui.restore();
@@ -405,6 +420,7 @@ test("submitted summon snapshot survives later edits, selection changes, and doc
       selectedText: "冻结选区",
       from: 3,
       to: 7,
+      bodySnapshot: paragraphBodySnapshot("开头冻结选区结尾"),
     });
   } finally {
     ui.restore();
@@ -427,7 +443,7 @@ test("selection entry supports forward and backward editor selections", () => {
     entryTrigger(entry).dispatch("click");
     assert.deepEqual(ui.draft.coordinateReads, [5, 2, 2, 5]);
     assert.deepEqual(summons, [
-      { documentId: "doc-1", selectedText: "bcd", from: 2, to: 5 },
+      { documentId: "doc-1", selectedText: "bcd", from: 2, to: 5, bodySnapshot: paragraphBodySnapshot("abcdef") },
     ]);
   } finally {
     ui.restore();

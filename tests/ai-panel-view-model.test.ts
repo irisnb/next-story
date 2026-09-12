@@ -8,6 +8,8 @@ import { idleRequest } from "../src/ai-panel-request-state.ts";
 import type { PanelStateView } from "../src/ai-panel-request-state.ts";
 import {
   conversationFromRecord,
+  HIDDEN_MATERIAL_RESTRICTION_NOTICE,
+  MISSING_PROVENANCE_RESTRICTION_NOTICE,
   readonlyConversationView,
   type ReadonlyTemporaryConversation,
 } from "../src/ai-panel-conversation.ts";
@@ -713,6 +715,15 @@ test("an interrupted summon first round renders the selection text and an interr
     focus_document_title: null,
     first_round_material: { kind: "summon", question: "", selection_text: "林站在天台边。" },
     turns: [{ role: "assistant", text: "", status: "pending" }],
+    provenance: [
+      {
+        document_id: "doc-1",
+        material_type: "selection",
+        document_version: null,
+        turn_index: 0,
+        entered_model_context: true,
+      },
+    ],
   };
 
   const view = conversationViewOf(record);
@@ -722,7 +733,7 @@ test("an interrupted summon first round renders the selection text and an interr
     { role: "user", text: "林站在天台边。" },
     { role: "status", text: "中断" },
   ]);
-  // 中断的首轮无 pending，追问输入应可用。
+  // 中断的首轮无 pending，追问输入应可用（材料仍可见，未受限）。
   assert.ok(view.followUpForm);
   assert.equal(view.followUpForm.inputEnabled, true);
 });
@@ -774,4 +785,97 @@ test("a completed summon first round renders the selection text and the assistan
     { role: "user", text: "林站在天台边。" },
     { role: "assistant", text: "首轮回应" },
   ]);
+});
+
+// ========== 受限讨论 UI（controlled-story-read-visibility 任务 5.2 / 5.3 / 6.2） ==========
+
+function restrictedConversationView(
+  record: ConversationRecord,
+  hiddenDocumentIds: readonly string[] = [],
+): AiPanelView {
+  const conversation = readonlyConversationView(
+    conversationFromRecord(record, { hiddenDocumentIds: new Set(hiddenDocumentIds) }),
+  )!;
+  return buildAiPanelView(idlePanelState(), conversation);
+}
+
+function completedRecord(provenance: ConversationRecord["provenance"]): ConversationRecord {
+  return {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: "doc-secret",
+    focus_document_title: "秘密文档",
+    first_round_material: { kind: "summon", question: "", selection_text: "选区" },
+    turns: [{ role: "assistant", text: "首答", status: "done" }],
+    ...(provenance !== undefined ? { provenance } : {}),
+  };
+}
+
+test("a discussion restricted by hidden material shows a non-identifying notice and disables follow-up", () => {
+  const record = completedRecord([
+    {
+      document_id: "doc-secret",
+      material_type: "selection",
+      document_version: null,
+      turn_index: 0,
+      entered_model_context: true,
+    },
+  ]);
+
+  const view = restrictedConversationView(record, ["doc-secret"]);
+
+  assert.equal(view.restrictionNotice, HIDDEN_MATERIAL_RESTRICTION_NOTICE);
+  assert.ok(!view.restrictionNotice!.includes("doc-secret"), "提示不得泄露隐藏文档 ID");
+  assert.ok(!view.restrictionNotice!.includes("秘密文档"), "提示不得泄露隐藏文档名称");
+  // 历史仍然可查看。
+  assert.deepEqual(view.conversation?.messages, [
+    { role: "user", text: "选区" },
+    { role: "assistant", text: "首答" },
+  ]);
+  // 追问输入与发送入口被禁用，并给出新建干净讨论路径。
+  assert.ok(view.followUpForm);
+  assert.equal(view.followUpForm.inputEnabled, false);
+  assert.equal(view.newConversationVisible, true);
+});
+
+test("an archive missing provenance shows the conservative notice and disables follow-up", () => {
+  const record: ConversationRecord = {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: null,
+    focus_document_title: null,
+    first_round_material: { kind: "direct_question", question: "旧问题", selection_text: null },
+    turns: [
+      { role: "user", text: "旧问题", status: "done" },
+      { role: "assistant", text: "旧回答", status: "done" },
+    ],
+  };
+
+  const view = restrictedConversationView(record);
+
+  assert.equal(view.restrictionNotice, MISSING_PROVENANCE_RESTRICTION_NOTICE);
+  assert.ok(view.followUpForm);
+  assert.equal(view.followUpForm.inputEnabled, false);
+});
+
+test("a discussion whose materials remain visible has no notice and keeps follow-up enabled", () => {
+  const record = completedRecord([
+    {
+      document_id: "doc-secret",
+      material_type: "selection",
+      document_version: null,
+      turn_index: 0,
+      entered_model_context: true,
+    },
+  ]);
+
+  const view = restrictedConversationView(record, ["doc-other"]);
+
+  assert.equal(view.restrictionNotice, null);
+  assert.ok(view.followUpForm);
+  assert.equal(view.followUpForm.inputEnabled, true);
 });

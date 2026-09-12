@@ -24,12 +24,13 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 
 use super::operations::{
-    read_and_validate_notebook, read_bounded_string, recover_migration_rollback_transaction,
-    recover_pending_save_before_migration, transactional_restore, transactional_write_mapped,
-    validate_migration_source_files, ManifestPurpose, StagedAction, StagedFile, MAX_METADATA_BYTES,
+    read_and_validate_notebook, read_bounded_string, read_content_tree,
+    recover_migration_rollback_transaction, recover_pending_save_before_migration,
+    transactional_restore, transactional_write_mapped, validate_migration_source_files,
+    ManifestPurpose, StagedAction, StagedFile, MAX_CONTENT_TREE_BYTES, MAX_METADATA_BYTES,
     MAX_NOTEBOOK_BYTES,
 };
-use super::{ContentTree, ProjectError, ProjectMetadata, ProjectPaths};
+use super::{ContentTree, NodeKind, ProjectError, ProjectMetadata, ProjectPaths};
 
 /// 备份目录所在的父目录（位于 `next-story-system/` 下，系统所有）。
 const MIGRATIONS_DIR: &str = "migrations";
@@ -45,13 +46,21 @@ pub(crate) struct MigrationStep {
     pub(crate) migrate: fn(&Path) -> Result<(), ProjectError>,
 }
 
-/// 生产环境迁移注册表：`2 → 3` 把固定双本子迁移为内容树根层两篇普通文档。
+/// 生产环境迁移注册表：`2 → 3` 把固定双本子迁移为内容树根层两篇普通文档；
+/// `3 → 4` 为文档节点物化默认允许的 AI 可见性字段。
 /// 版本 1（旧 `.txt` 本子）无迁移步骤，继续拒绝。
-pub(crate) const PRODUCTION_MIGRATIONS: &[MigrationStep] = &[MigrationStep {
-    from_version: 2,
-    to_version: 3,
-    migrate: migrate_v2_to_v3,
-}];
+pub(crate) const PRODUCTION_MIGRATIONS: &[MigrationStep] = &[
+    MigrationStep {
+        from_version: 2,
+        to_version: 3,
+        migrate: migrate_v2_to_v3,
+    },
+    MigrationStep {
+        from_version: 3,
+        to_version: 4,
+        migrate: migrate_v3_to_v4,
+    },
+];
 
 /// 版本 2 → 3：把固定双本子（`作品文本/草稿本.json`、`作品文本/正文本.json`）
 /// 迁移为内容树根层两篇普通文档，名称保留「草稿本」「正文本」，正文保留原
@@ -153,6 +162,64 @@ fn migrate_v2_to_v3(project_root: &Path) -> Result<(), ProjectError> {
     Ok(())
 }
 
+/// 版本 3 → 4：为内容树中的每篇文档物化默认允许的 `ai_visible` 字段。
+///
+/// 旧版本 3 内容树缺少 `ai_visible`，反序列化时由 `#[serde(default)]` 按
+/// 「允许 AI 查看」读取；本步骤把该默认值显式写入内容树并提交版本 4，使
+/// 可见性成为作品结构的一部分。文件夹不拥有可见性，此步骤不为其写入语义。
+///
+/// 原子切换顺序：写入内容树元数据 → 提交版本 4 元信息（完成标记）。正文
+/// 文件（`作品文本/documents/*.json`）绝不触碰；迁移失败或中途崩溃留下的
+/// 事务由框架的备份回滚 / 前滚恢复机制处理。
+fn migrate_v3_to_v4(project_root: &Path) -> Result<(), ProjectError> {
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+
+    // 读取并校验内容树；缺失 ai_visible 的旧文档经 serde 默认按允许处理。
+    let mut tree = read_content_tree(&paths)?;
+    for node in tree.nodes.values_mut() {
+        if node.kind == NodeKind::Document {
+            node.ai_visible = true;
+        }
+    }
+    let tree_json =
+        serde_json::to_string_pretty(&tree).map_err(|e| ProjectError::WriteError(e.to_string()))?;
+
+    let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
+        .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
+    let mut metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
+        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {e}")))?;
+    metadata.version = 4;
+    let metadata_json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+
+    let staged_writes = vec![
+        (
+            StagedFile {
+                staged: "content-tree.json".into(),
+                target: "next-story-system/content-tree.json".into(),
+                action: StagedAction::Replace,
+            },
+            tree_json,
+        ),
+        (
+            StagedFile {
+                staged: "project.json".into(),
+                target: "next-story-system/project.json".into(),
+                action: StagedAction::Replace,
+            },
+            metadata_json,
+        ),
+    ];
+    transactional_write_mapped(
+        &paths,
+        &staged_writes,
+        &metadata.updated_at,
+        ManifestPurpose::Migration,
+    )?;
+
+    Ok(())
+}
+
 /// 版本迁移入口：读取当前版本，与目标版本比较并执行需要的迁移。
 pub(crate) fn migrate_project(
     project_root: &Path,
@@ -175,38 +242,16 @@ pub(crate) fn migrate_project(
 
     // 先收集从当前版本到目标版本的迁移链，按版本逐级查找；找不到步骤的版本无法迁移。
     // 链在改动任何文件之前就确定下来，缺步骤的旧版本直接拒绝，不会留下部分迁移。
-    let mut chain: Vec<&MigrationStep> = Vec::new();
-    let mut version = current_version;
-    while version < target_version {
-        let step = migrations
-            .iter()
-            .find(|step| step.from_version == version)
-            .ok_or_else(|| unsupported_version(version))?;
-
-        if step.to_version <= step.from_version {
-            return Err(ProjectError::InvalidStructure(format!(
-                "迁移步骤定义不合法: 目标版本 {} 未高于起始版本 {}",
-                step.to_version, step.from_version
-            )));
-        }
-        if step.to_version > target_version {
-            return Err(ProjectError::InvalidStructure(format!(
-                "迁移步骤定义不合法: 从 {} 到 {} 超出目标版本 {}",
-                step.from_version, step.to_version, target_version
-            )));
-        }
-
-        chain.push(step);
-        version = step.to_version;
-    }
+    let mut chain = build_migration_chain(migrations, current_version, target_version)?;
 
     // 确认存在迁移链后，先恢复遗留的手动保存事务（旧版本作品先按旧事务恢复，
     // 再走迁移），再校验源文件边界，最后备份。版本过低无迁移步骤时在链构建
     // 阶段已被拒绝，不会触碰任何文件。
     recover_pending_save_before_migration(&paths)?;
 
-    // 恢复可能把中断的迁移事务前滚完成（含删除旧双本子文件）：此时版本已到
-    // 目标，直接通过，不再要求旧源文件存在。
+    // 恢复可能把中断的迁移事务前滚到中间版本（含删除旧双本子文件）：若前滚已到
+    // 目标版本，直接通过；否则从恢复后的版本重新构建剩余的迁移链，避免重跑已
+    // 完成的前置步骤。
     let recovered_version = read_project_version(project_root)?;
     if recovered_version == target_version {
         return Ok(recovered_version);
@@ -214,11 +259,14 @@ pub(crate) fn migrate_project(
     if recovered_version > target_version {
         return Err(unsupported_version(recovered_version));
     }
+    if recovered_version != current_version {
+        chain = build_migration_chain(migrations, recovered_version, target_version)?;
+    }
 
     validate_migration_source_files(project_root)?;
 
-    // 执行前先备份将被改动的文件（project.json 与两个本子）。
-    let backup_dir = create_backup(project_root, current_version)?;
+    // 执行前先备份将被改动的文件（project.json 与迁移源文件）。
+    let backup_dir = create_backup(project_root, recovered_version)?;
 
     // 逐级执行迁移，每一步后校验版本；任一步骤失败即回滚备份。
     for step in chain {
@@ -245,6 +293,39 @@ pub(crate) fn migrate_project(
     }
 
     Ok(target_version)
+}
+
+/// 从指定起始版本到目标版本逐级构建迁移链；缺步骤的版本直接拒绝。
+fn build_migration_chain<'a>(
+    migrations: &'a [MigrationStep],
+    from_version: u32,
+    target_version: u32,
+) -> Result<Vec<&'a MigrationStep>, ProjectError> {
+    let mut chain: Vec<&MigrationStep> = Vec::new();
+    let mut version = from_version;
+    while version < target_version {
+        let step = migrations
+            .iter()
+            .find(|step| step.from_version == version)
+            .ok_or_else(|| unsupported_version(version))?;
+
+        if step.to_version <= step.from_version {
+            return Err(ProjectError::InvalidStructure(format!(
+                "迁移步骤定义不合法: 目标版本 {} 未高于起始版本 {}",
+                step.to_version, step.from_version
+            )));
+        }
+        if step.to_version > target_version {
+            return Err(ProjectError::InvalidStructure(format!(
+                "迁移步骤定义不合法: 从 {} 到 {} 超出目标版本 {}",
+                step.from_version, step.to_version, target_version
+            )));
+        }
+
+        chain.push(step);
+        version = step.to_version;
+    }
+    Ok(chain)
 }
 
 /// 迁移开始前恢复上次中断的迁移回滚事务；非迁移回滚用途的事务原样跳过。
@@ -293,6 +374,9 @@ fn unsupported_version(version: u32) -> ProjectError {
 
 /// 把将被迁移改动的文件备份到 `next-story-system/migrations/backup-<from_version>-<时间戳>/`。
 /// 备份失败时清理已创建的部分备份目录，不留下残缺备份。
+///
+/// `project.json` 始终备份；旧双本子（版本 2 源）与内容树（版本 3 源）按存在性
+/// 备份，兼容不同起始版本的迁移链。
 fn create_backup(project_root: &Path, from_version: u32) -> Result<PathBuf, ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
     let timestamp = Utc::now().format("%Y%m%d-%H%M%S-%f").to_string();
@@ -304,8 +388,9 @@ fn create_backup(project_root: &Path, from_version: u32) -> Result<PathBuf, Proj
     let copy_result = (|| -> Result<(), ProjectError> {
         fs::create_dir_all(&backup_dir).map_err(|e| ProjectError::WriteError(e.to_string()))?;
         copy_file_into_backup(&paths.metadata_file, &backup_dir, "project.json")?;
-        copy_file_into_backup(&paths.draft_file, &backup_dir, "草稿本.json")?;
-        copy_file_into_backup(&paths.main_file, &backup_dir, "正文本.json")?;
+        copy_file_if_exists(&paths.draft_file, &backup_dir, "草稿本.json")?;
+        copy_file_if_exists(&paths.main_file, &backup_dir, "正文本.json")?;
+        copy_file_if_exists(&paths.content_tree_file, &backup_dir, "content-tree.json")?;
         Ok(())
     })();
 
@@ -328,10 +413,24 @@ fn copy_file_into_backup(
     Ok(())
 }
 
-/// 用备份事务式恢复被改动的文件：整体暂存进 `save-transaction/` 后按
-/// 草稿 → 正文 → 元信息 顺序原子替换，不再用三次裸 `fs::copy`（裸复制
-/// 中途失败会留下部分回滚状态，且没有恢复标记）。恢复成功才删除备份目录，
-/// 恢复失败返回错误并保留备份目录便于人工处理。
+/// 仅当源文件存在时复制到备份目录；不存在原样跳过（版本 3 起旧双本子已移除）。
+fn copy_file_if_exists(
+    source: &Path,
+    backup_dir: &Path,
+    file_name: &str,
+) -> Result<(), ProjectError> {
+    if !source.is_file() {
+        return Ok(());
+    }
+    copy_file_into_backup(source, backup_dir, file_name)
+}
+
+/// 用备份事务式恢复被改动的文件：整体暂存进 `save-transaction/` 后原子替换，
+/// 不再用裸 `fs::copy`（裸复制中途失败会留下部分回滚状态，且没有恢复标记）。
+/// 恢复成功才删除备份目录，恢复失败返回错误并保留备份目录便于人工处理。
+///
+/// 版本 2 源（旧双本子 + project.json）走固定三文件恢复；版本 3 源
+/// （content-tree.json + project.json）走映射式事务恢复。
 fn rollback_backup(backup_dir: &Path, project_root: &Path) -> Result<(), ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
 
@@ -339,16 +438,52 @@ fn rollback_backup(backup_dir: &Path, project_root: &Path) -> Result<(), Project
         .map_err(|e| {
         ProjectError::WriteError(format!("回滚失败：无法读取备份 project.json: {e}"))
     })?;
-    let draft_json = read_bounded_string(&backup_dir.join("草稿本.json"), MAX_NOTEBOOK_BYTES)
-        .map_err(|e| {
+    let metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
+        .map_err(|e| ProjectError::WriteError(format!("回滚失败：备份 project.json 无效: {e}")))?;
+
+    let content_tree_backup = backup_dir.join("content-tree.json");
+    if content_tree_backup.is_file() {
+        // 版本 3 源：恢复内容树 + 元信息（映射式事务，元信息最后提交）。
+        let tree_json =
+            read_bounded_string(&content_tree_backup, MAX_CONTENT_TREE_BYTES).map_err(|e| {
+                ProjectError::WriteError(format!("回滚失败：无法读取备份 content-tree.json: {e}"))
+            })?;
+        let staged_writes = vec![
+            (
+                StagedFile {
+                    staged: "content-tree.json".into(),
+                    target: "next-story-system/content-tree.json".into(),
+                    action: StagedAction::Replace,
+                },
+                tree_json,
+            ),
+            (
+                StagedFile {
+                    staged: "project.json".into(),
+                    target: "next-story-system/project.json".into(),
+                    action: StagedAction::Replace,
+                },
+                metadata_json,
+            ),
+        ];
+        transactional_write_mapped(
+            &paths,
+            &staged_writes,
+            &metadata.updated_at,
+            ManifestPurpose::MigrationRollback,
+        )?;
+    } else {
+        // 版本 2 源：恢复旧双本子 + 元信息（固定三文件恢复）。
+        let draft_json = read_bounded_string(&backup_dir.join("草稿本.json"), MAX_NOTEBOOK_BYTES)
+            .map_err(|e| {
             ProjectError::WriteError(format!("回滚失败：无法读取备份 草稿本.json: {e}"))
         })?;
-    let main_json = read_bounded_string(&backup_dir.join("正文本.json"), MAX_NOTEBOOK_BYTES)
-        .map_err(|e| {
-            ProjectError::WriteError(format!("回滚失败：无法读取备份 正文本.json: {e}"))
-        })?;
-
-    transactional_restore(&paths, &metadata_json, &draft_json, &main_json)?;
+        let main_json = read_bounded_string(&backup_dir.join("正文本.json"), MAX_NOTEBOOK_BYTES)
+            .map_err(|e| {
+                ProjectError::WriteError(format!("回滚失败：无法读取备份 正文本.json: {e}"))
+            })?;
+        transactional_restore(&paths, &metadata_json, &draft_json, &main_json)?;
+    }
 
     // 恢复成功才删除备份目录；失败则保留备份便于人工处理。
     let _ = fs::remove_dir_all(backup_dir);
@@ -460,7 +595,7 @@ mod tests {
     fn migrate_rejects_future_version_without_backup() {
         let temp = TempDir::new().expect("创建临时目录");
         let root = temp.path().join("未来版本");
-        seed_project(&root, 4);
+        seed_project(&root, ProjectMetadata::CURRENT_VERSION + 1);
         let before = metadata_bytes(&root);
 
         let result = migrate_project(
@@ -472,7 +607,7 @@ mod tests {
         match result {
             Err(ProjectError::InvalidStructure(message)) => {
                 assert!(message.contains("不支持的项目结构版本"), "实际: {message}");
-                assert!(message.contains('4'), "实际: {message}");
+                assert!(message.contains('5'), "实际: {message}");
             }
             other => panic!("期望版本拒绝，实际: {other:?}"),
         }
@@ -794,7 +929,7 @@ mod tests {
 
         let opened = crate::project::open_existing_project(&root).expect("迁移并打开");
 
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert_eq!(
             root_doc_body(&root, &opened.tree, "草稿本"),
             draft,
@@ -871,7 +1006,7 @@ mod tests {
 
         // 再次打开：版本仍是 2，重跑迁移（幂等），最终一致有效。
         let opened = crate::project::open_existing_project(&root).expect("崩溃后再次打开");
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
         assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!root.join("作品文本").join("草稿本.json").exists());
@@ -892,7 +1027,7 @@ mod tests {
         fs::write(root.join("作品文本").join("正文本.json"), &main).expect("残留正文本");
 
         let opened = crate::project::open_existing_project(&root).expect("残留旧文件时打开");
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
         assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
     }
@@ -943,8 +1078,126 @@ mod tests {
             new_main,
             "应先恢复旧事务的新正文"
         );
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert!(!tx_dir.exists(), "恢复后事务目录应被清理");
+    }
+
+    // ========== 版本 3 → 4 迁移（物化文档 AI 可见性） ==========
+
+    /// 建一个版本 3 作品：内容树**没有** `ai_visible` 字段（旧格式），一篇文档正文
+    /// 合法。返回该文档节点 ID。
+    fn seed_v3_project_without_ai_visible(root: &Path, doc_text: &str) -> String {
+        fs::create_dir_all(root.join("作品文本").join("documents")).expect("创建 documents 目录");
+        fs::create_dir_all(root.join("next-story-system")).expect("创建系统文件夹");
+        let doc_id = "node-legacy-doc".to_string();
+        fs::write(
+            root.join("作品文本")
+                .join("documents")
+                .join(format!("{doc_id}.json")),
+            valid_notebook_json(doc_text),
+        )
+        .expect("写入文档正文");
+        // 旧格式内容树：缺少 ai_visible 字段。
+        let tree_json = serde_json::json!({
+            "root_children": [doc_id.clone()],
+            "nodes": {
+                doc_id.clone(): {
+                    "id": doc_id.clone(),
+                    "name": "旧文档",
+                    "kind": "Document",
+                    "children": []
+                }
+            },
+            "recycle_bin": []
+        })
+        .to_string();
+        fs::write(
+            root.join("next-story-system").join("content-tree.json"),
+            tree_json,
+        )
+        .expect("写入旧内容树");
+        fs::write(
+            root.join("next-story-system").join("project.json"),
+            r#"{"name":"旧作品","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","version":3}"#,
+        )
+        .expect("写入元信息");
+        doc_id
+    }
+
+    #[test]
+    fn migrate_v3_to_v4_materializes_ai_visible_and_keeps_body() {
+        let temp = TempDir::new().expect("创建临时目录");
+        let root = temp.path().join("旧版本3");
+        let body = valid_notebook_json("正文内容");
+        let doc_id = seed_v3_project_without_ai_visible(&root, "正文内容");
+
+        let opened = crate::project::open_existing_project(&root).expect("迁移 v3 到 v4");
+        assert_eq!(opened.metadata.version, 4);
+        assert!(
+            opened.tree.nodes[&doc_id].ai_visible,
+            "缺失 ai_visible 的旧文档应默认允许"
+        );
+
+        // 内容树已物化 ai_visible。
+        let tree_json =
+            fs::read_to_string(root.join("next-story-system").join("content-tree.json"))
+                .expect("读取内容树");
+        let tree: ContentTree = serde_json::from_str(&tree_json).expect("解析内容树");
+        assert!(tree.nodes[&doc_id].ai_visible);
+
+        // 正文零改动。
+        assert_eq!(
+            fs::read_to_string(
+                root.join("作品文本")
+                    .join("documents")
+                    .join(format!("{doc_id}.json"))
+            )
+            .expect("读取正文"),
+            body
+        );
+    }
+
+    /// 合成迁移步骤 3 → 4：先破坏内容树再故意失败，验证回滚恢复了内容树与元信息。
+    fn synthetic_v3_to_v4_step_fails(project_root: &Path) -> Result<(), ProjectError> {
+        let paths = ProjectPaths::new(project_root.to_path_buf());
+        fs::write(&paths.content_tree_file, "被迁移破坏的内容树")
+            .map_err(|e| ProjectError::WriteError(e.to_string()))?;
+        Err(ProjectError::WriteError("测试注入的迁移失败".to_string()))
+    }
+
+    #[test]
+    fn migrate_v3_to_v4_rolls_back_content_tree_and_metadata_on_failure() {
+        let temp = TempDir::new().expect("创建临时目录");
+        let root = temp.path().join("失败迁移v3");
+        let doc_id = seed_v3_project_without_ai_visible(&root, "正文内容");
+        let paths = ProjectPaths::new(root.clone());
+        let tree_before = fs::read(&paths.content_tree_file).expect("读取迁移前内容树");
+        let metadata_before = fs::read(&paths.metadata_file).expect("读取迁移前元信息");
+        let body_before = fs::read(paths.document_file(&doc_id)).expect("读取迁移前正文");
+
+        let steps = [MigrationStep {
+            from_version: 3,
+            to_version: 4,
+            migrate: synthetic_v3_to_v4_step_fails,
+        }];
+
+        let result = migrate_project(&root, &steps, 4);
+        assert!(matches!(result, Err(ProjectError::WriteError(_))));
+
+        // 回滚后内容树、元信息、正文全部恢复原字节。
+        assert_eq!(
+            fs::read(&paths.content_tree_file).expect("读取回滚后内容树"),
+            tree_before
+        );
+        assert_eq!(
+            fs::read(&paths.metadata_file).expect("读取回滚后元信息"),
+            metadata_before
+        );
+        assert_eq!(
+            fs::read(paths.document_file(&doc_id)).expect("读取回滚后正文"),
+            body_before
+        );
+        assert!(backup_dirs(&root).is_empty(), "回滚成功后应清理备份目录");
     }
 
     // ========== 迁移提交中断的前滚恢复（删除动作可恢复） ==========
@@ -969,6 +1222,7 @@ mod tests {
                 name: "草稿本".into(),
                 kind: NodeKind::Document,
                 children: Vec::new(),
+                ai_visible: true,
             },
         );
         tree.nodes.insert(
@@ -978,6 +1232,7 @@ mod tests {
                 name: "正文本".into(),
                 kind: NodeKind::Document,
                 children: Vec::new(),
+                ai_visible: true,
             },
         );
         tree.root_children = vec![draft_id.clone(), main_id.clone()];
@@ -1037,7 +1292,7 @@ mod tests {
 
         // 再次打开：前滚剩余动作，到达一致有效的版本 3。
         let opened = crate::project::open_existing_project(&root).expect("崩溃后前滚打开");
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
         assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!paths.draft_file.exists(), "旧草稿本应已被删除");
@@ -1073,7 +1328,7 @@ mod tests {
 
         // 再次打开：前滚元信息完成迁移。
         let opened = crate::project::open_existing_project(&root).expect("前滚元信息完成迁移");
-        assert_eq!(opened.metadata.version, 3);
+        assert_eq!(opened.metadata.version, 4);
         assert_eq!(root_doc_body(&root, &opened.tree, "草稿本"), draft);
         assert_eq!(root_doc_body(&root, &opened.tree, "正文本"), main);
         assert!(!paths.draft_file.exists());

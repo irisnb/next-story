@@ -212,10 +212,9 @@ pub fn read_document(project_root: &Path, document_id: &str) -> Result<String, P
     let paths = ProjectPaths::new(project_root.to_path_buf());
     recover_interrupted_save(&paths)?;
     let tree = read_content_tree(&paths)?;
-    let node = tree
-        .nodes
-        .get(document_id)
-        .ok_or_else(|| ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}")))?;
+    let node = tree.nodes.get(document_id).ok_or_else(|| {
+        ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}"))
+    })?;
     if node.kind != NodeKind::Document {
         return Err(ProjectError::InvalidStructure(
             "只能读取文档节点，文件夹不承载正文".to_string(),
@@ -386,6 +385,20 @@ pub fn restore_node(project_root: &Path, id: &str) -> Result<(), ProjectError> {
     Ok(())
 }
 
+/// 设置文档节点的 AI 可见性，作为结构变更事务持久提交。
+/// 只作用于文档节点，文件夹不拥有可见性；正文文件绝不触碰。
+pub fn set_document_ai_visibility(
+    project_root: &Path,
+    document_id: &str,
+    ai_visible: bool,
+) -> Result<(), ProjectError> {
+    run_structure_change(project_root, |tree| {
+        tree.set_ai_visibility(document_id, ai_visible)
+            .map(|_| None)
+    })?;
+    Ok(())
+}
+
 /// 按文档 ID 保存单篇文档正文：校验 ID 是内容树中存在的文档节点、正文为合法
 /// 格式版本 2 且不超限，复用映射式事务把该文档正文 + project.json 作为一个
 /// 完整一致世代原子提交（元信息最后，作为完成标记）。
@@ -404,10 +417,9 @@ pub fn save_document(
 
     // 定位并确认 document_id 是内容树中存在的文档节点。
     let tree = read_content_tree(&paths)?;
-    let node = tree
-        .nodes
-        .get(document_id)
-        .ok_or_else(|| ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}")))?;
+    let node = tree.nodes.get(document_id).ok_or_else(|| {
+        ProjectError::InvalidStructure(format!("内容树节点不存在: {document_id}"))
+    })?;
     if node.kind != NodeKind::Document {
         return Err(ProjectError::InvalidStructure(
             "只能保存文档节点，文件夹不承载正文".to_string(),
@@ -453,23 +465,34 @@ pub fn save_document(
     Ok(())
 }
 
-/// 迁移前校验源文件边界：作品根、元信息、旧双本子都不能是符号链接 /
-/// 重解析点，且内容在读取上限内。在创建备份之前调用，保证迁移失败时
-/// 不产生备份 / 回滚副作用，也不把作品文件夹外部的内容读入作品。
+/// 迁移前校验源文件边界：作品根、元信息都不能是符号链接 / 重解析点，且内容在
+/// 读取上限内。旧双本子（版本 2 源）与内容树（版本 3 源）按存在性校验，兼容
+/// 不同起始版本的迁移链。在创建备份之前调用，保证迁移失败时不产生备份 / 回滚
+/// 副作用，也不把作品文件夹外部的内容读入作品。
 pub(crate) fn validate_migration_source_files(project_root: &Path) -> Result<(), ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
 
     validate_no_reparse_point(project_root, "作品根目录")?;
     validate_no_reparse_point(&paths.metadata_file, "project.json")?;
-    validate_no_reparse_point(&paths.draft_file, "草稿本.json")?;
-    validate_no_reparse_point(&paths.main_file, "正文本.json")?;
-
     read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(format!("project.json 无法读取: {e}")))?;
-    read_bounded_string(&paths.draft_file, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::InvalidStructure(format!("草稿本.json 无法读取: {e}")))?;
-    read_bounded_string(&paths.main_file, MAX_NOTEBOOK_BYTES)
-        .map_err(|e| ProjectError::InvalidStructure(format!("正文本.json 无法读取: {e}")))?;
+
+    if paths.draft_file.exists() {
+        validate_no_reparse_point(&paths.draft_file, "草稿本.json")?;
+        read_bounded_string(&paths.draft_file, MAX_NOTEBOOK_BYTES)
+            .map_err(|e| ProjectError::InvalidStructure(format!("草稿本.json 无法读取: {e}")))?;
+    }
+    if paths.main_file.exists() {
+        validate_no_reparse_point(&paths.main_file, "正文本.json")?;
+        read_bounded_string(&paths.main_file, MAX_NOTEBOOK_BYTES)
+            .map_err(|e| ProjectError::InvalidStructure(format!("正文本.json 无法读取: {e}")))?;
+    }
+    if paths.content_tree_file.exists() {
+        validate_no_reparse_point(&paths.content_tree_file, "content-tree.json")?;
+        read_bounded_string(&paths.content_tree_file, MAX_CONTENT_TREE_BYTES).map_err(|e| {
+            ProjectError::InvalidStructure(format!("content-tree.json 无法读取: {e}"))
+        })?;
+    }
 
     Ok(())
 }
@@ -963,8 +986,12 @@ pub(crate) fn transactional_restore(
 }
 
 /// 恢复上次迁移回滚中断留下的事务（供迁移模块在读取版本前调用）。
-/// 只处理 `MigrationRollback` 用途的清单；清单缺失/损坏或属于手动保存时
+/// 只处理 `MigrationRollback` 用途的清单；清单缺失/损坏或属于其它用途时
 /// 原样跳过，交给打开流程的常规事务恢复处理，避免改变既有错误语义。
+///
+/// 迁移回滚现在既可能走固定三文件（版本 2 源），也可能走映射式事务
+/// （版本 3 源恢复内容树 + 元信息），因此复用 [`commit_staged_generation`]
+/// 统一前滚提交，两种清单都能恢复。
 pub(crate) fn recover_migration_rollback_transaction(
     paths: &ProjectPaths,
 ) -> Result<(), ProjectError> {
@@ -981,11 +1008,14 @@ pub(crate) fn recover_migration_rollback_transaction(
         return Ok(());
     }
 
-    ensure_staged_generation_is_complete(&layout, &manifest)?;
-    replace_from_staged(&paths.draft_file, &layout.staged_draft)?;
-    replace_from_staged(&paths.main_file, &layout.staged_main)?;
-    replace_from_staged(&paths.metadata_file, &layout.staged_metadata)?;
-    cleanup_transaction(&layout);
+    match manifest.phase {
+        TransactionPhase::Staged => cleanup_transaction(&layout),
+        TransactionPhase::Committing => {
+            ensure_staged_generation_is_complete(&layout, &manifest)?;
+            commit_staged_generation(paths, &layout, &manifest)?;
+            cleanup_transaction(&layout);
+        }
+    }
 
     Ok(())
 }
@@ -1662,12 +1692,16 @@ mod tests {
         let opened = open_project(&project_root).expect("open discards manifest-less staging");
 
         assert_opened_generation(&opened, &paths, OLD_DRAFT, OLD_MAIN);
-        assert_eq!(fs::read(paths.document_file(
-            &root_document_id(&opened.tree, "草稿本").unwrap(),
-        )).unwrap(), old_draft);
-        assert_eq!(fs::read(paths.document_file(
-            &root_document_id(&opened.tree, "正文本").unwrap(),
-        )).unwrap(), old_main);
+        assert_eq!(
+            fs::read(paths.document_file(&root_document_id(&opened.tree, "草稿本").unwrap(),))
+                .unwrap(),
+            old_draft
+        );
+        assert_eq!(
+            fs::read(paths.document_file(&root_document_id(&opened.tree, "正文本").unwrap(),))
+                .unwrap(),
+            old_main
+        );
         assert!(!layout.dir.exists());
     }
 
@@ -2611,5 +2645,73 @@ mod tests {
         );
         assert!(!layout.dir.exists(), "Staged 事务目录应被丢弃");
         assert_eq!(opened.metadata.version, ProjectMetadata::CURRENT_VERSION);
+    }
+
+    // ========== 文档 AI 可见性（ai_visible）持久化 ==========
+
+    #[test]
+    fn set_document_ai_visibility_persists_and_keeps_body() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("可见性切换".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+        let doc_id = any_document_id(&paths);
+        let body_before = fs::read_to_string(paths.document_file(&doc_id)).expect("read body");
+
+        set_document_ai_visibility(&project_root, &doc_id, false).expect("关闭可见性");
+
+        let tree = read_tree(&paths);
+        assert!(!tree.nodes[&doc_id].ai_visible, "关闭后应持久化为 false");
+
+        // 正文文件零写回。
+        assert_eq!(
+            fs::read_to_string(paths.document_file(&doc_id)).expect("read body after"),
+            body_before,
+            "切换可见性不得改写正文"
+        );
+
+        // 重新打开后状态保持。
+        let opened = open_project(&project_root).expect("reopen");
+        assert!(!opened.tree.nodes[&doc_id].ai_visible);
+    }
+
+    #[test]
+    fn set_document_ai_visibility_rejects_folder_and_missing_node() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("可见性拒绝".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+
+        let folder = create_folder(&project_root, None).expect("create folder");
+        assert!(matches!(
+            set_document_ai_visibility(&project_root, &folder, false),
+            Err(ProjectError::InvalidStructure(_))
+        ));
+        assert!(matches!(
+            set_document_ai_visibility(&project_root, "不存在的节点", false),
+            Err(ProjectError::InvalidStructure(_))
+        ));
+    }
+
+    #[test]
+    fn visibility_survives_rename_move_delete_and_restore() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let project_root = create_project("可见性稳定".to_string(), temp.path().to_path_buf())
+            .expect("create project");
+        let paths = ProjectPaths::new(project_root.clone());
+        let doc_id = any_document_id(&paths);
+
+        set_document_ai_visibility(&project_root, &doc_id, false).expect("关闭可见性");
+
+        // 重命名 / 移动不改变可见性。
+        rename_node(&project_root, &doc_id, "改名后").expect("rename");
+        assert!(!read_tree(&paths).nodes[&doc_id].ai_visible);
+        let folder = create_folder(&project_root, None).expect("create folder");
+        move_node(&project_root, &doc_id, Some(&folder)).expect("move");
+        assert!(!read_tree(&paths).nodes[&doc_id].ai_visible);
+
+        // 删除进回收站再恢复，可见性保持关闭。
+        delete_node(&project_root, &doc_id).expect("delete");
+        restore_node(&project_root, &doc_id).expect("restore");
+        assert!(!read_tree(&paths).nodes[&doc_id].ai_visible);
     }
 }

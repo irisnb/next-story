@@ -245,6 +245,10 @@
                   </div>
                 </div>
                 <div class="ai-window-input" data-role="input">
+                  <div data-role="restriction-notice" class="ai-restriction-notice hidden" role="status" aria-live="polite">
+                    <div data-role="restriction-notice-message" class="ai-restriction-notice-message"></div>
+                    <button data-role="restriction-new-conversation" class="ai-panel-btn" type="button">新建对话</button>
+                  </div>
                   <form data-role="follow-up-form" class="ai-follow-up-form hidden">
                     <label class="ai-follow-up-label" for="">继续追问</label>
                     <textarea data-role="follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
@@ -456,6 +460,7 @@
             <button id="fm-new-folder" class="file-action-btn" type="button">新建文件夹</button>
             <span id="fm-status" class="fm-status" aria-live="polite"></span>
           </div>
+          <p id="fm-ai-visibility-help" class="fm-ai-visibility-help">每篇文档可单独设置是否允许 AI 查看；关闭后，AI 面板、及时召唤和讨论都不会读取该文档内容。文件夹不单独设置。</p>
           <div id="fm-file-tree" class="file-tree"></div>
           <div class="file-manager-footer">
             <button id="fm-open-recycle-bin" class="file-action-btn" type="button">回收站</button>

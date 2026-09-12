@@ -1,6 +1,12 @@
 import type { AiPanelState } from "./ai-panel-state.ts";
 import { runFirstRoundPreflight } from "./ai-feature-first-round.ts";
-import type { GenerateAiRequest, LlmConfigSummary, SelectionSnapshot } from "./types.ts";
+import { HIDDEN_DOCUMENT_MESSAGE } from "./selection-adapter.ts";
+import type {
+  GenerateAiRequest,
+  LlmConfigSummary,
+  SelectionSnapshot,
+  SelectionVisibilityCheck,
+} from "./types.ts";
 
 export interface StartDirectQuestionOptions {
   state: AiPanelState;
@@ -13,6 +19,8 @@ export interface StartDirectQuestionOptions {
   /** 发起时关注文档身份（默认取选区 documentId）。 */
   focusDocumentId?: string | null;
   focusDocumentTitle?: string | null;
+  /** 发送前复核选区材料可见性（仅当存在选区时）；缺省视为允许。 */
+  checkSelectionAllowed?: (snapshot: SelectionSnapshot) => SelectionVisibilityCheck;
 }
 
 /**
@@ -50,8 +58,23 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
     buildRequest: () => ({
       kind: "direct_question",
       question,
-      ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
+      ...(frozenSelection ? {
+        selected_text: frozenSelection.selectedText,
+        ...(frozenSelection.projectPath !== undefined || frozenSelection.documentVersion !== undefined
+          ? { document_id: frozenSelection.documentId }
+          : {}),
+        ...(frozenSelection.projectPath !== undefined ? { project_path: frozenSelection.projectPath } : {}),
+        ...(frozenSelection.documentVersion !== undefined ? { document_version: frozenSelection.documentVersion } : {}),
+        ...(frozenSelection.bodySnapshot !== undefined ? { snapshot: frozenSelection.bodySnapshot } : {}),
+      } : {}),
     }),
+    checkSelectionBeforeSend:
+      options.checkSelectionAllowed && frozenSelection
+        ? () => {
+            const check = options.checkSelectionAllowed!(frozenSelection!);
+            return check.allowed ? null : (check.deniedMessage ?? HIDDEN_DOCUMENT_MESSAGE);
+          }
+        : undefined,
     requireConfiguration: () => options.state.requireDirectQuestionConfiguration(conversationId),
     onBlocked: () => options.state.failDirectQuestion({ code: "network", message: "已有 AI 请求正在进行，本次请求没有发出。" }, conversationId),
     onError: (error) => options.state.failDirectQuestion(error, conversationId),

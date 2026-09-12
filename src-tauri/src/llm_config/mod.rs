@@ -168,12 +168,30 @@ pub struct GenerateAiMessage {
 pub enum GenerateAiRequest {
     First {
         selected_text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_version: Option<String>,
+        /// 未保存正文快照（规范化 Tiptap JSON 字符串）；与 document_version 同源。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        snapshot: Option<String>,
         /// 兼容旧调用方的可选方向字段；当前前端不再发送。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
     },
     FollowUp {
         selected_text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_version: Option<String>,
+        /// 未保存正文快照（规范化 Tiptap JSON 字符串）；追问增量发送时随请求保留。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        snapshot: Option<String>,
         /// 兼容旧调用方的可选方向字段；缺省或空白表示无方向。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
@@ -188,6 +206,15 @@ pub enum GenerateAiRequest {
         /// 可选选区重点材料；缺省或空白表示无选区直接提问。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         selected_text: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_version: Option<String>,
+        /// 未保存正文快照（规范化 Tiptap JSON 字符串）；无选区直接提问时缺省。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        snapshot: Option<String>,
     },
 }
 
@@ -206,6 +233,10 @@ impl From<&str> for GenerateAiRequest {
     fn from(selected_text: &str) -> Self {
         GenerateAiRequest::First {
             selected_text: selected_text.to_string(),
+            document_id: None,
+            project_path: None,
+            document_version: None,
+            snapshot: None,
             thinking_direction: None,
         }
     }
@@ -599,10 +630,10 @@ fn read_config_bounded(path: &Path) -> Result<String, LlmConfigError> {
         .map_err(|e| LlmConfigError::ReadError(e.to_string()))?;
 
     if content.len() as u64 > MAX_CONFIG_BYTES {
-        return Err(LlmConfigError::ReadError(format!(
-            "配置文件过大，无法读取: {}",
-            path.display()
-        )));
+        // 7.3 收窄：不把配置文件路径写入错误（路径可能含用户/应用目录信息）。
+        return Err(LlmConfigError::ReadError(
+            "配置文件过大，无法读取".to_string(),
+        ));
     }
 
     Ok(content)

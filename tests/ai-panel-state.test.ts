@@ -1297,3 +1297,162 @@ test("summaryToRecord restores an archive record from a list summary", () => {
   assert.equal(record.pinned, true);
   assert.deepEqual(record.turns, summary.turns);
 });
+
+// ========== 材料权限变化隔离（controlled-story-read-visibility 任务 5） ==========
+
+test("loadDiscussions marks a discussion restricted when its provenance references a hidden document", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "标题一",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: "doc-1",
+      focus_document_title: null,
+      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [
+        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
+      ],
+    },
+  ], [], new Set(["doc-1"]));
+
+  const conversation = state.conversationOf("c-1");
+  assert.equal(conversation?.restricted, true);
+  assert.equal(state.restrictionNoticeOf("c-1") !== null, true);
+  // 受限讨论不可沿原上下文继续。
+  assert.equal(state.viewOf("c-1").request.kind, "success");
+});
+
+test("loadDiscussions keeps a visible discussion unrestricted and continuable", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "标题一",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: "doc-1",
+      focus_document_title: null,
+      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [
+        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
+      ],
+    },
+  ], [], new Set());
+
+  assert.equal(state.conversationOf("c-1")?.restricted, false);
+  assert.equal(state.restrictionNoticeOf("c-1"), null);
+});
+
+test("recomputeRestrictions latches already-open discussions when a source document becomes hidden (5.2)", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "标题一",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: "doc-1",
+      focus_document_title: null,
+      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [
+        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
+      ],
+    },
+  ], [], new Set());
+  // 加载时可见：不受限。
+  assert.equal(state.conversationOf("c-1")?.restricted, false);
+
+  // 权限变更：doc-1 被隐藏 → 立即重算并锁存。
+  const newlyRestricted = state.recomputeRestrictions(new Set(["doc-1"]));
+  assert.deepEqual(newlyRestricted, ["c-1"]);
+  assert.equal(state.conversationOf("c-1")?.restricted, true);
+  assert.equal(state.restrictionNoticeOf("c-1") !== null, true);
+
+  // 重新开启可见性（隐藏集为空）不解除：单调锁存（任务 5.4）。
+  assert.deepEqual(state.recomputeRestrictions(new Set()), []);
+  assert.equal(state.conversationOf("c-1")?.restricted, true);
+});
+
+test("recomputeRestrictions leaves no-material discussions unaffected", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-2",
+      title: "无材料",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [],
+    },
+  ], [], new Set());
+
+  assert.deepEqual(state.recomputeRestrictions(new Set(["doc-1"])), []);
+  assert.equal(state.conversationOf("c-2")?.restricted, false);
+  assert.equal(state.restrictionNoticeOf("c-2"), null);
+});
+
+test("rejectQueuedRequest transitions a queued direct question to a visible failure", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  state.queueRequest("1");
+
+  assert.equal(state.rejectQueuedRequest("1", { code: "document_not_visible", message: "材料文档的可见性已变化，本次请求未发送。" }), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "error");
+    assert.equal(request.queued, undefined);
+    assert.equal(request.error?.code, "document_not_visible");
+  }
+});
+
+test("rejectQueuedRequest transitions a queued summon first round to a visible failure", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("选区");
+  state.beginRequest(anchor);
+  state.queueRequest("1");
+
+  assert.equal(state.rejectQueuedRequest("1", { code: "document_not_visible", message: "材料文档的可见性已变化，本次请求未发送。" }), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "error");
+  if (request.kind === "error") {
+    assert.equal(request.error.code, "document_not_visible");
+    assert.equal(request.conversationId, "1");
+  }
+});
+
+test("rejectQueuedRequest fails the pending turn of a queued follow-up", () => {
+  const state = new AiPanelState();
+  const anchor = snapshot("选区");
+  state.beginRequest(anchor);
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("追问");
+  state.queueRequest("1");
+
+  assert.equal(state.rejectQueuedRequest("1", { code: "document_not_visible", message: "材料文档的可见性已变化，本次请求未发送。" }), true);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "error");
+  assert.equal(state.conversation?.pending?.error?.code, "document_not_visible");
+});
+
+test("rejectQueuedRequest is inert for a non-queued request", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null);
+  // 未排队：拒绝不得误伤正常 loading。
+  assert.equal(state.rejectQueuedRequest("1", { code: "document_not_visible", message: "x" }), false);
+  const request = state.getDiscussion("1")!.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") assert.equal(request.status, "loading");
+});

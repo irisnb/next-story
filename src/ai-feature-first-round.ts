@@ -1,10 +1,12 @@
 import type { AiPanelState } from "./ai-panel-state.ts";
 import { frozenSnapshot } from "./ai-panel-conversation.ts";
+import { HIDDEN_DOCUMENT_MESSAGE } from "./selection-adapter.ts";
 import type {
   GenerateAiError,
   GenerateAiRequest,
   LlmConfigSummary,
   SelectionSnapshot,
+  SelectionVisibilityCheck,
 } from "./types.ts";
 
 /**
@@ -39,6 +41,11 @@ export interface FirstRoundPreflightOptions<TRequest extends GenerateAiRequest> 
   frozenToken: number;
   /** 构造本次首轮请求载荷（直接提问 / 召唤各自提供）。 */
   buildRequest: () => TRequest;
+  /**
+   * 发送前复核选区材料可见性：返回 null 表示允许发送；返回中文说明表示拒绝，
+   * 拒绝时既不发送，也不把隐藏材料交给模型。
+   */
+  checkSelectionBeforeSend?: () => string | null;
   /** 配置缺失时的状态迁移（显示配置提示与「前往配置」入口）。 */
   requireConfiguration: () => void;
   /** 请求被调度器 / 单请求协调器拒绝时的状态迁移。 */
@@ -69,6 +76,14 @@ export function runFirstRoundPreflight<TRequest extends GenerateAiRequest>(
       // 真正提交请求前再次校验作品身份与讨论状态（纵深防御）。
       if (options.getProjectToken() !== frozenToken) return;
       if (!state.isFirstRoundLoading(conversationId)) return;
+      // 发送前复核选区材料可见性：权限在预检期间关闭时放弃发送，不送隐藏材料。
+      if (options.checkSelectionBeforeSend) {
+        const denial = options.checkSelectionBeforeSend();
+        if (denial !== null) {
+          options.onError({ code: "document_not_visible", message: denial });
+          return;
+        }
+      }
       const accepted = options.request(options.buildRequest());
       if (accepted === null) {
         options.onBlocked();
@@ -97,6 +112,8 @@ export interface StartSummonOptions {
   /** 发起时关注文档身份（默认取快照的 documentId）。 */
   focusDocumentId?: string | null;
   focusDocumentTitle?: string | null;
+  /** 发送前复核选区材料可见性；缺省视为允许（由后端作为最终授权事实源）。 */
+  checkSelectionAllowed?: (snapshot: SelectionSnapshot) => SelectionVisibilityCheck;
 }
 
 /**
@@ -115,7 +132,11 @@ export function startSummon(options: StartSummonOptions): boolean {
   const frozenToken = options.getProjectToken();
   options.state.beginRequest(
     frozen,
-    { kind: "summon", selected_text: frozen.selectedText },
+    {
+      kind: "summon",
+      selected_text: frozen.selectedText,
+      ...(frozen.bodySnapshot !== undefined ? { snapshot: frozen.bodySnapshot } : {}),
+    },
     options.focusDocumentId ?? frozen.documentId,
     options.focusDocumentTitle ?? null,
   );
@@ -128,7 +149,22 @@ export function startSummon(options: StartSummonOptions): boolean {
     request: options.request,
     getProjectToken: options.getProjectToken,
     frozenToken,
-    buildRequest: () => ({ kind: "summon", selected_text: frozen.selectedText }),
+    buildRequest: () => ({
+      kind: "summon",
+      selected_text: frozen.selectedText,
+      ...(frozen.projectPath !== undefined || frozen.documentVersion !== undefined
+        ? { document_id: frozen.documentId }
+        : {}),
+      ...(frozen.projectPath !== undefined ? { project_path: frozen.projectPath } : {}),
+      ...(frozen.documentVersion !== undefined ? { document_version: frozen.documentVersion } : {}),
+      ...(frozen.bodySnapshot !== undefined ? { snapshot: frozen.bodySnapshot } : {}),
+    }),
+    checkSelectionBeforeSend: options.checkSelectionAllowed
+      ? () => {
+          const check = options.checkSelectionAllowed!(frozen);
+          return check.allowed ? null : (check.deniedMessage ?? HIDDEN_DOCUMENT_MESSAGE);
+        }
+      : undefined,
     requireConfiguration: () => options.state.requireConfiguration(frozen, conversationId),
     onBlocked: () =>
       options.state.fail(frozen, {

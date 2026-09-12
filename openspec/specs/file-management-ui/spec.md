@@ -77,3 +77,21 @@ TBD - created by archiving change frontend-modular-ui. Update Purpose after arch
 - **THEN** 系统不修改任何现有文档的正文内容
 - **AND** 结构操作只改变内容树结构
 
+### Requirement: 文件管理区域提供文档 AI 可见性开关
+文件管理区域 SHALL 在每篇文档的管理操作中提供“允许 AI 查看 / 不允许 AI 查看”开关。该开关 SHALL 只作用于当前文档，不得显示为文件夹继承、等级或优先级设置。
+
+#### Scenario: 文件管理中查看文档状态
+- **WHEN** 用户打开文件管理区域
+- **THEN** 每篇文档显示当前 AI 可见性状态
+- **AND** 文件夹不显示 AI 可见性状态
+
+#### Scenario: 切换文档状态成功
+- **WHEN** 用户切换一篇文档的 AI 可见性
+- **THEN** 系统持久化新的二元状态
+- **AND** 文件正文内容不发生变化
+
+#### Scenario: 切换失败保持原状态
+- **WHEN** 保存 AI 可见性状态失败
+- **THEN** 系统向用户显示中文可读的失败提示
+- **AND** 界面保持原可见性状态
+

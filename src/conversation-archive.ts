@@ -36,6 +36,26 @@ export type FirstRoundMaterial =
   | { kind: "direct_question"; question: string; selection_text: string | null }
   | { kind: "summon"; question: string; selection_text: string | null };
 
+/**
+ * 最小材料出处元数据（controlled-story-read-visibility 任务 5.1）：记录一轮讨论实际
+ * 使用过的作品文档 / 选区材料来源，用于权限变化后判定受影响讨论。不保存正文副本。
+ */
+export interface MaterialProvenance {
+  /** 来源文档身份。 */
+  document_id: string;
+  /**
+   * 材料类型：`selection`（冻结选区）/ `snapshot`（未保存快照）/ `document`（已保存正文），
+   * 以及 `revoked`（该文档的 AI 可见性在讨论使用它之后被关闭，讨论永久受限的锁存标记）。
+   */
+  material_type: "selection" | "snapshot" | "document" | "revoked";
+  /** 材料版本身份；当前快照未携带版本时为 null。 */
+  document_version: string | null;
+  /** 所属轮次（首轮为 0）。 */
+  turn_index: number;
+  /** 是否进入模型上下文。 */
+  entered_model_context: boolean;
+}
+
 /** 讨论档案的保存契约（version 1）。 */
 export interface ConversationRecord {
   version: 1;
@@ -50,6 +70,11 @@ export interface ConversationRecord {
   title?: string;
   /** 置顶标记；缺失表示未置顶。 */
   pinned?: boolean;
+  /**
+   * 材料出处元数据。缺失（旧档案）按保守策略处理：可查看但不可自动重放；
+   * 空数组表示新档案且本轮未使用任何作品材料。
+   */
+  provenance?: MaterialProvenance[];
 }
 
 /**
@@ -71,6 +96,8 @@ export interface ConversationSummary {
   custom_title?: string | null;
   /** 置顶标记；false 表示未置顶。 */
   pinned?: boolean;
+  /** 材料出处元数据；缺失（旧档案）按保守策略处理。 */
+  provenance?: MaterialProvenance[];
 }
 
 /** `conversation_list` 的稳定返回：当前作品的讨论列表 + 被跳过（损坏/超限）的档案。 */

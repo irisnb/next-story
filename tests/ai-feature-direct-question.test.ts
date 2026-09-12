@@ -4,6 +4,7 @@ import test from "node:test";
 import { startDirectQuestion } from "../src/ai-feature-direct-question.ts";
 import { startSummon } from "../src/ai-feature-first-round.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
+import { checkSelectionVisibility } from "../src/selection-adapter.ts";
 import type {
   GenerateAiRequest,
   LlmConfigSummary,
@@ -74,6 +75,39 @@ test("direct question with selection sends question and frozen selection", async
     kind: "direct_question",
     question: "这段里人物在隐瞒什么？",
     selected_text: "林站在天台边。",
+  }]);
+});
+
+test("direct question with selection carries the frozen unsaved body snapshot", async () => {
+  const state = new AiPanelState();
+  const selection: SelectionSnapshot = {
+    documentId: "draft",
+    selectedText: "林站在天台边。",
+    from: 0,
+    to: 7,
+    bodySnapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  };
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "这段里人物在隐瞒什么？",
+    selection,
+    loadConfig: () => Promise.resolve(savedConfig),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(sent, [{
+    kind: "direct_question",
+    question: "这段里人物在隐瞒什么？",
+    selected_text: "林站在天台边。",
+    snapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
   }]);
 });
 
@@ -369,4 +403,121 @@ test("a direct question preflight still surfaces a late loadConfig rejection aft
     assert.equal(request.status, "error", "迟到的预检失败作用于原讨论");
     assert.match(request.error?.message ?? "", /配置读取失败/);
   }
+});
+
+test("direct question with a hidden-document selection is not sent and shows a message", async () => {
+  const state = new AiPanelState();
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "这段里人物在隐瞒什么？",
+    selection: snapshot("隐藏文档选区"),
+    loadConfig: () => Promise.resolve(savedConfig),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+    checkSelectionAllowed: () => ({ allowed: false }),
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent.length, 0, "隐藏文档选区不得发送给 AI");
+  const request = state.view.request;
+  assert.equal(request.kind, "direct_question");
+  if (request.kind === "direct_question") {
+    assert.equal(request.status, "error");
+    assert.match(request.error?.message ?? "", /不允许 AI 查看/);
+  }
+});
+
+test("direct question without selection is unaffected by the visibility guard", async () => {
+  const state = new AiPanelState();
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "这个角色为什么犹豫？",
+    selection: null,
+    loadConfig: () => Promise.resolve(savedConfig),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+    checkSelectionAllowed: () => ({ allowed: false }),
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent.length, 1, "无选区的直接提问不受可见性守卫影响");
+  assert.deepEqual(sent, [{ kind: "direct_question", question: "这个角色为什么犹豫？" }]);
+});
+
+test("permission closed during preflight aborts before sending", async () => {
+  const state = new AiPanelState();
+  let visible = true;
+  const configDeferred: { resolve: ((config: LlmConfigSummary | null) => void) | null } = {
+    resolve: null,
+  };
+  const configPromise = new Promise<LlmConfigSummary | null>((resolve) => {
+    configDeferred.resolve = resolve;
+  });
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "问题",
+    selection: snapshot("选区"),
+    loadConfig: () => configPromise,
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+    checkSelectionAllowed: () => (visible ? { allowed: true } : { allowed: false }),
+  }), true);
+
+  // 预检期间（配置读取挂起时）关闭权限。
+  visible = false;
+  configDeferred.resolve?.(savedConfig);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent.length, 0, "发送前必须重新复核选区权限");
+});
+
+test("forged document identity cannot bypass the guard with bare text", async () => {
+  const state = new AiPanelState();
+  const sent: GenerateAiRequest[] = [];
+  const tree = {
+    root_children: ["doc-1"],
+    nodes: {
+      "doc-1": { id: "doc-1", name: "可见", kind: "Document" as const, children: [], ai_visible: true },
+    },
+    recycle_bin: [],
+  };
+
+  assert.equal(startDirectQuestion({
+    state,
+    question: "问题",
+    selection: { documentId: "forged", selectedText: "裸选区文本", from: 0, to: 6 },
+    loadConfig: () => Promise.resolve(savedConfig),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+    checkSelectionAllowed: (snap) => checkSelectionVisibility(tree, snap),
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent.length, 0, "伪造身份的裸文本不得绕过授权");
 });

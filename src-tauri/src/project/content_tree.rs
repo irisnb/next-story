@@ -13,12 +13,21 @@ pub enum NodeKind {
     Document,
 }
 
+/// 文档 AI 可见性默认值：旧文档与新建文档一律「允许 AI 查看」。
+fn default_ai_visible() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContentTreeNode {
     pub id: String,
     pub name: String,
     pub kind: NodeKind,
     pub children: Vec<String>,
+    /// 文档 AI 可见性（二元开关，默认允许）。仅对文档有意义；文件夹不拥有
+    /// 独立可见性，此字段对文件夹恒为 true 且在授权 / 目录投影中被忽略。
+    #[serde(default = "default_ai_visible")]
+    pub ai_visible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +144,18 @@ impl ContentTree {
 
     pub fn create_document(&mut self, parent: Option<&str>) -> Result<String, ContentTreeError> {
         self.create_node(parent, NodeKind::Document)
+    }
+
+    /// 设置文档节点的 AI 可见性。文件夹不拥有独立可见性，设置即拒绝。
+    pub fn set_ai_visibility(&mut self, id: &str, visible: bool) -> Result<(), ContentTreeError> {
+        let node = self.node_mut(id)?;
+        if node.kind != NodeKind::Document {
+            return Err(ContentTreeError::InvalidStructure(
+                "文件夹没有 AI 可见性".into(),
+            ));
+        }
+        node.ai_visible = visible;
+        Ok(())
     }
 
     pub fn rename(&mut self, id: &str, name: &str) -> Result<(), ContentTreeError> {
@@ -293,6 +314,7 @@ impl ContentTree {
                 name,
                 kind,
                 children: Vec::new(),
+                ai_visible: true,
             },
         );
         self.children_mut(parent)?.push(id.clone());
@@ -582,6 +604,66 @@ mod tests {
         let json = serde_json::to_string(&tree).unwrap();
         assert!(!json.contains("reference"));
         assert!(!json.contains("参考"));
+    }
+
+    #[test]
+    fn new_document_defaults_to_ai_visible() {
+        let mut tree = ContentTree::new();
+        let doc = tree.create_document(None).unwrap();
+        assert!(tree.nodes[&doc].ai_visible, "新文档默认允许 AI 查看");
+        tree.validate().unwrap();
+    }
+
+    #[test]
+    fn set_ai_visibility_toggles_documents_but_not_folders() {
+        let mut tree = ContentTree::new();
+        let doc = tree.create_document(None).unwrap();
+        let folder = tree.create_folder(None).unwrap();
+
+        tree.set_ai_visibility(&doc, false).unwrap();
+        assert!(!tree.nodes[&doc].ai_visible);
+        assert!(tree.nodes[&folder].ai_visible, "文件夹恒为可见");
+
+        // 文件夹没有独立可见性，设置即拒绝。
+        assert!(matches!(
+            tree.set_ai_visibility(&folder, false),
+            Err(ContentTreeError::InvalidStructure(_))
+        ));
+        assert!(matches!(
+            tree.set_ai_visibility("不存在的节点", false),
+            Err(ContentTreeError::NotFound(_))
+        ));
+        tree.validate().unwrap();
+    }
+
+    #[test]
+    fn ai_visible_serializes_and_deserializes_with_default() {
+        let mut tree = ContentTree::new();
+        let doc = tree.create_document(None).unwrap();
+        tree.set_ai_visibility(&doc, false).unwrap();
+
+        let json = serde_json::to_string(&tree).unwrap();
+        let parsed: ContentTree = serde_json::from_str(&json).unwrap();
+        assert!(!parsed.nodes[&doc].ai_visible, "关闭状态应往返保留");
+
+        // 缺少 ai_visible 字段的旧树按「允许 AI 查看」处理。
+        let legacy = serde_json::json!({
+            "root_children": ["node-old"],
+            "nodes": {
+                "node-old": {
+                    "id": "node-old",
+                    "name": "旧文档",
+                    "kind": "Document",
+                    "children": []
+                }
+            },
+            "recycle_bin": []
+        });
+        let parsed: ContentTree = serde_json::from_value(legacy).unwrap();
+        assert!(
+            parsed.nodes["node-old"].ai_visible,
+            "缺失字段的旧文档默认允许"
+        );
     }
 
     #[test]

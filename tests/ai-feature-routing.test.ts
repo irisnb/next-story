@@ -322,6 +322,31 @@ test("first retry uses the failed request snapshot instead of the current editor
   assert.deepEqual(retriedSnapshot, submitted);
 });
 
+test("summon retry retains the frozen body snapshot from the stored first request", () => {
+  const state = new AiPanelState();
+  const anchor: SelectionSnapshot = {
+    documentId: "draft",
+    selectedText: "原选区",
+    from: 0,
+    to: 3,
+    bodySnapshot: "快照JSON",
+  };
+  state.beginRequest(anchor, { kind: "summon", selected_text: "原选区", snapshot: "快照JSON" });
+  state.fail(anchor, { code: "network", message: "网络失败" });
+
+  let retriedFirstRequest: GenerateAiRequest | undefined;
+  assert.equal(retryAcceptedRequest(state, (_snapshot, firstRequest) => {
+    retriedFirstRequest = firstRequest;
+    return Promise.resolve();
+  }), true);
+
+  assert.deepEqual(retriedFirstRequest, {
+    kind: "summon",
+    selected_text: "原选区",
+    snapshot: "快照JSON",
+  });
+});
+
 test("builds a follow-up payload from the frozen anchor and successful turns exactly once", () => {
   const state = new AiPanelState();
   const anchor = snapshot("冻结");
@@ -339,6 +364,94 @@ test("builds a follow-up payload from the frozen anchor and successful turns exa
       { role: "user", content: "问题一" },
       { role: "assistant", content: "回答一" },
       { role: "user", content: "问题二" },
+    ],
+  });
+});
+
+test("summon request carries the frozen unsaved body snapshot", async () => {
+  const state = new AiPanelState();
+  const snap: SelectionSnapshot = {
+    documentId: "draft",
+    selectedText: "冻结选区",
+    from: 0,
+    to: 4,
+    bodySnapshot: '{"format":"next-story-tiptap","version":2}',
+  };
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startSummon({
+    state,
+    snapshot: snap,
+    loadConfig: () => Promise.resolve({ api_base_url: "https://api.example.com", model: "m", has_api_key: true }),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(sent, [{
+    kind: "summon",
+    selected_text: "冻结选区",
+    snapshot: '{"format":"next-story-tiptap","version":2}',
+  }]);
+});
+
+test("follow-up retains the frozen unsaved body snapshot together with full identity", () => {
+  const state = new AiPanelState();
+  const anchor: SelectionSnapshot = {
+    documentId: "draft",
+    selectedText: "冻结",
+    from: 0,
+    to: 2,
+    projectPath: "C:/作品",
+    documentVersion: "v1",
+    bodySnapshot: "快照JSON",
+  };
+  state.beginRequest(anchor, {
+    kind: "summon",
+    selected_text: "冻结",
+    snapshot: "快照JSON",
+  });
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("问题一");
+
+  assert.deepEqual(state.followUpRequest(), {
+    kind: "follow_up",
+    selected_text: "冻结",
+    document_id: "draft",
+    project_path: "C:/作品",
+    document_version: "v1",
+    snapshot: "快照JSON",
+    messages: [
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "问题一" },
+    ],
+  });
+});
+
+test("follow-up with a snapshot but incomplete identity omits both identity and snapshot", () => {
+  const state = new AiPanelState();
+  const anchor: SelectionSnapshot = {
+    documentId: "draft",
+    selectedText: "冻结",
+    from: 0,
+    to: 2,
+    bodySnapshot: "快照JSON",
+  };
+  state.beginRequest(anchor, { kind: "summon", selected_text: "冻结", snapshot: "快照JSON" });
+  state.succeed(anchor, "首答");
+  state.beginFollowUp("问题一");
+
+  assert.deepEqual(state.followUpRequest(), {
+    kind: "follow_up",
+    selected_text: "冻结",
+    messages: [
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "问题一" },
     ],
   });
 });
@@ -524,4 +637,32 @@ test("opening configuration preserves conversation and never auto-fires a reques
   assert.equal(opened, 1);
   assert.deepEqual(state.conversation, before);
   assert.equal(state.retryFollowUpQuestion(), "待配置问题");
+});
+
+test("summon from a hidden document is not sent and surfaces a Chinese message", async () => {
+  const state = new AiPanelState();
+  const snap = snapshot("隐藏选区");
+  const sent: GenerateAiRequest[] = [];
+
+  assert.equal(startSummon({
+    state,
+    snapshot: snap,
+    loadConfig: () => Promise.resolve({ api_base_url: "https://api.example.com", model: "m", has_api_key: true }),
+    request: (request) => {
+      sent.push(request);
+      return Promise.resolve();
+    },
+    getProjectToken: () => 1,
+    checkSelectionAllowed: () => ({ allowed: false }),
+  }), true);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(sent.length, 0, "隐藏文档选区不得发送给 AI");
+  const request = state.view.request;
+  assert.equal(request.kind, "error");
+  if (request.kind === "error") {
+    assert.match(request.error.message, /不允许 AI 查看/);
+  }
 });

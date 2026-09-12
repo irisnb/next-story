@@ -6,15 +6,14 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use next_story_lib::llm_config::generate::{build_task_string, validate_generate_ai_request};
 use next_story_lib::llm_config::{
     app_data_dir_failure_result, generate_ai_result_in, generate_ai_thinking,
-    load_llm_config_summary_with_store, load_llm_config_with_store, save_llm_config_with_store,
-    save_llm_config_with_store_checked, test_llm_connection, validate_llm_config, ConfigSavePhase,
-    GenerateAiErrorCode, GenerateAiMessage, GenerateAiMessageRole, GenerateAiRequest, FollowUpOrigin,
-    LlmConfig, LlmConfigError, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVICE,
-};
-use next_story_lib::llm_config::generate::{
-    build_task_string, validate_generate_ai_request,
+    load_llm_config_summary_with_store, load_llm_config_with_store, parse_generate_ai_request,
+    save_llm_config_with_store, save_llm_config_with_store_checked, test_llm_connection,
+    validate_llm_config, ConfigSavePhase, FollowUpOrigin, GenerateAiErrorCode, GenerateAiMessage,
+    GenerateAiMessageRole, GenerateAiRequest, LlmConfig, LlmConfigError, SecretStore,
+    KEYRING_ACCOUNT, KEYRING_SERVICE,
 };
 use next_story_lib::project::{
     create_new_project, save_document, CreateProjectParams, ProjectPaths,
@@ -70,6 +69,10 @@ impl SecretStore for MockStore {
 fn first_request(selected_text: impl Into<String>) -> GenerateAiRequest {
     GenerateAiRequest::First {
         selected_text: selected_text.into(),
+        document_id: None,
+        project_path: None,
+        document_version: None,
+        snapshot: None,
         thinking_direction: None,
     }
 }
@@ -87,6 +90,10 @@ fn follow_up_request(
 ) -> GenerateAiRequest {
     GenerateAiRequest::FollowUp {
         selected_text: selected_text.into(),
+        document_id: None,
+        project_path: None,
+        document_version: None,
+        snapshot: None,
         thinking_direction: None,
         origin: None,
         messages,
@@ -99,9 +106,46 @@ fn direct_question_follow_up_request(
 ) -> GenerateAiRequest {
     GenerateAiRequest::FollowUp {
         selected_text: selected_text.into(),
+        document_id: None,
+        project_path: None,
+        document_version: None,
+        snapshot: None,
         thinking_direction: None,
         origin: Some(FollowUpOrigin::DirectQuestion),
         messages,
+    }
+}
+
+/// 快照字段向后兼容：旧请求（无 snapshot）仍可解析，新请求带 snapshot 可解析。
+#[test]
+fn generate_request_parses_optional_snapshot_with_backward_compatibility() {
+    // 旧调用方：不发送 snapshot 字段。
+    let old = parse_generate_ai_request(serde_json::json!({
+        "kind": "first",
+        "selected_text": "选区"
+    }))
+    .expect("旧请求无 snapshot 字段应可解析");
+    match old {
+        GenerateAiRequest::First { snapshot, .. } => {
+            assert!(snapshot.is_none(), "旧请求缺省 snapshot 应为 None")
+        }
+        other => panic!("应为 First 变体，实际: {other:?}"),
+    }
+
+    // 新调用方：发送规范化 Tiptap JSON 快照。
+    let snapshot =
+        "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\"}}";
+    let new = parse_generate_ai_request(serde_json::json!({
+        "kind": "first",
+        "selected_text": "选区",
+        "snapshot": snapshot
+    }))
+    .expect("带 snapshot 的请求应可解析");
+    match new {
+        GenerateAiRequest::First {
+            snapshot: parsed, ..
+        } => assert_eq!(parsed.as_deref(), Some(snapshot)),
+        other => panic!("应为 First 变体，实际: {other:?}"),
     }
 }
 
@@ -783,13 +827,22 @@ fn direct_question_origin_follow_up_task_uses_direct_question_prompt_and_full_qa
         task.contains("用户直接提出的问题"),
         "必须使用直接提问系统提示词，实际任务: {task}"
     );
-    assert!(task.contains("用户问题：\n这个角色为什么犹豫？"), "必须包含原问题");
+    assert!(
+        task.contains("用户问题：\n这个角色为什么犹豫？"),
+        "必须包含原问题"
+    );
     assert!(
         task.contains("重点参考材料（可选）：\n林站在天台边。"),
         "必须包含可选重点材料"
     );
-    assert!(task.contains("你的上一次回应：他可能害怕承诺。"), "必须包含 assistant 轮次");
-    assert!(task.contains("用户追问：那他为什么还站在这里？"), "必须包含 user 追问");
+    assert!(
+        task.contains("你的上一次回应：他可能害怕承诺。"),
+        "必须包含 assistant 轮次"
+    );
+    assert!(
+        task.contains("用户追问：那他为什么还站在这里？"),
+        "必须包含 user 追问"
+    );
 }
 
 /// selection origin（无 origin）仍拒绝空 selected_text，并要求 messages 以 assistant 开头。
@@ -938,5 +991,30 @@ async fn ai_generation_never_writes_back_to_notebooks_while_user_save_does() {
         std::fs::read_to_string(paths.document_file(&doc_id)).expect("read document after save"),
         new_draft,
         "保存后的文档内容应等于新内容"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7.3 收窄：配置错误不得透传含敏感路径的底层字符串
+// ---------------------------------------------------------------------------
+
+#[test]
+fn oversized_config_error_never_leaks_config_path() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_path = temp.path().join("llm-config.json");
+    std::fs::write(&config_path, "x".repeat(65 * 1024)).expect("write oversized config");
+
+    let store = MockStore::new();
+    let error = load_llm_config_with_store(temp.path(), &store).expect_err("oversized must fail");
+    let message = error.to_string();
+    let root = temp.path().to_string_lossy().to_string();
+
+    assert!(
+        !message.contains(root.as_str()),
+        "配置错误不得含路径: {message}"
+    );
+    assert!(
+        !message.contains("llm-config.json"),
+        "配置错误不得含文件名: {message}"
     );
 }

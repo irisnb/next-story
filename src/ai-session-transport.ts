@@ -83,6 +83,35 @@ function lastUserQuestionOf(
   return "";
 }
 
+/**
+ * 请求的材料身份：作品 / 文档 / 版本身份 + 未保存正文快照。
+ * 全部缺省时返回 `undefined`（旧调用方 / 无选区路径不携带身份，后端按缺省放行）。
+ * 追问请求若保留了首轮快照与来源身份，也经同一对象透传（后端按增量语义校验）。
+ */
+function materialIdentityOf(
+  request: GenerateAiRequest,
+): {
+  documentId?: string;
+  projectPath?: string;
+  documentVersion?: string;
+  snapshot?: string;
+} | undefined {
+  if (
+    request.document_id === undefined &&
+    request.project_path === undefined &&
+    request.document_version === undefined &&
+    request.snapshot === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    documentId: request.document_id,
+    projectPath: request.project_path,
+    documentVersion: request.document_version,
+    snapshot: request.snapshot,
+  };
+}
+
 export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly deps: Required<ResidentSessionDependencies>;
   private readonly sessions: Map<string, string> = new Map();
@@ -140,6 +169,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
    * - `direct_question`：直接提问首轮，发问题 + 可选选区材料；
    * - `summon`：及时召唤首轮，空问题、只带选区材料（后端按召唤语义组装）；
    * - `follow_up`：只发 messages 中最后一条 user 消息（增量问题）。
+   * 首轮请求携带来源身份（作品 / 文档 / 版本）与未保存正文快照（`snapshot`）；
+   * 追问请求若保留首轮快照与来源身份，也随请求透传（后端可据增量语义选择是否使用）。
    */
   async sendViaResidentSession(conversationId: string, request: GenerateAiRequest): Promise<GenerateAiResult> {
     const sessionId = await this.ensureSessionStarted(conversationId);
@@ -155,6 +186,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           "first",
           request.question,
           request.selected_text,
+          materialIdentityOf(request),
         );
       } finally {
         this.clearStreamTarget(target);
@@ -169,6 +201,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           "summon_first",
           "",
           request.selected_text,
+          materialIdentityOf(request),
         );
       } finally {
         this.clearStreamTarget(target);
@@ -177,7 +210,14 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     const question = lastUserQuestionOf(request.messages);
     this.beginStreamTarget(target);
     try {
-      return await this.deps.sendMessage(sessionId, messageId, "follow_up", question);
+      return await this.deps.sendMessage(
+        sessionId,
+        messageId,
+        "follow_up",
+        question,
+        undefined,
+        materialIdentityOf(request),
+      );
     } finally {
       this.clearStreamTarget(target);
     }

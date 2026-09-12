@@ -3,9 +3,9 @@ use std::io::Read;
 use std::path::Path;
 
 use next_story_lib::project::{
-    build_export_project, create_new_project, export_project_to_word, render_docx,
-    CreateProjectParams, ContentTree, ContentTreeNode, ExportBlock, ExportMark, ExportNode,
-    ExportProject, ExportText, NodeKind,
+    build_export_project, create_new_project, export_project_to_word, render_docx, ContentTree,
+    ContentTreeNode, CreateProjectParams, ExportBlock, ExportMark, ExportNode, ExportProject,
+    ExportText, NodeKind,
 };
 use tempfile::TempDir;
 
@@ -68,6 +68,7 @@ fn node(id: &str, name: &str, kind: NodeKind, children: Vec<String>) -> ContentT
         name: name.to_string(),
         kind,
         children,
+        ai_visible: true,
     }
 }
 
@@ -88,11 +89,19 @@ fn export_sequence_follows_tree_order_with_nested_folders() {
     let mut tree = ContentTree::new();
     tree.nodes.insert(
         "f1".into(),
-        node("f1", "角色", NodeKind::Folder, vec!["d1".into(), "d2".into()]),
+        node(
+            "f1",
+            "角色",
+            NodeKind::Folder,
+            vec!["d1".into(), "d2".into()],
+        ),
     );
-    tree.nodes.insert("d1".into(), node("d1", "小芳", NodeKind::Document, vec![]));
-    tree.nodes.insert("d2".into(), node("d2", "小刚", NodeKind::Document, vec![]));
-    tree.nodes.insert("d3".into(), node("d3", "序章", NodeKind::Document, vec![]));
+    tree.nodes
+        .insert("d1".into(), node("d1", "小芳", NodeKind::Document, vec![]));
+    tree.nodes
+        .insert("d2".into(), node("d2", "小刚", NodeKind::Document, vec![]));
+    tree.nodes
+        .insert("d3".into(), node("d3", "序章", NodeKind::Document, vec![]));
     tree.root_children = vec!["d3".into(), "f1".into()];
 
     let project = build_export_project(&tree, "我的剧本", |_| Ok(vec![])).expect("build");
@@ -123,19 +132,26 @@ fn export_sequence_follows_tree_order_with_nested_folders() {
 #[test]
 fn export_sequence_excludes_recycle_bin() {
     let mut tree = ContentTree::new();
-    tree.nodes.insert("d1".into(), node("d1", "活动文档", NodeKind::Document, vec![]));
+    tree.nodes.insert(
+        "d1".into(),
+        node("d1", "活动文档", NodeKind::Document, vec![]),
+    );
     tree.root_children = vec!["d1".into()];
     // 回收站里的节点不在 nodes / root_children 中，遍历不应触及。
-    tree.recycle_bin.push(next_story_lib::project::RecycleBinEntry {
-        root_id: "trash-1".into(),
-        original_parent: None,
-        original_index: 0,
-        nodes: {
-            let mut m = std::collections::HashMap::new();
-            m.insert("trash-1".into(), node("trash-1", "已删除", NodeKind::Document, vec![]));
-            m
-        },
-    });
+    tree.recycle_bin
+        .push(next_story_lib::project::RecycleBinEntry {
+            root_id: "trash-1".into(),
+            original_parent: None,
+            original_index: 0,
+            nodes: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "trash-1".into(),
+                    node("trash-1", "已删除", NodeKind::Document, vec![]),
+                );
+                m
+            },
+        });
 
     let project = build_export_project(&tree, "作品", |_| Ok(vec![])).expect("build");
     assert_eq!(project.children.len(), 1);
@@ -261,7 +277,10 @@ fn render_docx_contains_required_ooxml_parts() {
         "word/_rels/document.xml.rels",
         "word/styles.xml",
     ] {
-        assert!(names.iter().any(|n| n == required), "缺少 OOXML 部件: {required}");
+        assert!(
+            names.iter().any(|n| n == required),
+            "缺少 OOXML 部件: {required}"
+        );
     }
 }
 
@@ -277,7 +296,10 @@ fn render_docx_preserves_heading_levels_and_text_order() {
                     blocks: vec![
                         ExportBlock::Heading {
                             level: 1,
-                            content: vec![ExportText { text: "背景".into(), marks: vec![] }],
+                            content: vec![ExportText {
+                                text: "背景".into(),
+                                marks: vec![],
+                            }],
                         },
                         ExportBlock::Paragraph(vec![ExportText {
                             text: "她住在海边。".into(),
@@ -309,10 +331,20 @@ fn render_docx_preserves_heading_levels_and_text_order() {
     let texts = extract_texts(&xml);
     let joined: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
     let joined = joined.join("|");
-    let order = ["作品", "角色", "小芳", "背景", "她住在海边。", "结尾", "剧终。"];
+    let order = [
+        "作品",
+        "角色",
+        "小芳",
+        "背景",
+        "她住在海边。",
+        "结尾",
+        "剧终。",
+    ];
     let mut last = 0;
     for expected in order {
-        let pos = joined.find(expected).unwrap_or_else(|| panic!("缺少文字: {expected}"));
+        let pos = joined
+            .find(expected)
+            .unwrap_or_else(|| panic!("缺少文字: {expected}"));
         assert!(pos >= last, "文字顺序错误: {expected}");
         last = pos;
     }
@@ -325,11 +357,26 @@ fn render_docx_preserves_chinese_emoji_and_marks() {
         children: vec![ExportNode::Document {
             name: "正文".into(),
             blocks: vec![ExportBlock::Paragraph(vec![
-                ExportText { text: "中文".into(), marks: vec![ExportMark::Bold] },
-                ExportText { text: "🎬".into(), marks: vec![ExportMark::Italic] },
-                ExportText { text: "下划线".into(), marks: vec![ExportMark::Underline] },
-                ExportText { text: "删除".into(), marks: vec![ExportMark::Strike] },
-                ExportText { text: "红字".into(), marks: vec![ExportMark::Color("#ff0000".into())] },
+                ExportText {
+                    text: "中文".into(),
+                    marks: vec![ExportMark::Bold],
+                },
+                ExportText {
+                    text: "🎬".into(),
+                    marks: vec![ExportMark::Italic],
+                },
+                ExportText {
+                    text: "下划线".into(),
+                    marks: vec![ExportMark::Underline],
+                },
+                ExportText {
+                    text: "删除".into(),
+                    marks: vec![ExportMark::Strike],
+                },
+                ExportText {
+                    text: "红字".into(),
+                    marks: vec![ExportMark::Color("#ff0000".into())],
+                },
             ])],
         }],
     };
@@ -360,18 +407,27 @@ fn render_docx_preserves_list_text() {
             blocks: vec![
                 ExportBlock::BulletList(vec![
                     next_story_lib::project::ExportListItem {
-                        content: vec![ExportText { text: "甲".into(), marks: vec![] }],
+                        content: vec![ExportText {
+                            text: "甲".into(),
+                            marks: vec![],
+                        }],
                         nested: None,
                     },
                     next_story_lib::project::ExportListItem {
-                        content: vec![ExportText { text: "乙".into(), marks: vec![] }],
+                        content: vec![ExportText {
+                            text: "乙".into(),
+                            marks: vec![],
+                        }],
                         nested: None,
                     },
                 ]),
                 ExportBlock::OrderedList {
                     start: 3,
                     items: vec![next_story_lib::project::ExportListItem {
-                        content: vec![ExportText { text: "丙".into(), marks: vec![] }],
+                        content: vec![ExportText {
+                            text: "丙".into(),
+                            marks: vec![],
+                        }],
                         nested: None,
                     }],
                 },
@@ -414,7 +470,9 @@ fn export_project_to_word_writes_real_docx_and_leaves_project_unchanged() {
         .join("documents")
         .join(format!("{doc_id}.json"));
     let metadata_path = project_path.join("next-story-system").join("project.json");
-    let tree_path = project_path.join("next-story-system").join("content-tree.json");
+    let tree_path = project_path
+        .join("next-story-system")
+        .join("content-tree.json");
 
     let body = valid_notebook_json("导出正文第一行\n导出正文第二行");
     next_story_lib::project::save_document(&project_path, &doc_id, &body).expect("save");
@@ -430,7 +488,10 @@ fn export_project_to_word_writes_real_docx_and_leaves_project_unchanged() {
 
     // 作品数据字节不变
     assert_eq!(fs::read(&doc_path).expect("read doc after"), before_doc);
-    assert_eq!(fs::read(&metadata_path).expect("read meta after"), before_meta);
+    assert_eq!(
+        fs::read(&metadata_path).expect("read meta after"),
+        before_meta
+    );
     assert_eq!(fs::read(&tree_path).expect("read tree after"), before_tree);
 
     // 生成的是真正的 docx

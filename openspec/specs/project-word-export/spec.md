@@ -1,3 +1,9 @@
+# project-word-export Specification
+
+## Purpose
+
+将当前作品内容树中已保存的文档按内容树顺序导出为一个可继续编辑的 DOCX 文件，同时保持只读、不修改任何作品数据。
+
 ## Requirements
 
 ### Requirement: Export the complete active project to DOCX

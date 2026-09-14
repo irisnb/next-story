@@ -1,27 +1,4 @@
-## Purpose
-
-规定 AI 功能编排拆分后的公开组合入口、行为保持要求，以及 AI 输出不得写回草稿本和正文本的边界。
-## Requirements
-### Requirement: AI feature orchestration remains behavior-preserving after decomposition
-The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of direct-question submission, summon submission, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation. The retired `思维扩展` entry MUST NOT be part of the composed orchestration. The restored `AI 及时召唤` entry (see `selection-ai-summon`) SHALL be part of the composed orchestration as a second first-round entry into the unified temporary conversation.
-
-#### Scenario: Direct question still starts from frozen materials
-- **WHEN** the user submits a direct question with an optional selection attachment
-- **THEN** the decomposed orchestration uses the frozen question and selection snapshot to start the first AI request
-
-#### Scenario: Summon starts from frozen selection without typed question
-- **WHEN** the user triggers 及时召唤 from the floating selection entry
-- **THEN** the decomposed orchestration uses the frozen selection snapshot to start a streaming first request without any user-typed question text
-
-#### Scenario: Follow-up recovery still uses the current discussion identity
-- **WHEN** the user submits, retries, or edits a follow-up in the current discussion
-- **THEN** the decomposed orchestration uses the existing discussion identity and pending turn identity rules
-- **AND** rejected follow-up request acceptance only cancels the attempted pending turn
-
-#### Scenario: Retired selection tools are not composed
-- **WHEN** the AI feature orchestration is composed for the editor
-- **THEN** no `思维扩展` action is registered
-- **AND** the floating selection entry is registered as the single-action 及时召唤 entry
+## MODIFIED Requirements
 
 ### Requirement: AI feature orchestration keeps zero write-back capability
 The decomposed AI feature orchestration MUST NOT receive, create, or expose any callback, command, state transition, or UI action that inserts, appends, replaces, rewrites, deletes, moves, organizes, or saves draft notebook or main notebook text using AI output. The controlled story-material assembly added for regular discussions (focus-document field material, allowed directory projection, and cross-document literal retrieval) SHALL be read-only and MUST NOT expand this zero write-back boundary.
@@ -40,18 +17,6 @@ The decomposed AI feature orchestration MUST NOT receive, create, or expose any 
 - **WHEN** 常规讨论的请求组装加入关注文档现场材料、目录投影与跨文档字面检索
 - **THEN** 该组装只产生只读材料
 - **AND** 不向任何模块注入作品写入回调、命令或状态迁移
-
-### Requirement: 面板 action 编排直接提问请求
-AI feature orchestration SHALL 将直接提问问题和可选冻结选区编排为一次流式生成请求，并继续隔离迟到结果。
-
-#### Scenario: 直接提问使用当前 LLM 配置
-- **WHEN** 用户提交合法直接提问
-- **THEN** 系统使用当前有效 LLM 配置发起一次流式生成
-
-#### Scenario: 旧作品请求结果被丢弃
-- **WHEN** 作品切换后旧直接提问请求返回
-- **THEN** 旧结果不得修改当前面板状态
-- **AND** 迟到结果按讨论身份隔离丢弃
 
 ### Requirement: 直接提问编排当前讨论增量请求
 AI feature orchestration SHALL 让直接提问首轮成功后进入当前讨论，每轮请求只携带增量内容，并保持每讨论单请求锁与失败恢复语义。常规直接提问首轮和追问 SHALL 附带该讨论发送时刻冻结的关注文档现场材料、允许目录投影与跨文档字面检索候选片段；及时召唤 MUST NOT 经过该常规取材流程。首轮预检 SHALL 按讨论进行，不同讨论的首轮请求 SHALL 可以并发发起；请求 SHALL 经调度器按全局同时生成上限发起或排队；停止生成 SHALL 只影响对应讨论的当前请求。
@@ -97,4 +62,3 @@ AI feature orchestration SHALL 让直接提问首轮成功后进入当前讨论�
 - **WHEN** 用户发起及时召唤
 - **THEN** 请求按冻结选区快车道发起
 - **AND** 请求不包含常规现场材料、目录投影或跨文档检索片段
-

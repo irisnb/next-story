@@ -16,7 +16,7 @@ TBD - created by archiving change controlled-story-read-visibility. Update Purpo
 - **AND** 用户仍可在文件管理区域看到、编辑、重命名、移动和删除该文档
 
 ### Requirement: 所有作品读取经过统一后端授权
-系统 SHALL 通过 Rust/Tauri 受控只读服务统一校验作品身份、文档身份、回收站状态、文档 AI 可见性、版本、范围和未保存快照身份。前端和 AI 运行环境 MUST NOT 绕过该服务直接读取作品文件。
+系统 SHALL 通过 Rust/Tauri 受控只读服务统一校验作品身份、文档身份、回收站状态、文档 AI 可见性、版本、范围和未保存快照身份。前端和 AI 运行环境 MUST NOT 绕过该服务直接读取作品文件。常规讨论的关注文档现场材料、允许目录投影与跨文档字面检索 SHALL 通过同一授权核心执行；跨文档字面检索 SHALL 只检索同作品、非回收站、当前允许 AI 查看、已保存正文的文档。
 
 #### Scenario: 允许读取已保存文档
 - **WHEN** 读取请求的作品、文档、版本和范围均有效且文档允许 AI 查看
@@ -32,6 +32,15 @@ TBD - created by archiving change controlled-story-read-visibility. Update Purpo
 - **WHEN** 前端提交一个不允许 AI 查看文档的未保存快照
 - **THEN** 系统拒绝该快照
 - **AND** 不因快照来自编辑器内存而返回其正文
+
+#### Scenario: 跨文档检索经过同一授权
+- **WHEN** 常规讨论执行跨文档字面检索
+- **THEN** 检索只覆盖同作品、非回收站、当前允许 AI 查看、已保存正文的文档
+- **AND** 不绕过受控只读服务直接读取作品文件
+
+#### Scenario: 隐藏文档不进入检索
+- **WHEN** 候选文档被回收或关闭 AI 可见性
+- **THEN** 系统不检索也不返回其标题、正文或真实内容
 
 ### Requirement: AI 目录投影隐藏文档身份但诚实提示数量
 提供给 AI 读取路径的作品目录 SHALL 只列允许查看且不在回收站的节点。隐藏文档的名称、ID、路径、正文和所在的仅含隐藏内容文件夹 MUST NOT 出现在目录投影中；目录投影 MAY 提供不带身份的隐藏文件数量提示。
@@ -59,7 +68,7 @@ TBD - created by archiving change controlled-story-read-visibility. Update Purpo
 - **AND** 不向 AI 发送该选区文本
 
 ### Requirement: 权限关闭后的旧讨论诚实隔离
-系统 SHALL 在关闭文档 AI 可见性后保留已显示的旧讨论供用户查看，但曾使用该文档的讨论 MUST 永久标记为材料权限已变化，MUST NOT 沿原 DSH 上下文继续追问，也 MUST NOT 通过历史重放或恢复再次发送已隐藏材料；重新开启可见性 MUST NOT 解除该受限状态。系统 MUST 告知用户原讨论仍可查看历史但当前状态已不同，并提供新建讨论作为继续路径。
+系统 SHALL 在关闭文档 AI 可见性后保留已显示的旧讨论供用户查看，但曾使用该文档的讨论 MUST 永久标记为材料权限已变化，MUST NOT 沿原 DSH 上下文继续追问，也 MUST NOT 通过历史重放或恢复再次发送已隐藏材料；重新开启可见性 MUST NOT 解除该受限状态。该隔离 SHALL 同样适用于通过关注文档现场材料或跨文档字面检索使用过后来被隐藏文档的讨论。系统 MUST 告知用户原讨论仍可查看历史但当前状态已不同，并提供新建讨论作为继续路径；查看旧讨论时旧材料出处 MUST 脱敏，不泄露被隐藏文档的名称、ID 或路径。
 
 #### Scenario: 关闭可见性后查看旧讨论
 - **WHEN** 用户打开曾使用该文档的旧讨论
@@ -76,6 +85,12 @@ TBD - created by archiving change controlled-story-read-visibility. Update Purpo
 - **WHEN** 用户重新允许某篇曾触发讨论受限的文档被 AI 查看
 - **THEN** 之前被永久标记为受限的旧讨论仍保持只能查看历史，不能继续追问或自动恢复
 - **AND** 后续讨论只能在新的明确会话中按当前权限开始
+
+#### Scenario: 自动检索来源后来被隐藏也隔离且脱敏
+- **WHEN** 某讨论曾通过跨文档字面检索使用后来被关闭 AI 可见性的文档
+- **THEN** 该讨论永久标记为材料权限已变化，只能查看历史
+- **AND** 旧出处脱敏，不显示被隐藏文档的名称、ID 或路径
+- **AND** 重新开启可见性不解除该受限状态
 
 ### Requirement: 权限变化遵守请求发送边界
 系统 SHALL 在排队请求实际发送前重新校验材料权限；已发送给模型的材料不承诺撤回；权限变化后新增读取 MUST 重新经过授权。系统 MUST NOT 把已发出的材料撤回能力描述为已实现。
@@ -97,3 +112,4 @@ TBD - created by archiving change controlled-story-read-visibility. Update Purpo
 - **WHEN** 系统读取材料或用户切换文档可见性
 - **THEN** 任何现有文档正文内容保持不变
 - **AND** AI 路径中不存在写入作品的命令
+

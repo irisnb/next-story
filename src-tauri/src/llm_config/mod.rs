@@ -132,6 +132,10 @@ pub enum GenerateAiErrorCode {
     InvalidResponse,
     /// 作品存在待恢复事务现场，本轮请求未发送（严格只读失败关闭）
     StoryRecoveryRequired,
+    /// 同一讨论已有生成中的请求（后端准入拒绝，未写入驱动协议）
+    ConversationBusy,
+    /// 达到全局同时生成上限（后端准入拒绝，未写入驱动协议）
+    CapacityExceeded,
 }
 
 /// 生成错误的稳定契约。

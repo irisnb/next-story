@@ -436,11 +436,41 @@ struct LiveGeneration {
     runtime: Arc<GenerationRuntime>,
 }
 
+/// 生成准入表：会话 → 进行中的消息 id。同一讨论至多一个进行中请求；
+/// 总量受全局上限约束（与前端调度器同一生效上限）。
+struct Admission {
+    active_by_session: HashMap<String, String>,
+}
+
 struct Inner {
     lifecycle: Mutex<Lifecycle>,
+    admission: Mutex<Admission>,
+    max_concurrent_generations: usize,
     sink: Mutex<Option<DeltaSink>>,
     loss_sink: Mutex<Option<LossSink>>,
     spawn_lock: Mutex<()>,
+}
+
+/// 生成准入许可：`Drop` 时只释放自己登记的会话条目（消息 id 比对，防误删继任者）。
+/// 作用域覆盖注册、写命令、等待、超时取消宽限期与全部错误出口——请求真正结束
+/// 才释放名额，杜绝取消期间超卖。
+struct GenerationPermit {
+    inner: Arc<Inner>,
+    session_id: String,
+    message_id: String,
+}
+
+impl Drop for GenerationPermit {
+    fn drop(&mut self) {
+        let mut admission = lock_recover(&self.inner.admission);
+        let still_mine = admission
+            .active_by_session
+            .get(&self.session_id)
+            .is_some_and(|mid| *mid == self.message_id);
+        if still_mine {
+            admission.active_by_session.remove(&self.session_id);
+        }
+    }
 }
 
 /// 驱动进程丢失回调（崩溃或重启）：前端据此进入恢复流程（重放显示历史）。
@@ -581,18 +611,62 @@ pub struct DshDriverManager {
 }
 
 impl DshDriverManager {
+    /// 与前端调度器一致的当前默认上限。这是**当前安全策略**，不是实测容量结论；
+    /// 真实基线待阶段 7 实测后由前后端两个常量一起调整（前端调度器测试锚定 ≥2）。
+    const DEFAULT_MAX_CONCURRENT_GENERATIONS: usize = 2;
+
     pub fn new() -> Self {
+        Self::new_with_limit(Self::DEFAULT_MAX_CONCURRENT_GENERATIONS)
+    }
+
+    /// 测试构造：注入全局同时生成上限。
+    pub fn new_with_limit(max_concurrent_generations: usize) -> Self {
         DshDriverManager {
             inner: Arc::new(Inner {
                 lifecycle: Mutex::new(Lifecycle {
                     next_generation: 0,
                     current: None,
                 }),
+                admission: Mutex::new(Admission {
+                    active_by_session: HashMap::new(),
+                }),
+                max_concurrent_generations,
                 sink: Mutex::new(None),
                 loss_sink: Mutex::new(None),
                 spawn_lock: Mutex::new(()),
             }),
         }
+    }
+
+    /// 获取生成准入：同一讨论已有进行中请求 → `conversation_busy`；达到全局上限 →
+    /// `capacity_exceeded`。两者都在写入驱动协议之前拒绝（后端不排队，排队属前端
+    /// 调度器职责；Node 驱动的会话 busy 检查保留为最后一层防御）。
+    fn acquire_generation_permit(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> Result<GenerationPermit, GenerateAiError> {
+        let mut admission = lock_recover(&self.inner.admission);
+        if admission.active_by_session.contains_key(session_id) {
+            return Err(GenerateAiError::new(
+                GenerateAiErrorCode::ConversationBusy,
+                "当前讨论已有生成中的请求，请稍候",
+            ));
+        }
+        if admission.active_by_session.len() >= self.inner.max_concurrent_generations {
+            return Err(GenerateAiError::new(
+                GenerateAiErrorCode::CapacityExceeded,
+                "已达同时生成上限，请等待进行中的生成完成后再试",
+            ));
+        }
+        admission
+            .active_by_session
+            .insert(session_id.to_string(), message_id.to_string());
+        Ok(GenerationPermit {
+            inner: self.inner.clone(),
+            session_id: session_id.to_string(),
+            message_id: message_id.to_string(),
+        })
     }
 
     /// 注册流式增量回调（Tauri 层转发为前端事件；测试可注入收集器）。
@@ -852,6 +926,9 @@ impl DshDriverManager {
         text: &str,
         timeout: Duration,
     ) -> Result<MessageOutcome, GenerateAiError> {
+        // 准入护栏最前：同讨论重复生成与全局超限都在写入协议之前拒绝；
+        // 许可（RAII）覆盖本函数全部出口，请求结束才释放名额。
+        let _permit = self.acquire_generation_permit(session_id, message_id)?;
         let runtime = self.current_runtime()?;
         let key = PendingKey::Message(message_id.to_string());
         let (_registration, rx) = runtime.register(key.clone())?;
@@ -1534,6 +1611,107 @@ mod tests {
 
         manager.shutdown_best_effort();
         drop((temp1, temp2));
+    }
+
+    /// 队列 3b：后端生成准入护栏——同会话冲突与全局超限都在写入协议前拒绝；
+    /// 完成后名额释放（零泄漏）。
+    #[test]
+    fn admission_rejects_same_session_and_over_limit_without_touching_protocol() {
+        // 延迟应答假驱动：1.5 秒后才回 message_done，保证两路同时进行中。
+        let slow = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'send_message') {\n\
+                 setTimeout(() => {\n\
+                   console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '慢回复' }));\n\
+                 }, 1500);\n\
+               }\n\
+             });\n";
+        let (_temp, paths, params) = fake_driver_paths(slow);
+        let manager = DshDriverManager::new_with_limit(2);
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let manager_for_first = manager.clone();
+        let first = std::thread::spawn(move || {
+            manager_for_first
+                .send_message_and_wait("s1", "m1", "问题一", Duration::from_secs(15))
+                .expect("第一路完成")
+        });
+        let manager_for_second = manager.clone();
+        let second = std::thread::spawn(move || {
+            manager_for_second
+                .send_message_and_wait("s2", "m2", "问题二", Duration::from_secs(15))
+                .expect("第二路完成")
+        });
+        // 等两路真正进入等待（已写协议），再做拒绝断言。
+        std::thread::sleep(Duration::from_millis(400));
+
+        let busy = manager
+            .send_message_and_wait("s1", "m1-again", "插队", Duration::from_secs(5))
+            .expect_err("同会话重复必须被拒");
+        assert_eq!(busy.code, GenerateAiErrorCode::ConversationBusy);
+        assert_eq!(busy.message, "当前讨论已有生成中的请求，请稍候");
+        assert_eq!(
+            serde_json::to_value(&busy.code).unwrap(),
+            serde_json::json!("conversation_busy")
+        );
+
+        let over = manager
+            .send_message_and_wait("s3", "m3", "第三路", Duration::from_secs(5))
+            .expect_err("超限必须被拒");
+        assert_eq!(over.code, GenerateAiErrorCode::CapacityExceeded);
+        assert_eq!(over.message, "已达同时生成上限，请等待进行中的生成完成后再试");
+        assert_eq!(
+            serde_json::to_value(&over.code).unwrap(),
+            serde_json::json!("capacity_exceeded")
+        );
+
+        assert_eq!(first.join().expect("线程一").text, "慢回复");
+        assert_eq!(second.join().expect("线程二").text, "慢回复");
+
+        // 名额已随许可释放：新请求照常成功。
+        let after = manager
+            .send_message_and_wait("s3", "m4", "释放后", Duration::from_secs(15))
+            .expect("名额释放后新请求成功");
+        assert_eq!(after.text, "慢回复");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// 队列 3b：超时路径结束后名额必须释放（许可零泄漏）。
+    #[test]
+    fn admission_permit_released_after_timeout() {
+        // 沉默驱动：收到 send 不回应；收到 cancel 立即回 cancelled 终态（快速结束宽限期）。
+        let silent = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'cancel_message') {\n\
+                 console.log(JSON.stringify({ type: 'message_failed', session_id: cmd.session_id, message_id: cmd.message_id, code: 'cancelled', message: '已取消' }));\n\
+               }\n\
+             });\n\
+             setInterval(() => {}, 1000);\n";
+        let (_temp, paths, params) = fake_driver_paths(silent);
+        let manager = DshDriverManager::new_with_limit(1);
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let first = manager.send_message_and_wait("s1", "m1", "问题", Duration::from_millis(300));
+        assert!(first.is_err(), "唯一名额上的请求超时失败");
+
+        // 名额已随许可 Drop 释放：同会话重试必须能再次进入等待（是超时，不是 busy）。
+        let retry_err = manager
+            .send_message_and_wait("s1", "m2", "再问", Duration::from_millis(300))
+            .expect_err("重试同样超时");
+        assert_eq!(
+            retry_err.code,
+            GenerateAiErrorCode::Timeout,
+            "名额已释放：不得是 conversation_busy"
+        );
+
+        manager.shutdown_best_effort();
     }
 
     /// 7.3 收窄：DSH stderr 诊断绝不含正文、路径或密钥原文，且长度受限。

@@ -233,6 +233,29 @@ mod tests {
         }
     }
 
+    /// 队列 3b：取材锁获取失败时失败关闭——返回 LockUnavailable，且错误先于组装。
+    #[test]
+    fn assemble_context_lock_unavailable_fails_closed_before_assembly() {
+        let locks = crate::project::ProjectLocks::default();
+        // 无法规范化取锁的路径 → LockUnavailable（组装无从被调用）。
+        let result = super::assemble_context_under_lock(
+            &locks,
+            std::path::Path::new("Z:/definitely/not/a/real/project"),
+            "doc-1",
+            None,
+            None,
+            "问题",
+        );
+        assert!(matches!(
+            result,
+            Err(super::AssembleContextError::LockUnavailable)
+        ));
+
+        // 固定文案：安全、可读、不泄露路径或身份。
+        let error = super::context_lock_unavailable_error();
+        assert_eq!(error.message, "作品读取暂时不可用，本次请求未发送。");
+    }
+
     /// enforce-strict-story-read-boundary：待恢复事务的生成链错误使用专用码与固定文案，
     /// 且错误在发起模型请求前返回（本轮未发送）。
     #[test]
@@ -1498,8 +1521,8 @@ async fn ai_send_message(
                         let question_for_context = question.clone();
                         let locks = app.state::<ProjectLocks>().inner().clone();
                         let assembled = tauri::async_runtime::spawn_blocking(move || {
-                            let _guard = locks.acquire(std::path::Path::new(&project_path)).ok();
-                            project::assemble_round_context(
+                            assemble_context_under_lock(
+                                &locks,
                                 std::path::Path::new(&project_path),
                                 &doc_id,
                                 version.as_deref(),
@@ -1510,7 +1533,12 @@ async fn ai_send_message(
                         .await;
                         match assembled {
                             Ok(Ok(ctx)) => (Some(ctx.context_text), Some(ctx.provenance)),
-                            Ok(Err(denial))
+                            Ok(Err(AssembleContextError::LockUnavailable)) => {
+                                return Ok(GenerateAiResult::failure(
+                                    context_lock_unavailable_error(),
+                                ))
+                            }
+                            Ok(Err(AssembleContextError::Denied(denial)))
                                 if matches!(
                                     denial.reason,
                                     project::MaterialDenialReason::RecoveryRequired
@@ -1550,6 +1578,42 @@ async fn ai_send_message(
         result.provenance = provenance;
     }
     Ok(result)
+}
+
+/// 常规取材组装的错误：锁不可得（失败关闭，不调用组装）或材料拒绝（结构化）。
+enum AssembleContextError {
+    LockUnavailable,
+    Denied(project::MaterialDenial),
+}
+
+/// 在作品锁保护下组装常规取材语境；锁获取失败时立即失败关闭，绝不调用组装。
+fn assemble_context_under_lock(
+    locks: &ProjectLocks,
+    project_root: &std::path::Path,
+    focus_document_id: &str,
+    focus_document_version: Option<&str>,
+    focus_snapshot: Option<&str>,
+    question: &str,
+) -> Result<project::RoundContext, AssembleContextError> {
+    let _guard = locks
+        .acquire(project_root)
+        .map_err(|_| AssembleContextError::LockUnavailable)?;
+    project::assemble_round_context(
+        project_root,
+        focus_document_id,
+        focus_document_version,
+        focus_snapshot,
+        question,
+    )
+    .map_err(AssembleContextError::Denied)
+}
+
+/// 取材锁不可得时的安全错误：失败关闭，本轮请求未发送，不泄露路径或身份。
+fn context_lock_unavailable_error() -> llm_config::GenerateAiError {
+    llm_config::GenerateAiError::new(
+        llm_config::GenerateAiErrorCode::Service,
+        "作品读取暂时不可用，本次请求未发送。",
+    )
 }
 
 /// 作品存在待恢复事务现场时的安全错误：严格只读失败关闭，本轮请求未发送。

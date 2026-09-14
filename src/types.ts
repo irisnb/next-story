@@ -134,7 +134,9 @@ export type GenerateAiErrorCode =
   | "service"
   | "invalid_response"
   | "document_not_visible"
-  | "story_recovery_required";
+  | "story_recovery_required"
+  | "conversation_busy"
+  | "capacity_exceeded";
 
 /**
  * 生成错误的稳定契约。前端只依据 `code` 切换状态，不解析 `message`。

@@ -29,6 +29,8 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
+import { createSessionQueues } from "./session-queue.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROTOCOL_VERSION = 1;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
@@ -91,6 +93,9 @@ emit({ type: "ready", protocol_version: PROTOCOL_VERSION });
 /** @type {Map<string, {id, systemPrompt, agent: null|object, handle: null|object, busy: boolean, cancelRequested: boolean, seedTurns: array}>} */
 const sessions = new Map();
 let shuttingDown = false;
+// 按会话串行、跨会话并行的命令队列（P1-3：replay 建 Agent 期间到达的 send
+// 不得重复创建 Agent）。取消命令走旁路（见 dispatchCommand），不进队列。
+const sessionQueues = createSessionQueues();
 
 function textOfAssistantMessage(event) {
   return (event?.data?.message?.content ?? [])
@@ -304,20 +309,42 @@ async function handleCommand(cmd) {
       emit({ type: "session_ended", session_id: sid });
       return;
     }
-    case "shutdown": {
-      shuttingDown = true;
-      for (const [, session] of sessions) {
-        try { await session.handle?.dispose?.(); } catch { /* 退出路径尽力而为 */ }
-      }
-      sessions.clear();
-      try { await ctx.fiber.dispose(); } catch (error) { diag(`ctx dispose error: ${String(error)}`); }
-      process.exit(0);
-      return;
-    }
     default:
       // 未知消息类型：丢弃（单帧错误不致命），stderr 记诊断
       diag(`unknown message type: ${JSON.stringify(type)}`);
   }
+}
+
+// ── 命令分发（P1-3：按会话串行；取消旁路；shutdown 全局屏障）─────────────────
+function dispatchCommand(cmd) {
+  const type = cmd?.type;
+  if (type === "cancel_message") {
+    // 取消旁路：立即执行，不排队——否则会排在被取消的操作之后。
+    return handleCommand(cmd);
+  }
+  if (type === "shutdown") {
+    return handleShutdown();
+  }
+  const sid = cmd?.session_id;
+  if (typeof sid !== "string" || sid === "") {
+    // 无会话身份的命令直接执行（各命令自行回报 bad_request 错误）。
+    return handleCommand(cmd);
+  }
+  // send_message 只串行到 runTurn 启动（handler 返回即生成已在后台运行）；
+  // 生成期间同会话的后续 send 由 session.busy 拒绝（最后一层防御）。
+  return sessionQueues.enqueue(sid, () => handleCommand(cmd));
+}
+
+async function handleShutdown() {
+  shuttingDown = true; // 停收新命令
+  // 全局屏障：等待各会话队列收束（在途命令完成），再统一清理退出。
+  await sessionQueues.drain();
+  for (const [, session] of sessions) {
+    try { await session.handle?.dispose?.(); } catch { /* 退出路径尽力而为 */ }
+  }
+  sessions.clear();
+  try { await ctx.fiber.dispose(); } catch (error) { diag(`ctx dispose error: ${String(error)}`); }
+  process.exit(0);
 }
 
 // ── stdin 行协议（任务 2.2：帧上限 / 坏帧 / 持续异常）─────────────────────────
@@ -343,7 +370,7 @@ rl.on("line", (line) => {
     return;
   }
   malformedStreak = 0;
-  handleCommand(cmd).catch((error) => {
+  dispatchCommand(cmd).catch((error) => {
     diag(`command error: ${String(error?.stack ?? error)}`);
     emit({
       type: "error",

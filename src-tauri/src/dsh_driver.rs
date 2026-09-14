@@ -261,13 +261,6 @@ pub fn next_id() -> u64 {
     COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-/// 消息终态索引键。键形状保持 `msg:` 前缀不变；`message_id` 现带讨论身份前缀
-/// （`{conversation_id}:msg-{n}`），含冒号也不改变键的生成方式——不同讨论的同序号
-/// 消息因前缀不同而天然落到不同键，互不冲突。
-fn message_key(message_id: &str) -> String {
-    format!("msg:{message_id}")
-}
-
 struct LiveProcess {
     child: Child,
     stdin: ChildStdin,
@@ -297,9 +290,154 @@ impl LiveProcess {
     }
 }
 
+// ========== 代际与生命周期（harden-driver-generation-lifecycle） ==========
+
+/// 恢复式取锁：中毒后取出内部数据继续，杜绝 reader / 取消 / 退出路径连锁 panic
+/// （与 `project::ProjectLocks` 的既有恢复策略一致）。
+fn lock_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 驱动进程代际标识：每次实际 spawn 单调递增。reader、等待表与进程句柄都
+/// 绑定到所属代际；旧代的迟到事件与 EOF 只清理自身资源，绝不触碰当前代。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GenerationId(u64);
+
+/// 代际阶段：Starting（等待版本正确的 ready）→ Ready（可接收会话命令）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GenerationPhase {
+    Starting,
+    Ready,
+}
+
+/// 启动闸门信号：只有版本正确的 `Ready` 才能启动成功，其余一律失败回收。
+enum StartupSignal {
+    Ready { protocol_version: u32 },
+    DriverError,
+    UnexpectedEvent,
+    Eof,
+}
+
+/// 请求等待键：消息终态（含回执）按消息身份；会话控制确认（start_session /
+/// replay_ok / session_ended）共用会话身份——同一会话至多一个控制确认在等待。
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum PendingKey {
+    Message(String),
+    SessionControl(String),
+}
+
+/// 每代独立的等待运行时：启动信号通道（一次性）+ 本代请求等待表。
+/// 代际身份由 reader 与 [`LiveGeneration`] 持有并在路由时作为参数传递。
+struct GenerationRuntime {
+    /// 启动期独占信号通道；`None` 表示已就绪（或已终止），事件转入常规路由。
+    startup: Mutex<Option<Sender<StartupSignal>>>,
+    /// 本代请求等待表：注册带唯一令牌，注销只清理自己的注册。
+    pending: Mutex<HashMap<PendingKey, (u64, Sender<DriverEvent>)>>,
+    next_token: AtomicU64,
+}
+
+/// 注册凭据：`Drop` 时只注销自己所属代际、同一令牌的注册，绝不误删后来者。
+struct PendingRegistration {
+    runtime: Arc<GenerationRuntime>,
+    key: PendingKey,
+    token: u64,
+}
+
+impl Drop for PendingRegistration {
+    fn drop(&mut self) {
+        let mut pending = lock_recover(&self.runtime.pending);
+        let still_mine = pending
+            .get(&self.key)
+            .is_some_and(|(token, _)| *token == self.token);
+        if still_mine {
+            pending.remove(&self.key);
+        }
+    }
+}
+
+impl GenerationRuntime {
+    fn new(startup_tx: Sender<StartupSignal>) -> Arc<Self> {
+        Arc::new(GenerationRuntime {
+            startup: Mutex::new(Some(startup_tx)),
+            pending: Mutex::new(HashMap::new()),
+            next_token: AtomicU64::new(1),
+        })
+    }
+
+    /// 注册等待者；重复键明确冲突，绝不覆盖既有等待者。
+    fn register(
+        self: &Arc<Self>,
+        key: PendingKey,
+    ) -> Result<(PendingRegistration, std::sync::mpsc::Receiver<DriverEvent>), GenerateAiError>
+    {
+        let (tx, rx) = channel();
+        let mut pending = lock_recover(&self.pending);
+        use std::collections::hash_map::Entry;
+        match pending.entry(key.clone()) {
+            Entry::Occupied(_) => Err(service_error("请求身份与进行中的等待冲突，请重试")),
+            Entry::Vacant(slot) => {
+                let token = self.next_token.fetch_add(1, Ordering::Relaxed);
+                slot.insert((token, tx));
+                Ok((
+                    PendingRegistration {
+                        runtime: self.clone(),
+                        key,
+                        token,
+                    },
+                    rx,
+                ))
+            }
+        }
+    }
+
+    /// 投递并消费注册（终态）；返回是否确有等待者。
+    fn deliver(&self, key: &PendingKey, event: DriverEvent) -> bool {
+        let sender = lock_recover(&self.pending).remove(key);
+        match sender {
+            Some((_, tx)) => {
+                let _ = tx.send(event);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 回执通知：发送但不消费注册（终态仍由 [`Self::deliver`] 完成）。
+    fn notify(&self, key: &PendingKey, event: DriverEvent) {
+        let pending = lock_recover(&self.pending);
+        if let Some((_, tx)) = pending.get(key) {
+            let _ = tx.send(event);
+        }
+    }
+
+    /// 只失败本代等待者（旧代 EOF 不得清空当前代的等待）。
+    fn fail_all(&self, reason: &str) {
+        let drained: Vec<_> = lock_recover(&self.pending).drain().collect();
+        for (_, (_, tx)) in drained {
+            let _ = tx.send(DriverEvent::Error {
+                session_id: None,
+                message_id: None,
+                code: "driver_died".to_string(),
+                message: reason.to_string(),
+            });
+        }
+    }
+}
+
+struct Lifecycle {
+    next_generation: u64,
+    current: Option<LiveGeneration>,
+}
+
+struct LiveGeneration {
+    id: GenerationId,
+    phase: GenerationPhase,
+    process: LiveProcess,
+    runtime: Arc<GenerationRuntime>,
+}
+
 struct Inner {
-    state: Mutex<Option<LiveProcess>>,
-    pending: Mutex<HashMap<String, Sender<DriverEvent>>>,
+    lifecycle: Mutex<Lifecycle>,
     sink: Mutex<Option<DeltaSink>>,
     loss_sink: Mutex<Option<LossSink>>,
     spawn_lock: Mutex<()>,
@@ -309,28 +447,33 @@ struct Inner {
 pub type LossSink = Arc<dyn Fn() + Send + Sync>;
 
 impl Inner {
-    fn deliver(&self, key: &str, event: DriverEvent) -> bool {
-        let sender = self.pending.lock().unwrap().remove(key);
-        match sender {
-            Some(tx) => {
-                let _ = tx.send(event);
-                true
+    /// 事件路由（由 reader 携带自己的代际调用）。
+    fn route_event(
+        &self,
+        generation: GenerationId,
+        runtime: &Arc<GenerationRuntime>,
+        event: DriverEvent,
+    ) {
+        // 启动期：startup 通道存在时，全部事件按启动信号处理（只认版本正确的 ready）。
+        {
+            let mut startup = lock_recover(&runtime.startup);
+            if startup.is_some() {
+                let signal = match &event {
+                    DriverEvent::Ready {
+                        protocol_version,
+                    } => StartupSignal::Ready {
+                        protocol_version: *protocol_version,
+                    },
+                    DriverEvent::Error { .. } => StartupSignal::DriverError,
+                    _ => StartupSignal::UnexpectedEvent,
+                };
+                if let Some(tx) = startup.take() {
+                    let _ = tx.send(signal);
+                }
+                return;
             }
-            None => false,
         }
-    }
-
-    /// 回执通知：把事件发给等待者但不消费等待注册——终态仍由 [`Self::deliver`]
-    /// 完成（`deliver` 会移除注册，`notify` 不会）。无等待者时静默丢弃（回执可与
-    /// 超时注销竞态，安全忽略）。
-    fn notify(&self, key: &str, event: DriverEvent) {
-        let pending = self.pending.lock().unwrap();
-        if let Some(tx) = pending.get(key) {
-            let _ = tx.send(event);
-        }
-    }
-
-    fn route(&self, event: DriverEvent) {
+        // 常规路由。等待表是代际局部的：旧代事件只会落进旧代（已失败清空的）表。
         match &event {
             DriverEvent::Delta {
                 session_id,
@@ -338,7 +481,11 @@ impl Inner {
                 seq,
                 text,
             } => {
-                let sink = self.sink.lock().unwrap().clone();
+                // 只有当前就绪代的增量才进 sink，防止旧代增量串入新讨论。
+                if !self.is_current_ready(generation) {
+                    return;
+                }
+                let sink = lock_recover(&self.sink).clone();
                 if let Some(sink) = sink {
                     sink(DeltaPayload {
                         session_id: session_id.clone(),
@@ -348,28 +495,21 @@ impl Inner {
                     });
                 }
             }
-            DriverEvent::Ready { .. } => {
-                self.deliver("ready", event);
-            }
             DriverEvent::MessageSent { message_id, .. } => {
-                let key = message_key(message_id);
-                self.notify(&key, event);
+                runtime.notify(&PendingKey::Message(message_id.clone()), event);
             }
             DriverEvent::MessageDone { message_id, .. }
             | DriverEvent::MessageFailed { message_id, .. } => {
-                let key = message_key(message_id);
-                if !self.deliver(&key, event) {
-                    eprintln!("dsh_driver: 无等待者的消息终态（{}）", key);
+                let message_id = message_id.clone();
+                let key = PendingKey::Message(message_id.clone());
+                if !runtime.deliver(&key, event) {
+                    eprintln!("dsh_driver: 无等待者的消息终态（{message_id}）");
                 }
             }
-            DriverEvent::SessionStarted { session_id } => {
-                self.deliver(&format!("session:{session_id}:start"), event);
-            }
-            DriverEvent::ReplayOk { session_id } => {
-                self.deliver(&format!("session:{session_id}:replay"), event);
-            }
-            DriverEvent::SessionEnded { session_id } => {
-                self.deliver(&format!("session:{session_id}:end"), event);
+            DriverEvent::SessionStarted { session_id }
+            | DriverEvent::ReplayOk { session_id }
+            | DriverEvent::SessionEnded { session_id } => {
+                runtime.deliver(&PendingKey::SessionControl(session_id.clone()), event);
             }
             DriverEvent::Error {
                 session_id,
@@ -379,46 +519,54 @@ impl Inner {
             } => {
                 let delivered = message_id
                     .as_ref()
-                    .map(|mid| self.deliver(&format!("msg:{mid}"), event.clone()))
+                    .map(|mid| runtime.deliver(&PendingKey::Message(mid.clone()), event.clone()))
                     .unwrap_or(false)
                     || session_id
                         .as_ref()
                         .map(|sid| {
-                            ["start", "replay", "end"].iter().any(|suffix| {
-                                self.deliver(&format!("session:{sid}:{suffix}"), event.clone())
-                            })
+                            runtime.deliver(&PendingKey::SessionControl(sid.clone()), event.clone())
                         })
                         .unwrap_or(false);
                 if !delivered {
                     eprintln!("dsh_driver: 无等待者的错误事件（code={code}）");
                 }
             }
+            DriverEvent::Ready { .. } => {
+                // 就绪后重复到达的 ready：无启动通道，安全忽略。
+            }
         }
     }
 
-    fn fail_all_pending(&self, reason: &str) {
-        let mut pending = self.pending.lock().unwrap();
-        for (_, tx) in pending.drain() {
-            let _ = tx.send(DriverEvent::Error {
-                session_id: None,
-                message_id: None,
-                code: "driver_died".to_string(),
-                message: reason.to_string(),
-            });
-        }
+    fn is_current_ready(&self, generation: GenerationId) -> bool {
+        let lifecycle = lock_recover(&self.lifecycle);
+        matches!(&lifecycle.current, Some(current)
+            if current.id == generation && current.phase == GenerationPhase::Ready)
     }
 
-    fn mark_dead(&self) {
-        let had_process = {
-            let mut state = self.state.lock().unwrap();
-            state.take().map(|mut live| {
-                let _ = live.child.kill();
-                let _ = live.child.wait();
-            })
+    /// 标记死亡：只有指定代际仍是当前代时才回收进程；只有**已就绪**的当前代
+    /// 意外退出才触发崩溃恢复通知（启动失败不伪装为驱动丢失）。
+    fn mark_dead_if_current(&self, generation: GenerationId) {
+        let was_current_ready = {
+            let mut lifecycle = lock_recover(&self.lifecycle);
+            let is_current = lifecycle
+                .current
+                .as_ref()
+                .is_some_and(|current| current.id == generation);
+            if !is_current {
+                return;
+            }
+            let was_ready = lifecycle
+                .current
+                .as_ref()
+                .is_some_and(|current| current.phase == GenerationPhase::Ready);
+            if let Some(mut live) = lifecycle.current.take() {
+                let _ = live.process.child.kill();
+                let _ = live.process.child.wait();
+            }
+            was_ready
         };
-        // 仅当确实有进程丢失时通知（幂等防重入）；前端据此进入恢复流程。
-        if had_process.is_some() {
-            let loss = self.loss_sink.lock().unwrap().clone();
+        if was_current_ready {
+            let loss = lock_recover(&self.loss_sink).clone();
             if let Some(loss) = loss {
                 loss();
             }
@@ -436,8 +584,10 @@ impl DshDriverManager {
     pub fn new() -> Self {
         DshDriverManager {
             inner: Arc::new(Inner {
-                state: Mutex::new(None),
-                pending: Mutex::new(HashMap::new()),
+                lifecycle: Mutex::new(Lifecycle {
+                    next_generation: 0,
+                    current: None,
+                }),
                 sink: Mutex::new(None),
                 loss_sink: Mutex::new(None),
                 spawn_lock: Mutex::new(()),
@@ -447,38 +597,45 @@ impl DshDriverManager {
 
     /// 注册流式增量回调（Tauri 层转发为前端事件；测试可注入收集器）。
     pub fn set_sink(&self, sink: DeltaSink) {
-        *self.inner.sink.lock().unwrap() = Some(sink);
+        *lock_recover(&self.inner.sink) = Some(sink);
     }
 
-    /// 注册驱动进程丢失回调（崩溃或参数变化重启；前端据此触发历史重放恢复）。
+    /// 注册驱动进程丢失回调（已就绪代意外退出时；前端据此触发历史重放恢复）。
     pub fn set_loss_sink(&self, sink: LossSink) {
-        *self.inner.loss_sink.lock().unwrap() = Some(sink);
+        *lock_recover(&self.inner.loss_sink) = Some(sink);
     }
 
-    // ---- 进程生命周期（任务 3.1）----
+    // ---- 进程生命周期（代际化） ----
 
-    /// 确保驱动进程存活且以 `params` 启动。进程存活且参数一致时复用；
-    /// 参数变化时优雅重启；进程已死时重新拉起。
+    /// 确保驱动进程存活且以 `params` 启动。已就绪代存活且参数一致时复用；
+    /// 参数变化或已退出时退役旧代（锁外收尾）后拉起新代。
     pub fn ensure_started(
         &self,
         params: &DriverParams,
         paths: &DshRuntimePaths,
     ) -> Result<(), GenerateAiError> {
-        let _guard = self.inner.spawn_lock.lock().unwrap();
-        {
-            let mut state = self.inner.state.lock().unwrap();
-            if let Some(live) = state.as_mut() {
-                if live.is_alive() {
-                    if live.params == *params {
+        let _guard = lock_recover(&self.inner.spawn_lock);
+        let retired: Option<LiveProcess> = {
+            let mut lifecycle = lock_recover(&self.inner.lifecycle);
+            match lifecycle.current.as_mut() {
+                Some(current) => {
+                    let reusable = current.phase == GenerationPhase::Ready
+                        && current.process.is_alive()
+                        && current.process.params == *params;
+                    if reusable {
                         return Ok(());
                     }
-                    // 参数变化：优雅重启
-                    live.graceful_stop();
-                } else {
-                    // 已退出：回收
-                    let _ = live.child.wait();
+                    lifecycle.current.take().map(|generation| generation.process)
                 }
-                *state = None;
+                None => None,
+            }
+        };
+        // 锁外收尾旧代：旧 reader 之后结束只清理自身资源，不影响随后安装的新代。
+        if let Some(mut old) = retired {
+            if old.is_alive() {
+                old.graceful_stop();
+            } else {
+                let _ = old.child.wait();
             }
         }
         self.spawn_locked(params, paths)
@@ -499,8 +656,14 @@ impl DshDriverManager {
                 .map_err(|e| service_error(format!("无法创建 DSH 运行目录: {e}")))?;
         }
 
-        // 先注册 ready 等待者，再启动读线程，避免 ready 事件竞态丢失。
-        let ready_rx = self.register("ready");
+        // 分配代际并先建立启动信号通道（先于 reader 启动，避免就绪事件竞态丢失）。
+        let generation = {
+            let mut lifecycle = lock_recover(&self.inner.lifecycle);
+            lifecycle.next_generation += 1;
+            GenerationId(lifecycle.next_generation)
+        };
+        let (start_tx, start_rx) = channel();
+        let runtime = GenerationRuntime::new(start_tx);
 
         let mut command = Command::new(&paths.node_bin);
         command
@@ -542,101 +705,140 @@ impl DshDriverManager {
             });
         }
 
+        // 安装 Starting 代，再启动携带代际身份的 reader。
+        {
+            let mut lifecycle = lock_recover(&self.inner.lifecycle);
+            lifecycle.current = Some(LiveGeneration {
+                id: generation,
+                phase: GenerationPhase::Starting,
+                process: LiveProcess {
+                    child,
+                    stdin,
+                    params: params.clone(),
+                },
+                runtime: runtime.clone(),
+            });
+        }
+
         let inner = self.inner.clone();
-        std::thread::spawn(move || reader_loop(inner, stdout));
+        let reader_runtime = runtime.clone();
+        std::thread::spawn(move || reader_loop(inner, generation, reader_runtime, stdout));
 
-        *self.inner.state.lock().unwrap() = Some(LiveProcess {
-            child,
-            stdin,
-            params: params.clone(),
-        });
-
-        match ready_rx.recv_timeout(READY_TIMEOUT) {
-            Ok(DriverEvent::Ready { protocol_version }) if protocol_version == PROTOCOL_VERSION => {
-                Ok(())
+        // 启动闸门：只认版本正确的 Ready；其余（错版本 / 错误事件 / 意外事件 /
+        // EOF / 超时）一律失败并回收该代，不伪装成功，也不触发崩溃恢复通知。
+        match start_rx.recv_timeout(READY_TIMEOUT) {
+            Ok(StartupSignal::Ready {
+                protocol_version: v,
+            }) if v == PROTOCOL_VERSION => {
+                let transitioned = {
+                    let mut lifecycle = lock_recover(&self.inner.lifecycle);
+                    match lifecycle.current.as_mut() {
+                        Some(current) if current.id == generation => {
+                            current.phase = GenerationPhase::Ready;
+                            true
+                        }
+                        _ => false,
+                    }
+                };
+                if transitioned {
+                    Ok(())
+                } else {
+                    self.retire_generation(generation);
+                    Err(service_error("常驻驱动启动被并发替换，请重试"))
+                }
             }
-            Ok(DriverEvent::Ready { protocol_version }) => {
-                self.kill_current();
-                self.unregister("ready");
+            Ok(StartupSignal::Ready {
+                protocol_version: v,
+            }) => {
+                self.retire_generation(generation);
                 Err(service_error(format!(
-                    "常驻驱动协议版本不匹配: {protocol_version}（期望 {PROTOCOL_VERSION}）"
+                    "常驻驱动协议版本不匹配: {v}（期望 {PROTOCOL_VERSION}）"
                 )))
             }
-            Ok(_) => {
-                self.unregister("ready");
-                Ok(())
+            Ok(StartupSignal::DriverError) => {
+                self.retire_generation(generation);
+                Err(service_error("常驻驱动启动失败"))
             }
-            Err(_) => {
-                self.unregister("ready");
-                self.kill_current();
+            Ok(StartupSignal::UnexpectedEvent) => {
+                self.retire_generation(generation);
+                Err(service_error("常驻驱动启动期间收到意外事件"))
+            }
+            Ok(StartupSignal::Eof) | Err(_) => {
+                self.retire_generation(generation);
                 Err(service_error("常驻驱动启动超时或意外退出"))
             }
         }
     }
 
-    /// 优雅关闭（应用退出钩子调用）。尽力而为：先发 shutdown，超时强杀。
-    pub fn shutdown_best_effort(&self) {
-        let mut state = self.inner.state.lock().unwrap();
-        if let Some(live) = state.as_mut() {
-            live.graceful_stop();
+    /// 回收指定代际（仅当它仍是当前代）：杀进程并清空 current。
+    /// 语义为「启动失败 / 主动退役」，不触发崩溃恢复通知。
+    fn retire_generation(&self, generation: GenerationId) {
+        let retired = {
+            let mut lifecycle = lock_recover(&self.inner.lifecycle);
+            match lifecycle.current.as_ref() {
+                Some(current) if current.id == generation => lifecycle.current.take(),
+                _ => None,
+            }
+        };
+        if let Some(mut live) = retired {
+            let _ = live.process.child.kill();
+            let _ = live.process.child.wait();
         }
-        *state = None;
     }
 
-    fn kill_current(&self) {
-        let mut state = self.inner.state.lock().unwrap();
-        if let Some(mut live) = state.take() {
-            let _ = live.child.kill();
-            let _ = live.child.wait();
+    /// 优雅关闭（应用退出钩子调用）。尽力而为：先发 shutdown，超时强杀。
+    pub fn shutdown_best_effort(&self) {
+        let retired = lock_recover(&self.inner.lifecycle).current.take();
+        if let Some(mut live) = retired {
+            live.process.graceful_stop();
+        }
+    }
+
+    /// 当前就绪代的运行时（注册等待者用）；未就绪或未启动时失败关闭。
+    fn current_runtime(&self) -> Result<Arc<GenerationRuntime>, GenerateAiError> {
+        let lifecycle = lock_recover(&self.inner.lifecycle);
+        match lifecycle.current.as_ref() {
+            Some(current) if current.phase == GenerationPhase::Ready => Ok(current.runtime.clone()),
+            Some(_) => Err(service_error("常驻驱动启动中，请稍后重试")),
+            None => Err(service_error("常驻驱动进程未启动")),
         }
     }
 
     // ---- 协议操作 ----
 
-    fn register(&self, key: &str) -> std::sync::mpsc::Receiver<DriverEvent> {
-        let (tx, rx) = channel();
-        self.inner
-            .pending
-            .lock()
-            .unwrap()
-            .insert(key.to_string(), tx);
-        rx
-    }
-
-    fn unregister(&self, key: &str) {
-        self.inner.pending.lock().unwrap().remove(key);
-    }
-
     fn write_command(&self, cmd: &DriverCommand) -> Result<(), GenerateAiError> {
         let mut line = serde_json::to_string(cmd)
             .map_err(|e| service_error(format!("协议序列化失败: {e}")))?;
         line.push('\n');
-        let mut state = self.inner.state.lock().unwrap();
-        let live = state
+        // 只向当前**已就绪**代写入：启动期与退役后的进程不接受会话命令。
+        let mut lifecycle = lock_recover(&self.inner.lifecycle);
+        let live = lifecycle
+            .current
             .as_mut()
-            .ok_or_else(|| service_error("常驻驱动进程未启动"))?;
-        live.write_line(&line)
+            .filter(|current| current.phase == GenerationPhase::Ready)
+            .ok_or_else(|| service_error("常驻驱动进程未启动或未就绪"))?;
+        live.process
+            .write_line(&line)
             .map_err(|e| service_error(format!("向驱动写入命令失败: {e}")))
     }
 
-    // ---- 会话操作（任务 3.2）----
+    // ---- 会话操作（控制确认严格匹配：start / replay_done / end 共用会话控制键） ----
 
     pub fn start_session(&self, session_id: &str) -> Result<(), GenerateAiError> {
-        let rx = self.register(&format!("session:{session_id}:start"));
+        let runtime = self.current_runtime()?;
+        let (_registration, rx) =
+            runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
         if let Err(e) = self.write_command(&DriverCommand::StartSession {
             session_id: session_id.to_string(),
         }) {
-            self.unregister(&format!("session:{session_id}:start"));
             return Err(e);
         }
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::SessionStarted { .. }) => Ok(()),
             Ok(DriverEvent::Error { code, .. }) => Err(map_driver_failure(&code, "")),
-            Ok(_) => Ok(()),
-            Err(_) => {
-                self.unregister(&format!("session:{session_id}:start"));
-                Err(timeout_error())
-            }
+            // 严格匹配：非预期事件不再被当作成功。
+            Ok(_) => Err(service_error("启动会话期间收到意外事件")),
+            Err(_) => Err(timeout_error()),
         }
     }
 
@@ -650,15 +852,15 @@ impl DshDriverManager {
         text: &str,
         timeout: Duration,
     ) -> Result<MessageOutcome, GenerateAiError> {
-        let key = message_key(message_id);
-        let rx = self.register(&key);
+        let runtime = self.current_runtime()?;
+        let key = PendingKey::Message(message_id.to_string());
+        let (_registration, rx) = runtime.register(key.clone())?;
         let cmd = DriverCommand::SendMessage {
             session_id: session_id.to_string(),
             message_id: message_id.to_string(),
             text: text.to_string(),
         };
         if let Err(e) = self.write_command(&cmd) {
-            self.unregister(&key);
             return Err(e);
         }
         let mut sent_confirmed = false;
@@ -669,7 +871,6 @@ impl DshDriverManager {
                 // 请求级超时：先取消，给宽限期回收终态（design.md D9）
                 let _ = self.cancel_message(session_id, message_id);
                 let outcome = rx.recv_timeout(CANCEL_GRACE);
-                self.unregister(&key);
                 return match outcome {
                     // 取消前恰好完成：仍算成功
                     Ok(DriverEvent::MessageDone { text, .. }) => Ok(MessageOutcome {
@@ -681,18 +882,15 @@ impl DshDriverManager {
             }
             match rx.recv_timeout(remaining) {
                 Ok(DriverEvent::MessageDone { text, .. }) => {
-                    self.unregister(&key);
                     return Ok(MessageOutcome {
                         text,
                         sent_confirmed,
                     });
                 }
                 Ok(DriverEvent::MessageFailed { code, .. }) => {
-                    self.unregister(&key);
                     return Err(map_driver_failure(&code, ""));
                 }
                 Ok(DriverEvent::Error { code, message, .. }) => {
-                    self.unregister(&key);
                     return Err(map_driver_failure(&code, &message));
                 }
                 Ok(DriverEvent::MessageSent { .. }) => {
@@ -702,7 +900,6 @@ impl DshDriverManager {
                 Ok(_) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    self.unregister(&key);
                     return Err(service_error("驱动应答通道关闭"));
                 }
             }
@@ -716,8 +913,8 @@ impl DshDriverManager {
         message_id: &str,
     ) -> Result<(), GenerateAiError> {
         {
-            let state = self.inner.state.lock().unwrap();
-            if state.is_none() {
+            let lifecycle = lock_recover(&self.inner.lifecycle);
+            if lifecycle.current.is_none() {
                 return Ok(());
             }
         }
@@ -730,30 +927,28 @@ impl DshDriverManager {
     /// 结束会话（新建对话 / 切换作品）。进程未启动时为无操作（幂等）。
     pub fn end_session(&self, session_id: &str) -> Result<(), GenerateAiError> {
         {
-            let state = self.inner.state.lock().unwrap();
-            if state.is_none() {
+            let lifecycle = lock_recover(&self.inner.lifecycle);
+            if lifecycle.current.is_none() {
                 return Ok(());
             }
         }
-        let rx = self.register(&format!("session:{session_id}:end"));
+        let runtime = self.current_runtime()?;
+        let (_registration, rx) =
+            runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
         if self
             .write_command(&DriverCommand::EndSession {
                 session_id: session_id.to_string(),
             })
             .is_err()
         {
-            self.unregister(&format!("session:{session_id}:end"));
             // 写失败多半是进程已死：会话随之消失，视为已结束
             return Ok(());
         }
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::SessionEnded { .. }) => Ok(()),
             Ok(DriverEvent::Error { code, .. }) => Err(map_driver_failure(&code, "")),
-            Ok(_) => Ok(()),
-            Err(_) => {
-                self.unregister(&format!("session:{session_id}:end"));
-                Err(timeout_error())
-            }
+            Ok(_) => Err(service_error("结束会话期间收到意外事件")),
+            Err(_) => Err(timeout_error()),
         }
     }
 
@@ -771,26 +966,29 @@ impl DshDriverManager {
 
     /// 历史注入完成：驱动以 seed 建会话并确认。
     pub fn replay_done(&self, session_id: &str) -> Result<(), GenerateAiError> {
-        let rx = self.register(&format!("session:{session_id}:replay"));
+        let runtime = self.current_runtime()?;
+        let (_registration, rx) =
+            runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
         if let Err(e) = self.write_command(&DriverCommand::ReplayDone {
             session_id: session_id.to_string(),
         }) {
-            self.unregister(&format!("session:{session_id}:replay"));
             return Err(e);
         }
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::ReplayOk { .. }) => Ok(()),
             Ok(DriverEvent::Error { code, .. }) => Err(map_driver_failure(&code, "")),
-            Ok(_) => Ok(()),
-            Err(_) => {
-                self.unregister(&format!("session:{session_id}:replay"));
-                Err(timeout_error())
-            }
+            Ok(_) => Err(service_error("恢复确认期间收到意外事件")),
+            Err(_) => Err(timeout_error()),
         }
     }
 }
 
-fn reader_loop(inner: Arc<Inner>, stdout: std::process::ChildStdout) {
+fn reader_loop(
+    inner: Arc<Inner>,
+    generation: GenerationId,
+    runtime: Arc<GenerationRuntime>,
+    stdout: std::process::ChildStdout,
+) {
     let reader = BufReader::new(stdout);
     for line in reader.lines() {
         let Ok(line) = line else { break };
@@ -802,13 +1000,17 @@ fn reader_loop(inner: Arc<Inner>, stdout: std::process::ChildStdout) {
             continue;
         }
         match serde_json::from_str::<DriverEvent>(&line) {
-            Ok(event) => inner.route(event),
+            Ok(event) => inner.route_event(generation, &runtime, event),
             Err(error) => eprintln!("dsh_driver: 无法解析的驱动帧: {error}"),
         }
     }
-    // stdout EOF：驱动进程退出。所有等待中的请求立即失败。
-    inner.fail_all_pending("驱动进程意外退出");
-    inner.mark_dead();
+    // stdout EOF：驱动进程退出。启动期先解除启动等待；只失败本代等待者；
+    // 仅当本代仍是当前代时才回收进程——旧代 EOF 绝不触碰新代。
+    if let Some(tx) = lock_recover(&runtime.startup).take() {
+        let _ = tx.send(StartupSignal::Eof);
+    }
+    runtime.fail_all("驱动进程意外退出");
+    inner.mark_dead_if_current(generation);
 }
 
 #[cfg(test)]
@@ -918,17 +1120,17 @@ mod tests {
         }
     }
 
-    /// 任务 1.3：消息身份改为 `{conversation_id}:msg-{n}`（含冒号）后，
-    /// 终态索引键形状仍保持 `msg:` 前缀不变，两个不同讨论的同序号消息键不冲突。
+    /// 消息等待键按消息身份区分：两个不同讨论的同序号消息（带讨论身份前缀）不冲突；
+    /// 会话控制键与消息键是不同命名空间，互不碰撞。
     #[test]
-    fn message_key_isolates_same_index_across_conversations() {
-        let key_a = message_key("conv-1725-aaaa:msg-1");
-        let key_b = message_key("conv-1725-bbbb:msg-1");
-
-        assert!(key_a.starts_with("msg:"), "键形状保持 msg: 前缀不变");
-        assert!(key_b.starts_with("msg:"));
+    fn pending_keys_isolate_messages_and_session_controls() {
+        let key_a = PendingKey::Message("conv-1725-aaaa:msg-1".into());
+        let key_b = PendingKey::Message("conv-1725-bbbb:msg-1".into());
         assert_ne!(key_a, key_b, "两个不同讨论的同序号消息键不得冲突");
-        assert_eq!(message_key("conv-1725-aaaa:msg-1"), key_a);
+        assert_eq!(PendingKey::Message("conv-1725-aaaa:msg-1".into()), key_a);
+
+        let control = PendingKey::SessionControl("conv-1725-aaaa:msg-1".into());
+        assert_ne!(control, key_a, "会话控制键与消息键不得碰撞");
     }
 
     #[test]
@@ -969,22 +1171,40 @@ mod tests {
         ));
 
         let manager = DshDriverManager::new();
-        let rx = manager.register("msg:m1");
+        let (start_tx, _start_rx) = channel();
+        let runtime = GenerationRuntime::new(start_tx);
+        // 就绪后事件转入常规路由：先消费掉启动通道。
+        *lock_recover(&runtime.startup) = None;
+        let (_registration, rx) = runtime
+            .register(PendingKey::Message("m1".into()))
+            .expect("注册消息等待");
         // 回执可重复到达（轮询兜底扫描），每次都通知且不消费注册。
-        manager.inner.route(DriverEvent::MessageSent {
-            session_id: "s1".into(),
-            message_id: "m1".into(),
-        });
-        manager.inner.route(DriverEvent::MessageSent {
-            session_id: "s1".into(),
-            message_id: "m1".into(),
-        });
+        manager.inner.route_event(
+            GenerationId(1),
+            &runtime,
+            DriverEvent::MessageSent {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+            },
+        );
+        manager.inner.route_event(
+            GenerationId(1),
+            &runtime,
+            DriverEvent::MessageSent {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+            },
+        );
         // 终态随后送达同一等待者（deliver 消费注册）。
-        manager.inner.route(DriverEvent::MessageDone {
-            session_id: "s1".into(),
-            message_id: "m1".into(),
-            text: "答案".into(),
-        });
+        manager.inner.route_event(
+            GenerationId(1),
+            &runtime,
+            DriverEvent::MessageDone {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+                text: "答案".into(),
+            },
+        );
         let first = rx.recv_timeout(Duration::from_millis(200)).expect("回执一");
         assert!(matches!(first, DriverEvent::MessageSent { .. }));
         let second = rx.recv_timeout(Duration::from_millis(200)).expect("回执二");
@@ -993,10 +1213,71 @@ mod tests {
         assert!(matches!(third, DriverEvent::MessageDone { ref text, .. } if text == "答案"));
 
         // 终态后注册已被消费：迟到的回执无等待者，安全丢弃（不得 panic）。
-        manager.inner.route(DriverEvent::MessageSent {
-            session_id: "s1".into(),
-            message_id: "m1".into(),
-        });
+        manager.inner.route_event(
+            GenerationId(1),
+            &runtime,
+            DriverEvent::MessageSent {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+            },
+        );
+    }
+
+    /// 等待键纪律：同代同键的第二次注册必须明确冲突，绝不覆盖；第一次仍能收到终态。
+    #[test]
+    fn duplicate_pending_registration_is_rejected_not_overwritten() {
+        let (start_tx, _start_rx) = channel();
+        let runtime = GenerationRuntime::new(start_tx);
+        *lock_recover(&runtime.startup) = None;
+
+        let (_first_registration, first_rx) = runtime
+            .register(PendingKey::Message("m1".into()))
+            .expect("第一次注册必须成功");
+        let second = runtime.register(PendingKey::Message("m1".into()));
+        assert!(second.is_err(), "重复键必须明确冲突拒绝，绝不覆盖");
+
+        runtime.deliver(
+            &PendingKey::Message("m1".into()),
+            DriverEvent::MessageDone {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+                text: "答案".into(),
+            },
+        );
+        let outcome = first_rx
+            .recv_timeout(Duration::from_millis(200))
+            .expect("第一次注册的等待者仍能收到终态");
+        assert!(matches!(outcome, DriverEvent::MessageDone { .. }));
+    }
+
+    /// 非当前就绪代的增量不进入 sink（防旧代增量串入新讨论）。
+    #[test]
+    fn stale_generation_delta_never_reaches_sink() {
+        let manager = DshDriverManager::new();
+        let hits = Arc::new(AtomicU64::new(0));
+        let hits_for_sink = hits.clone();
+        manager.set_sink(Arc::new(move |_| {
+            hits_for_sink.fetch_add(1, Ordering::SeqCst);
+        }));
+        let (start_tx, _start_rx) = channel();
+        let runtime = GenerationRuntime::new(start_tx);
+        *lock_recover(&runtime.startup) = None;
+        // current 为 None：任何代的增量都被丢弃。
+        manager.inner.route_event(
+            GenerationId(1),
+            &runtime,
+            DriverEvent::Delta {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+                seq: 1,
+                text: "旧".into(),
+            },
+        );
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "非当前就绪代的增量不得进入 sink"
+        );
     }
 
     /// 未知事件类型解析失败 → 读取循环安全丢弃，不影响现有等待。
@@ -1112,6 +1393,147 @@ mod tests {
             counter.load(Ordering::SeqCst) >= 1,
             "驱动进程丢失必须触发 loss 回调"
         );
+    }
+
+    /// 假驱动夹具：返回 (TempDir, 运行路径, 参数)。TempDir 必须在测试期间保持存活。
+    fn fake_driver_paths(script: &str) -> (tempfile::TempDir, DshRuntimePaths, DriverParams) {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let driver_dir = temp.path().join("driver");
+        std::fs::create_dir_all(&driver_dir).expect("driver dir");
+        let driver_entry = driver_dir.join("driver.mjs");
+        std::fs::write(&driver_entry, script).expect("write fake driver");
+        let paths = DshRuntimePaths {
+            node_bin: PathBuf::from("node"),
+            bin_js: PathBuf::new(),
+            driver_entry,
+            driver_cwd: driver_dir,
+            dsh_home: Some(temp.path().join("home")),
+        };
+        let params = DriverParams {
+            model: "m".to_string(),
+            api_base_url: "http://localhost".to_string(),
+            api_key: "k".to_string(),
+        };
+        (temp, paths, params)
+    }
+
+    /// 启动闸门：ready 前直接退出的驱动必须判启动失败，current 为空、不触发恢复通知。
+    #[test]
+    fn startup_gate_rejects_driver_exiting_before_ready() {
+        let (_temp, paths, params) = fake_driver_paths("process.exit(0);\n");
+        let manager = DshDriverManager::new();
+        let counter = Arc::new(AtomicU64::new(0));
+        let counter_for_sink = counter.clone();
+        manager.set_loss_sink(Arc::new(move || {
+            counter_for_sink.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let result = manager.ensure_started(&params, &paths);
+        assert!(result.is_err(), "ready 前退出必须判启动失败");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "启动失败不得触发崩溃恢复通知"
+        );
+        let lifecycle = lock_recover(&manager.inner.lifecycle);
+        assert!(lifecycle.current.is_none(), "失败代必须被回收");
+    }
+
+    /// 启动闸门：首帧输出错误事件的驱动必须判启动失败。
+    #[test]
+    fn startup_gate_rejects_error_event_before_ready() {
+        let (_temp, paths, params) = fake_driver_paths(
+            "console.log(JSON.stringify({type:\"error\",session_id:null,message_id:null,code:\"internal\",message:\"x\"}));\nsetInterval(() => {}, 1000);\n",
+        );
+        let manager = DshDriverManager::new();
+        let result = manager.ensure_started(&params, &paths);
+        assert!(result.is_err(), "首帧 error 必须判启动失败");
+        let lifecycle = lock_recover(&manager.inner.lifecycle);
+        assert!(lifecycle.current.is_none(), "失败代必须被回收");
+    }
+
+    /// 启动闸门：协议版本不符的 ready 必须判启动失败。
+    #[test]
+    fn startup_gate_rejects_wrong_protocol_version() {
+        let (_temp, paths, params) = fake_driver_paths(
+            "console.log(JSON.stringify({type:\"ready\",protocol_version:99}));\nsetInterval(() => {}, 1000);\n",
+        );
+        let manager = DshDriverManager::new();
+        let result = manager.ensure_started(&params, &paths);
+        let error = result.expect_err("版本不符必须失败");
+        assert!(
+            error.message.contains("版本"),
+            "错误信息应说明版本不匹配: {}",
+            error.message
+        );
+        let lifecycle = lock_recover(&manager.inner.lifecycle);
+        assert!(lifecycle.current.is_none(), "失败代必须被回收");
+    }
+
+    /// 锁中毒恢复：持 lifecycle 锁 panic 后，取消与退出路径仍能完成清理而不连锁 panic。
+    #[test]
+    fn poisoned_locks_do_not_cascade_into_cancel_or_shutdown() {
+        let manager = DshDriverManager::new();
+        let manager_for_thread = manager.clone();
+        let handle = std::thread::spawn(move || {
+            let _guard = manager_for_thread.inner.lifecycle.lock().unwrap();
+            panic!("故意中毒");
+        });
+        let _ = handle.join(); // 吞掉线程的 panic 负载
+        // 恢复式取锁：以下调用不得 panic（测试通过即为证明）。
+        manager.cancel_message("s1", "m1").expect("中毒后取消仍可用");
+        manager.shutdown_best_effort();
+    }
+
+    /// 旧代 EOF 不影响新代（P0-2 核心场景）：gen1 是忽略 shutdown 的顽固驱动，
+    /// 参数变化切到 gen2 时 gen1 被强杀、其 reader 之后结束——只清理自身：
+    /// gen2 继续服务，且不触发崩溃恢复通知。
+    #[test]
+    fn old_generation_eof_does_not_affect_new_generation() {
+        let stubborn = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', () => { /* 忽略一切命令，包括 shutdown */ });\n\
+             setInterval(() => {}, 1000);\n";
+        let (temp1, paths1, params1) = fake_driver_paths(stubborn);
+        let manager = DshDriverManager::new();
+        let counter = Arc::new(AtomicU64::new(0));
+        let counter_for_sink = counter.clone();
+        manager.set_loss_sink(Arc::new(move || {
+            counter_for_sink.fetch_add(1, Ordering::SeqCst);
+        }));
+        manager.ensure_started(&params1, &paths1).expect("gen1 启动");
+
+        let normal = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'send_message') {\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '回复2' }));\n\
+               }\n\
+             });\n";
+        let (temp2, paths2, _) = fake_driver_paths(normal);
+        let mut params2 = params1.clone();
+        params2.model = "m2".to_string();
+        // 参数变化：退役 gen1（约 3 秒优雅超时后强杀）并拉起 gen2。
+        manager.ensure_started(&params2, &paths2).expect("gen2 启动");
+
+        let outcome = manager
+            .send_message_and_wait("s2", "m2", "问题", Duration::from_secs(15))
+            .expect("gen2 正常响应");
+        assert_eq!(outcome.text, "回复2");
+
+        // 旧代 EOF（gen1 被强杀后其 reader 结束）不得清空新代等待或触发恢复通知。
+        std::thread::sleep(Duration::from_millis(500));
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "旧代 EOF 不得触发 loss 回调"
+        );
+
+        manager.shutdown_best_effort();
+        drop((temp1, temp2));
     }
 
     /// 7.3 收窄：DSH stderr 诊断绝不含正文、路径或密钥原文，且长度受限。

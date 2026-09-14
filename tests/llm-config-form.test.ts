@@ -55,14 +55,31 @@ const savedConfig: LlmConfig = {
 test("LLM config page distinguishes connection test data from AI generation data", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
+  // 测试连接链路：只发固定测试语句与身份凭据
   assert.match(html, /测试连接[^。]*固定测试语句/);
-  assert.match(html, /不会发送用户剧本文字或临时对话/);
-  assert.match(html, /AI 生成[^。]*冻结选区原文/);
-  assert.doesNotMatch(html, /思维扩展方向/);
-  assert.match(html, /当前临时对话/);
+  assert.match(html, /不会发送你的剧本文字或讨论内容/);
+  // 常规讨论链路：问题、可选选区、讨论上下文与自动附带材料
+  assert.match(html, /常规讨论[^。]*问题原文/);
+  assert.match(html, /可选选区原文/);
+  assert.match(html, /问答上下文/);
+  assert.match(html, /关注文档的最新内容（含尚未保存的修改）/);
+  assert.match(html, /允许 AI 查看的目录结构/);
+  assert.match(html, /跨文档检索到的正文片段/);
+  // 可见性与回收站规则生效
+  assert.match(html, /不允许 AI 查看的文档与回收站内的内容不会被读取或发送/);
+  // 及时召唤链路：冻结选区，不走常规取材
+  assert.match(html, /AI 及时召唤以发起时冻结的选区为材料直接开始/);
+  assert.match(html, /不经过常规自动取材/);
+  // 第三方处理与作品边界
+  assert.match(html, /第三方服务如何处理这些数据/);
   assert.match(html, /回复只显示在 AI 面板/);
+  assert.match(html, /作品之外的临时材料/);
   assert.match(html, /不会自动进入任何文档/);
-  assert.match(html, /第三方服务如何处理数据/);
+  // 旧表述不得回潮
+  assert.doesNotMatch(html, /思维扩展方向/);
+  assert.doesNotMatch(html, /AI 生成会把用户问题/);
+  assert.doesNotMatch(html, /AI 请求会把选区和追问/);
+  assert.doesNotMatch(html, /或当前临时对话/);
 });
 
 function cloneConfig(config: LlmConfig): LlmConfig {

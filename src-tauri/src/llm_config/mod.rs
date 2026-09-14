@@ -130,6 +130,8 @@ pub enum GenerateAiErrorCode {
     Service,
     /// 响应不是有效 JSON，或没有合法 assistant 回复
     InvalidResponse,
+    /// 作品存在待恢复事务现场，本轮请求未发送（严格只读失败关闭）
+    StoryRecoveryRequired,
 }
 
 /// 生成错误的稳定契约。

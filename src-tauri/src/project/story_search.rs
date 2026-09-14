@@ -348,7 +348,8 @@ pub fn search_documents(
     }
 }
 
-/// 磁盘入口：打开作品内容树后执行跨文档字面检索（供命令层调用）。
+/// 磁盘入口：严格只读打开作品内容树后执行跨文档字面检索（供命令层调用）。
+/// 发现待恢复事务现场即失败关闭，绝不触发恢复。
 pub fn search_project(
     project_root: &Path,
     focus_document_id: &str,
@@ -357,8 +358,13 @@ pub fn search_project(
     let canonical = project_root
         .canonicalize()
         .map_err(|_| MaterialDenial::new(MaterialDenialReason::WorkMismatch))?;
-    let tree = super::open_content_tree(&canonical)
-        .map_err(|_| MaterialDenial::new(MaterialDenialReason::DocumentMissing))?;
+    let tree = super::strict_read_content_tree(&canonical).map_err(|e| {
+        if matches!(e, super::ProjectError::RecoveryRequired) {
+            MaterialDenial::new(MaterialDenialReason::RecoveryRequired)
+        } else {
+            MaterialDenial::new(MaterialDenialReason::DocumentMissing)
+        }
+    })?;
     let paths = ProjectPaths::new(canonical);
     Ok(search_documents(
         &tree,
@@ -504,7 +510,9 @@ fn build_provenance(
 ///   读取失败（快照身份非法 / 文档不可见 / 版本不可用）时失败关闭，绝不静默回退。
 /// - 目录投影与检索只覆盖允许读取的范围；检索本身不失败（隐藏/回收站文档被跳过）。
 /// - 返回的 `context_text` 供 DSH task 注入，`provenance` 只存最小元数据（不复制正文）。
-pub fn assemble_round_context(
+/// - 内容树经严格只读取得：发现待恢复事务现场时以 `RecoveryRequired` 失败关闭，
+///   绝不触发恢复（用户路径才允许先恢复再读取）。
+pub(crate) fn assemble_round_context(
     project_root: &Path,
     focus_document_id: &str,
     focus_document_version: Option<&str>,
@@ -515,8 +523,13 @@ pub fn assemble_round_context(
         .canonicalize()
         .map_err(|_| MaterialDenial::new(MaterialDenialReason::WorkMismatch))?;
     let work_id = canonical.to_string_lossy().to_string();
-    let tree = super::open_content_tree(&canonical)
-        .map_err(|_| MaterialDenial::new(MaterialDenialReason::DocumentMissing))?;
+    let tree = super::strict_read_content_tree(&canonical).map_err(|e| {
+        if matches!(e, super::ProjectError::RecoveryRequired) {
+            MaterialDenial::new(MaterialDenialReason::RecoveryRequired)
+        } else {
+            MaterialDenial::new(MaterialDenialReason::DocumentMissing)
+        }
+    })?;
     let paths = ProjectPaths::new(canonical);
 
     let focus_request = ReadMaterialRequest {
@@ -531,7 +544,15 @@ pub fn assemble_round_context(
             content: content.to_string(),
         }),
     };
-    let focus = super::read_material(project_root, &focus_request)?;
+    let focus = super::story_material::read_material_from_tree(
+        &work_id,
+        &tree,
+        &focus_request,
+        &|node| {
+            read_and_validate_notebook(&paths.document_file(&node.id), &node.name)
+                .map_err(|_| MaterialDenial::new(MaterialDenialReason::DocumentMissing))
+        },
+    )?;
 
     let directory = super::project_directory(&tree);
 
@@ -886,7 +907,7 @@ mod tests {
     #[test]
     fn assemble_round_context_reads_focus_directory_and_search() {
         use super::super::{
-            create_document, create_new_project, open_content_tree, save_document,
+            create_document, create_new_project, recover_then_read_content_tree, save_document,
             CreateProjectParams,
         };
         let temp = tempfile::TempDir::new().unwrap();
@@ -895,7 +916,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .unwrap();
-        let tree = open_content_tree(&root).unwrap();
+        let tree = recover_then_read_content_tree(&root).unwrap();
         let focus_id = tree.root_children[0].clone();
         save_document(&root, &focus_id, &notebook_with_text("关注文档正文。")).unwrap();
         let other_id = create_document(&root, None).unwrap();
@@ -919,7 +940,7 @@ mod tests {
     #[test]
     fn assemble_round_context_rejects_hidden_focus_document() {
         use super::super::{
-            create_new_project, open_content_tree, save_document, set_document_ai_visibility,
+            create_new_project, recover_then_read_content_tree, save_document, set_document_ai_visibility,
             CreateProjectParams,
         };
         let temp = tempfile::TempDir::new().unwrap();
@@ -928,7 +949,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .unwrap();
-        let tree = open_content_tree(&root).unwrap();
+        let tree = recover_then_read_content_tree(&root).unwrap();
         let focus_id = tree.root_children[0].clone();
         save_document(&root, &focus_id, &notebook_with_text("关注文档正文。")).unwrap();
         set_document_ai_visibility(&root, &focus_id, false).unwrap();
@@ -947,7 +968,7 @@ mod tests {
     #[test]
     fn search_project_never_modifies_files() {
         use super::super::{
-            create_new_project, open_content_tree, save_document, CreateProjectParams,
+            create_new_project, recover_then_read_content_tree, save_document, CreateProjectParams,
         };
         let temp = tempfile::TempDir::new().unwrap();
         let root = create_new_project(CreateProjectParams {
@@ -955,7 +976,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .unwrap();
-        let tree = open_content_tree(&root).unwrap();
+        let tree = recover_then_read_content_tree(&root).unwrap();
         let doc_id = tree.root_children[0].clone();
         save_document(&root, &doc_id, &notebook_with_text("林晓站在天台边。")).unwrap();
 

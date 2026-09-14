@@ -199,10 +199,33 @@ pub(crate) fn read_content_tree(paths: &ProjectPaths) -> Result<ContentTree, Pro
     Ok(tree)
 }
 
-/// 读取整棵内容树结构（公开入口，供命令层调用）：先恢复中断事务，再读取并校验。
-pub fn open_content_tree(project_root: &Path) -> Result<ContentTree, ProjectError> {
+/// 读取整棵内容树结构（用户路径公开入口，供命令层调用）：先恢复中断事务，再读取并校验。
+/// AI 受控读取路径 MUST 使用 [`strict_read_content_tree`]，不得经本入口触发恢复。
+pub fn recover_then_read_content_tree(project_root: &Path) -> Result<ContentTree, ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
     recover_interrupted_save(&paths)?;
+    read_content_tree(&paths)
+}
+
+/// 严格只读探测：仅确认是否存在待恢复事务现场，不解析清单、不清理、不恢复、零副作用。
+/// 供 AI 受控读取路径使用；事务目录以任何形态存在（目录 / 普通文件 / 链接、清单缺失
+/// 或损坏、Staged / Committing）一律视为需要恢复，失败关闭。
+pub(crate) fn ensure_no_pending_recovery(paths: &ProjectPaths) -> Result<(), ProjectError> {
+    let layout = TransactionLayout::new(paths);
+    match fs::symlink_metadata(&layout.dir) {
+        Ok(_) => Err(ProjectError::RecoveryRequired),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(ProjectError::ReadError(
+            "无法确认作品保存状态，请重试".to_string(),
+        )),
+    }
+}
+
+/// 读取整棵内容树结构（AI 受控读取路径专用）：严格只读——发现待恢复事务现场即
+/// 失败关闭（绝不恢复、清理或提交事务），干净作品上行为与普通读取一致。
+pub fn strict_read_content_tree(project_root: &Path) -> Result<ContentTree, ProjectError> {
+    let paths = ProjectPaths::new(project_root.to_path_buf());
+    ensure_no_pending_recovery(&paths)?;
     read_content_tree(&paths)
 }
 
@@ -1440,6 +1463,223 @@ mod tests {
         })
     }
 
+    /// 递归快照：记录作品目录内全部相对文件路径与字节（含事务目录），用于零写入断言。
+    fn snapshot_project_dir(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        fn walk(
+            dir: &Path,
+            prefix: String,
+            out: &mut std::collections::BTreeMap<String, Vec<u8>>,
+        ) {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(_) => return,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
+                let meta = match fs::symlink_metadata(&path) {
+                    Ok(meta) => meta,
+                    Err(_) => continue,
+                };
+                if meta.is_dir() {
+                    walk(&path, name, out);
+                } else {
+                    out.insert(name, fs::read(&path).unwrap_or_default());
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(root, String::new(), &mut out);
+        out
+    }
+
+    /// 建立一个存在 Committing 中断事务的作品：草稿正文已替换、内容树与元信息
+    /// 尚未提交（混合世代），`save-transaction` 目录等待恢复。
+    fn seed_project_with_committing_transaction(temp: &tempfile::TempDir) -> PathBuf {
+        let root = seed_project_with_old_generation(temp, "中断保存作品");
+        let result = save_project_with_fault(
+            &root,
+            NEW_DRAFT.to_string(),
+            NEW_MAIN.to_string(),
+            Some(SaveFault::AfterDraftReplace),
+        );
+        assert!(result.is_err(), "注入中断必须返回错误");
+        assert!(
+            TransactionLayout::new(&ProjectPaths::new(root.clone())).dir.exists(),
+            "夹具必须留下待恢复事务目录"
+        );
+        root
+    }
+
+    #[test]
+    fn strict_read_content_tree_fails_closed_on_committing_transaction() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_committing_transaction(&temp);
+        let before = snapshot_project_dir(&root);
+
+        let error = strict_read_content_tree(&root).expect_err("严格读取必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+        assert_eq!(
+            before,
+            snapshot_project_dir(&root),
+            "严格读取不得修改作品任何字节"
+        );
+    }
+
+    #[test]
+    fn strict_read_content_tree_fails_closed_without_manifest() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_old_generation(&temp, "无清单作品");
+        let paths = ProjectPaths::new(root.clone());
+        fs::create_dir_all(&TransactionLayout::new(&paths).dir).expect("create transaction dir");
+        let before = snapshot_project_dir(&root);
+
+        let error = strict_read_content_tree(&root).expect_err("严格读取必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+        assert_eq!(before, snapshot_project_dir(&root));
+    }
+
+    #[test]
+    fn strict_read_content_tree_fails_closed_on_corrupt_manifest() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_old_generation(&temp, "坏清单作品");
+        let paths = ProjectPaths::new(root.clone());
+        let layout = TransactionLayout::new(&paths);
+        fs::create_dir_all(&layout.dir).expect("create transaction dir");
+        fs::write(&layout.manifest, "not-json").expect("write corrupt manifest");
+        let before = snapshot_project_dir(&root);
+
+        let error = strict_read_content_tree(&root).expect_err("严格读取必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+        assert_eq!(before, snapshot_project_dir(&root));
+    }
+
+    #[test]
+    fn strict_read_content_tree_fails_closed_when_transaction_path_is_plain_file() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_old_generation(&temp, "事务占位作品");
+        let paths = ProjectPaths::new(root.clone());
+        let layout = TransactionLayout::new(&paths);
+        fs::write(&layout.dir, "plain-file").expect("write plain file at transaction path");
+        let before = snapshot_project_dir(&root);
+
+        let error = strict_read_content_tree(&root).expect_err("严格读取必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+        assert_eq!(before, snapshot_project_dir(&root));
+    }
+
+    #[test]
+    fn strict_read_content_tree_fails_closed_on_staged_transaction() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_old_generation(&temp, "暂存中断作品");
+        let result = save_project_with_fault(
+            &root,
+            NEW_DRAFT.to_string(),
+            NEW_MAIN.to_string(),
+            Some(SaveFault::AfterStaging),
+        );
+        assert!(result.is_err(), "注入中断必须返回错误");
+        let before = snapshot_project_dir(&root);
+
+        let error = strict_read_content_tree(&root).expect_err("严格读取必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+        assert_eq!(before, snapshot_project_dir(&root));
+    }
+
+    #[test]
+    fn strict_read_content_tree_reads_clean_project_like_normal_path() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_old_generation(&temp, "干净作品");
+        let before = snapshot_project_dir(&root);
+
+        let strict = strict_read_content_tree(&root).expect("干净作品严格读取成功");
+        let recovered = recover_then_read_content_tree(&root).expect("干净作品普通读取成功");
+        assert_eq!(strict, recovered, "干净作品两条路径读取结果一致");
+        assert_eq!(before, snapshot_project_dir(&root));
+    }
+
+    #[test]
+    fn recover_then_read_content_tree_recovers_pending_transaction() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_committing_transaction(&temp);
+
+        let tree = recover_then_read_content_tree(&root).expect("恢复后读取");
+        let paths = ProjectPaths::new(root.clone());
+        assert!(
+            !TransactionLayout::new(&paths).dir.exists(),
+            "恢复后事务目录应被清理"
+        );
+        let draft_id = tree
+            .root_children
+            .iter()
+            .find(|id| {
+                tree.nodes
+                    .get(*id)
+                    .is_some_and(|node| node.name == "草稿本")
+            })
+            .cloned()
+            .expect("找到草稿本文档");
+        let body = fs::read_to_string(paths.document_file(&draft_id)).expect("读取草稿本");
+        assert!(
+            body.contains("新草稿内容"),
+            "恢复应把草稿本前滚到中断前的新内容"
+        );
+    }
+
+    #[test]
+    fn ai_read_entries_fail_closed_on_pending_transaction_without_touching_files() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = seed_project_with_committing_transaction(&temp);
+        let paths = ProjectPaths::new(root.clone());
+        // 直接读可见树（不触发恢复）取得文档 ID 与作品身份。
+        let tree = read_content_tree(&paths).expect("read visible tree");
+        let doc_id = tree.root_children[0].clone();
+        let work_id = root
+            .canonicalize()
+            .expect("canonicalize")
+            .to_string_lossy()
+            .to_string();
+        let before = snapshot_project_dir(&root);
+
+        let request = crate::project::ReadMaterialRequest {
+            work_id,
+            document_id: doc_id.clone(),
+            range: None,
+            expected_version: None,
+            snapshot: None,
+        };
+        let denial = crate::project::read_material(&root, &request)
+            .expect_err("read_material 必须失败关闭");
+        assert_eq!(
+            denial.reason,
+            crate::project::MaterialDenialReason::RecoveryRequired
+        );
+
+        let error = crate::project::read_directory_projection(&root)
+            .expect_err("目录投影必须失败关闭");
+        assert!(matches!(error, ProjectError::RecoveryRequired));
+
+        let denial = crate::project::search_project(&root, &doc_id, "林晓")
+            .expect_err("检索必须失败关闭");
+        assert_eq!(
+            denial.reason,
+            crate::project::MaterialDenialReason::RecoveryRequired
+        );
+
+        let denial = crate::project::assemble_round_context(&root, &doc_id, None, None, "林晓")
+            .expect_err("组装必须失败关闭");
+        assert_eq!(
+            denial.reason,
+            crate::project::MaterialDenialReason::RecoveryRequired
+        );
+
+        assert_eq!(
+            before,
+            snapshot_project_dir(&root),
+            "全部 AI 入口拒绝前后作品逐字节不变"
+        );
+    }
+
     #[test]
     fn failed_create_does_not_delete_preexisting_target_directory() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
@@ -2577,13 +2817,13 @@ mod tests {
     }
 
     #[test]
-    fn open_content_tree_and_read_document_return_validated_structure() {
+    fn recover_then_read_content_tree_and_read_document_return_validated_structure() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
         let project_root = create_project("读树读文档".to_string(), temp.path().to_path_buf())
             .expect("create project");
         let paths = ProjectPaths::new(project_root.clone());
 
-        let tree = open_content_tree(&project_root).expect("open content tree");
+        let tree = recover_then_read_content_tree(&project_root).expect("open content tree");
         assert_eq!(tree.root_children.len(), 1);
         assert!(tree.recycle_bin.is_empty());
 

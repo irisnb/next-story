@@ -16,7 +16,8 @@ pub use export::{
 };
 pub use notebook::*;
 pub use operations::{
-    create_document, create_folder, delete_node, move_node, open_content_tree, read_document,
+    create_document, create_folder, delete_node, move_node,
+    recover_then_read_content_tree, read_document, strict_read_content_tree,
     rename_node, reorder_children, restore_node, save_document, set_document_ai_visibility,
 };
 // 讨论档案存储复用底层事务工具：有界读取 + 原子写入（tempfile + persist），
@@ -24,6 +25,8 @@ pub use operations::{
 pub(crate) use operations::{read_bounded_string, write_file_atomically};
 pub use story_material::*;
 pub use story_search::*;
+// 常规取材组装只在 crate 内（lib.rs 命令层）使用，不对外导出。
+pub(crate) use story_search::assemble_round_context;
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};
@@ -90,6 +93,8 @@ pub enum ProjectError {
     WriteError(String),
     /// 本子内容超过大小上限
     ContentTooLarge(String),
+    /// 作品存在待恢复事务现场；严格只读路径失败关闭时使用（用户路径应先恢复再读取）。
+    RecoveryRequired,
 }
 
 impl std::fmt::Display for ProjectError {
@@ -107,6 +112,9 @@ impl std::fmt::Display for ProjectError {
             ProjectError::ReadError(msg) => write!(f, "读取失败: {}", msg),
             ProjectError::WriteError(_) => write!(f, "写入作品失败，请重试"),
             ProjectError::ContentTooLarge(_) => write!(f, "内容超过大小上限，请精简后重试"),
+            ProjectError::RecoveryRequired => {
+                write!(f, "作品有未完成的保存，请重新打开作品完成恢复后再试")
+            }
         }
     }
 }

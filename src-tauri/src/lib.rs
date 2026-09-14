@@ -233,6 +233,21 @@ mod tests {
         }
     }
 
+    /// enforce-strict-story-read-boundary：待恢复事务的生成链错误使用专用码与固定文案，
+    /// 且错误在发起模型请求前返回（本轮未发送）。
+    #[test]
+    fn story_recovery_required_error_uses_dedicated_code_and_fixed_message() {
+        let error = super::story_recovery_required_error();
+        assert_eq!(
+            error.code,
+            super::llm_config::GenerateAiErrorCode::StoryRecoveryRequired
+        );
+        assert_eq!(
+            error.message,
+            "作品有未完成的保存，请重新打开作品完成恢复后再试。本次 AI 请求未发送。"
+        );
+    }
+
     /// controlled-story-read-visibility：受控只读拒绝必须失败关闭，映射为固定中文
     /// 文案，绝不携带正文、文档名、ID 或路径等可推断身份的任何细节。
     #[test]
@@ -248,6 +263,10 @@ mod tests {
             (MaterialDenialReason::VersionUnavailable, "文档版本不可用"),
             (MaterialDenialReason::InvalidRange, "读取范围无效"),
             (MaterialDenialReason::InvalidSnapshot, "未保存快照无效"),
+            (
+                MaterialDenialReason::RecoveryRequired,
+                "作品有未完成的保存，请重新打开作品完成恢复后再试",
+            ),
         ];
 
         for (reason, expected) in cases {
@@ -273,7 +292,7 @@ mod tests {
         })
         .expect("create project");
 
-        let tree = super::project::open_content_tree(&root).expect("open tree");
+        let tree = super::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let secret_name = "绝密角色档案";
         super::project::rename_node(&root, &doc_id, secret_name).expect("rename");
@@ -332,7 +351,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .expect("create project");
-        let tree = super::project::open_content_tree(&root).expect("open tree");
+        let tree = super::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let project_path = root.to_string_lossy().to_string();
 
@@ -389,7 +408,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .expect("create project");
-        let tree = super::project::open_content_tree(&root).expect("open tree");
+        let tree = super::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let project_path = root.to_string_lossy().to_string();
 
@@ -445,7 +464,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .expect("create project");
-        let tree = super::project::open_content_tree(&root).expect("open tree");
+        let tree = super::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let project_path = root.to_string_lossy().to_string();
 
@@ -502,7 +521,7 @@ mod tests {
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .expect("create project");
-        let tree = super::project::open_content_tree(&root).expect("open tree");
+        let tree = super::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let project_path = root.to_string_lossy().to_string();
 
@@ -634,7 +653,7 @@ async fn open_content_tree(
 
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = locks.acquire(&project_root)?;
-        project::open_content_tree(&project_root)
+        project::recover_then_read_content_tree(&project_root)
     })
     .await
     .map_err(|e| format!("读取内容树任务执行失败: {e}"))?
@@ -873,6 +892,7 @@ fn read_material_denial_message(denial: &project::MaterialDenial) -> String {
         VersionUnavailable => "文档版本不可用",
         InvalidRange => "读取范围无效",
         InvalidSnapshot => "未保存快照无效",
+        RecoveryRequired => "作品有未完成的保存，请重新打开作品完成恢复后再试",
     }
     .to_string()
 }
@@ -1188,8 +1208,16 @@ fn authorize_selection_sync(
         .map(|locks| locks.acquire(&root))
         .transpose()
         .map_err(|_| invalid_selection_error())?;
-    let material =
-        project::read_material(&root, &request).map_err(|_| invalid_selection_error())?;
+    let material = project::read_material(&root, &request).map_err(|denial| {
+        if matches!(
+            denial.reason,
+            project::MaterialDenialReason::RecoveryRequired
+        ) {
+            story_recovery_required_error()
+        } else {
+            invalid_selection_error()
+        }
+    })?;
     if let Some(selection) = selected_text.map(str::trim).filter(|text| !text.is_empty()) {
         if !material.content.contains(selection) {
             return Err(invalid_selection_error());
@@ -1482,6 +1510,16 @@ async fn ai_send_message(
                         .await;
                         match assembled {
                             Ok(Ok(ctx)) => (Some(ctx.context_text), Some(ctx.provenance)),
+                            Ok(Err(denial))
+                                if matches!(
+                                    denial.reason,
+                                    project::MaterialDenialReason::RecoveryRequired
+                                ) =>
+                            {
+                                return Ok(GenerateAiResult::failure(
+                                    story_recovery_required_error(),
+                                ))
+                            }
                             Ok(Err(_)) => {
                                 return Ok(GenerateAiResult::failure(invalid_story_context_error()))
                             }
@@ -1512,6 +1550,15 @@ async fn ai_send_message(
         result.provenance = provenance;
     }
     Ok(result)
+}
+
+/// 作品存在待恢复事务现场时的安全错误：严格只读失败关闭，本轮请求未发送。
+/// 固定文案，不泄露文档身份、路径或正文；用户自救路径是重新打开作品完成恢复。
+fn story_recovery_required_error() -> llm_config::GenerateAiError {
+    llm_config::GenerateAiError::new(
+        llm_config::GenerateAiErrorCode::StoryRecoveryRequired,
+        "作品有未完成的保存，请重新打开作品完成恢复后再试。本次 AI 请求未发送。",
+    )
 }
 
 /// 关注文档现场材料组装失败时的安全错误：不泄露文档身份、路径或正文。

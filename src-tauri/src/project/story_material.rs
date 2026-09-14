@@ -91,6 +91,8 @@ pub enum MaterialDenialReason {
     InvalidRange,
     /// 快照身份或内容非法。
     InvalidSnapshot,
+    /// 作品存在待恢复事务现场；严格只读读取失败关闭，绝不触发恢复。
+    RecoveryRequired,
 }
 
 /// 只读材料结果。
@@ -106,6 +108,8 @@ impl MaterialDenial {
 
 /// 受控只读读取：校验作品 / 文档 / 可见性 / 版本 / 范围 / 快照后返回结构化材料。
 /// 任何失败都以结构化拒绝关闭，不返回内容，不写入任何文件。
+/// 内容树经严格只读取得：发现待恢复事务现场时以 `RecoveryRequired` 拒绝，
+/// 绝不触发恢复（用户路径才允许先恢复再读取）。
 pub fn read_material(project_root: &Path, request: &ReadMaterialRequest) -> MaterialResult {
     let canonical = project_root
         .canonicalize()
@@ -116,8 +120,13 @@ pub fn read_material(project_root: &Path, request: &ReadMaterialRequest) -> Mate
     }
 
     let paths = ProjectPaths::new(canonical.clone());
-    let tree = super::open_content_tree(&canonical)
-        .map_err(|_| MaterialDenial::new(MaterialDenialReason::DocumentMissing))?;
+    let tree = super::strict_read_content_tree(&canonical).map_err(|e| {
+        if matches!(e, ProjectError::RecoveryRequired) {
+            MaterialDenial::new(MaterialDenialReason::RecoveryRequired)
+        } else {
+            MaterialDenial::new(MaterialDenialReason::DocumentMissing)
+        }
+    })?;
 
     read_material_from_tree(&work_id, &tree, request, &|node| {
         super::operations::read_and_validate_notebook(&paths.document_file(&node.id), &node.name)
@@ -125,8 +134,8 @@ pub fn read_material(project_root: &Path, request: &ReadMaterialRequest) -> Mate
     })
 }
 
-/// 纯校验核心：在已解析的内容树上校验并抽取材料（供磁盘入口与测试复用）。
-fn read_material_from_tree(
+/// 纯校验核心：在已解析的内容树上校验并抽取材料（供磁盘入口、跨文档取材与测试复用）。
+pub(crate) fn read_material_from_tree(
     work_id: &str,
     tree: &ContentTree,
     request: &ReadMaterialRequest,
@@ -290,9 +299,10 @@ fn project_node(tree: &ContentTree, id: &str, hidden_count: &mut usize) -> Optio
     }
 }
 
-/// 读取作品并生成 AI 目录投影（磁盘入口，供命令层调用）。
+/// 读取作品并生成 AI 目录投影（磁盘入口，供命令层调用）。严格只读：发现待恢复
+/// 事务现场即失败关闭，绝不触发恢复。
 pub fn read_directory_projection(project_root: &Path) -> Result<DirectoryProjection, ProjectError> {
-    let tree = super::open_content_tree(project_root)?;
+    let tree = super::strict_read_content_tree(project_root)?;
     Ok(project_directory(&tree))
 }
 
@@ -360,7 +370,7 @@ fn validate_snapshot(
 mod tests {
     use super::*;
     use crate::project::{
-        create_new_project, open_content_tree, read_document, save_document,
+        create_new_project, recover_then_read_content_tree, read_document, save_document,
         set_document_ai_visibility, ContentTree, ContentTreeNode, CreateProjectParams, NodeKind,
         ProjectPaths,
     };
@@ -389,7 +399,7 @@ mod tests {
     }
 
     fn default_document_id(root: &std::path::Path) -> String {
-        let tree = open_content_tree(root).expect("open tree");
+        let tree = recover_then_read_content_tree(root).expect("open tree");
         tree.root_children[0].clone()
     }
 
@@ -838,7 +848,7 @@ mod tests {
         let (root, work_id, doc_id) = setup_work_with_doc(&temp, &content);
 
         let paths = ProjectPaths::new(root.clone());
-        let tree = open_content_tree(&root).unwrap();
+        let tree = recover_then_read_content_tree(&root).unwrap();
         let mut files = vec![paths.content_tree_file.clone(), paths.metadata_file.clone()];
         for node in tree.nodes.values() {
             if node.kind == NodeKind::Document {

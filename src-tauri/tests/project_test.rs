@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use next_story_lib::project::{
-    create_document, create_new_project, open_content_tree, open_existing_project,
+    create_document, create_new_project, recover_then_read_content_tree, open_existing_project,
     read_directory_projection, read_document, read_material, rename_node, save_document,
     set_document_ai_visibility, validate_project_name, CreateProjectParams, MaterialDenialReason,
     ProjectError, ReadMaterialRequest,
@@ -917,7 +917,7 @@ fn visibility_and_directory_commands_never_leak_path_or_document_identity() {
     .expect("create project");
 
     let work_path = project_path.to_string_lossy().to_string();
-    let tree = open_content_tree(&project_path).expect("open tree");
+    let tree = recover_then_read_content_tree(&project_path).expect("open tree");
     let doc_id = tree.root_children[0].clone();
     let secret_name = "绝密角色档案";
     rename_node(&project_path, &doc_id, secret_name).expect("rename doc");
@@ -1005,7 +1005,7 @@ fn real_chain_visibility_walkthrough_keeps_document_bytes_unchanged() {
     .expect("create project");
 
     // 1. 初始内容树：默认文档 ai_visible == true。
-    let initial_tree = open_content_tree(&project_path).expect("open initial tree");
+    let initial_tree = recover_then_read_content_tree(&project_path).expect("open initial tree");
     assert_eq!(initial_tree.root_children.len(), 1, "初始应只有一篇文档");
     let visible_id = initial_tree.root_children[0].clone();
     assert!(
@@ -1080,8 +1080,8 @@ fn real_chain_visibility_walkthrough_keeps_document_bytes_unchanged() {
     );
     assert!(projection_json.contains("可见文档"), "投影应含可见文档名");
 
-    // 8. 重新 open_content_tree 确认隐藏状态持久化。
-    let reopened = open_content_tree(&project_path).expect("reopen tree");
+    // 8. 重新 recover_then_read_content_tree 确认隐藏状态持久化。
+    let reopened = recover_then_read_content_tree(&project_path).expect("reopen tree");
     assert!(!reopened.nodes[&hidden_id].ai_visible, "隐藏状态应持久化");
     assert!(reopened.nodes[&visible_id].ai_visible, "可见文档应保持可见");
 

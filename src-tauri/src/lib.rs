@@ -1410,6 +1410,8 @@ async fn ai_start_session(
 }
 
 /// 常驻会话：发送消息并等待终态；流式增量经 `ai-delta` 事件转发前端。
+/// 常规首轮 / 追问（`First` / `FollowUp`）在提供关注文档身份时，后端统一组装
+/// 关注文档现场材料 + 目录投影 + 跨文档检索片段随请求注入；及时召唤不经过常规取材。
 #[tauri::command]
 async fn ai_send_message(
     app: tauri::AppHandle,
@@ -1422,6 +1424,10 @@ async fn ai_send_message(
     project_path: Option<String>,
     document_version: Option<String>,
     snapshot: Option<String>,
+    focus_document_id: Option<String>,
+    focus_project_path: Option<String>,
+    focus_document_version: Option<String>,
+    focus_snapshot: Option<String>,
 ) -> Result<GenerateAiResult, String> {
     let dir = match app.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -1449,7 +1455,48 @@ async fn ai_send_message(
             Ok(selection) => selection,
             Err(error) => return Ok(GenerateAiResult::failure(error)),
         };
-    Ok(llm_config::ai_send_message_in_dir(
+
+    // 阶段五 A：常规首轮 / 追问按关注文档组装取材语境；及时召唤不经过常规取材。
+    // 关注文档读取失败（不可见 / 快照非法 / 版本不可用）时失败关闭，不静默回退。
+    let (context, provenance): (Option<String>, Option<Vec<project::ContextProvenance>>) =
+        match kind {
+            llm_config::AiMessageKind::First | llm_config::AiMessageKind::FollowUp => {
+                match (focus_project_path.as_deref(), focus_document_id.as_deref()) {
+                    (Some(project_path), Some(doc_id)) => {
+                        let project_path = project_path.to_string();
+                        let doc_id = doc_id.to_string();
+                        let version = focus_document_version.clone();
+                        let snapshot = focus_snapshot.clone();
+                        let question_for_context = question.clone();
+                        let locks = app.state::<ProjectLocks>().inner().clone();
+                        let assembled = tauri::async_runtime::spawn_blocking(move || {
+                            let _guard = locks.acquire(std::path::Path::new(&project_path)).ok();
+                            project::assemble_round_context(
+                                std::path::Path::new(&project_path),
+                                &doc_id,
+                                version.as_deref(),
+                                snapshot.as_deref(),
+                                &question_for_context,
+                            )
+                        })
+                        .await;
+                        match assembled {
+                            Ok(Ok(ctx)) => (Some(ctx.context_text), Some(ctx.provenance)),
+                            Ok(Err(_)) => {
+                                return Ok(GenerateAiResult::failure(invalid_story_context_error()))
+                            }
+                            Err(_) => {
+                                return Ok(GenerateAiResult::failure(invalid_story_context_error()))
+                            }
+                        }
+                    }
+                    _ => (None, None),
+                }
+            }
+            _ => (None, None),
+        };
+
+    let mut result = llm_config::ai_send_message_in_dir(
         &dir,
         resource_dir.as_deref(),
         session_id,
@@ -1457,8 +1504,22 @@ async fn ai_send_message(
         kind,
         question,
         authorized_selection,
+        context,
     )
-    .await)
+    .await;
+    // 只有成功轮次才携带自动取材出处；失败轮次不附出处（无实际发送证据）。
+    if result.ok {
+        result.provenance = provenance;
+    }
+    Ok(result)
+}
+
+/// 关注文档现场材料组装失败时的安全错误：不泄露文档身份、路径或正文。
+fn invalid_story_context_error() -> llm_config::GenerateAiError {
+    llm_config::GenerateAiError::new(
+        llm_config::GenerateAiErrorCode::InvalidResponse,
+        "关注文档不可用，本次请求未发送。",
+    )
 }
 
 /// 常驻会话：取消进行中的生成（幂等）。

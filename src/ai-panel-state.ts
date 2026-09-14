@@ -22,7 +22,7 @@ import {
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
 import { idleRequest } from "./ai-panel-request-state.ts";
-import type { ConversationSummary } from "./conversation-archive.ts";
+import type { ConversationSummary, MaterialProvenance } from "./conversation-archive.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
 
@@ -541,6 +541,26 @@ export class AiPanelState {
   /** 置顶 / 取消置顶讨论（持久化到档案）。 */
   setDiscussionPinned(conversationId: string, pinned: boolean): boolean {
     return this.dispatch({ type: "set_discussion_pinned", conversationId, pinned });
+  }
+
+  /**
+   * 显式切换某讨论的关注文档（阶段五 A，任务 3.3）。
+   *
+   * 查看其他文档不会自动改绑；只有本方法被明确调用才改绑。改绑只影响之后发起的轮次，
+   * 已发送 / 正在生成的轮次材料已冻结，不受影响。受限讨论永久只读，拒绝改绑。
+   */
+  setFocusDocument(
+    conversationId: string,
+    focusDocumentId: string | null,
+    focusDocumentTitle: string | null,
+  ): boolean {
+    return this.dispatch({ type: "set_focus_document", conversationId, focusDocumentId, focusDocumentTitle });
+  }
+
+  /** 追加一轮自动取材出处（阶段五 A），供档案持久化与「参考了什么」展示。 */
+  recordRoundProvenance(conversationId: string, entries: MaterialProvenance[]): boolean {
+    if (entries.length === 0) return false;
+    return this.dispatch({ type: "record_round_provenance", conversationId, entries });
   }
 
   /** 直接提问首轮「已停止」后重试：以原问题与选区重新进入生成。 */

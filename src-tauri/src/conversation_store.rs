@@ -56,14 +56,37 @@ pub struct FirstRoundMaterial {
 pub struct MaterialProvenance {
     /// 来源文档身份。
     pub document_id: String,
-    /// 材料类型：`selection`（冻结选区）/ `snapshot`（未保存快照）/ `document`（已保存正文）。
+    /// 材料类型：`selection`（冻结选区）/ `snapshot`（未保存快照）/ `document`（已保存正文），
+    /// 阶段五 A 另加 `focus_document`（关注文档现场材料）与 `search_snippet`（跨文档检索命中）。
     pub material_type: String,
     /// 材料版本身份；当前快照未携带版本时为 `None`。
     pub document_version: Option<String>,
     /// 所属轮次（首轮为 0）。
     pub turn_index: u32,
-    /// 是否进入模型上下文。
+    /// 是否进入模型上下文：仅表示「材料已组装进被提交的请求」（想发送 / prepared / accepted），
+    /// MUST NOT 被解读为「已实际发送给 provider」（sent）。DSH 进程接收不等于 provider 已发送。
+    /// 生命周期状态映射（阶段五 A）：`prepared`/`accepted` → 本字段 true；
+    /// `omitted` → 不出现于 provenance 列表；`rejected`/`failed` → 所属轮次终态为 failed；
+    /// `unknown`（是否送达 provider）→ 由 `sent_confirmed` 缺省（未确认）表达。
     pub entered_model_context: bool,
+    /// provider 发送回执（`message_sent`）：本轮观测到 provider 侧回应证据时为
+    /// `Some(true)`；未观测到回执时为 `None`（未确认，不是「未发送」）。只有收到
+    /// 回执才标记，绝不伪造。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_confirmed: Option<bool>,
+    /// 仅 `search_snippet` 有值：命中的候选词（供「本次参考了什么」显示检索来源）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_term: Option<String>,
+    /// 关注文档现场材料是否来自未保存快照（仅 `focus_document` 有意义）。
+    #[serde(default)]
+    pub from_unsaved_snapshot: bool,
+    /// 本轮跨文档检索结果状态（`hit` / `not_found` / `no_query_terms`），
+    /// 挂在关注文档条目上；无关注文档取材时为 `None`。不是正文内容。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_status: Option<String>,
+    /// 本轮检索是否达到输出硬上限（本次检索受限，非全量检索）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_limited: Option<bool>,
 }
 
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
@@ -616,6 +639,11 @@ mod tests {
             document_version: None,
             turn_index: turn,
             entered_model_context: true,
+            matched_term: None,
+            from_unsaved_snapshot: false,
+            search_status: None,
+            search_limited: None,
+            sent_confirmed: None,
         }
     }
 
@@ -707,7 +735,7 @@ mod tests {
     #[test]
     fn provenance_metadata_contains_only_allowed_fields_and_no_body_copy_keys() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        // 覆盖三种材料类型标签（selection / snapshot / document）：标签作为值存在是
+        // 覆盖材料类型标签（selection / snapshot / focus_document）：标签作为值存在是
         // 合法的（判定影响关系），但绝不允许出现 snapshot / bodySnapshot / content /
         // documents 等「正文副本」字段名。
         let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
@@ -718,6 +746,11 @@ mod tests {
                 document_version: None,
                 turn_index: 0,
                 entered_model_context: true,
+                matched_term: None,
+                from_unsaved_snapshot: false,
+                search_status: None,
+                search_limited: None,
+                sent_confirmed: None,
             },
             MaterialProvenance {
                 document_id: "doc-2".to_string(),
@@ -725,13 +758,23 @@ mod tests {
                 document_version: Some("v1".to_string()),
                 turn_index: 0,
                 entered_model_context: true,
+                matched_term: None,
+                from_unsaved_snapshot: false,
+                search_status: None,
+                search_limited: None,
+                sent_confirmed: None,
             },
             MaterialProvenance {
                 document_id: "doc-3".to_string(),
-                material_type: "document".to_string(),
+                material_type: "focus_document".to_string(),
                 document_version: None,
                 turn_index: 0,
-                entered_model_context: false,
+                entered_model_context: true,
+                matched_term: None,
+                from_unsaved_snapshot: true,
+                search_status: Some("not_found".to_string()),
+                search_limited: Some(false),
+                sent_confirmed: None,
             },
         ]);
 
@@ -741,12 +784,17 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
         let entries = parsed["provenance"].as_array().expect("provenance array");
 
-        const ALLOWED: [&str; 5] = [
+        const ALLOWED: [&str; 10] = [
             "document_id",
             "material_type",
             "document_version",
             "turn_index",
             "entered_model_context",
+            "matched_term",
+            "from_unsaved_snapshot",
+            "search_status",
+            "search_limited",
+            "sent_confirmed",
         ];
         const FORBIDDEN: [&str; 4] = ["snapshot", "bodySnapshot", "content", "documents"];
 
@@ -764,6 +812,186 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn matched_term_and_search_metadata_round_trip() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.provenance = Some(vec![MaterialProvenance {
+            document_id: "doc-9".to_string(),
+            material_type: "search_snippet".to_string(),
+            document_version: Some("v2".to_string()),
+            turn_index: 1,
+            entered_model_context: true,
+            matched_term: Some("林晓".to_string()),
+            from_unsaved_snapshot: false,
+            search_status: None,
+            search_limited: None,
+            sent_confirmed: Some(true),
+        }]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+        let loaded = read_conversation(temp.path(), "conv-1").expect("read");
+
+        assert_eq!(
+            loaded.provenance, rec.provenance,
+            "含 matched_term 的出处必须原样往返"
+        );
+        assert_eq!(
+            loaded.provenance.as_ref().expect("provenance")[0]
+                .matched_term
+                .as_deref(),
+            Some("林晓"),
+            "检索来源匹配词必须被持久化，不能被丢弃"
+        );
+        assert_eq!(
+            loaded.provenance.as_ref().expect("provenance")[0].sent_confirmed,
+            Some(true),
+            "provider 发送回执必须被持久化"
+        );
+    }
+
+    /// 回执标记的诚实边界：未确认（`None`）的轮次序列化后不携带任何发送状态字段，
+    /// 绝不出现无回执即标的 `sent` / `delivered` 状态。
+    #[test]
+    fn unconfirmed_round_carries_no_fake_sent_marker() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.provenance = Some(vec![provenance("doc-1", 0)]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+        let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("read raw");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        let entry = parsed["provenance"][0].as_object().expect("object");
+
+        assert!(
+            !entry.contains_key("sent_confirmed"),
+            "未确认轮次不得携带回执标记"
+        );
+        for forbidden_state in ["sent", "delivered", "send_status", "received_by_provider"] {
+            assert!(
+                !entry.contains_key(forbidden_state),
+                "出处元数据不得伪造发送状态字段: {forbidden_state}"
+            );
+        }
+    }
+
+    #[test]
+    fn old_archive_with_partial_provenance_fields_reads_defaults() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        // 阶段四旧出处只含 5 个字段（无 matched_term / from_unsaved_snapshot /
+        // search_status / search_limited），必须仍能读取且新字段取默认值。
+        let rec = record("conv-old", None, Some("林站在天台边。"), vec![]);
+        let mut value = serde_json::to_value(&rec).expect("to value");
+        value.as_object_mut().expect("object").insert(
+            "provenance".to_string(),
+            serde_json::json!([{
+                "document_id": "doc-1",
+                "material_type": "selection",
+                "document_version": null,
+                "turn_index": 0,
+                "entered_model_context": true
+            }]),
+        );
+        let dir = conversations_dir(temp.path());
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            dir.join("conv-old.json"),
+            serde_json::to_string_pretty(&value).expect("serialize"),
+        )
+        .expect("write old archive");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(
+            result.skipped.is_empty(),
+            "缺新字段的旧出处不得视为损坏或跳过"
+        );
+        assert_eq!(result.conversations.len(), 1);
+        let entry = &result.conversations[0]
+            .provenance
+            .as_ref()
+            .expect("provenance")[0];
+        assert_eq!(entry.document_id, "doc-1");
+        assert_eq!(entry.material_type, "selection");
+        assert_eq!(entry.matched_term, None, "缺 matched_term 按 None 处理");
+        assert!(
+            !entry.from_unsaved_snapshot,
+            "缺 from_unsaved_snapshot 按 false 处理"
+        );
+        assert_eq!(entry.search_status, None, "缺 search_status 按 None 处理");
+        assert_eq!(entry.search_limited, None, "缺 search_limited 按 None 处理");
+        assert_eq!(
+            entry.sent_confirmed, None,
+            "缺 sent_confirmed 按 None（未确认）处理，不伪造已发送"
+        );
+    }
+
+    #[test]
+    fn entered_model_context_is_assembled_intent_not_sent() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.provenance = Some(vec![MaterialProvenance {
+            document_id: "doc-9".to_string(),
+            material_type: "search_snippet".to_string(),
+            document_version: None,
+            turn_index: 0,
+            entered_model_context: true,
+            matched_term: Some("林晓".to_string()),
+            from_unsaved_snapshot: false,
+            search_status: None,
+            search_limited: None,
+            sent_confirmed: None,
+        }]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+        let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("read raw");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        let entry = parsed["provenance"][0].as_object().expect("object");
+
+        // entered_model_context 表示「已组装/想发送」，不是「已发送」；已发送只能
+        // 由 sent_confirmed（仅收到 message_sent 回执时才出现）表达。
+        assert_eq!(
+            entry.get("entered_model_context"),
+            Some(&serde_json::json!(true)),
+            "已组装进请求的材料标记为想发送"
+        );
+        assert!(
+            !entry.contains_key("sent_confirmed"),
+            "无回执的轮次不得携带 sent_confirmed"
+        );
+
+        // 不存在任何「已发送给 provider」的状态字段：不得伪造 sent。
+        for forbidden_state in ["sent", "delivered", "send_status", "received_by_provider"] {
+            assert!(
+                !entry.contains_key(forbidden_state),
+                "出处元数据不得伪造发送状态字段: {forbidden_state}"
+            );
+        }
+    }
+
+    #[test]
+    fn turn_status_distinguishes_failed_from_cancelled() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-1",
+            Some("问题"),
+            None,
+            vec![
+                turn("user", "问题", "failed"),
+                turn("assistant", "", "cancelled"),
+            ],
+        );
+        save_conversation(temp.path(), &rec).expect("save");
+        let loaded = read_conversation(temp.path(), "conv-1").expect("read");
+        assert_eq!(
+            loaded.turns[0].status, "failed",
+            "失败轮次必须保留 failed 终态"
+        );
+        assert_eq!(
+            loaded.turns[1].status, "cancelled",
+            "取消轮次必须保留 cancelled 终态，且与 failed 区分"
+        );
     }
 
     // ========== 原子写不半写 ==========

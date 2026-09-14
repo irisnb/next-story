@@ -88,6 +88,12 @@ pub enum DriverEvent {
         seq: u64,
         text: String,
     },
+    /// provider 发送回执：本轮首次观测到 provider 侧回应证据时由驱动发出一次，
+    /// 先于终态。只作回执通知，不满足 MessageDone/Failed 等待条件。
+    MessageSent {
+        session_id: String,
+        message_id: String,
+    },
     MessageDone {
         session_id: String,
         message_id: String,
@@ -130,6 +136,18 @@ pub struct DriverParams {
     pub model: String,
     pub api_base_url: String,
     pub api_key: String,
+}
+
+/// 一次生成请求的成功终态：最终全文 + provider 侧发送回执。
+///
+/// `sent_confirmed` 仅在本轮收到 `message_sent` 回执（驱动观测到 provider 侧回应
+/// 证据）时为 true；未观测到回执的轮次为 false——这表示「未确认」，不是「未发送」。
+#[derive(Debug, Clone)]
+pub struct MessageOutcome {
+    /// 最终全文（完成事件携带的全文）。
+    pub text: String,
+    /// 是否收到 `message_sent` 回执（本轮观测到 provider 侧回应证据）。
+    pub sent_confirmed: bool,
 }
 
 // ========== 错误映射（任务 3.2：稳定错误契约，message 固定中文不回传原文） ==========
@@ -302,6 +320,16 @@ impl Inner {
         }
     }
 
+    /// 回执通知：把事件发给等待者但不消费等待注册——终态仍由 [`Self::deliver`]
+    /// 完成（`deliver` 会移除注册，`notify` 不会）。无等待者时静默丢弃（回执可与
+    /// 超时注销竞态，安全忽略）。
+    fn notify(&self, key: &str, event: DriverEvent) {
+        let pending = self.pending.lock().unwrap();
+        if let Some(tx) = pending.get(key) {
+            let _ = tx.send(event);
+        }
+    }
+
     fn route(&self, event: DriverEvent) {
         match &event {
             DriverEvent::Delta {
@@ -322,6 +350,10 @@ impl Inner {
             }
             DriverEvent::Ready { .. } => {
                 self.deliver("ready", event);
+            }
+            DriverEvent::MessageSent { message_id, .. } => {
+                let key = message_key(message_id);
+                self.notify(&key, event);
             }
             DriverEvent::MessageDone { message_id, .. }
             | DriverEvent::MessageFailed { message_id, .. } => {
@@ -608,14 +640,16 @@ impl DshDriverManager {
         }
     }
 
-    /// 发送消息并等待终态。流式增量经 sink 转发；返回最终全文。
+    /// 发送消息并等待终态。流式增量经 sink 转发；返回最终全文与发送回执。
+    /// `message_sent` 回执在等待中被记录（`sent_confirmed`），但不满足等待条件——
+    /// 等待只在 MessageDone / MessageFailed / Error / 超时时结束。
     pub fn send_message_and_wait(
         &self,
         session_id: &str,
         message_id: &str,
         text: &str,
         timeout: Duration,
-    ) -> Result<String, GenerateAiError> {
+    ) -> Result<MessageOutcome, GenerateAiError> {
         let key = message_key(message_id);
         let rx = self.register(&key);
         let cmd = DriverCommand::SendMessage {
@@ -627,6 +661,7 @@ impl DshDriverManager {
             self.unregister(&key);
             return Err(e);
         }
+        let mut sent_confirmed = false;
         let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -637,14 +672,20 @@ impl DshDriverManager {
                 self.unregister(&key);
                 return match outcome {
                     // 取消前恰好完成：仍算成功
-                    Ok(DriverEvent::MessageDone { text, .. }) => Ok(text),
+                    Ok(DriverEvent::MessageDone { text, .. }) => Ok(MessageOutcome {
+                        text,
+                        sent_confirmed,
+                    }),
                     _ => Err(timeout_error()),
                 };
             }
             match rx.recv_timeout(remaining) {
                 Ok(DriverEvent::MessageDone { text, .. }) => {
                     self.unregister(&key);
-                    return Ok(text);
+                    return Ok(MessageOutcome {
+                        text,
+                        sent_confirmed,
+                    });
                 }
                 Ok(DriverEvent::MessageFailed { code, .. }) => {
                     self.unregister(&key);
@@ -653,6 +694,10 @@ impl DshDriverManager {
                 Ok(DriverEvent::Error { code, message, .. }) => {
                     self.unregister(&key);
                     return Err(map_driver_failure(&code, &message));
+                }
+                Ok(DriverEvent::MessageSent { .. }) => {
+                    // 发送回执：记录后继续等待终态（回执不满足等待条件）。
+                    sent_confirmed = true;
                 }
                 Ok(_) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
@@ -907,6 +952,122 @@ mod tests {
         assert!(
             matches!(failed, DriverEvent::MessageFailed { ref code, .. } if code == "cancelled")
         );
+    }
+
+    /// provider 发送回执（add-automatic-story-context）：`message_sent` 帧可解析；
+    /// 路由时只通知等待者、不消费等待注册——回执后终态仍可送达同一等待者；
+    /// 无等待者时安全丢弃。回执不满足 MessageDone/Failed 等待条件。
+    #[test]
+    fn message_sent_parses_and_notifies_without_consuming_wait() {
+        let sent: DriverEvent =
+            serde_json::from_str(r#"{"type":"message_sent","session_id":"s1","message_id":"m1"}"#)
+                .unwrap();
+        assert!(matches!(
+            sent,
+            DriverEvent::MessageSent { ref session_id, ref message_id }
+                if session_id == "s1" && message_id == "m1"
+        ));
+
+        let manager = DshDriverManager::new();
+        let rx = manager.register("msg:m1");
+        // 回执可重复到达（轮询兜底扫描），每次都通知且不消费注册。
+        manager.inner.route(DriverEvent::MessageSent {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+        });
+        manager.inner.route(DriverEvent::MessageSent {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+        });
+        // 终态随后送达同一等待者（deliver 消费注册）。
+        manager.inner.route(DriverEvent::MessageDone {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+            text: "答案".into(),
+        });
+        let first = rx.recv_timeout(Duration::from_millis(200)).expect("回执一");
+        assert!(matches!(first, DriverEvent::MessageSent { .. }));
+        let second = rx.recv_timeout(Duration::from_millis(200)).expect("回执二");
+        assert!(matches!(second, DriverEvent::MessageSent { .. }));
+        let third = rx.recv_timeout(Duration::from_millis(200)).expect("终态");
+        assert!(matches!(third, DriverEvent::MessageDone { ref text, .. } if text == "答案"));
+
+        // 终态后注册已被消费：迟到的回执无等待者，安全丢弃（不得 panic）。
+        manager.inner.route(DriverEvent::MessageSent {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+        });
+    }
+
+    /// 未知事件类型解析失败 → 读取循环安全丢弃，不影响现有等待。
+    #[test]
+    fn unknown_event_type_fails_to_parse_and_is_dropped() {
+        assert!(serde_json::from_str::<DriverEvent>(
+            r#"{"type":"future_event","session_id":"s1"}"#
+        )
+        .is_err());
+    }
+
+    /// 端到端（假驱动）：`send_message_and_wait` 只在收到 `message_sent` 时置
+    /// `sent_confirmed = true`；无回执的成功轮次为 false（未确认，非未发送）。
+    #[test]
+    fn send_message_wait_records_sent_receipt_only_when_observed() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let driver_dir = temp.path().join("driver");
+        std::fs::create_dir_all(&driver_dir).expect("driver dir");
+        let driver_entry = driver_dir.join("driver.mjs");
+        std::fs::write(
+            &driver_entry,
+            "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'send_message') {\n\
+                 if (!cmd.text.includes('NORECEIPT')) {\n\
+                   console.log(JSON.stringify({ type: 'message_sent', session_id: cmd.session_id, message_id: cmd.message_id }));\n\
+                 }\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '回复' }));\n\
+               }\n\
+             });\n",
+        )
+        .expect("write fake driver");
+
+        let paths = DshRuntimePaths {
+            node_bin: PathBuf::from("node"),
+            bin_js: PathBuf::new(),
+            driver_entry,
+            driver_cwd: driver_dir,
+            dsh_home: Some(temp.path().join("home")),
+        };
+        let params = DriverParams {
+            model: "m".to_string(),
+            api_base_url: "http://localhost".to_string(),
+            api_key: "k".to_string(),
+        };
+
+        let manager = DshDriverManager::new();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let with_receipt = manager
+            .send_message_and_wait("s1", "m1", "正常问题", Duration::from_secs(15))
+            .expect("带回执的生成完成");
+        assert_eq!(with_receipt.text, "回复");
+        assert!(
+            with_receipt.sent_confirmed,
+            "收到 message_sent 回执必须记录为已确认发送"
+        );
+
+        let without_receipt = manager
+            .send_message_and_wait("s1", "m2", "NORECEIPT 问题", Duration::from_secs(15))
+            .expect("无回执的生成完成");
+        assert_eq!(without_receipt.text, "回复");
+        assert!(
+            !without_receipt.sent_confirmed,
+            "未观测到回执时保持未确认，不伪造已发送"
+        );
+
+        manager.shutdown_best_effort();
     }
 
     /// 集成验证（resident-ai-session 任务 6.2 的 Rust 链路段）：

@@ -13,6 +13,7 @@ import type {
   GenerateAiResult,
 } from "../src/types.ts";
 import {
+  collectText,
   createAiWindowFixture,
   FakeElement,
   installAiFeatureEnvironment,
@@ -238,7 +239,12 @@ test("real AI feature flow submits a direct question into its own window", async
     submitDirectQuestion(ui, "这个角色为什么犹豫？");
     await flushAiFeatureFlow();
 
-    assert.deepEqual(ui.requests, [{ kind: "direct_question", question: "这个角色为什么犹豫？" }]);
+    assert.deepEqual(ui.requests, [{
+      kind: "direct_question",
+      question: "这个角色为什么犹豫？",
+      // 阶段五 A：常规直接提问附带关注文档身份（此处关注文档 = 当前文档 doc-1）。
+      focus_document_id: "doc-1",
+    }]);
     assert.equal(ui.windowRoots.length, 1);
     assert.deepEqual(conversationText(ui.windowRoots[0]), ["这个角色为什么犹豫？", "直接提问回答"]);
   } finally {
@@ -326,4 +332,109 @@ test("selection entry menu keeps its locked trigger anchor styling", () => {
   const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(styles, /\.ai-selection-entry\s*\{[^}]*width:\s*44px;/s);
   assert.match(styles, /#ai-selection-entry-trigger\s*\{[^}]*font-weight:\s*700;/s);
+});
+
+test("focus switch opens the picker and shows a clear Chinese notice when switching", () => {
+  const { root } = createAiWindowFixture("c-1");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState();
+    state.beginDirectQuestion("问题", null, "doc-1", "第一稿");
+    const id = state.activeConversationId!;
+    let pickerAnchor: unknown = null;
+    const controller = setupAiWindow(root as unknown as HTMLElement, state, id, {
+      ...windowActions(state).actions,
+      onOpenFocusPicker: (anchor) => { pickerAnchor = anchor; },
+    });
+
+    const focusSwitch = root.queryResults.get('[data-role="focus-switch"]')!;
+    focusSwitch.dispatch("click");
+    assert.equal(pickerAnchor, focusSwitch, "切换入口把自身作为选择器锚点");
+
+    // 选择器动作在改绑后显式触发提示（不把初始绑定误报成切换）。
+    state.setFocusDocument(id, "doc-2", "设定集");
+    controller.showFocusNotice("已切换关注文档：《设定集》。从下一轮开始使用。");
+    const notice = root.queryResults.get('[data-role="focus-notice"]')!;
+    assert.equal(notice.classList.contains("hidden"), false);
+    assert.match(notice.textContent, /已切换关注文档/);
+    assert.match(notice.textContent, /设定集/);
+    assert.match(notice.textContent, /下一轮/);
+  } finally {
+    doc.restore();
+  }
+});
+
+test("materials toggle shows the actual material sources and hides them again", () => {
+  const { root } = createAiWindowFixture("c-1");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState();
+    state.beginDirectQuestion("林晓是谁？", null, "doc-1", "第一稿");
+    const id = state.activeConversationId!;
+    state.succeedDirectQuestion("回答", id);
+    state.recordRoundProvenance(id, [
+      {
+        document_id: "doc-1",
+        material_type: "focus_document",
+        document_version: "v1",
+        turn_index: 0,
+        entered_model_context: true,
+        from_unsaved_snapshot: true,
+        search_status: "hit",
+        search_limited: false,
+      },
+      {
+        document_id: "doc-2",
+        material_type: "search_snippet",
+        document_version: "v2",
+        turn_index: 0,
+        entered_model_context: true,
+        matched_term: "林晓",
+      },
+    ]);
+    setupAiWindow(root as unknown as HTMLElement, state, id, {
+      ...windowActions(state).actions,
+      resolveDocumentTitle: (documentId) => (documentId === "doc-1" ? "第一稿" : "设定集"),
+      isDocumentHidden: () => false,
+    });
+
+    const panel = root.queryResults.get('[data-role="materials-panel"]')!;
+    assert.equal(panel.classList.contains("hidden"), true, "默认收起，不打断对话");
+    root.queryResults.get('[data-role="materials-toggle"]')!.dispatch("click");
+    assert.equal(panel.classList.contains("hidden"), false);
+
+    const body = root.queryResults.get('[data-role="materials-body"]')!;
+    const text = collectText(body);
+    assert.match(text, /关注文档：第一稿/);
+    assert.match(text, /未保存快照/);
+    assert.match(text, /跨文档命中：设定集/);
+    assert.match(text, /匹配词「林晓」/);
+    assert.match(text, /跨文档检索：命中 1 处/);
+
+    root.queryResults.get('[data-role="materials-close"]')!.dispatch("click");
+    assert.equal(panel.classList.contains("hidden"), true);
+  } finally {
+    doc.restore();
+  }
+});
+
+test("a hidden focus document is masked in the window header", () => {
+  const { root } = createAiWindowFixture("c-1");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState();
+    state.beginDirectQuestion("问题", null, "doc-1", "秘密文档");
+    const id = state.activeConversationId!;
+    setupAiWindow(root as unknown as HTMLElement, state, id, {
+      ...windowActions(state).actions,
+      resolveDocumentTitle: () => null,
+      isDocumentHidden: (documentId) => documentId === "doc-1",
+    });
+
+    const label = root.queryResults.get('[data-role="doc"]')!;
+    assert.ok(!label.textContent.includes("秘密文档"), "隐藏文档名称不得显示");
+    assert.match(label.textContent, /已隐藏/);
+  } finally {
+    doc.restore();
+  }
 });

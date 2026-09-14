@@ -134,6 +134,14 @@ test("production wiring sends an allowed selection with source identity", async 
         type: "doc",
         content: [{ type: "paragraph", content: [{ type: "text", text: "林站在天台边。" }] }],
       }),
+      // 阶段五 A：常规直接提问按关注文档附带现场材料身份（关注文档 = 当前编辑器文档）。
+      focus_document_id: "doc-1",
+      focus_project_path: "D:\\作品",
+      focus_document_version: "v1",
+      focus_snapshot: canonicalNotebookJson({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "林站在天台边。" }] }],
+      }),
     }], "允许的选区请求必须携带作品 / 文档 / 版本身份与未保存正文快照");
   } finally {
     ui.restore();

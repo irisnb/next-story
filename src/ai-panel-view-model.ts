@@ -6,6 +6,7 @@ import {
   conversationRestrictionNotice,
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
+import type { MaterialProvenance } from "./conversation-archive.ts";
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -28,6 +29,164 @@ export interface ConversationMessageView {
 
 export interface ConversationView {
   readonly messages: ReadonlyArray<ConversationMessageView>;
+}
+
+/**
+ * 「本次参考了什么」显示层的文档身份解析入口：标题按当前作品树解析，隐藏来源必须脱敏。
+ * 由窗口层注入真实实现；缺省时标题回退为「文档已不可用」，不做隐藏判定。
+ */
+export interface MaterialContext {
+  readonly resolveDocumentTitle: (documentId: string) => string | null;
+  readonly isDocumentHidden: (documentId: string) => boolean;
+}
+
+/** 单条实际使用材料的显示项（只展示真实使用过的材料，不列出未读取内容）。 */
+export interface MaterialSourceView {
+  readonly kindLabel: string;
+  readonly title: string;
+  readonly versionLabel: string | null;
+  readonly stateLabel: string | null;
+  readonly matchedTerm: string | null;
+  readonly masked: boolean;
+}
+
+/** 单轮材料说明（按轮次分组）。 */
+export interface MaterialRoundView {
+  readonly roundLabel: string;
+  readonly sources: readonly MaterialSourceView[];
+  readonly retrievalLabel: string | null;
+  readonly limited: boolean;
+  /** 本轮是否收到 provider 发送回执（`message_sent`）。 */
+  readonly sentConfirmed: boolean;
+  /** 发送状态说明：区分「已确认送达」与「已组装、送达未确认」，无回执不伪造。 */
+  readonly sendStateLabel: string;
+}
+
+/** 「本次参考了什么」轻量说明的显示数据。 */
+export interface MaterialView {
+  readonly rounds: readonly MaterialRoundView[];
+  /** 是否因旧档案缺少材料出处而无法说明。 */
+  readonly unavailable: boolean;
+  /** 被脱敏（已隐藏）的来源数量。 */
+  readonly hiddenSourceCount: number;
+  /** 统一的检索范围与诚实边界说明。 */
+  readonly scopeNote: string;
+}
+
+/** 材料类型的显示标签；`revoked` 属于锁存脱敏标记，不单独展示。 */
+const MATERIAL_KIND_LABELS: Record<MaterialProvenance["material_type"], string> = {
+  focus_document: "关注文档",
+  search_snippet: "跨文档命中",
+  selection: "选区材料",
+  snapshot: "未保存快照",
+  document: "已保存正文",
+  revoked: "已隐藏来源",
+};
+
+const MASKED_SOURCE_TITLE = "（已隐藏的来源）";
+const MISSING_SOURCE_TITLE = "（文档已不可用）";
+
+/** 「本次参考了什么」的范围与诚实边界说明（不把未读取内容列为已知）。 */
+export const MATERIAL_SCOPE_NOTE =
+  "只列出本轮实际进入请求的材料；检索范围为当前允许 AI 查看的作品正文，不含隐藏文档与回收站。未读取的内容不会列为已知。";
+
+function shortVersion(version: string | null): string | null {
+  if (!version) return null;
+  return version.length > 8 ? version.slice(0, 8) : version;
+}
+
+function sourceStateLabel(entry: MaterialProvenance): string | null {
+  if (entry.material_type === "focus_document") {
+    return entry.from_unsaved_snapshot ? "未保存快照" : "已保存正文";
+  }
+  if (entry.material_type === "snapshot") return "未保存快照";
+  return null;
+}
+
+function retrievalLabelFor(
+  entries: readonly MaterialProvenance[],
+  status: string | undefined,
+  limited: boolean,
+): string | null {
+  const snippetCount = entries.filter((entry) => entry.material_type === "search_snippet").length;
+  let label: string;
+  switch (status) {
+    case "hit":
+      label = `跨文档检索：命中 ${snippetCount} 处`;
+      break;
+    case "not_found":
+      label = "跨文档检索：本次没有命中片段";
+      break;
+    case "no_query_terms":
+      label = "跨文档检索：本轮问题没有可检索的词";
+      break;
+    default:
+      label = snippetCount > 0 ? `跨文档检索：命中 ${snippetCount} 处` : "跨文档检索：本次没有命中片段";
+      break;
+  }
+  return limited ? `${label}（本次检索受限，未做全量检索）` : label;
+}
+
+/**
+ * 把讨论的材料出处投影为「本次参考了什么」显示数据（纯函数）。
+ *
+ * 诚实边界：只展示实际使用过的材料与版本 / 未保存状态 / 检索来源与限制；
+ * 隐藏来源脱敏（不显示名称 / ID / 路径），`not_found` / `no_query_terms` 只作为
+ * 检索结果状态呈现，绝不作为正文或材料内容展示。旧档案缺少出处时标记为不可说明。
+ */
+export function buildMaterialView(
+  conversation: ReadonlyTemporaryConversation | null,
+  context: MaterialContext = { resolveDocumentTitle: () => null, isDocumentHidden: () => false },
+): MaterialView | null {
+  if (!conversation) return null;
+  if (conversation.provenance === undefined) {
+    return { rounds: [], unavailable: true, hiddenSourceCount: 0, scopeNote: MATERIAL_SCOPE_NOTE };
+  }
+
+  const byTurn = new Map<number, MaterialProvenance[]>();
+  for (const entry of conversation.provenance) {
+    const list = byTurn.get(entry.turn_index) ?? [];
+    list.push(entry);
+    byTurn.set(entry.turn_index, list);
+  }
+
+  let hiddenSourceCount = 0;
+  const rounds: MaterialRoundView[] = [];
+  for (const turnIndex of [...byTurn.keys()].sort((a, b) => a - b)) {
+    const entries = byTurn.get(turnIndex)!;
+    const focusEntry = entries.find((entry) => entry.material_type === "focus_document");
+    const sources: MaterialSourceView[] = entries.map((entry) => {
+      const masked = entry.material_type === "revoked" || context.isDocumentHidden(entry.document_id);
+      if (masked) hiddenSourceCount += 1;
+      const title = masked
+        ? MASKED_SOURCE_TITLE
+        : context.resolveDocumentTitle(entry.document_id) ?? MISSING_SOURCE_TITLE;
+      return {
+        kindLabel: MATERIAL_KIND_LABELS[entry.material_type] ?? "材料",
+        title,
+        versionLabel: masked ? null : shortVersion(entry.document_version),
+        stateLabel: masked ? null : sourceStateLabel(entry),
+        matchedTerm: masked ? null : entry.matched_term ?? null,
+        masked,
+      };
+    });
+    const limited = focusEntry?.search_limited === true;
+    const sentConfirmed = entries.some((entry) => entry.sent_confirmed === true);
+    rounds.push({
+      roundLabel: turnIndex === 0 ? "首轮" : `第 ${turnIndex} 轮`,
+      sources,
+      retrievalLabel: focusEntry
+        ? retrievalLabelFor(entries, focusEntry.search_status, limited)
+        : null,
+      limited,
+      sentConfirmed,
+      sendStateLabel: sentConfirmed
+        ? "发送状态：已确认送达模型服务（已观测到模型回应）"
+        : "发送状态：已组装进请求，送达未确认（未观测到模型回应）",
+    });
+  }
+
+  return { rounds, unavailable: false, hiddenSourceCount, scopeNote: MATERIAL_SCOPE_NOTE };
 }
 
 export interface ErrorBlockView {
@@ -87,6 +246,11 @@ export interface AiPanelView {
    * 受限讨论仍显示已有历史，但不可沿原上下文继续，提示引导用户新建干净讨论。
    */
   readonly restrictionNotice: string | null;
+  /**
+   * 「本次参考了什么」轻量说明；无讨论时为 null。有讨论时总是非 null（旧档案缺出处时
+   * `unavailable` 为 true）。由窗口层按需展开，不打断对话。
+   */
+  readonly material: MaterialView | null;
 }
 
 /** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
@@ -300,6 +464,7 @@ function buildDirectQuestionConversationView(
 export function buildAiPanelView(
   panelState: PanelStateView,
   conversation: ReadonlyTemporaryConversation | null,
+  materialContext?: MaterialContext,
 ): AiPanelView {
   const facts = requestFacts(panelState.request);
   // 统一对话视图（D1）：直接提问请求从被接受起就产出对话流；
@@ -388,5 +553,6 @@ export function buildAiPanelView(
     newConversationVisible,
     saveError: panelState.saveError,
     restrictionNotice,
+    material: buildMaterialView(conversation, materialContext),
   };
 }

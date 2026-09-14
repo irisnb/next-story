@@ -7,6 +7,7 @@ import {
   buildConversationGroups,
   describeConversationStatus,
   describeWindowStatus,
+  displayFocusDocumentTitle,
   type ConversationListItem,
   type ConversationGroup,
 } from "./ai-panel-conversation-list.ts";
@@ -142,6 +143,14 @@ export interface AiDockActions {
   onUndoDelete: () => void;
   /** 当前可撤销的删除提示（无则 null）。 */
   getUndoNotice: () => { title: string } | null;
+  /** 显式切换某讨论的关注文档（查看其他文档不自动改绑）。 */
+  onSwitchFocusDocument: (conversationId: string, documentId: string, documentTitle: string) => void;
+  /** 当前作品允许 AI 查看的文档（关注文档选择器候选）。 */
+  getVisibleDocuments: () => ReadonlyArray<{ id: string; name: string }>;
+  /** 按文档 ID 解析文档标题；未知返回 null。 */
+  resolveDocumentTitle: (documentId: string) => string | null;
+  /** 文档当前是否不允许 AI 查看（隐藏来源必须脱敏）。 */
+  isDocumentHidden: (documentId: string) => boolean;
 }
 
 interface WindowEntry {
@@ -200,6 +209,9 @@ export function setupAiDock(
       onStop: () => actions.onStop(conversationId),
       onClose: () => actions.onClose(conversationId),
       onNewConversation: () => actions.onNewConversation(),
+      onOpenFocusPicker: (anchor) => openFocusDocumentMenu(anchor, conversationId),
+      resolveDocumentTitle: actions.resolveDocumentTitle,
+      isDocumentHidden: actions.isDocumentHidden,
     };
   }
 
@@ -606,13 +618,47 @@ export function setupAiDock(
     closeMenu();
     const current = windows.get(conversationId);
     const canSideBySide = windows.size >= 2;
+    const discussion = state.getDiscussion(conversationId);
+    const canSwitchFocus =
+      discussion !== null &&
+      discussion.focusDocumentId !== null &&
+      discussion.conversation?.restricted !== true;
     menu = buildMenu([
       { icon: "i-float", label: current?.placement === "floating" ? "停靠窗口" : "浮动窗口", action: () => current && togglePlacement(conversationId, current) },
       { icon: "i-sbs", label: "与…并排对照", disabled: !canSideBySide, action: () => openSideBySideMenu(anchor, conversationId) },
+      { icon: "i-doc", label: "切换关注文档…", disabled: !canSwitchFocus, action: () => openFocusDocumentMenu(anchor, conversationId) },
+      { icon: "i-info", label: "本次参考了什么", action: () => windows.get(conversationId)?.controller.toggleMaterials() },
       { icon: "i-reset", label: "恢复默认布局", action: () => { state.resetLayout(); } },
       { divider: true },
       { icon: "i-trash", label: "删除讨论…", danger: true, action: () => { void actions.onDelete(conversationId); } },
     ]);
+    positionMenu(menu, anchor);
+  }
+
+  /**
+   * 「切换关注文档」选择器：只列出当前允许 AI 查看的文档；选择后显式改绑，
+   * 从下一轮生效。查看其他文档不会自动改绑（任务 3.3）。
+   */
+  function openFocusDocumentMenu(anchor: HTMLElement, conversationId: string): void {
+    closeMenu();
+    const current = state.getDiscussion(conversationId)?.focusDocumentId ?? null;
+    const documents = actions.getVisibleDocuments();
+    if (documents.length === 0) {
+      menu = buildMenu([{ label: "没有可切换的文档", disabled: true }]);
+    } else {
+      menu = buildMenu(documents.map((doc) => ({
+        icon: "i-doc",
+        label: doc.id === current ? `${doc.name}（当前关注）` : doc.name,
+        action: () => {
+          if (doc.id === current) return;
+          actions.onSwitchFocusDocument(conversationId, doc.id, doc.name);
+          // 明确切换后给出清晰提示：从下一轮起使用新关注文档。
+          windows.get(conversationId)?.controller.showFocusNotice(
+            `已切换关注文档：《${doc.name}》。从下一轮开始使用。`,
+          );
+        },
+      })));
+    }
     positionMenu(menu, anchor);
   }
 
@@ -931,7 +977,7 @@ export function setupAiDock(
     const allSummaries = filter
       ? state.conversations.filter((summary) =>
           summary.title.toLowerCase().includes(filter) ||
-          (summary.focus_document_title ?? "").toLowerCase().includes(filter))
+          (displayFocusDocumentTitle(summary) ?? "").toLowerCase().includes(filter))
       : state.conversations;
 
     const groups = buildConversationGroups(allSummaries, state.focusedConversationId, new Date(), listStatusOf);

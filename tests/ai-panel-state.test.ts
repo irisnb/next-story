@@ -40,6 +40,44 @@ test("beginRequest opens the panel and enters loading with the frozen snapshot",
   });
 });
 
+test("recordRoundProvenance is scoped per discussion without cross-window leakage", () => {
+  const state = new AiPanelState();
+  state.beginRequest(snapshot("a"), undefined, "doc-a", "文档A");
+  state.succeed(snapshot("a"), "答复A");
+  const idA = state.activeConversationId!;
+
+  state.newConversation("doc-b", "文档B");
+  state.beginRequest(snapshot("b"), undefined, "doc-b", "文档B");
+  state.succeed(snapshot("b"), "答复B");
+  const idB = state.activeConversationId!;
+
+  assert.notEqual(idA, idB);
+
+  state.recordRoundProvenance(idA, [{
+    document_id: "doc-search-a",
+    material_type: "search_snippet",
+    document_version: "v1",
+    turn_index: 0,
+    entered_model_context: true,
+    matched_term: "林晓",
+  }]);
+  state.recordRoundProvenance(idB, [{
+    document_id: "doc-search-b",
+    material_type: "search_snippet",
+    document_version: "v2",
+    turn_index: 0,
+    entered_model_context: true,
+    matched_term: "小芳",
+  }]);
+
+  const recordA = buildDiscussionRecord(state.getDiscussion(idA)!);
+  const recordB = buildDiscussionRecord(state.getDiscussion(idB)!);
+  assert.ok(recordA.provenance?.some((p) => p.document_id === "doc-search-a"));
+  assert.ok(recordA.provenance?.every((p) => p.document_id !== "doc-search-b"));
+  assert.ok(recordB.provenance?.some((p) => p.document_id === "doc-search-b"));
+  assert.ok(recordB.provenance?.every((p) => p.document_id !== "doc-search-a"));
+});
+
 test("visibility and request change independently", () => {
   const state = new AiPanelState();
   state.beginRequest(snapshot("a"));
@@ -1455,4 +1493,87 @@ test("rejectQueuedRequest is inert for a non-queued request", () => {
   const request = state.getDiscussion("1")!.request;
   assert.equal(request.kind, "direct_question");
   if (request.kind === "direct_question") assert.equal(request.status, "loading");
+});
+
+// ========== 关注文档显式切换（阶段五 A 任务 3.3） ==========
+
+test("setFocusDocument changes only the target discussion focus and keeps others untouched", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题一", null, "doc-1", "文档一");
+  const first = state.activeConversationId!;
+  state.newConversation("doc-2", "文档二");
+  const second = state.activeConversationId!;
+  assert.notEqual(first, second);
+
+  assert.equal(state.setFocusDocument(second, "doc-9", "文档九"), true);
+  assert.equal(state.getDiscussion(second)!.focusDocumentId, "doc-9");
+  assert.equal(state.getDiscussion(second)!.focusDocumentTitle, "文档九");
+  // 另一个讨论的关注对象不受影响（每讨论独立）。
+  assert.equal(state.getDiscussion(first)!.focusDocumentId, "doc-1");
+  assert.equal(state.getDiscussion(first)!.focusDocumentTitle, "文档一");
+});
+
+test("setFocusDocument is a no-op when the focus is unchanged", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("问题", null, "doc-1", "文档一");
+  const id = state.activeConversationId!;
+  assert.equal(state.setFocusDocument(id, "doc-1", "文档一"), false);
+});
+
+test("switching focus does not disturb an in-flight request", () => {
+  const state = new AiPanelState();
+  const snap = snapshot("选区");
+  state.beginRequest(snap, { kind: "summon", selected_text: "选区" }, "doc-1", "文档一");
+  const id = state.activeConversationId!;
+  const before = state.getDiscussion(id)!.request;
+  assert.equal(state.setFocusDocument(id, "doc-2", "文档二"), true);
+  // 已发送 / 正在生成的轮次材料已冻结，请求状态原样保留。
+  assert.equal(state.getDiscussion(id)!.request, before);
+});
+
+test("a restricted discussion rejects focus switching (permanent read-only)", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "受限",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: "doc-1",
+      focus_document_title: "文档一",
+      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [
+        { document_id: "doc-1", material_type: "focus_document", document_version: null, turn_index: 0, entered_model_context: true },
+      ],
+    },
+  ], [], new Set(["doc-1"]));
+  assert.equal(state.conversationOf("c-1")?.restricted, true);
+  assert.equal(state.setFocusDocument("c-1", "doc-2", "文档二"), false);
+  assert.equal(state.getDiscussion("c-1")!.focusDocumentId, "doc-1");
+});
+
+test("summaryOf marks a restricted discussion so the list can mask the focus title", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    {
+      conversation_id: "c-1",
+      title: "受限",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: "doc-1",
+      focus_document_title: "隐藏文档",
+      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [
+        { document_id: "doc-1", material_type: "focus_document", document_version: null, turn_index: 0, entered_model_context: true },
+      ],
+    },
+  ], [], new Set(["doc-1"]));
+  const summary = state.conversations.find((c) => c.conversation_id === "c-1")!;
+  assert.equal(summary.restricted, true);
+  // 档案真实标题仍保留在状态摘要中；脱敏只发生在显示层。
+  assert.equal(summary.focus_document_title, "隐藏文档");
 });

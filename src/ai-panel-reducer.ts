@@ -8,6 +8,7 @@ import {
   failConversationFollowUp,
   frozenSnapshot,
   latchConversationRestriction,
+  materialProvenanceFromAnchor,
   succeedConversationFollowUp,
   type Discussion,
   type FirstRoundMaterial,
@@ -33,6 +34,7 @@ import {
 } from "./ai-panel-request-state.ts";
 import type {
   ConversationSummary,
+  MaterialProvenance,
 } from "./conversation-archive.ts";
 import type { GenerateAiError, SelectionSnapshot } from "./types.ts";
 import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
@@ -205,7 +207,18 @@ export type AiPanelEvent =
   | { readonly type: "start_queued_request"; readonly conversationId: string }
   | { readonly type: "reject_queued_request"; readonly conversationId: string; readonly error: GenerateAiError }
   | { readonly type: "rename_discussion"; readonly conversationId: string; readonly title: string }
-  | { readonly type: "set_discussion_pinned"; readonly conversationId: string; readonly pinned: boolean };
+  | { readonly type: "set_discussion_pinned"; readonly conversationId: string; readonly pinned: boolean }
+  | {
+      readonly type: "record_round_provenance";
+      readonly conversationId: string;
+      readonly entries: MaterialProvenance[];
+    }
+  | {
+      readonly type: "set_focus_document";
+      readonly conversationId: string;
+      readonly focusDocumentId: string | null;
+      readonly focusDocumentTitle: string | null;
+    };
 
 function activeDiscussion(state: AiPanelCoreState): Discussion | null {
   if (state.focusedConversationId === null) return null;
@@ -293,11 +306,14 @@ export function reduceAiPanelState(
       const current = activeDiscussion(state);
       let discussion: Discussion;
       if (current && isEmptyDiscussion(current)) {
+        // 复用空讨论：空讨论尚无任何材料，按本次发起重新绑定关注文档（阶段五 A）。
         discussion = {
           ...current,
           request: firstLoadingRequest(anchor, current.id),
           anchor,
           pendingFirstRequest: material,
+          focusDocumentId: event.focusDocumentId,
+          focusDocumentTitle: event.focusDocumentTitle,
         };
       } else {
         discussion = {
@@ -538,11 +554,14 @@ export function reduceAiPanelState(
       const current = activeDiscussion(state);
       let discussion: Discussion;
       if (current && isEmptyDiscussion(current)) {
+        // 复用空讨论：空讨论尚无任何材料，按本次发起重新绑定关注文档（阶段五 A）。
         discussion = {
           ...current,
           request: directQuestionLoadingRequest(event.question, frozenSelection),
           anchor: frozenSelection,
           pendingFirstRequest: material,
+          focusDocumentId: event.focusDocumentId,
+          focusDocumentTitle: event.focusDocumentTitle,
         };
       } else {
         discussion = {
@@ -1001,6 +1020,36 @@ export function reduceAiPanelState(
       return setDiscussion(state, {
         ...discussion,
         conversation: { ...discussion.conversation, pinned: event.pinned },
+      });
+    }
+    case "record_round_provenance": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion || !discussion.conversation) return state;
+      const conversation = discussion.conversation;
+      // 保留冻结选区出处（若此前未显式设置），再追加本轮自动取材出处。
+      const base = conversation.provenance ?? materialProvenanceFromAnchor(discussion.anchor);
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: { ...conversation, provenance: [...base, ...event.entries] },
+      });
+    }
+    case "set_focus_document": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      // 材料权限受限的讨论永久只读：不得改绑关注文档。
+      if (discussion.conversation?.restricted) return state;
+      if (
+        discussion.focusDocumentId === event.focusDocumentId &&
+        discussion.focusDocumentTitle === event.focusDocumentTitle
+      ) {
+        return state;
+      }
+      // 只改绑关注对象；已发送 / 正在生成的轮次已冻结自己的材料，不受影响。
+      // 新关注对象从下一轮请求开始生效（请求组装时读取当前 focusDocumentId）。
+      return setDiscussion(state, {
+        ...discussion,
+        focusDocumentId: event.focusDocumentId,
+        focusDocumentTitle: event.focusDocumentTitle,
       });
     }
   }

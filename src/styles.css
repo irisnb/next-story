@@ -870,6 +870,43 @@
   line-height: 1.6;
 }
 
+/* 切换关注文档提示：短暂显示「已切换…从下一轮开始使用」，不打断对话。 */
+.ai-focus-notice {
+  font-size: 0.85rem;
+  color: var(--color-text-body);
+  background: var(--color-surface-subtle);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+.ai-focus-notice.hidden { display: none; }
+
+/* 「本次参考了什么」轻量说明：默认收起，展开后只列出实际使用的材料与限制。 */
+.ai-materials {
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-materials.hidden { display: none; }
+.ai-materials-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ai-materials-title { font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.ai-materials-body { display: flex; flex-direction: column; gap: 6px; }
+.ai-material-round { display: flex; flex-direction: column; gap: 3px; }
+.ai-material-round-label { font-size: 0.78rem; font-weight: 600; color: var(--color-muted); }
+.ai-material-source { font-size: 0.82rem; color: var(--color-text-body); line-height: 1.5; }
+.ai-material-source.is-masked { color: var(--color-muted); font-style: italic; }
+.ai-material-retrieval { font-size: 0.8rem; color: var(--color-muted); line-height: 1.5; }
+.ai-material-note { font-size: 0.78rem; color: var(--color-muted); line-height: 1.5; }
+
 .ai-follow-up-error-actions {
   display: flex;
   flex-wrap: wrap;

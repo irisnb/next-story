@@ -272,6 +272,16 @@ pub struct GenerateAiResult {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<GenerateAiError>,
+    /// 本轮自动取材出处（阶段五 A：关注文档现场 + 跨文档检索
+    /// 命中片段），只存最小元数据（文档身份 / 类型 / 版本 / 匹配词），不复制正文。
+    /// 仅常规首轮 / 追问带关注文档且组装成功时非空；及时召唤恒为 `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Vec<crate::project::ContextProvenance>>,
+    /// provider 发送回执：`Some(true)` = 本轮收到 `message_sent`（驱动观测到
+    /// provider 侧回应证据）；`Some(false)` = 成功但未观测到回执（未确认，非未发送）；
+    /// `None` = 失败轮次或未涉及。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_confirmed: Option<bool>,
 }
 
 impl GenerateAiResult {
@@ -280,6 +290,8 @@ impl GenerateAiResult {
             ok: true,
             content: Some(content),
             error: None,
+            provenance: None,
+            sent_confirmed: None,
         }
     }
 
@@ -288,6 +300,8 @@ impl GenerateAiResult {
             ok: false,
             content: None,
             error: Some(error),
+            provenance: None,
+            sent_confirmed: None,
         }
     }
 }

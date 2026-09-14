@@ -711,6 +711,8 @@ export function summaryOf(  conversation: TemporaryConversation,
     turns: buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle).turns,
     custom_title: conversation.customTitle ?? null,
     pinned: conversation.pinned ?? false,
+    // 显示层脱敏依据：受限讨论的关注文档标题不得泄露（旧出处脱敏，任务 4.4）。
+    restricted: conversation.restricted ?? false,
     ...(() => {
       const provenance = conversationProvenanceForArchive(conversation);
       return provenance !== undefined ? { provenance } : {};

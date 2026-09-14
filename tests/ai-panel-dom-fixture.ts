@@ -84,6 +84,15 @@ export class FakeElement {
     this.classList = new FakeClassList(classes);
   }
 
+  /** 与真实 DOM 一致的 className 读写（同步到 classList）。 */
+  get className(): string {
+    return [...this.classList.values].join(" ");
+  }
+  set className(value: string) {
+    this.classList.values.clear();
+    for (const cls of value.split(/\s+/).filter(Boolean)) this.classList.add(cls);
+  }
+
   addEventListener(type: string, listener: Listener): void {
     const listeners = this.listeners.get(type) ?? [];
     listeners.push(listener);
@@ -118,6 +127,11 @@ export class FakeElement {
       this.parentElement = null;
     }
   }
+  removeChild(child: FakeElement): void {
+    const index = this.children.indexOf(child);
+    if (index !== -1) this.children.splice(index, 1);
+    if (child.parentElement === this) child.parentElement = null;
+  }
   contains(node: unknown): boolean {
     return this === node || this.children.some((child) => child.contains(node));
   }
@@ -149,9 +163,10 @@ export class FakeElement {
 
 /** 窗口模板里所需的全部 `data-role`。 */
 export const AI_WINDOW_ROLES = [
-  "drag-handle", "grip", "status-dot", "title", "doc", "badge",
-  "stop", "more", "close", "body", "resize",
+  "drag-handle", "grip", "status-dot", "title", "doc", "focus-switch", "badge",
+  "materials-toggle", "stop", "more", "close", "body", "resize",
   "snapshot-block", "snapshot-text", "welcome", "loading", "response",
+  "materials-panel", "materials-body", "materials-close",
   "error-block", "error-message", "retry", "config-block", "go-config",
   "conversation",
   "follow-up-form", "follow-up-input", "follow-up-send",
@@ -160,6 +175,7 @@ export const AI_WINDOW_ROLES = [
   "direct-question-selection-remove", "direct-question-form", "direct-question-input",
   "direct-question-send", "direct-question-error", "direct-question-error-message",
   "direct-question-config", "direct-question-go-config",
+  "focus-notice",
   "restriction-notice", "restriction-notice-message", "restriction-new-conversation",
 ] as const;
 
@@ -178,7 +194,7 @@ export function createAiWindowFixture(conversationId: string): {
       el.tag = "form";
     } else if (role === "follow-up-input" || role === "direct-question-input") {
       el.tag = "textarea";
-    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation") {
+    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation" || role === "focus-switch" || role === "materials-toggle" || role === "materials-close") {
       el.tag = "button";
     }
     roles.set(role, el);
@@ -186,7 +202,11 @@ export function createAiWindowFixture(conversationId: string): {
   }
   // 嵌套结构：body 内是各区块，input 内是追问/直接提问表单。
   const body = roles.get("body")!;
-  for (const role of ["snapshot-block", "snapshot-text", "welcome", "loading", "response", "conversation", "error-block", "error-message", "retry", "config-block", "go-config", "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit"]) {
+  roles.get("materials-panel")!.append(
+    roles.get("materials-body")!,
+    roles.get("materials-close")!,
+  );
+  for (const role of ["snapshot-block", "snapshot-text", "materials-panel", "welcome", "loading", "response", "conversation", "error-block", "error-message", "retry", "config-block", "go-config", "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit"]) {
     body.append(roles.get(role)!);
   }
   const input = new FakeElement("role-input");
@@ -197,6 +217,7 @@ export function createAiWindowFixture(conversationId: string): {
     roles.get("restriction-new-conversation")!,
   );
   input.append(
+    roles.get("focus-notice")!,
     roles.get("restriction-notice")!,
     roles.get("follow-up-form")!,
     roles.get("direct-question")!,
@@ -204,7 +225,8 @@ export function createAiWindowFixture(conversationId: string): {
   const head = roles.get("drag-handle")!;
   head.append(
     roles.get("grip")!, roles.get("status-dot")!, roles.get("title")!,
-    roles.get("doc")!, roles.get("badge")!, roles.get("stop")!,
+    roles.get("doc")!, roles.get("focus-switch")!, roles.get("badge")!,
+    roles.get("materials-toggle")!, roles.get("stop")!,
     roles.get("more")!, roles.get("close")!,
   );
   root.append(head, body, input, roles.get("resize")!);
@@ -321,25 +343,30 @@ export function installFakeDocument(options: {
   };
 }
 
+/** 递归收集元素自身与全部后代的文本（FakeElement 的 textContent 不聚合子节点）。 */
+export function collectText(element: FakeElement): string {
+  const parts: string[] = [];
+  if (element.textContent) parts.push(element.textContent);
+  for (const child of element.children) parts.push(collectText(child));
+  return parts.join(" ");
+}
+
 /** 导出给测试断言用的窗口契约类型引用（避免误用）。 */
 export type { AiWindowDom };
 
 /** 安装供窗口渲染使用的假全局 document（createElement 返回 FakeElement）。 */
-export function installDocument(): { restore(): void } {
+export function installDocument(): { restore(): void; body: FakeElement } {
   const previousDocument = globalThis.document;
+  const body = new FakeElement("body");
   globalThis.document = {
     getElementById: () => null,
     createElement: (tag: string) => new FakeElement(tag),
     createElementNS: (_ns: string, tag: string) => new FakeElement(tag),
     addEventListener: () => {},
     removeEventListener: () => {},
-    body: {
-      classList: new FakeClassList(),
-      appendChild: () => {},
-      removeChild: () => {},
-    },
+    body,
   } as unknown as Document;
-  return { restore: () => { globalThis.document = previousDocument; } };
+  return { restore: () => { globalThis.document = previousDocument; }, body };
 }
 
 /** 安装 AI feature 集成测试所需的完整假 DOM 环境（停靠区 + 编辑器 + 全局 document）。 */
@@ -349,6 +376,8 @@ export function installAiFeatureEnvironment(): {
   windowRoots: FakeElement[];
   editor: FakeElement;
   btnToggleAi: FakeElement;
+  /** 全局 document.body（菜单等被追加到这里，供测试查找）。 */
+  body: FakeElement;
   restore(): void;
 } {
   const { elements, dom, windowRoots } = createAiDockDomFixture();
@@ -357,13 +386,14 @@ export function installAiFeatureEnvironment(): {
   elements.set("editor-textarea", editor);
   const btnToggleAi = new FakeElement("btn-toggle-ai");
   elements.set("btn-toggle-ai", btnToggleAi);
-  const documentRestore = installDocument();
+  const documentEnv = installDocument();
   return {
     elements,
     dom,
     windowRoots,
     editor,
     btnToggleAi,
-    restore: () => { documentRestore.restore(); },
+    body: documentEnv.body,
+    restore: () => { documentEnv.restore(); },
   };
 }

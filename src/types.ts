@@ -159,6 +159,14 @@ export type GenerateAiRequest =
       document_version?: string;
       /** 未保存正文快照（`canonicalNotebookJson` 输出）；与 `document_version` 同源。 */
       snapshot?: string;
+      /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
+      focus_document_id?: string;
+      /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */
+      focus_project_path?: string;
+      /** 关注文档版本身份（内容派生散列，仅在附带快照时一起透传）。 */
+      focus_document_version?: string;
+      /** 关注文档未保存快照（`canonicalNotebookJson` 输出）；仅当关注文档是当前编辑器文档且未保存时透传。 */
+      focus_snapshot?: string;
     }
   | {
       kind: "follow_up";
@@ -177,6 +185,14 @@ export type GenerateAiRequest =
       messages: GenerateAiMessage[];
       /** 首轮冻结时捕获的未保存正文快照（追问增量发送时随请求保留）。 */
       snapshot?: string;
+      /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
+      focus_document_id?: string;
+      /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */
+      focus_project_path?: string;
+      /** 关注文档版本身份（内容派生散列，仅在附带快照时一起透传）。 */
+      focus_document_version?: string;
+      /** 关注文档未保存快照（`canonicalNotebookJson` 输出）；仅当关注文档是当前编辑器文档且未保存时透传。 */
+      focus_snapshot?: string;
     }
   | {
       kind: "direct_question";
@@ -189,12 +205,37 @@ export type GenerateAiRequest =
       document_version?: string;
       /** 未保存正文快照（`canonicalNotebookJson` 输出）；无选区直接提问时缺省。 */
       snapshot?: string;
+      /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
+      focus_document_id?: string;
+      /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */
+      focus_project_path?: string;
+      /** 关注文档版本身份（内容派生散列，仅在附带快照时一起透传）。 */
+      focus_document_version?: string;
+      /** 关注文档未保存快照（`canonicalNotebookJson` 输出）；仅当关注文档是当前编辑器文档且未保存时透传。 */
+      focus_snapshot?: string;
     };
+
+/**
+ * 一轮自动取材的最小出处元数据（阶段五 A）：只含文档身份 / 类型 / 版本 / 匹配词，
+ * 不复制正文。由后端 `assemble_round_context` 产出并随生成结果返回。
+ */
+export interface RoundProvenanceEntry {
+  document_id: string;
+  material_type: string;
+  version: string;
+  matched_term?: string;
+  /** 关注文档现场材料是否来自未保存快照（仅 `focus_document` 有意义）。 */
+  from_unsaved_snapshot?: boolean;
+  /** 本轮跨文档检索结果状态（挂在 `focus_document` 条目上）：`hit` / `not_found` / `no_query_terms`。 */
+  search_status?: string;
+  /** 本轮检索是否达到输出硬上限（本次检索受限，非全量检索）。 */
+  search_limited?: boolean;
+}
 
 /**
  * AI 生成命令的窄返回。命令始终成功返回该枚举，
  * 便于前端在不依赖 Tauri 错误序列化细节的情况下区分成功与失败。
  */
 export type GenerateAiResult =
-  | { ok: true; content: string }
+  | { ok: true; content: string; provenance?: RoundProvenanceEntry[]; sent_confirmed?: boolean }
   | { ok: false; error: GenerateAiError };

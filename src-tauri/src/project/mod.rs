@@ -5,6 +5,7 @@ mod migration;
 mod notebook;
 mod operations;
 mod story_material;
+mod story_search;
 mod validation;
 
 pub use content_tree::*;
@@ -22,6 +23,7 @@ pub use operations::{
 // 不重复造事务框架（见 `conversation_store` 模块）。
 pub(crate) use operations::{read_bounded_string, write_file_atomically};
 pub use story_material::*;
+pub use story_search::*;
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};

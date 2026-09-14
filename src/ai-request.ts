@@ -1,11 +1,17 @@
-import type { GenerateAiError, GenerateAiRequest, GenerateAiResult, SelectionSnapshot } from "./types";
+import type {
+  GenerateAiError,
+  GenerateAiRequest,
+  GenerateAiResult,
+  RoundProvenanceEntry,
+  SelectionSnapshot,
+} from "./types";
 
 export interface AiRequestCallbacks {
   onSuccess?(snapshot: SelectionSnapshot, content: string, conversationId: string): void;
   onError?(snapshot: SelectionSnapshot, error: GenerateAiError, conversationId: string): void;
-  onStructuredSuccess?(content: string, identity: RequestIdentity): void;
+  onStructuredSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, identity: RequestIdentity): void;
   onStructuredError?(error: GenerateAiError, identity: RequestIdentity): void;
-  onDirectQuestionSuccess?(content: string, conversationId: string): void;
+  onDirectQuestionSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, conversationId: string): void;
   onDirectQuestionError?(error: GenerateAiError, conversationId: string): void;
 }
 
@@ -174,7 +180,7 @@ export class AiRequestCoordinator {
     if (this.isStale(token, epoch)) return;
     if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
-      this.callbacks.onDirectQuestionSuccess?.(result.content, conversationId);
+      this.callbacks.onDirectQuestionSuccess?.(result.content, result.provenance, result.sent_confirmed === true, conversationId);
     } else {
       this.callbacks.onDirectQuestionError?.(result.error, conversationId);
     }
@@ -213,7 +219,7 @@ export class AiRequestCoordinator {
     if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
       if (identity && this.callbacks.onStructuredSuccess) {
-        this.callbacks.onStructuredSuccess(result.content, identity);
+        this.callbacks.onStructuredSuccess(result.content, result.provenance, result.sent_confirmed === true, identity);
       } else if (snapshot) {
         this.callbacks.onSuccess?.(snapshot, result.content, conversationId);
       }

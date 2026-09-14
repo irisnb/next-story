@@ -879,3 +879,232 @@ test("a discussion whose materials remain visible has no notice and keeps follow
   assert.ok(view.followUpForm);
   assert.equal(view.followUpForm.inputEnabled, true);
 });
+
+// ========== 「本次参考了什么」轻量说明（阶段五 A 任务 4.3） ==========
+
+const MATERIAL_TITLES: Record<string, string> = {
+  "doc-1": "第一稿",
+  "doc-2": "设定集",
+  "doc-3": "秘密文档",
+};
+
+function materialRecord(provenance: ConversationRecord["provenance"]): ConversationRecord {
+  return {
+    version: 1,
+    conversation_id: "c-1",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: "doc-1",
+    focus_document_title: "第一稿",
+    first_round_material: { kind: "direct_question", question: "林晓是谁？", selection_text: null },
+    turns: [
+      { role: "user", text: "林晓是谁？", status: "done" },
+      { role: "assistant", text: "回答", status: "done" },
+    ],
+    provenance,
+  };
+}
+
+function materialViewOf(
+  record: ConversationRecord,
+  hidden: readonly string[] = [],
+): AiPanelView {
+  const conversation = readonlyConversationView(
+    conversationFromRecord(record, { hiddenDocumentIds: new Set(hidden) }),
+  )!;
+  return buildAiPanelView(idlePanelState(), conversation, {
+    resolveDocumentTitle: (documentId) => MATERIAL_TITLES[documentId] ?? null,
+    isDocumentHidden: (documentId) => hidden.includes(documentId),
+  });
+}
+
+test("no conversation has no material view", () => {
+  assert.equal(buildAiPanelView(idlePanelState(), null).material, null);
+});
+
+test("material view lists actual materials, versions, unsaved state and retrieval sources", () => {
+  const view = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "abc12345ff",
+      turn_index: 0,
+      entered_model_context: true,
+      from_unsaved_snapshot: true,
+      search_status: "hit",
+      search_limited: false,
+    },
+    {
+      document_id: "doc-2",
+      material_type: "search_snippet",
+      document_version: "def67890",
+      turn_index: 0,
+      entered_model_context: true,
+      matched_term: "林晓",
+    },
+  ]));
+
+  const material = view.material!;
+  assert.equal(material.unavailable, false);
+  assert.equal(material.hiddenSourceCount, 0);
+  assert.equal(material.rounds.length, 1);
+  const round = material.rounds[0];
+  assert.equal(round.roundLabel, "首轮");
+  assert.equal(round.sources.length, 2);
+  assert.equal(round.sources[0].kindLabel, "关注文档");
+  assert.equal(round.sources[0].title, "第一稿");
+  assert.equal(round.sources[0].versionLabel, "abc12345");
+  assert.equal(round.sources[0].stateLabel, "未保存快照");
+  assert.equal(round.sources[1].kindLabel, "跨文档命中");
+  assert.equal(round.sources[1].title, "设定集");
+  assert.equal(round.sources[1].matchedTerm, "林晓");
+  assert.equal(round.retrievalLabel, "跨文档检索：命中 1 处");
+  assert.equal(round.limited, false);
+  // 无回执的轮次：发送状态如实显示「已组装、送达未确认」。
+  assert.equal(round.sentConfirmed, false);
+  assert.match(round.sendStateLabel, /送达未确认/);
+});
+
+test("material view distinguishes receipt-confirmed rounds from assembled-only rounds", () => {
+  const confirmed = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      sent_confirmed: true,
+    },
+  ])).material!;
+  assert.equal(confirmed.rounds[0].sentConfirmed, true);
+  assert.match(confirmed.rounds[0].sendStateLabel, /已确认送达模型服务/);
+});
+
+test("material view reports not_found and no_query_terms as retrieval results, not body content", () => {
+  const notFound = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      search_status: "not_found",
+      search_limited: false,
+    },
+  ])).material!;
+  assert.equal(notFound.rounds[0].retrievalLabel, "跨文档检索：本次没有命中片段");
+
+  const noTerms = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      search_status: "no_query_terms",
+      search_limited: false,
+    },
+  ])).material!;
+  assert.equal(noTerms.rounds[0].retrievalLabel, "跨文档检索：本轮问题没有可检索的词");
+
+  const limited = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      search_status: "hit",
+      search_limited: true,
+    },
+    {
+      document_id: "doc-2",
+      material_type: "search_snippet",
+      document_version: "v2",
+      turn_index: 0,
+      entered_model_context: true,
+      matched_term: "林晓",
+    },
+  ])).material!;
+  assert.match(limited.rounds[0].retrievalLabel!, /本次检索受限/);
+  assert.equal(limited.rounds[0].limited, true);
+});
+
+test("material view masks hidden sources without leaking names, ids or matched terms", () => {
+  const view = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      search_status: "hit",
+      search_limited: false,
+    },
+    {
+      document_id: "doc-3",
+      material_type: "search_snippet",
+      document_version: "v3",
+      turn_index: 0,
+      entered_model_context: true,
+      matched_term: "秘密词",
+    },
+  ]), ["doc-3"]);
+
+  const material = view.material!;
+  assert.equal(material.hiddenSourceCount, 1);
+  const masked = material.rounds[0].sources[1];
+  assert.equal(masked.masked, true);
+  assert.ok(!masked.title.includes("秘密"), "不得泄露隐藏文档名称");
+  assert.ok(!masked.title.includes("doc-3"), "不得泄露隐藏文档 ID");
+  assert.equal(masked.matchedTerm, null);
+  assert.equal(masked.versionLabel, null);
+  // 可见来源照常显示。
+  assert.equal(material.rounds[0].sources[0].title, "第一稿");
+});
+
+test("material view groups multiple rounds and is unavailable for an archive without provenance", () => {
+  const multi = materialViewOf(materialRecord([
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 0,
+      entered_model_context: true,
+      search_status: "not_found",
+      search_limited: false,
+    },
+    {
+      document_id: "doc-1",
+      material_type: "focus_document",
+      document_version: "v2",
+      turn_index: 1,
+      entered_model_context: true,
+      search_status: "hit",
+      search_limited: false,
+    },
+    {
+      document_id: "doc-2",
+      material_type: "search_snippet",
+      document_version: "v2",
+      turn_index: 1,
+      entered_model_context: true,
+      matched_term: "林晓",
+    },
+  ])).material!;
+  assert.deepEqual(multi.rounds.map((round) => round.roundLabel), ["首轮", "第 1 轮"]);
+
+  const record: ConversationRecord = {
+    version: 1,
+    conversation_id: "c-old",
+    created_at: "t0",
+    updated_at: "t0",
+    focus_document_id: null,
+    focus_document_title: null,
+    first_round_material: { kind: "direct_question", question: "旧问题", selection_text: null },
+    turns: [{ role: "assistant", text: "旧回答", status: "done" }],
+  };
+  const view = materialViewOf(record);
+  assert.equal(view.material!.unavailable, true);
+  assert.deepEqual(view.material!.rounds, []);
+});

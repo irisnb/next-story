@@ -2,7 +2,7 @@
 //
 // 职责：启动 DSH 容器（默认拒绝装配），经 stdin/stdout 行分隔 JSON 协议服务常驻会话。
 // stdout 只承载协议消息；一切诊断走 stderr。
-// 用法：node driver.mjs --api-base <url> --model <model>
+// 用法：node driver.mjs --api-base <url> --model <model> [--max-tokens <n>]
 // 环境：DEEPSEEK_API_KEY（宿主从钥匙串读出注入，不落盘）、DSH_HOME（宿主指定的版本隔离目录）
 //
 // 协议 v1（design.md D2）：
@@ -16,6 +16,8 @@
 //   出站  ready {protocol_version}
 //         session_started {session_id}
 //         delta     {session_id, message_id, seq, text}
+//         message_sent   {session_id, message_id}（provider 发送回执：本轮首次观测到
+//                        provider 侧回应证据时发出一次，先于 message_done/message_failed）
 //         message_done   {session_id, message_id, text}
 //         message_failed {session_id, message_id, code, message}
 //         replay_ok {session_id}
@@ -38,6 +40,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--api-base") out.apiBase = argv[++i];
     else if (argv[i] === "--model") out.model = argv[++i];
+    else if (argv[i] === "--max-tokens") out.maxTokens = Number(argv[++i]);
   }
   return out;
 }
@@ -61,9 +64,15 @@ const { installModelSelection } = await import("@deepseek-ai/dsh-agent");
 const { createUserMessage } = await import("@deepseek-ai/dsh-llm");
 const { SessionId } = await import("@deepseek-ai/dsh-session");
 
+// DSH 默认 max_tokens=256000（dsh-llm-deepseek DEFAULT_MAX_TOKENS）。智谱等 OpenAI 兼容
+// 端点严格校验该参数（智谱 coding 接口允许 [1,131072]，超范围直接 400 INVALID_REQUEST）。
+// 默认取 131072（已知最严校验范围内）；宿主可按端点用 --max-tokens 覆盖。
+const MAX_TOKENS_DEFAULT = 131072;
+const maxTokens = Number.isSafeInteger(args.maxTokens) && args.maxTokens > 0 ? args.maxTokens : MAX_TOKENS_DEFAULT;
+
 const runtimePatches = [
   { id: "agent-default-model", config: { provider: "deepseek-official", model: args.model } },
-  { id: "llm-deepseek", config: { baseURL: args.apiBase, thinking: "disabled" } },
+  { id: "llm-deepseek", config: { baseURL: args.apiBase, thinking: "disabled", maxTokens } },
 ];
 
 let ctx;
@@ -152,20 +161,35 @@ function buildSeedEvents(turns, system) {
   return events;
 }
 
-// 运行一轮：followup → 轮询转发 delta → whenIdle → message_done / message_failed
+// 运行一轮：followup → 轮询转发 delta →（首见 provider 侧证据时一次 message_sent）→ whenIdle → message_done / message_failed
 function runTurn(session, messageId, text) {
   const agent = session.agent;
   const firstSeq = agent.session.seq;
   let cursor = agent.session.events.length;
   let folded = "";
+  let sentEmitted = false;
   session.busy = true;
   session.cancelRequested = false;
+
+  // provider 发送回执（add-automatic-story-context）：本轮范围内首次观测到
+  // provider 侧回应证据（第一个 assistant/chunk 的 text-delta，或 assistant/message）
+  // 时发出一次 message_sent，且必须先于终态。取消/失败于任何回应证据之前时不发；
+  // 仅组装未到 provider 也不发——回执只反映真实观测，不伪造。
+  const maybeEmitSent = (e) => {
+    if (sentEmitted || e.seq < firstSeq) return;
+    const isTextDelta = e.type === "assistant/chunk" && e.data?.chunk?.type === "text-delta";
+    if (isTextDelta || e.type === "assistant/message") {
+      sentEmitted = true;
+      emit({ type: "message_sent", session_id: session.id, message_id: messageId });
+    }
+  };
 
   const poll = setInterval(() => {
     try {
       const evs = agent.session.events;
       for (; cursor < evs.length; cursor++) {
         const e = evs[cursor];
+        maybeEmitSent(e);
         if (e.type === "assistant/chunk") {
           const c = e.data?.chunk;
           if (c?.type === "text-delta" && typeof c.text === "string" && c.text) {
@@ -188,6 +212,8 @@ function runTurn(session, messageId, text) {
   agent.followup(createUserMessage({ content: [{ type: "text", text }], source: { kind: "user" } }));
   agent.whenIdle().then(() => {
     const evs = agent.session.events;
+    // 兜底扫描：轮询间隙到达的 provider 侧证据也必须在终态前发出 message_sent。
+    for (; cursor < evs.length; cursor++) maybeEmitSent(evs[cursor]);
     const turnEnd = [...evs].reverse().find((e) => e.seq >= firstSeq && e.type === "turn/end");
     let fullText = "";
     for (const e of evs) {

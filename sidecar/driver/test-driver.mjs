@@ -86,6 +86,10 @@ try {
   const { done, deltas, folded } = await waitDone("s1", "m1");
   record("3 send_message + 流式 delta", done.type === "message_done" && deltas.length >= 1 && done.text.length > 0,
     `delta 数=${deltas.length}，done 全文长度=${done.text?.length}（折叠长度=${folded.length}）`);
+  // 3b provider 发送回执：message_sent 恰好一次，且先于 message_done 到达。
+  const sentEvents = inbox.filter((e) => e.type === "message_sent" && e.session_id === "s1" && e.message_id === "m1");
+  record("3b message_sent 回执先于终态", sentEvents.length === 1 && inbox.indexOf(sentEvents[0]) < inbox.indexOf(done),
+    `message_sent 数=${sentEvents.length}`);
 } catch (e) { record("3 send_message + 流式 delta", false, String(e.message)); }
 
 try {
@@ -128,6 +132,10 @@ try {
   send({ type: "cancel_message", session_id: "s3", message_id: "m4" });
   const { done } = await waitDone("s3", "m4");
   record("7 cancel 取消", done.type === "message_failed" && done.code === "cancelled", `终态=${done.type}/${done.code}`);
+  // 7 前置：取消前已观测到 provider 回应（首个 delta），message_sent 必已先于终态发出。
+  const sent4 = inbox.filter((e) => e.type === "message_sent" && e.session_id === "s3" && e.message_id === "m4");
+  record("7 前置 delta 后取消仍有回执", sent4.length === 1 && inbox.indexOf(sent4[0]) < inbox.indexOf(done),
+    `message_sent 数=${sent4.length}`);
   // 取消后追问仍可用
   send({ type: "send_message", session_id: "s3", message_id: "m5", text: "刚才的写作任务被取消了吗？用不超过15个字回答。" });
   const { done: done5 } = await waitDone("s3", "m5");

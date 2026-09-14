@@ -1,5 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
+import type { RoundProvenanceEntry } from "./types.ts";
+
 /**
  * 讨论档案层（change: add-conversation-persistence-and-isolation）。
  *
@@ -45,15 +47,64 @@ export interface MaterialProvenance {
   document_id: string;
   /**
    * 材料类型：`selection`（冻结选区）/ `snapshot`（未保存快照）/ `document`（已保存正文），
-   * 以及 `revoked`（该文档的 AI 可见性在讨论使用它之后被关闭，讨论永久受限的锁存标记）。
+   * `revoked`（该文档的 AI 可见性在讨论使用它之后被关闭，讨论永久受限的锁存标记），
+   * 以及阶段五 A 的 `focus_document`（关注文档现场）与 `search_snippet`（跨文档检索命中）。
    */
-  material_type: "selection" | "snapshot" | "document" | "revoked";
+  material_type:
+    | "selection"
+    | "snapshot"
+    | "document"
+    | "revoked"
+    | "focus_document"
+    | "search_snippet";
   /** 材料版本身份；当前快照未携带版本时为 null。 */
   document_version: string | null;
   /** 所属轮次（首轮为 0）。 */
   turn_index: number;
-  /** 是否进入模型上下文。 */
+  /**
+   * 是否进入模型上下文：仅表示「材料已组装进被提交的请求」（想发送 / prepared / accepted），
+   * 不是「已实际发送给 provider」（sent）。DSH 进程接收不等于 provider 已发送。
+   */
   entered_model_context: boolean;
+  /**
+   * provider 发送回执（`message_sent`）：本轮观测到 provider 侧回应证据时为 true；
+   * 缺省表示未确认（不是「未发送」）。只有收到回执才标记，绝不伪造。
+   */
+  sent_confirmed?: boolean;
+  /** 仅 `search_snippet` 有值：命中的候选词。 */
+  matched_term?: string;
+  /** 关注文档现场材料是否来自未保存快照（仅 `focus_document` 有意义）。 */
+  from_unsaved_snapshot?: boolean;
+  /** 本轮跨文档检索结果状态（挂在 `focus_document` 条目上）。 */
+  search_status?: string;
+  /** 本轮检索是否达到输出硬上限（本次检索受限，非全量检索）。 */
+  search_limited?: boolean;
+}
+
+/**
+ * 把后端返回的一轮自动取材出处转换为档案形态：补充所属轮次与「已进入模型上下文」
+ * 标记（后端只负责产出文档身份 / 类型 / 版本 / 匹配词，轮次与发送状态由前端补全）。
+ * `sentConfirmed` 仅在收到 `message_sent` 回执时为 true；缺省（false）表示未确认，
+ * 不写入 `sent_confirmed` 字段（未确认轮次不携带回执标记）。
+ */
+export function roundProvenanceToMaterialProvenance(
+  entries: RoundProvenanceEntry[] | undefined,
+  turnIndex: number,
+  sentConfirmed = false,
+): MaterialProvenance[] {
+  if (!entries) return [];
+  return entries.map((entry) => ({
+    document_id: entry.document_id,
+    material_type: entry.material_type as MaterialProvenance["material_type"],
+    document_version: entry.version,
+    turn_index: turnIndex,
+    entered_model_context: true,
+    ...(sentConfirmed ? { sent_confirmed: true } : {}),
+    ...(entry.matched_term !== undefined ? { matched_term: entry.matched_term } : {}),
+    ...(entry.from_unsaved_snapshot ? { from_unsaved_snapshot: true } : {}),
+    ...(entry.search_status !== undefined ? { search_status: entry.search_status } : {}),
+    ...(entry.search_limited !== undefined ? { search_limited: entry.search_limited } : {}),
+  }));
 }
 
 /** 讨论档案的保存契约（version 1）。 */
@@ -98,6 +149,11 @@ export interface ConversationSummary {
   pinned?: boolean;
   /** 材料出处元数据；缺失（旧档案）按保守策略处理。 */
   provenance?: MaterialProvenance[];
+  /**
+   * 前端派生的材料受限标记（不落盘）：为 true 时列表等显示层必须对关注文档标题脱敏。
+   * 后端返回的摘要不带该字段。
+   */
+  restricted?: boolean;
 }
 
 /** `conversation_list` 的稳定返回：当前作品的讨论列表 + 被跳过（损坏/超限）的档案。 */

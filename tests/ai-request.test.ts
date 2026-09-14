@@ -170,7 +170,7 @@ test("different discussions generate in parallel without blocking each other", a
   const calls: string[] = [];
   const coordinator = new AiRequestCoordinator(
     async (text) => ({ ok: true, content: `legacy:${text}` }),
-    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, id) => calls.push(`ok:${id.conversationId}`) },
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, _p, _s, id) => calls.push(`ok:${id.conversationId}`) },
     () => 1,
     async (conversationId) => {
       calls.push(`start:${conversationId}`);
@@ -325,7 +325,7 @@ test("cancel only affects the target discussion and does not disturb others", as
   const events: string[] = [];
   const coordinator = new AiRequestCoordinator(
     async () => ({ ok: true, content: "legacy" }),
-    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, id) => events.push(`ok:${id.conversationId}`) },
+    { onSuccess: () => {}, onError: () => {}, onStructuredSuccess: (_, _p, _s, id) => events.push(`ok:${id.conversationId}`) },
     () => 1,
     async (conversationId) => new Promise<GenerateAiResult>((r) => {
       if (conversationId === "a") resolveA = r;

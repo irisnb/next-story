@@ -95,12 +95,20 @@ function materialIdentityOf(
   projectPath?: string;
   documentVersion?: string;
   snapshot?: string;
+  focusDocumentId?: string;
+  focusProjectPath?: string;
+  focusDocumentVersion?: string;
+  focusSnapshot?: string;
 } | undefined {
   if (
     request.document_id === undefined &&
     request.project_path === undefined &&
     request.document_version === undefined &&
-    request.snapshot === undefined
+    request.snapshot === undefined &&
+    request.focus_document_id === undefined &&
+    request.focus_project_path === undefined &&
+    request.focus_document_version === undefined &&
+    request.focus_snapshot === undefined
   ) {
     return undefined;
   }
@@ -109,6 +117,10 @@ function materialIdentityOf(
     projectPath: request.project_path,
     documentVersion: request.document_version,
     snapshot: request.snapshot,
+    focusDocumentId: request.focus_document_id,
+    focusProjectPath: request.focus_project_path,
+    focusDocumentVersion: request.focus_document_version,
+    focusSnapshot: request.focus_snapshot,
   };
 }
 

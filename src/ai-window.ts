@@ -2,7 +2,12 @@ import type { AiWindowDom } from "./dom.ts";
 import { buildAiWindowDom } from "./dom.ts";
 import { AiPanelScrollResetController } from "./ai-panel-scroll.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
-import { buildAiPanelView, type ConversationView } from "./ai-panel-view-model.ts";
+import {
+  buildAiPanelView,
+  type ConversationView,
+  type MaterialSourceView,
+  type MaterialView,
+} from "./ai-panel-view-model.ts";
 import {
   firstRoundMaterialToArchive,
   type Discussion,
@@ -34,6 +39,12 @@ export interface AiWindowActions {
   onClose: () => void;
   /** 新建一个干净讨论（受限讨论的继续路径）。 */
   onNewConversation: () => void;
+  /** 请求打开「切换关注文档」选择器（锚点为本窗口的切换按钮）；缺省不显示入口。 */
+  onOpenFocusPicker?: (anchor: HTMLElement) => void;
+  /** 按文档 ID 解析当前作品中的文档标题（「本次参考了什么」用）；缺省回退为不可用。 */
+  resolveDocumentTitle?: (documentId: string) => string | null;
+  /** 文档当前是否不允许 AI 查看（隐藏来源脱敏判定）；缺省不做隐藏判定。 */
+  isDocumentHidden?: (documentId: string) => boolean;
 }
 
 export interface AiWindowController {
@@ -43,6 +54,10 @@ export interface AiWindowController {
   destroy(): void;
   /** 重新读取状态并渲染（外部触发，如聚焦变化）。 */
   refresh(): void;
+  /** 展开 / 收起「本次参考了什么」面板（供窗口菜单调用）。 */
+  toggleMaterials(): void;
+  /** 显示「已切换关注文档…下一轮生效」的清晰中文提示（由选择器动作显式触发）。 */
+  showFocusNotice(text: string): void;
 }
 
 /** 窗口状态点与徽标的统一状态词（排队中 / 生成中 / 已停止 / 失败 / 恢复中 / 已完成）。 */
@@ -125,6 +140,42 @@ export function setupAiWindow(
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
   let disposed = false;
+  /** 「本次参考了什么」面板展开状态（纯显示层，不进状态、不持久化）。 */
+  let materialsOpen = false;
+  /** 切换关注文档提示的显示时长。 */
+  const FOCUS_NOTICE_MS = 6000;
+  let focusNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearFocusNoticeTimer(): void {
+    if (focusNoticeTimer !== null) {
+      clearTimeout(focusNoticeTimer);
+      focusNoticeTimer = null;
+    }
+  }
+
+  /** 显示切换关注文档的清晰中文提示（短暂显示后自动隐藏，不打断对话）。 */
+  function showFocusNotice(text: string): void {
+    clearFocusNoticeTimer();
+    dom.focusNotice.textContent = text;
+    dom.focusNotice.classList.remove("hidden");
+    focusNoticeTimer = setTimeout(() => {
+      focusNoticeTimer = null;
+      dom.focusNotice.classList.add("hidden");
+    }, FOCUS_NOTICE_MS);
+    focusNoticeTimer.unref?.();
+  }
+
+  function toggleMaterials(): void {
+    materialsOpen = !materialsOpen;
+    render();
+  }
+
+  dom.materialsToggle.addEventListener("click", () => toggleMaterials());
+  dom.materialsClose.addEventListener("click", () => {
+    materialsOpen = false;
+    render();
+  });
+  dom.focusSwitch.addEventListener("click", () => actions.onOpenFocusPicker?.(dom.focusSwitch));
 
   // 吸底滚动：滚动事件只维护「贴底」布尔标记（阈值约 40px）。
   const BOTTOM_FOLLOW_THRESHOLD_PX = 40;
@@ -224,10 +275,83 @@ export function setupAiWindow(
     }
   }
 
+  function materialSourceLine(source: MaterialSourceView): HTMLElement {
+    const line = document.createElement("div");
+    line.classList.add("ai-material-source");
+    if (source.masked) line.classList.add("is-masked");
+    const parts: string[] = [`${source.kindLabel}：${source.title}`];
+    if (source.versionLabel !== null) parts.push(`版本 ${source.versionLabel}`);
+    if (source.stateLabel !== null) parts.push(source.stateLabel);
+    if (source.matchedTerm !== null) parts.push(`匹配词「${source.matchedTerm}」`);
+    line.textContent = parts.join(" · ");
+    return line;
+  }
+
+  /**
+   * 渲染「本次参考了什么」轻量说明：只展示实际使用过的材料与限制，
+   * 隐藏来源已由视图层脱敏，`not_found` / `no_query_terms` 只作为检索结果呈现。
+   */
+  function renderMaterials(material: MaterialView | null): void {
+    // 面板默认收起（不打断对话）：只有用户主动展开且确有说明数据时才显示。
+    if (material === null) materialsOpen = false;
+    dom.materialsPanel.classList.toggle("hidden", !materialsOpen || material === null);
+    dom.materialsBody.replaceChildren();
+    if (material === null) return;
+    if (material.unavailable) {
+      const note = document.createElement("div");
+      note.classList.add("ai-material-note");
+      note.textContent = "该讨论缺少材料出处记录，无法说明本次参考了什么。";
+      dom.materialsBody.append(note);
+      return;
+    }
+    if (material.rounds.length === 0) {
+      const note = document.createElement("div");
+      note.classList.add("ai-material-note");
+      note.textContent = "本次没有附带作品材料。";
+      dom.materialsBody.append(note);
+    }
+    for (const round of material.rounds) {
+      const section = document.createElement("div");
+      section.classList.add("ai-material-round");
+      const label = document.createElement("div");
+      label.classList.add("ai-material-round-label");
+      label.textContent = round.roundLabel;
+      section.append(label);
+      for (const source of round.sources) section.append(materialSourceLine(source));
+      // 发送状态：区分「已组装」与「已确认送达」，无回执时如实显示未确认。
+      const sendState = document.createElement("div");
+      sendState.classList.add("ai-material-retrieval");
+      sendState.textContent = round.sendStateLabel;
+      section.append(sendState);
+      if (round.retrievalLabel !== null) {
+        const retrieval = document.createElement("div");
+        retrieval.classList.add("ai-material-retrieval");
+        retrieval.textContent = round.retrievalLabel;
+        section.append(retrieval);
+      }
+      dom.materialsBody.append(section);
+    }
+    if (material.hiddenSourceCount > 0) {
+      const hidden = document.createElement("div");
+      hidden.classList.add("ai-material-note");
+      hidden.textContent = `其中 ${material.hiddenSourceCount} 处来源已隐藏，已脱敏显示。`;
+      dom.materialsBody.append(hidden);
+    }
+    const scope = document.createElement("div");
+    scope.classList.add("ai-material-note");
+    scope.textContent = material.scopeNote;
+    dom.materialsBody.append(scope);
+  }
+
   function render(): void {
+    const conversationView = state.conversationOf(conversationId);
     const view = buildAiPanelView(
       state.viewOf(conversationId),
-      state.conversationOf(conversationId),
+      conversationView,
+      {
+        resolveDocumentTitle: (documentId) => actions.resolveDocumentTitle?.(documentId) ?? null,
+        isDocumentHidden: (documentId) => actions.isDocumentHidden?.(documentId) ?? false,
+      },
     );
 
     // 窗口头：活动态 + 标题 / 关注文档 / 状态点 / 徽标。
@@ -237,9 +361,30 @@ export function setupAiWindow(
 
     const discussion = state.getDiscussion(conversationId);
     dom.title.textContent = discussionTitle(discussion);
-    const docTitle = discussion?.focusDocumentTitle ?? null;
+
+    // 关注文档标签：受限讨论或隐藏来源必须脱敏，不泄露隐藏文档名称。
+    const focusDocumentId = discussion?.focusDocumentId ?? null;
+    const focusDocumentHidden =
+      focusDocumentId !== null && (actions.isDocumentHidden?.(focusDocumentId) ?? false);
+    const focusTitleMasked =
+      discussion?.conversation?.restricted === true || focusDocumentHidden;
+    const rawDocTitle = discussion?.focusDocumentTitle ?? null;
+    const docTitle =
+      rawDocTitle === null ? null : focusTitleMasked ? "（已隐藏的文档）" : rawDocTitle;
     dom.doc.classList.toggle("hidden", docTitle === null);
     if (docTitle !== null) dom.doc.textContent = docTitle;
+
+    // 「切换关注文档」入口：无关注文档或受限讨论时不可用。
+    const canSwitchFocus =
+      focusDocumentId !== null &&
+      discussion?.conversation?.restricted !== true &&
+      actions.onOpenFocusPicker !== undefined;
+    dom.focusSwitch.classList.toggle("hidden", !canSwitchFocus);
+    // 「本次参考了什么」入口：无任何材料说明数据时不显示。
+    dom.materialsToggle.classList.toggle("hidden", view.material === null);
+
+    // 切换关注文档的清晰提示由选择器动作显式触发（`showFocusNotice`），
+    // 避免把「讨论创建时的初始绑定」误报成用户切换。
 
     const status = windowStatusOf(state.viewOf(conversationId).request);
     applyStatusDot(dom, status);
@@ -272,6 +417,7 @@ export function setupAiWindow(
     dom.welcome.classList.toggle("hidden", !view.welcomeVisible);
 
     renderConversation(view.conversation);
+    renderMaterials(view.material);
 
     dom.errorBlock.classList.toggle("hidden", view.errorBlock === null);
     if (view.errorBlock) {
@@ -390,8 +536,11 @@ export function setupAiWindow(
     element: root,
     dom,
     refresh: render,
+    toggleMaterials,
+    showFocusNotice,
     destroy(): void {
       disposed = true;
+      clearFocusNoticeTimer();
       unsubscribe();
       root.remove();
     },

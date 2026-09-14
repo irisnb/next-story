@@ -182,6 +182,19 @@ function monthLabel(iso: string): string {
   return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
 }
 
+/** 受限讨论的关注文档标题脱敏占位（不泄露隐藏文档名称）。 */
+export const MASKED_FOCUS_DOCUMENT_TITLE = "（已隐藏的文档）";
+
+/**
+ * 列表展示用的关注文档标题：受限讨论必须脱敏（任务 4.4），其余原样显示。
+ * 脱敏只作用于显示，不修改档案中保存的真实标题。
+ */
+export function displayFocusDocumentTitle(summary: ConversationSummary): string | null {
+  const title = summary.focus_document_title ?? null;
+  if (title === null) return null;
+  return summary.restricted ? MASKED_FOCUS_DOCUMENT_TITLE : title;
+}
+
 /** 讨论标题：自定义标题优先（空白视为未重命名），否则回退到列表派生标题。 */
 export function effectiveTitle(summary: ConversationSummary): string {
   const custom = summary.custom_title;
@@ -209,7 +222,7 @@ export function buildConversationGroups(
     timeLabel: formatRelativeTime(summary.updated_at, now),
     status: statusOf(summary),
     isActive: summary.conversation_id === activeConversationId,
-    focusDocumentTitle: summary.focus_document_title ?? null,
+    focusDocumentTitle: displayFocusDocumentTitle(summary),
     updatedAt: summary.updated_at,
   }));
 

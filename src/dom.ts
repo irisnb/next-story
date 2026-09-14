@@ -14,7 +14,11 @@ export interface AiWindowDom {
   readonly statusDot: HTMLElement;
   readonly title: HTMLElement;
   readonly doc: HTMLElement;
+  /** 「切换关注文档」入口（显式改绑，查看其他文档不自动切换）。 */
+  readonly focusSwitch: HTMLButtonElement;
   readonly badge: HTMLElement;
+  /** 「本次参考了什么」展开入口。 */
+  readonly materialsToggle: HTMLButtonElement;
   readonly stopBtn: HTMLButtonElement;
   readonly moreBtn: HTMLButtonElement;
   readonly closeBtn: HTMLButtonElement;
@@ -50,6 +54,12 @@ export interface AiWindowDom {
   readonly directQuestionGoConfig: HTMLButtonElement;
   /** 空状态欢迎语（无对话轮次且无进行中请求时显示）。 */
   readonly welcome: HTMLElement;
+  /** 「本次参考了什么」面板（默认收起，不打断对话）。 */
+  readonly materialsPanel: HTMLElement;
+  readonly materialsBody: HTMLElement;
+  readonly materialsClose: HTMLButtonElement;
+  /** 切换关注文档后的清晰中文提示（短暂显示，随后自动隐藏）。 */
+  readonly focusNotice: HTMLElement;
   /** 受限讨论提示容器（材料权限已变化时显示，不泄露隐藏文件身份）。 */
   readonly restrictionNotice: HTMLElement;
   readonly restrictionNoticeMessage: HTMLElement;
@@ -234,7 +244,9 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     statusDot: requireRole(root, "status-dot"),
     title: requireRole(root, "title"),
     doc: requireRole(root, "doc"),
+    focusSwitch: requireRole<HTMLButtonElement>(root, "focus-switch"),
     badge: requireRole(root, "badge"),
+    materialsToggle: requireRole<HTMLButtonElement>(root, "materials-toggle"),
     stopBtn: requireRole<HTMLButtonElement>(root, "stop"),
     moreBtn: requireRole<HTMLButtonElement>(root, "more"),
     closeBtn: requireRole<HTMLButtonElement>(root, "close"),
@@ -269,6 +281,10 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     directQuestionConfig: requireRole(root, "direct-question-config"),
     directQuestionGoConfig: requireRole<HTMLButtonElement>(root, "direct-question-go-config"),
     welcome: requireRole(root, "welcome"),
+    materialsPanel: requireRole(root, "materials-panel"),
+    materialsBody: requireRole(root, "materials-body"),
+    materialsClose: requireRole<HTMLButtonElement>(root, "materials-close"),
+    focusNotice: requireRole(root, "focus-notice"),
     restrictionNotice: requireRole(root, "restriction-notice"),
     restrictionNoticeMessage: requireRole(root, "restriction-notice-message"),
     restrictionNewConversation: requireRole<HTMLButtonElement>(root, "restriction-new-conversation"),

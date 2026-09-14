@@ -28,6 +28,8 @@
       <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></symbol>
       <symbol id="i-empty" viewBox="0 0 16 16"><path d="M3 4.5h10v6H8l-3 2.5V10.5H3z"/></symbol>
       <symbol id="i-chevron-down" viewBox="0 0 16 16"><path d="M3.5 6L8 10.5 12.5 6"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></symbol>
+      <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.2"/><path d="M8 7.2v4"/><circle cx="8" cy="5.1" r="0.6" fill="currentColor" stroke="none"/></symbol>
     </svg>
 
     <!-- Welcome Page -->
@@ -213,8 +215,10 @@
                   <span class="ai-window-status-dot" data-role="status-dot"></span>
                   <span class="ai-window-title" data-role="title"></span>
                   <span class="ai-window-doc" data-role="doc"></span>
+                  <button class="ai-win-btn ai-win-btn-icon" data-role="focus-switch" type="button" title="切换关注文档"><svg class="ai-ic"><use href="#i-doc"></use></svg></button>
                   <span class="spacer"></span>
                   <span class="ai-window-badge hidden" data-role="badge"></span>
+                  <button class="ai-win-btn ai-win-btn-icon" data-role="materials-toggle" type="button" title="本次参考了什么"><svg class="ai-ic"><use href="#i-info"></use></svg></button>
                   <button class="ai-win-btn ai-win-btn-stop hidden" data-role="stop" type="button">停止</button>
                   <button class="ai-win-btn ai-win-btn-icon" data-role="more" type="button" title="更多"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
                   <button class="ai-win-btn ai-win-btn-close" data-role="close" type="button" title="关闭窗口"><svg class="ai-ic"><use href="#i-close"></use></svg></button>
@@ -223,6 +227,13 @@
                   <div data-role="snapshot-block" class="ai-block hidden">
                     <div class="ai-block-label">本次选区</div>
                     <pre data-role="snapshot-text" class="ai-snapshot"></pre>
+                  </div>
+                  <div data-role="materials-panel" class="ai-materials hidden">
+                    <div class="ai-materials-head">
+                      <span class="ai-materials-title">本次参考了什么</span>
+                      <button data-role="materials-close" class="ai-panel-btn" type="button">收起</button>
+                    </div>
+                    <div data-role="materials-body" class="ai-materials-body"></div>
                   </div>
                   <div data-role="welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
                   <div data-role="loading" class="ai-loading hidden">正在思考…</div>
@@ -245,6 +256,7 @@
                   </div>
                 </div>
                 <div class="ai-window-input" data-role="input">
+                  <div data-role="focus-notice" class="ai-focus-notice hidden" role="status" aria-live="polite"></div>
                   <div data-role="restriction-notice" class="ai-restriction-notice hidden" role="status" aria-live="polite">
                     <div data-role="restriction-notice-message" class="ai-restriction-notice-message"></div>
                     <button data-role="restriction-new-conversation" class="ai-panel-btn" type="button">新建对话</button>

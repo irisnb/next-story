@@ -7,9 +7,98 @@ import {
   conversationSave,
   deriveConversationTitle,
   generateConversationId,
+  roundProvenanceToMaterialProvenance,
   type ConversationInvokeFn,
   type ConversationRecord,
 } from "../src/conversation-archive.ts";
+
+test("roundProvenanceToMaterialProvenance maps backend entries to archive shape", () => {
+  const entries = roundProvenanceToMaterialProvenance(
+    [
+      { document_id: "focus-1", material_type: "focus_document", version: "v1" },
+      { document_id: "doc-9", material_type: "search_snippet", version: "v2", matched_term: "林晓" },
+    ],
+    2,
+  );
+
+  assert.deepEqual(entries, [
+    {
+      document_id: "focus-1",
+      material_type: "focus_document",
+      document_version: "v1",
+      turn_index: 2,
+      entered_model_context: true,
+    },
+    {
+      document_id: "doc-9",
+      material_type: "search_snippet",
+      document_version: "v2",
+      turn_index: 2,
+      entered_model_context: true,
+      matched_term: "林晓",
+    },
+  ]);
+
+  // 无后端出处时返回空数组（不伪造 sent / 不产生空条目）。
+  assert.deepEqual(roundProvenanceToMaterialProvenance(undefined, 0), []);
+});
+
+test("entered_model_context represents intent-to-send, never provider-sent", () => {
+  const entries = roundProvenanceToMaterialProvenance(
+    [{ document_id: "doc-9", material_type: "search_snippet", version: "v2", matched_term: "林晓" }],
+    0,
+  );
+
+  assert.equal(entries[0].entered_model_context, true, "已组装材料标记为想发送");
+  // 不存在任何表示「已发送给 provider」的字段：回执未落地，不伪造 sent。
+  assert.ok(!("sent" in entries[0]), "出处不得携带 sent 状态");
+  assert.ok(!("delivered" in entries[0]), "出处不得携带 delivered 状态");
+  assert.ok(!("send_status" in entries[0]), "出处不得携带 send_status 状态");
+});
+
+test("sent_confirmed is only marked when the message_sent receipt was observed", () => {
+  const withReceipt = roundProvenanceToMaterialProvenance(
+    [{ document_id: "doc-9", material_type: "focus_document", version: "v1" }],
+    0,
+    true,
+  );
+  assert.equal(withReceipt[0].sent_confirmed, true, "收到 message_sent 回执才标记已确认发送");
+
+  const withoutReceipt = roundProvenanceToMaterialProvenance(
+    [{ document_id: "doc-9", material_type: "focus_document", version: "v1" }],
+    0,
+  );
+  assert.equal(
+    withoutReceipt[0].sent_confirmed,
+    undefined,
+    "未观测到回执时不携带回执标记（未确认，不伪造）",
+  );
+  assert.ok(!("sent_confirmed" in withoutReceipt[0]), "未确认轮次不得写入 sent_confirmed 字段");
+});
+
+test("roundProvenanceToMaterialProvenance preserves unsaved state and retrieval status (5.1)", () => {
+  const entries = roundProvenanceToMaterialProvenance(
+    [
+      {
+        document_id: "focus-1",
+        material_type: "focus_document",
+        version: "v1",
+        from_unsaved_snapshot: true,
+        search_status: "not_found",
+        search_limited: false,
+      },
+      { document_id: "doc-9", material_type: "search_snippet", version: "v2", matched_term: "林晓" },
+    ],
+    0,
+  );
+
+  assert.equal(entries[0].from_unsaved_snapshot, true);
+  assert.equal(entries[0].search_status, "not_found");
+  assert.equal(entries[0].search_limited, false);
+  assert.equal(entries[1].from_unsaved_snapshot, undefined);
+  assert.equal(entries[1].search_status, undefined);
+  assert.equal(entries[1].matched_term, "林晓");
+});
 
 test("generateConversationId produces distinct unique ids across calls", () => {
   const ids = new Set<string>();

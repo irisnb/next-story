@@ -57,6 +57,10 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
         if (identityOrCall.projectPath !== undefined) args.projectPath = identityOrCall.projectPath;
         if (identityOrCall.documentVersion !== undefined) args.documentVersion = identityOrCall.documentVersion;
         if (identityOrCall.snapshot !== undefined) args.snapshot = identityOrCall.snapshot;
+        if (identityOrCall.focusDocumentId !== undefined) args.focusDocumentId = identityOrCall.focusDocumentId;
+        if (identityOrCall.focusProjectPath !== undefined) args.focusProjectPath = identityOrCall.focusProjectPath;
+        if (identityOrCall.focusDocumentVersion !== undefined) args.focusDocumentVersion = identityOrCall.focusDocumentVersion;
+        if (identityOrCall.focusSnapshot !== undefined) args.focusSnapshot = identityOrCall.focusSnapshot;
       }
       commands.push({ cmd: "ai_send_message", args });
       if (failure !== null) return Promise.reject(failure);
@@ -199,6 +203,52 @@ test("first round forwards the unsaved body snapshot through the transport", asy
     projectPath: "C:/作品",
     documentVersion: "v1",
     snapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  });
+});
+
+test("direct question forwards focus document identity and snapshot through the transport", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "direct_question",
+    question: "这个问题",
+    focus_document_id: "focus-1",
+    focus_project_path: "C:/作品",
+    focus_document_version: "v9",
+    focus_snapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "first",
+    question: "这个问题",
+    focusDocumentId: "focus-1",
+    focusProjectPath: "C:/作品",
+    focusDocumentVersion: "v9",
+    focusSnapshot: '{"format":"next-story-tiptap","version":2,"document":{"type":"doc"}}',
+  });
+});
+
+test("follow_up forwards focus document identity through the transport", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "follow_up",
+    selected_text: "",
+    focus_document_id: "focus-1",
+    focus_project_path: "C:/作品",
+    messages: [
+      { role: "assistant", content: "首答" },
+      { role: "user", content: "当前问题" },
+    ],
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "follow_up",
+    question: "当前问题",
+    focusDocumentId: "focus-1",
+    focusProjectPath: "C:/作品",
   });
 });
 

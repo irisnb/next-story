@@ -54,6 +54,13 @@ test("buildAiWindowDom assembles a full contract from a window root by role", ()
   assert.ok(dom.followUpForm);
   assert.ok(dom.followUpInput);
   assert.ok(dom.directQuestionInput);
+  // 阶段五 A：切换关注文档与「本次参考了什么」节点纳入显式契约。
+  assert.ok(dom.focusSwitch);
+  assert.ok(dom.materialsToggle);
+  assert.ok(dom.materialsPanel);
+  assert.ok(dom.materialsBody);
+  assert.ok(dom.materialsClose);
+  assert.ok(dom.focusNotice);
 });
 
 test("buildAiWindowDom fails with the missing role identifier when a node is absent", () => {

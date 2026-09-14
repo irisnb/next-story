@@ -258,6 +258,11 @@ export async function aiSendMessage(
     documentVersion?: string;
     /** 未保存正文快照（`canonicalNotebookJson` 输出的合法 Tiptap JSON 字符串）。 */
     snapshot?: string;
+    /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
+    focusDocumentId?: string;
+    focusProjectPath?: string;
+    focusDocumentVersion?: string;
+    focusSnapshot?: string;
   } | InvokeFn = defaultInvoke,
   maybeCall: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
@@ -271,6 +276,10 @@ export async function aiSendMessage(
     if (identityOrCall.projectPath !== undefined) args.projectPath = identityOrCall.projectPath;
     if (identityOrCall.documentVersion !== undefined) args.documentVersion = identityOrCall.documentVersion;
     if (identityOrCall.snapshot !== undefined) args.snapshot = identityOrCall.snapshot;
+    if (identityOrCall.focusDocumentId !== undefined) args.focusDocumentId = identityOrCall.focusDocumentId;
+    if (identityOrCall.focusProjectPath !== undefined) args.focusProjectPath = identityOrCall.focusProjectPath;
+    if (identityOrCall.focusDocumentVersion !== undefined) args.focusDocumentVersion = identityOrCall.focusDocumentVersion;
+    if (identityOrCall.focusSnapshot !== undefined) args.focusSnapshot = identityOrCall.focusSnapshot;
   }
   return call<GenerateAiResult>("ai_send_message", args);
 }

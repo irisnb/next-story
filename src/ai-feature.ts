@@ -31,12 +31,16 @@ import {
   type AiSessionTransport,
 } from "./ai-session-transport.ts";
 import { loadLlmConfig } from "./project-api.ts";
+import { canonicalNotebookJson } from "./structured-notebook.ts";
+import { flattenDocuments } from "./content-tree.ts";
+import { isDocumentAiVisible } from "./types.ts";
 import {
   conversationDelete,
   conversationList,
   conversationRestore,
   conversationSave,
   generateConversationId,
+  roundProvenanceToMaterialProvenance,
   type ConversationRecord,
   type ConversationSummary,
 } from "./conversation-archive.ts";
@@ -189,6 +193,10 @@ interface AiFeatureWiring {
   readonly togglePin: (conversationId: string) => Promise<boolean>;
   readonly undoDelete: () => void;
   readonly getUndoNotice: () => { title: string } | null;
+  readonly switchFocusDocument: (conversationId: string, documentId: string, documentTitle: string) => void;
+  readonly getVisibleDocuments: () => ReadonlyArray<{ id: string; name: string }>;
+  readonly resolveDocumentTitle: (documentId: string) => string | null;
+  readonly isDocumentHidden: (documentId: string) => boolean;
 }
 
 function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
@@ -208,6 +216,10 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     togglePin,
     undoDelete,
     getUndoNotice,
+    switchFocusDocument,
+    getVisibleDocuments,
+    resolveDocumentTitle,
+    isDocumentHidden,
   } = wiring;
 
   return {
@@ -259,6 +271,10 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     onTogglePin: togglePin,
     onUndoDelete: undoDelete,
     getUndoNotice,
+    onSwitchFocusDocument: switchFocusDocument,
+    getVisibleDocuments,
+    resolveDocumentTitle,
+    isDocumentHidden,
   };
 }
 
@@ -330,6 +346,35 @@ export function setupAiFeature(
       hiddenDocumentIds: hiddenDocumentIds(),
     });
     state.openDiscussion(conversation, summary.focus_document_id, summary.focus_document_title);
+  }
+
+  /** 当前作品允许 AI 查看的文档（供「切换关注文档」选择器；隐藏与回收站文档不出现）。 */
+  function visibleDocuments(): Array<{ id: string; name: string }> {
+    const tree = getCurrentTree();
+    if (!tree) return [];
+    return flattenDocuments(tree)
+      .filter((node) => isDocumentAiVisible(node))
+      .map((node) => ({ id: node.id, name: node.name }));
+  }
+
+  /** 按文档 ID 解析当前作品中的文档标题；未知返回 null（显示层回退为「文档已不可用」）。 */
+  function resolveDocumentTitle(documentId: string): string | null {
+    const node = getCurrentTree()?.nodes[documentId];
+    return node && node.kind === "Document" ? node.name : null;
+  }
+
+  /**
+   * 显式切换某讨论的关注文档（任务 3.3）：查看其他文档不会自动改绑，只有本动作改绑；
+   * 从下一轮起生效，并立即持久化关注对象。受限讨论由状态层拒绝改绑。
+   */
+  function switchFocusDocument(
+    conversationId: string,
+    documentId: string,
+    documentTitle: string,
+  ): void {
+    if (state.setFocusDocument(conversationId, documentId, documentTitle)) {
+      persistDiscussion(conversationId);
+    }
   }
 
   // 删除撤销：删除立即生效，前端保留内存副本，提示期内可撤销（约 6 秒）。
@@ -442,9 +487,13 @@ export function setupAiFeature(
         applyGenerateError(state, snapshot, error, conversationId);
         persistDiscussion(conversationId);
       },
-      onStructuredSuccess: (content, identity) => {
+      onStructuredSuccess: (content, provenance, sentConfirmed, identity) => {
         waitTiming.complete(identity.conversationId);
         state.succeedFollowUp(identity.turnId ?? -1, content, identity.conversationId);
+        state.recordRoundProvenance(
+          identity.conversationId,
+          roundProvenanceToMaterialProvenance(provenance, identity.turnId ?? 0, sentConfirmed),
+        );
         persistDiscussion(identity.conversationId);
       },
       onStructuredError: (error, identity) => {
@@ -456,9 +505,13 @@ export function setupAiFeature(
         }
         persistDiscussion(identity.conversationId);
       },
-      onDirectQuestionSuccess: (content, conversationId) => {
+      onDirectQuestionSuccess: (content, provenance, sentConfirmed, conversationId) => {
         waitTiming.complete(conversationId);
         state.succeedDirectQuestion(content, conversationId);
+        state.recordRoundProvenance(
+          conversationId,
+          roundProvenanceToMaterialProvenance(provenance, 0, sentConfirmed),
+        );
         persistDiscussion(conversationId);
       },
       onDirectQuestionError: (error, conversationId) => {
@@ -523,10 +576,43 @@ export function setupAiFeature(
     return result;
   }
 
+  /**
+   * 为常规首轮 / 追问请求注入关注文档身份（阶段五 A：后端据此组装关注文档现场
+   * 材料 + 目录投影 + 跨文档检索）。及时召唤不注入（保持快车道）。
+   */
+  function withFocusDocumentIdentity(
+    request: GenerateAiRequest,
+    conversationId: string,
+  ): GenerateAiRequest {
+    if (request.kind === "summon") return request;
+    const discussion = state.getDiscussion(conversationId);
+    // 及时召唤讨论的追问保持快车道：不经过常规取材（任务 3.2 的隔离）。
+    if (discussion?.conversation?.initialUserMaterial.kind === "summon") return request;
+    const focusDocumentId = discussion?.focusDocumentId ?? null;
+    if (focusDocumentId === null) return request;
+    const focusProjectPath = getCurrentProjectPath();
+    // 仅当关注文档就是当前编辑器文档时，附带其未保存快照与版本身份（复用既有
+    // `bodySnapshot` / `documentVersion` 契约，版本即快照内容派生散列）；非当前
+    // 编辑器文档只用已保存正文，不传快照。
+    const currentEditorDocId = hooks.getCurrentDocumentId();
+    const editor = currentEditorDocId === focusDocumentId ? hooks.getCurrentEditor() : null;
+    const focusVersion = editor !== null ? (getCurrentDocumentVersion() ?? undefined) : undefined;
+    const focusSnapshot = editor !== null ? canonicalNotebookJson(editor.getDocument()) : undefined;
+    return {
+      ...request,
+      focus_document_id: focusDocumentId,
+      ...(focusProjectPath !== null ? { focus_project_path: focusProjectPath } : {}),
+      ...(focusVersion !== undefined && focusSnapshot !== undefined
+        ? { focus_document_version: focusVersion, focus_snapshot: focusSnapshot }
+        : {}),
+    };
+  }
+
   /** 经调度器发送结构化请求（追问 / 重试 / 编辑重发）。 */
   const requestStructured: StructuredRequestSender = (request, identity) => {
-    const result = scheduleTracked(identity.conversationId, request.kind, () =>
-      coordinator.requestStructured(request, identity),
+    const focused = withFocusDocumentIdentity(request, identity.conversationId);
+    const result = scheduleTracked(identity.conversationId, focused.kind, () =>
+      coordinator.requestStructured(focused, identity),
     );
     if (result === "busy") return null;
     if (result === "queued") state.queueRequest(identity.conversationId);
@@ -549,8 +635,9 @@ export function setupAiFeature(
 
   /** 经调度器发送直接提问（首轮 / 重试）。 */
   const requestDirectQuestion = (conversationId: string, request: GenerateAiRequest): Promise<void> | null => {
-    const result = scheduleTracked(conversationId, request.kind, () =>
-      coordinator.requestDirectQuestionFor(conversationId, request),
+    const focused = withFocusDocumentIdentity(request, conversationId);
+    const result = scheduleTracked(conversationId, focused.kind, () =>
+      coordinator.requestDirectQuestionFor(conversationId, focused),
     );
     if (result === "busy") return null;
     if (result === "queued") state.queueRequest(conversationId);
@@ -746,6 +833,10 @@ export function setupAiFeature(
     togglePin,
     undoDelete,
     getUndoNotice,
+    switchFocusDocument,
+    getVisibleDocuments: visibleDocuments,
+    resolveDocumentTitle,
+    isDocumentHidden: (documentId) => hiddenDocumentIds().has(documentId),
   }));
 
   function resetProjectScopedAi(): void {

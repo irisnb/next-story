@@ -137,7 +137,7 @@ async fn generate_with_dsh(
             &task,
             crate::dsh_driver::REQUEST_TIMEOUT,
         ) {
-            Ok(text) => text,
+            Ok(outcome) => outcome.text,
             Err(error) => {
                 let _ = manager.end_session(&session_id);
                 return Err(error);
@@ -272,8 +272,10 @@ pub async fn ai_send_message_in_dir(
     kind: AiMessageKind,
     question: String,
     material: Option<String>,
+    context: Option<String>,
 ) -> GenerateAiResult {
-    let text = match compose_message_text(kind, &question, material.as_deref()) {
+    let text = match compose_message_text(kind, &question, material.as_deref(), context.as_deref())
+    {
         Ok(text) => text,
         Err(error) => return GenerateAiResult::failure(error),
     };
@@ -294,7 +296,13 @@ pub async fn ai_send_message_in_dir(
     })
     .await;
     match result {
-        Ok(Ok(content)) => GenerateAiResult::success(content),
+        Ok(Ok(outcome)) => {
+            // 成功轮次携带 provider 发送回执：收到 message_sent 为 true，未收到为
+            // false（表示「未确认」，不是「未发送」）；失败轮次不附回执。
+            let mut result = GenerateAiResult::success(outcome.text);
+            result.sent_confirmed = Some(outcome.sent_confirmed);
+            result
+        }
         Ok(Err(error)) => GenerateAiResult::failure(error),
         Err(join_error) => GenerateAiResult::failure(GenerateAiError::new(
             GenerateAiErrorCode::Service,
@@ -602,23 +610,32 @@ fn summon_user_content(selected_text: &str) -> String {
 /// `material` 是已授权通过的选区材料内容（`authorize_selection` 校验后传入），
 /// 生成层只使用它，不回读原始 `selected_text`。
 ///
-/// - `First` / `FollowUp`：要求 question 非空（现状不变）。
-/// - `SummonFirst`：要求 `material` 非空，question 可空（前端传空字符串）。
+/// - `First` / `FollowUp`：要求 question 非空（现状不变）；`context` 为后端组装的
+///   关注文档现场材料 + 目录投影 + 检索片段（阶段五 A），非空时随本轮请求一起注入。
+/// - `SummonFirst`：要求 `material` 非空，question 可空（前端传空字符串）；
+///   及时召唤不经过常规取材，`context` 被忽略。
 fn compose_message_text(
     kind: AiMessageKind,
     question: &str,
     material: Option<&str>,
+    context: Option<&str>,
 ) -> Result<String, GenerateAiError> {
+    let context_block = context.map(str::trim).filter(|c| !c.is_empty());
     match kind {
         AiMessageKind::First => {
             if question.trim().is_empty() {
                 return Err(invalid_request());
             }
-            Ok(format!(
+            let mut text = format!(
                 "{}\n\n{}",
                 compose_system_prompt(PromptEntry::DirectQuestion),
                 direct_question_user_content(question, material)
-            ))
+            );
+            if let Some(ctx) = context_block {
+                text.push_str("\n\n");
+                text.push_str(ctx);
+            }
+            Ok(text)
         }
         AiMessageKind::SummonFirst => {
             let selection = material.unwrap_or("").trim();
@@ -635,7 +652,12 @@ fn compose_message_text(
             if question.trim().is_empty() {
                 return Err(invalid_request());
             }
-            Ok(question.to_string())
+            let mut text = question.to_string();
+            if let Some(ctx) = context_block {
+                text.push_str("\n\n");
+                text.push_str(ctx);
+            }
+            Ok(text)
         }
     }
 }
@@ -873,6 +895,7 @@ mod tests {
             AiMessageKind::SummonFirst,
             "",
             Some("林站在天台边，没有回头。"),
+            None,
         )
         .expect("summon first composes");
         assert!(
@@ -901,7 +924,7 @@ mod tests {
     #[test]
     fn summon_first_message_rejects_empty_selection() {
         for selection in [None, Some(""), Some("   \n  ")] {
-            let err = compose_message_text(AiMessageKind::SummonFirst, "", selection)
+            let err = compose_message_text(AiMessageKind::SummonFirst, "", selection, None)
                 .expect_err("empty selection rejected");
             assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
         }
@@ -934,20 +957,50 @@ mod tests {
     /// First / FollowUp 的校验规则保持现状：question 非空。
     #[test]
     fn first_and_follow_up_still_require_non_empty_question() {
-        let err = compose_message_text(AiMessageKind::First, "   ", Some("选区"))
+        let err = compose_message_text(AiMessageKind::First, "   ", Some("选区"), None)
             .expect_err("blank question rejected for First");
         assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
 
-        let err = compose_message_text(AiMessageKind::FollowUp, "", None)
+        let err = compose_message_text(AiMessageKind::FollowUp, "", None, None)
             .expect_err("blank question rejected for FollowUp");
         assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
 
-        let text = compose_message_text(AiMessageKind::First, "这个角色为什么犹豫？", None)
+        let text = compose_message_text(AiMessageKind::First, "这个角色为什么犹豫？", None, None)
             .expect("first composes");
         assert!(
             text.contains("当前请求提供用户直接提出的问题"),
             "First 必须使用直接提问入口层"
         );
         assert!(text.contains("用户问题：\n这个角色为什么犹豫？"));
+    }
+
+    /// 阶段五 A：常规 First / FollowUp 注入取材语境，及时召唤 SummonFirst 不注入。
+    #[test]
+    fn compose_message_text_injects_context_only_for_regular_entries() {
+        let ctx = Some("关注文档《设定》正文：\n林晓站在天台边。");
+
+        let first = compose_message_text(AiMessageKind::First, "这个角色为什么犹豫？", None, ctx)
+            .expect("first composes");
+        assert!(
+            first.contains("关注文档《设定》正文"),
+            "First 应注入取材语境"
+        );
+        assert!(first.contains("林晓站在天台边。"));
+
+        let follow_up = compose_message_text(AiMessageKind::FollowUp, "他为什么离开？", None, ctx)
+            .expect("follow up composes");
+        assert!(follow_up.contains("他为什么离开？"));
+        assert!(
+            follow_up.contains("关注文档《设定》正文"),
+            "FollowUp 应注入取材语境"
+        );
+
+        let summon =
+            compose_message_text(AiMessageKind::SummonFirst, "", Some("林站在天台边。"), ctx)
+                .expect("summon composes");
+        assert!(
+            !summon.contains("关注文档《设定》正文"),
+            "及时召唤不得注入常规取材语境"
+        );
     }
 }

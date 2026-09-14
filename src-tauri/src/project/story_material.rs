@@ -318,7 +318,7 @@ fn is_visible(tree: &ContentTree, id: &str) -> bool {
 }
 
 /// 内容派生的版本身份：FNV-1a 64 位散列的十六进制表示。内容变则版本变。
-fn compute_version(content: &str) -> String {
+pub(crate) fn compute_version(content: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in content.as_bytes() {
         hash ^= u64::from(*byte);

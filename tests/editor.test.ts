@@ -522,6 +522,42 @@ test("applyTree with the same document does not reset the AI project", async () 
   }
 });
 
+test("switching to another document does not reset the AI project", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("初稿"), "doc-2": notebookJson("第二章") });
+  try {
+    let begins = 0;
+    const ai: AiFeatureController = {
+      state: new AiPanelState(),
+      beginProject: () => { begins += 1; },
+      endProject: () => {},
+      submitFollowUp: () => Promise.resolve(false),
+      retryFollowUp: () => Promise.resolve(false),
+      editFollowUp: () => Promise.resolve(false),
+      getConversations: () => [],
+      openDiscussion: () => {},
+      deleteDiscussion: () => Promise.resolve(),
+      recomputeRestrictions: () => {},
+    };
+    fixture.editor.attachAi(ai);
+
+    await fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "文档一"), docNode("doc-2", "文档二")])));
+    assert.equal(begins, 1);
+
+    // 走真实用户路径：点击文档列表中的另一项切换文档
+    const list = fixture.ui.elements.get("document-list")!;
+    const docTwoItem = list.children.find((child) => child.textContent === "文档二");
+    assert.ok(docTwoItem, "文档列表应包含「文档二」项");
+    docTwoItem.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
+    assert.equal(begins, 1, "同作品内切换文档不应再次触发 beginProject（P0-3）");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
 test("creates a single editor for the current document without dirtying initialization", async () => {
   const fixture = editorFixture({
     "doc-1": notebookJson("初稿"),

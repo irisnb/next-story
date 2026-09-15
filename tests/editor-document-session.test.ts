@@ -21,6 +21,7 @@ test("session ignores a stale document load", async () => {
   let current: ProjectTreeState | null = project();
   const resolvers: Array<(value: string) => void> = [];
   let loaded = 0;
+  let projectLoads = 0;
   const session = createEditorDocumentSession({
     dom: { editorTextarea: {} as HTMLElement },
     readDocument: async () => new Promise((resolve) => resolvers.push(resolve)),
@@ -30,7 +31,7 @@ test("session ignores a stale document load", async () => {
     setProject: (value) => { current = value; },
     setDocumentId: () => {}, setEditor: () => {}, disposeEditor: () => {},
     setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
-    onLoaded: () => { loaded += 1; }, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
+    onDocumentLoaded: () => { loaded += 1; }, onProjectLoaded: () => { projectLoads += 1; }, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
     onTreeRefreshed: () => {},
     isDocumentInTree: () => true, firstDocument: () => ({ id: "doc-a" }), hasUnsavedChanges: () => false,
     confirmDiscard: () => true, clearRememberedDocument: () => {},
@@ -41,6 +42,7 @@ test("session ignores a stale document load", async () => {
   resolvers[1](canonicalNotebookJson(emptyNotebookDocument().document));
   await Promise.all([first, second]);
   assert.equal(loaded, 1);
+  assert.equal(projectLoads, 0, "loadDocument 不应触发作品级回调");
 });
 
 test("session applies deleted document fallback to empty state", () => {
@@ -54,7 +56,7 @@ test("session applies deleted document fallback to empty state", () => {
     getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
     setDocumentId: (value) => { documentId = value; }, setEditor: (value) => { editor = value; },
     disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
-    onLoaded: (_project, id) => { loadedId = id; }, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
+    onDocumentLoaded: (_project, id) => { loadedId = id; }, onProjectLoaded: () => {}, beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
     onTreeRefreshed: () => {},
     isDocumentInTree: () => false, firstDocument: () => null, hasUnsavedChanges: () => false,
     confirmDiscard: () => true, clearRememberedDocument: () => {},
@@ -77,7 +79,8 @@ test("applyTree with the same document refreshes the tree without a full load", 
     getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
     setDocumentId: (value) => { documentId = value; }, setEditor: () => {},
     disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
-    onLoaded: () => { loaded += 1; },
+    onDocumentLoaded: () => { loaded += 1; },
+    onProjectLoaded: () => { loaded += 1; },
     onTreeRefreshed: () => { refreshed += 1; },
     beforeLoadProject: () => {}, resolveDocumentId: () => "doc-a",
     isDocumentInTree: () => true, firstDocument: () => ({ id: "doc-a" }), hasUnsavedChanges: () => false,

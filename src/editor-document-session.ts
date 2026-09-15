@@ -24,7 +24,10 @@ export interface EditorDocumentSessionOptions {
   clearBaseline: () => void;
   onEdit: (editor: EditorDocumentSessionEditor) => () => void;
   onSelectionChange: (editor: EditorDocumentSessionEditor) => () => void;
-  onLoaded: (project: ProjectTreeState, documentId: string | null) => void;
+  /** 文档加载完成（同作品内切换文档、内容树回落换绑）：仅更新视图与文档记忆，MUST NOT 触发作品级 AI 生命周期。 */
+  onDocumentLoaded: (project: ProjectTreeState, documentId: string | null) => void;
+  /** 作品加载完成（打开/重开作品）：触发作品级 AI 生命周期初始化并更新视图。 */
+  onProjectLoaded: (project: ProjectTreeState, documentId: string | null) => void;
   /** 树刷新（当前作品与文档身份未变化）时调用，用于更新视图而不触发完整生命周期。 */
   onTreeRefreshed: (project: ProjectTreeState, documentId: string | null) => void;
   beforeLoadProject: (project: ProjectTreeState) => void;
@@ -80,7 +83,7 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
     options.setBaseline(document);
     options.onEdit(next);
     options.onSelectionChange(next);
-    options.onLoaded(project, documentId);
+    options.onDocumentLoaded(project, documentId);
   }
 
   async function showProject(project: ProjectTreeState): Promise<void> {
@@ -102,7 +105,7 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
       options.onEdit(next);
       options.onSelectionChange(next);
     }
-    options.onLoaded(project, documentId);
+    options.onProjectLoaded(project, documentId);
   }
 
   function applyTree(tree: ContentTree): void {
@@ -122,7 +125,7 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
         options.setDocumentId(null);
         options.setEditor(null);
         options.clearBaseline();
-        options.onLoaded(project, null);
+        options.onDocumentLoaded(project, null);
       }
       return;
     }

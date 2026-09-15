@@ -256,7 +256,13 @@ export function setupEditor(
       });
       return unsubscribeSelection;
     },
-    onLoaded: (project, documentId) => {
+    onDocumentLoaded: (project, documentId) => {
+      // 文档切换（含内容树回落换绑）：只更新视图与记忆，不触发作品级 AI 重置（P0-3 修复）。
+      if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
+      refreshEditorView(project);
+    },
+    onProjectLoaded: (project, documentId) => {
+      // 作品边界（打开/重开作品）：更新视图与记忆，并执行 AI 面板作品级初始化。
       if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
       aiFeature?.beginProject();
       refreshEditorView(project);

@@ -21,5 +21,5 @@
 
 - [x] 3.1 全量验证：`npm run test:frontend`（751 通过 0 失败，+5 为新竞态回归测试）+ `npm run typecheck` + `npm run lint` 全过
 - [x] 3.2 更新 `方向/全量地基审计-2026-09-14.md`：队列 5 行 ✅ 与 P0-4 危害边界修正记录；顺带补录 5b 行新情报（2.27.3 补丁版实测已修 + 新发现 HIGH 级 prosemirror-view 粘贴 XSS）
-- [ ] 3.3 提交推送，确认 CI 双平台绿灯
-- [ ] 3.4 归档 change（openspec archive，同步主 specs）
+- [x] 3.3 提交推送，确认 CI 双平台绿灯
+- [x] 3.4 归档 change（openspec archive，同步主 specs）

@@ -107,8 +107,8 @@ test("buildConversationGroups marks the active discussion and returns month sect
   const groups = buildConversationGroups(
     [
       summary({ conversation_id: "a", updated_at: new Date(NOW).toISOString() }),
-      summary({ conversation_id: "old1", updated_at: "2025-06-01T00:00:00+08:00" }),
-      summary({ conversation_id: "old2", updated_at: "2025-05-01T00:00:00+08:00" }),
+      summary({ conversation_id: "old1", updated_at: "2025-06-15T12:00:00+00:00" }),
+      summary({ conversation_id: "old2", updated_at: "2025-05-15T12:00:00+00:00" }),
     ],
     "a",
     NOW,

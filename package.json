@@ -28,7 +28,7 @@
     "@tiptap/extension-color": "2.27.2",
     "@tiptap/extension-document": "2.27.2",
     "@tiptap/extension-font-family": "2.27.2",
-    "@tiptap/extension-heading": "2.27.2",
+    "@tiptap/extension-heading": "3.31.3",
     "@tiptap/extension-highlight": "2.27.2",
     "@tiptap/extension-history": "2.27.2",
     "@tiptap/extension-italic": "2.27.2",

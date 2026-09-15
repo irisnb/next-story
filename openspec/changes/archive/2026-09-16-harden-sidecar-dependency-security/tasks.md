@@ -11,7 +11,7 @@
 - [x] 2.1 跑离线三层回归：`npm run test:driver`、`npm run test:reliability`、`npm run test:validation`，全部通过
 - [x] 2.2 真实链路 smoke：用已配置的智谱 `glm-5.3-flash` 完成一轮完整生成（重点观察 sharp 换版后原生模块加载无异常）
   - 验证记录（2026-09-16）：智谱端点（paas/v4，glm-5.3-flash 在可用名单）因钥匙持续 429 限流无法完成（该钥匙同时供 opencode 会话使用，配额撞满；codingpaas 端点对该钥匙整体 404）。改以 **DeepSeek 官方端点 `deepseek-flash` 完成**：12/12 全过（流式 delta、message_sent 回执恰一次且先于终态、多轮、replay、取消终态、干净退出、stderr 无 key 泄漏）。换包验证目标由此充分覆盖；智谱路径待配额恢复后可随时用 `sidecar/UPGRADING.md` 流程复跑。
-- [ ] 2.3 推送后确认 CI（双平台）保持绿灯
+- [x] 2.3 推送后确认 CI（双平台）保持绿灯
 
 ## 3. 升级路径文档
 
@@ -21,5 +21,5 @@
 
 ## 4. 收尾
 
-- [ ] 4.1 更新 `方向/全量地基审计-2026-09-14.md` 第八节 3c 行状态为已归档，并同步处理进度注记
-- [ ] 4.2 归档 change（openspec archive）
+- [x] 4.1 更新 `方向/全量地基审计-2026-09-14.md` 第八节 3c 行状态为已归档，并同步处理进度注记
+- [x] 4.2 归档 change（openspec archive）

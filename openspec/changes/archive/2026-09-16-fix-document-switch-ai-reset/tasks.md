@@ -16,5 +16,5 @@
 
 - [x] 3.1 全量验证：`npm run test:frontend`（746 通过 0 失败）+ `npm run typecheck` + `npm run lint` 全过
 - [x] 3.2 更新 `方向/全量地基审计-2026-09-14.md` 队列 4 行状态并同步进度注记（P0 清 4/5）
-- [ ] 3.3 提交推送，确认 CI 双平台绿灯
-- [ ] 3.4 归档 change（openspec archive，同步主 specs）
+- [x] 3.3 提交推送，确认 CI 双平台绿灯
+- [x] 3.4 归档 change（openspec archive，同步主 specs）

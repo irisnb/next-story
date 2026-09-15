@@ -296,11 +296,11 @@ pub(crate) fn migrate_project(
 }
 
 /// 从指定起始版本到目标版本逐级构建迁移链；缺步骤的版本直接拒绝。
-fn build_migration_chain<'a>(
-    migrations: &'a [MigrationStep],
+fn build_migration_chain(
+    migrations: &[MigrationStep],
     from_version: u32,
     target_version: u32,
-) -> Result<Vec<&'a MigrationStep>, ProjectError> {
+) -> Result<Vec<&MigrationStep>, ProjectError> {
     let mut chain: Vec<&MigrationStep> = Vec::new();
     let mut version = from_version;
     while version < target_version {

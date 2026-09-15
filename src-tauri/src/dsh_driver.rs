@@ -295,7 +295,9 @@ impl LiveProcess {
 /// 恢复式取锁：中毒后取出内部数据继续，杜绝 reader / 取消 / 退出路径连锁 panic
 /// （与 `project::ProjectLocks` 的既有恢复策略一致）。
 fn lock_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// 驱动进程代际标识：每次实际 spawn 单调递增。reader、等待表与进程句柄都
@@ -489,9 +491,7 @@ impl Inner {
             let mut startup = lock_recover(&runtime.startup);
             if startup.is_some() {
                 let signal = match &event {
-                    DriverEvent::Ready {
-                        protocol_version,
-                    } => StartupSignal::Ready {
+                    DriverEvent::Ready { protocol_version } => StartupSignal::Ready {
                         protocol_version: *protocol_version,
                     },
                     DriverEvent::Error { .. } => StartupSignal::DriverError,
@@ -699,7 +699,10 @@ impl DshDriverManager {
                     if reusable {
                         return Ok(());
                     }
-                    lifecycle.current.take().map(|generation| generation.process)
+                    lifecycle
+                        .current
+                        .take()
+                        .map(|generation| generation.process)
                 }
                 None => None,
             }
@@ -902,11 +905,9 @@ impl DshDriverManager {
         let runtime = self.current_runtime()?;
         let (_registration, rx) =
             runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
-        if let Err(e) = self.write_command(&DriverCommand::StartSession {
+        self.write_command(&DriverCommand::StartSession {
             session_id: session_id.to_string(),
-        }) {
-            return Err(e);
-        }
+        })?;
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::SessionStarted { .. }) => Ok(()),
             Ok(DriverEvent::Error { code, .. }) => Err(map_driver_failure(&code, "")),
@@ -937,9 +938,7 @@ impl DshDriverManager {
             message_id: message_id.to_string(),
             text: text.to_string(),
         };
-        if let Err(e) = self.write_command(&cmd) {
-            return Err(e);
-        }
+        self.write_command(&cmd)?;
         let mut sent_confirmed = false;
         let deadline = Instant::now() + timeout;
         loop {
@@ -1046,17 +1045,21 @@ impl DshDriverManager {
         let runtime = self.current_runtime()?;
         let (_registration, rx) =
             runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
-        if let Err(e) = self.write_command(&DriverCommand::ReplayDone {
+        self.write_command(&DriverCommand::ReplayDone {
             session_id: session_id.to_string(),
-        }) {
-            return Err(e);
-        }
+        })?;
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::ReplayOk { .. }) => Ok(()),
             Ok(DriverEvent::Error { code, .. }) => Err(map_driver_failure(&code, "")),
             Ok(_) => Err(service_error("恢复确认期间收到意外事件")),
             Err(_) => Err(timeout_error()),
         }
+    }
+}
+
+impl Default for DshDriverManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1557,8 +1560,10 @@ mod tests {
             panic!("故意中毒");
         });
         let _ = handle.join(); // 吞掉线程的 panic 负载
-        // 恢复式取锁：以下调用不得 panic（测试通过即为证明）。
-        manager.cancel_message("s1", "m1").expect("中毒后取消仍可用");
+                               // 恢复式取锁：以下调用不得 panic（测试通过即为证明）。
+        manager
+            .cancel_message("s1", "m1")
+            .expect("中毒后取消仍可用");
         manager.shutdown_best_effort();
     }
 
@@ -1579,7 +1584,9 @@ mod tests {
         manager.set_loss_sink(Arc::new(move || {
             counter_for_sink.fetch_add(1, Ordering::SeqCst);
         }));
-        manager.ensure_started(&params1, &paths1).expect("gen1 启动");
+        manager
+            .ensure_started(&params1, &paths1)
+            .expect("gen1 启动");
 
         let normal = "import readline from 'node:readline';\n\
              console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
@@ -1594,7 +1601,9 @@ mod tests {
         let mut params2 = params1.clone();
         params2.model = "m2".to_string();
         // 参数变化：退役 gen1（约 3 秒优雅超时后强杀）并拉起 gen2。
-        manager.ensure_started(&params2, &paths2).expect("gen2 启动");
+        manager
+            .ensure_started(&params2, &paths2)
+            .expect("gen2 启动");
 
         let outcome = manager
             .send_message_and_wait("s2", "m2", "问题", Duration::from_secs(15))
@@ -1654,7 +1663,7 @@ mod tests {
         assert_eq!(busy.code, GenerateAiErrorCode::ConversationBusy);
         assert_eq!(busy.message, "当前讨论已有生成中的请求，请稍候");
         assert_eq!(
-            serde_json::to_value(&busy.code).unwrap(),
+            serde_json::to_value(busy.code).unwrap(),
             serde_json::json!("conversation_busy")
         );
 
@@ -1662,9 +1671,12 @@ mod tests {
             .send_message_and_wait("s3", "m3", "第三路", Duration::from_secs(5))
             .expect_err("超限必须被拒");
         assert_eq!(over.code, GenerateAiErrorCode::CapacityExceeded);
-        assert_eq!(over.message, "已达同时生成上限，请等待进行中的生成完成后再试");
         assert_eq!(
-            serde_json::to_value(&over.code).unwrap(),
+            over.message,
+            "已达同时生成上限，请等待进行中的生成完成后再试"
+        );
+        assert_eq!(
+            serde_json::to_value(over.code).unwrap(),
             serde_json::json!("capacity_exceeded")
         );
 

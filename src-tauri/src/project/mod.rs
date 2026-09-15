@@ -16,9 +16,9 @@ pub use export::{
 };
 pub use notebook::*;
 pub use operations::{
-    create_document, create_folder, delete_node, move_node,
-    recover_then_read_content_tree, read_document, strict_read_content_tree,
-    rename_node, reorder_children, restore_node, save_document, set_document_ai_visibility,
+    create_document, create_folder, delete_node, move_node, read_document,
+    recover_then_read_content_tree, rename_node, reorder_children, restore_node, save_document,
+    set_document_ai_visibility, strict_read_content_tree,
 };
 // 讨论档案存储复用底层事务工具：有界读取 + 原子写入（tempfile + persist），
 // 不重复造事务框架（见 `conversation_store` 模块）。

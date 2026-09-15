@@ -264,6 +264,8 @@ pub async fn ai_start_session_in_dir(
 /// `material` 是命令层经 `authorize_selection` 授权通过的选区材料内容，
 /// 生成层只使用该授权内容，绝不回读前端请求中的原始 `selected_text` 字段；
 /// 无选区（直接提问 / 追问）时为 `None`。
+// 参数超限定点豁免：命令层入参直传，结构性收拢归审计 P2-1/P2-2（lib.rs 拆缝）处理。
+#[allow(clippy::too_many_arguments)]
 pub async fn ai_send_message_in_dir(
     base_dir: &Path,
     resource_dir: Option<&Path>,

@@ -1463,6 +1463,8 @@ async fn ai_start_session(
 /// 常驻会话：发送消息并等待终态；流式增量经 `ai-delta` 事件转发前端。
 /// 常规首轮 / 追问（`First` / `FollowUp`）在提供关注文档身份时，后端统一组装
 /// 关注文档现场材料 + 目录投影 + 跨文档检索片段随请求注入；及时召唤不经过常规取材。
+// 参数超限定点豁免：Tauri 命令入参与前端调用面一一对应，结构性收拢归审计 P2-1/P2-2 处理。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn ai_send_message(
     app: tauri::AppHandle,

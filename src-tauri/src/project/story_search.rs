@@ -214,7 +214,7 @@ fn find_hits(
     }
     let mut i = 0;
     while i + m <= n {
-        if &norm.chars[i..i + m] == &term_chars[..] {
+        if norm.chars[i..i + m] == term_chars[..] {
             let start_orig = norm.orig[i];
             let end_orig = norm.orig[i + m - 1] + 1;
             out.push((start_orig, end_orig, term_idx));
@@ -272,16 +272,17 @@ pub fn search_documents(
     }
 
     let mut snippets: Vec<SearchSnippet> = Vec::new();
-    let mut docs_visited = 0usize;
     let mut docs_limited = false;
     let mut snippets_limited = false;
 
-    for node in visible_documents(tree, focus_document_id) {
+    for (docs_visited, node) in visible_documents(tree, focus_document_id)
+        .into_iter()
+        .enumerate()
+    {
         if docs_visited >= MAX_RESULT_DOCS {
             docs_limited = true;
             break;
         }
-        docs_visited += 1;
 
         let content = match read_body(node) {
             Ok(content) => content,
@@ -544,15 +545,11 @@ pub(crate) fn assemble_round_context(
             content: content.to_string(),
         }),
     };
-    let focus = super::story_material::read_material_from_tree(
-        &work_id,
-        &tree,
-        &focus_request,
-        &|node| {
+    let focus =
+        super::story_material::read_material_from_tree(&work_id, &tree, &focus_request, &|node| {
             read_and_validate_notebook(&paths.document_file(&node.id), &node.name)
                 .map_err(|_| MaterialDenial::new(MaterialDenialReason::DocumentMissing))
-        },
-    )?;
+        })?;
 
     let directory = super::project_directory(&tree);
 
@@ -940,8 +937,8 @@ mod tests {
     #[test]
     fn assemble_round_context_rejects_hidden_focus_document() {
         use super::super::{
-            create_new_project, recover_then_read_content_tree, save_document, set_document_ai_visibility,
-            CreateProjectParams,
+            create_new_project, recover_then_read_content_tree, save_document,
+            set_document_ai_visibility, CreateProjectParams,
         };
         let temp = tempfile::TempDir::new().unwrap();
         let root = create_new_project(CreateProjectParams {
@@ -981,11 +978,11 @@ mod tests {
         save_document(&root, &doc_id, &notebook_with_text("林晓站在天台边。")).unwrap();
 
         let paths = ProjectPaths::new(root.clone());
-        let before: Vec<u8> = std::fs::read(&paths.document_file(&doc_id)).unwrap();
+        let before: Vec<u8> = std::fs::read(paths.document_file(&doc_id)).unwrap();
 
         let _ = search_project(&root, &doc_id, "林晓");
 
-        let after: Vec<u8> = std::fs::read(&paths.document_file(&doc_id)).unwrap();
+        let after: Vec<u8> = std::fs::read(paths.document_file(&doc_id)).unwrap();
         assert_eq!(before, after, "检索不得改写正文文件");
     }
 }

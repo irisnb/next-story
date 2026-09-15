@@ -1465,11 +1465,7 @@ mod tests {
 
     /// 递归快照：记录作品目录内全部相对文件路径与字节（含事务目录），用于零写入断言。
     fn snapshot_project_dir(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
-        fn walk(
-            dir: &Path,
-            prefix: String,
-            out: &mut std::collections::BTreeMap<String, Vec<u8>>,
-        ) {
+        fn walk(dir: &Path, prefix: String, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
             let entries = match fs::read_dir(dir) {
                 Ok(entries) => entries,
                 Err(_) => return,
@@ -1505,7 +1501,9 @@ mod tests {
         );
         assert!(result.is_err(), "注入中断必须返回错误");
         assert!(
-            TransactionLayout::new(&ProjectPaths::new(root.clone())).dir.exists(),
+            TransactionLayout::new(&ProjectPaths::new(root.clone()))
+                .dir
+                .exists(),
             "夹具必须留下待恢复事务目录"
         );
         root
@@ -1648,19 +1646,19 @@ mod tests {
             expected_version: None,
             snapshot: None,
         };
-        let denial = crate::project::read_material(&root, &request)
-            .expect_err("read_material 必须失败关闭");
+        let denial =
+            crate::project::read_material(&root, &request).expect_err("read_material 必须失败关闭");
         assert_eq!(
             denial.reason,
             crate::project::MaterialDenialReason::RecoveryRequired
         );
 
-        let error = crate::project::read_directory_projection(&root)
-            .expect_err("目录投影必须失败关闭");
+        let error =
+            crate::project::read_directory_projection(&root).expect_err("目录投影必须失败关闭");
         assert!(matches!(error, ProjectError::RecoveryRequired));
 
-        let denial = crate::project::search_project(&root, &doc_id, "林晓")
-            .expect_err("检索必须失败关闭");
+        let denial =
+            crate::project::search_project(&root, &doc_id, "林晓").expect_err("检索必须失败关闭");
         assert_eq!(
             denial.reason,
             crate::project::MaterialDenialReason::RecoveryRequired

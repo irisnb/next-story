@@ -370,7 +370,7 @@ fn validate_snapshot(
 mod tests {
     use super::*;
     use crate::project::{
-        create_new_project, recover_then_read_content_tree, read_document, save_document,
+        create_new_project, read_document, recover_then_read_content_tree, save_document,
         set_document_ai_visibility, ContentTree, ContentTreeNode, CreateProjectParams, NodeKind,
         ProjectPaths,
     };

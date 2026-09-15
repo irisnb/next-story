@@ -124,7 +124,7 @@ mod tests {
                 "{name}"
             );
             assert!(
-                !FORBIDDEN_TOOL_IDS.contains(&name),
+                !FORBIDDEN_TOOL_IDS.contains(name),
                 "只读工具不应出现在禁用清单: {name}"
             );
         }

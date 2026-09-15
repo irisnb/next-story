@@ -43,5 +43,5 @@ zip = "0.5"
 jetscii = { path = "vendor/jetscii-0.4.4-compat" }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 windows-core = "0.61"

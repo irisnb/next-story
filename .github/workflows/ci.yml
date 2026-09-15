@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
 
       # tauri.conf.json 把 ../sidecar/node-runtime 声明为打包资源，Tauri 构建脚本
       # 在任何 cargo 编译前都校验该路径存在。该运行时有意不入库（.gitignore），
@@ -25,6 +28,12 @@ jobs:
         run: |
           mkdir -p sidecar/node-runtime
           echo "CI placeholder; real runtime is vendored on the packaging machine." > sidecar/node-runtime/README.md
+
+      # tauri.conf.json 的另一样打包资源 ../sidecar/node_modules/ 不入库，
+      # 但有 sidecar/package-lock.json，按锁文件安装真实内容（DSH SDK）。
+      - name: Install sidecar dependencies
+        run: npm ci
+        working-directory: sidecar
 
       - name: Install frontend dependencies
         run: npm ci
@@ -73,12 +82,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
 
-      # 同 Linux 作业：CI 不打包安装包，用占位目录满足 Tauri 构建脚本的资源存在性校验。
+      # 同 Linux 作业：node-runtime 占位 + 按锁文件安装 sidecar 依赖。
       - name: Placeholder for vendored node runtime
         run: |
           New-Item -ItemType Directory -Force sidecar/node-runtime | Out-Null
           Set-Content sidecar/node-runtime/README.md "CI placeholder; real runtime is vendored on the packaging machine."
+
+      - name: Install sidecar dependencies
+        run: npm ci
+        working-directory: sidecar
 
       - name: Install frontend dependencies
         run: npm ci

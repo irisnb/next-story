@@ -25,7 +25,7 @@
 
 - [ ] 5.1 按 git-master 规范提交并推送（中文提交信息，分开逻辑提交：测试修复 / 格式化与 clippy / dependabot 配置）
 - [ ] 5.2 等待 CI 双平台结果：全绿则通过；若 Windows 再现 `jetscii` 依赖缓存错误，删除该仓库 Actions 的 rust-cache 缓存后重跑；出现新的失败项则按根因小步追修（仍属本 change 范围，目标即 CI 绿）
-- [ ] 5.3 （5.2 首轮发现）CI 两平台增加 `sidecar/node-runtime/` 占位目录步骤：Tauri 构建脚本校验资源路径存在，而 vendor 的 Node 运行时有意不入库（`.gitignore`）且 vendor 脚本仅支持 Windows；CI 不打包安装包，占位即可（见设计决策 6）
+- [ ] 5.3 （5.2 首轮发现）CI 两平台补齐 Tauri 资源前置：`sidecar/node-runtime/` 占位目录（运行时有意不入库且 vendor 脚本仅支持 Windows）；`sidecar/node_modules/` 按锁文件 `npm ci` 真实安装（DSH SDK）；`sidecar/driver/` 已在 git 无需处理（见设计决策 6）
 
 ## 6. 收尾
 

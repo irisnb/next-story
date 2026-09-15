@@ -37,7 +37,10 @@
 3. **Dependabot 策略**：`interval: monthly`；`ignore: update-types: ["version-update:semver-major"]`（npm 与 cargo 都配）；`groups` 按生态分组（development/npm 一组、cargo 一组）；`open-pull-requests-limit: 2`。理由：单人开发、版本已钉死，机器人只承担「小修补提醒」职责；大版本换代必须由用户主导，不自动递单。
 4. **旧 PR 一律关闭而非合并**：其中大版本单关闭后不会再递（新策略忽略 major）；小版本单关闭后 Dependabot 会在下个巡逻周期按新分组规则重新递出，无需手动保留。
 5. **jetscii 缓存问题按「再犯再治」处理**：推送观察；若 Windows 的 cargo 步骤再现 `jetscii` 源错误，删除该仓库 Actions 中 rust-cache 相关缓存（GitHub API/网页操作）后重跑。不预先清缓存（避免无谓丢弃有效编译缓存拖慢 CI）。
-6. **Tauri 资源占位（首次推送后发现的第三层失败）**：`tauri.conf.json` 把 `../sidecar/node-runtime`（vendor 的 Node 运行时，87 MB，有意按 `.gitignore` 不入库，由 Windows-only 的 `scripts/vendor-node.ps1` 按需下载）声明为打包资源；Tauri 构建脚本在任何 cargo 编译时都校验该路径存在，CI 全新检出里没有该目录导致两平台构建脚本失败。修法：两平台 CI 各加一步**创建带说明文件的占位目录** `sidecar/node-runtime/`——CI 只跑测试与检查、从不打包安装包，资源占位即可满足校验；真运行时仅在实际打包时由开发机 vendor 提供。不选「CI 跑 vendor 脚本」：脚本仅支持 Windows，且 87 MB 下载只为满足存在性校验，浪费。
+6. **Tauri 资源占位与 sidecar 依赖安装（首次推送后发现的第三层失败）**：`tauri.conf.json` 声明三个打包资源，CI 全新检出中缺其二，Tauri 构建脚本在任何 cargo 编译前校验路径存在，两平台构建脚本失败：
+   - `../sidecar/node-runtime/`（vendor 的 Node 运行时，87 MB，有意不入库，vendor 脚本仅支持 Windows）→ **CI 各作业创建带说明文件的占位目录**：CI 不打包安装包，占位满足存在性校验即可，真运行时由打包机 vendor。
+   - `../sidecar/node_modules/`（DSH SDK 依赖，不入库但有 `sidecar/package-lock.json`）→ **CI 各作业 `npm ci`（sidecar 目录）按锁文件安装**，并把 setup-node 的 npm 缓存依赖路径覆盖到两份锁文件；不做假占位——锁文件能给出真内容。
+   - `../sidecar/driver/`：已在 git 内，无需处理。
 
 ## Risks / Trade-offs
 

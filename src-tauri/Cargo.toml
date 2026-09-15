@@ -31,7 +31,7 @@ docx = "1.1.2"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # 测试中解包生成的 .docx（zip 容器）以校验内容；docx 依赖已引入同版本 zip。
-zip = "0.5"
+zip = "8.6"
 
 # docx 1.1.2 经 strong-xml 0.5.0 依赖 jetscii ^0.4.4；crates.io 上的 jetscii 0.4.4
 # 在 Rust ≥1.51 上因「generic parameters may not be used in const operations」无法

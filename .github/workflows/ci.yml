@@ -17,6 +17,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      # tauri.conf.json 把 ../sidecar/node-runtime 声明为打包资源，Tauri 构建脚本
+      # 在任何 cargo 编译前都校验该路径存在。该运行时有意不入库（.gitignore），
+      # 由 scripts/vendor-node.ps1 在打包机上按需下载（仅支持 Windows）。
+      # CI 只跑测试与检查、不打包安装包，用占位目录满足存在性校验即可。
+      - name: Placeholder for vendored node runtime
+        run: |
+          mkdir -p sidecar/node-runtime
+          echo "CI placeholder; real runtime is vendored on the packaging machine." > sidecar/node-runtime/README.md
+
       - name: Install frontend dependencies
         run: npm ci
 
@@ -64,6 +73,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # 同 Linux 作业：CI 不打包安装包，用占位目录满足 Tauri 构建脚本的资源存在性校验。
+      - name: Placeholder for vendored node runtime
+        run: |
+          New-Item -ItemType Directory -Force sidecar/node-runtime | Out-Null
+          Set-Content sidecar/node-runtime/README.md "CI placeholder; real runtime is vendored on the packaging machine."
 
       - name: Install frontend dependencies
         run: npm ci

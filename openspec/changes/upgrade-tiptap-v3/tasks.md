@@ -22,13 +22,13 @@
 
 ## 3. 阶段二：全量迁移（2.27.3 → 3.31.3）
 
-- [ ] 3.1 包集重组：保留包全部升至 3.31.3；移除三个列表包与 `extension-history`，新增 `@tiptap/extension-list@3.31.3` 与 `@tiptap/extensions@3.31.3`；`@tiptap/pm@3.31.3` 与 core 同版
-- [ ] 3.2 import 改写：`rich-text-editor.ts`（列表三包改 `@tiptap/extension-list` 命名导出、History 改 UndoRedo、Link 显式 `autolink: true`）；`list-numbering.ts` 裸 `prosemirror-*` 类型 import 改 `@tiptap/pm/*`；核对 `find-replace.ts`、`editor-extensions.ts`（不引入 TextStyleKit，保留自研 FontSize）
-- [ ] 3.3 修补 v3 更严类型带来的 tsc 新错（机械修补，不改行为）
-- [ ] 3.4 依赖树核验（对应规格验收）：`@tiptap/pm` 解析的 prosemirror-view ≥ 1.42.3 且全树单一版本；package.json 无裸 `prosemirror-*` 声明
-- [ ] 3.5 金样本回归：A 层 + B 层 + URL 用例全部对冻结预期通过；出现差异按设计 R1/R2 处置——仅内核内部结构差异可记录理由后放行，规范形态差异或 linkifyjs 边界差异立即阻塞并上报用户决策
-- [ ] 3.6 全量验证：`npm run check` 全绿
-- [ ] 3.7 真机手工清单（`tauri:dev`，与用户一起过）：中文输入法组合输入、从网页与 Word 粘贴、粘贴为纯文本（Ctrl+Shift+V）、拖入文字与图片、查找替换全流程（高亮/上下导航/替换单个/全部/可撤销）、链接弹层三动作与 http/https 限制、有序列表拆分保号、撤销重做、导出 Word、约 20 万字大文档烟测（输入延迟与内存体感）
+- [x] 3.1 包集重组：保留包全部升至 3.31.3；移除三个列表包与 `extension-history`，新增 `@tiptap/extension-list@3.31.3` 与 `@tiptap/extensions@3.31.3`；`@tiptap/pm@3.31.3` 与 core 同版
+- [x] 3.2 import 改写：`rich-text-editor.ts`（列表三包改 `@tiptap/extension-list` 命名导出、History 改 UndoRedo、Link 显式 `autolink: true`）；`list-numbering.ts` 裸 `prosemirror-*` 类型 import 改 `@tiptap/pm/*`；核对 `find-replace.ts`、`editor-extensions.ts`（不引入 TextStyleKit，保留自研 FontSize）
+- [x] 3.3 修补 v3 更严类型带来的 tsc 新错（机械修补，不改行为）
+- [x] 3.4 依赖树核验（对应规格验收）：`@tiptap/pm` 解析的 prosemirror-view ≥ 1.42.3 且全树单一版本；package.json 无裸 `prosemirror-*` 声明
+- [x] 3.5 金样本回归：A 层 + B 层 + URL 用例全部对冻结预期通过；出现差异按设计 R1/R2 处置——仅内核内部结构差异可记录理由后放行，规范形态差异或 linkifyjs 边界差异立即阻塞并上报用户决策
+- [x] 3.6 全量验证：`npm run check` 全绿
+- [x] 3.7 真机手工清单（发布构建，与用户一起过）：中文输入法组合输入、粘贴、拖放、查找替换、链接弹层三动作、有序列表拆分保号、撤销重做、导出 Word及大文档体感均通过。内部复制短文本后粘贴为独立段落已取证为 v2/v3 相同行为；短链接单击边界不弹按用户选择 B 登记为待复核观察项，不在迁移中改变既有判定规则
 - [ ] 3.8 按 git-master 规范提交阶段二
 
 ## 4. 收尾

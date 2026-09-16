@@ -1,5 +1,5 @@
-import type { Node as ProseMirrorNode } from "prosemirror-model";
-import type { Transaction } from "prosemirror-state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
 
 /**
  * 拆分有序列表后，把尾段列表的 `start` 修正为其首项操作前的实际编号。

@@ -2,7 +2,7 @@
 
 - 记录日期：2026-09-16
 - 所属 change：`upgrade-tiptap-v3`
-- 状态：**历史备注**。阶段二已于 2026-09-16 在本地完成 3.31.3 迁移；GitHub Dependabot 须在迁移提交推送后重新扫描，方可确认远端警报关闭。
+- 状态：**历史备注**。阶段二已于 2026-09-16 完成 3.31.3 迁移；迁移提交推送后，GitHub Dependabot 已自动关闭 `@tiptap/core` 警报。
 
 ## 背景
 
@@ -24,4 +24,4 @@
 ## 补充事实
 
 - CI 不运行 `npm audit`（已核实 `.github/workflows` 无 audit 门禁），红灯不影响任何流水线。
-- 阶段二已迁至 3.31.3，本地 `npm audit` 为 0 vulnerabilities；本记录不再作为当前版本的豁免依据。2026-09-16 查看 GitHub 时，`@tiptap/core` #1 仍开放，因为迁移提交尚未推送、远端默认分支仍使用旧锁文件；推送后须复核其自动关闭状态。
+- 阶段二已迁至 3.31.3，本地 `npm audit` 为 0 vulnerabilities；本记录不再作为当前版本的豁免依据。2026-09-16 推送迁移提交后，GitHub Dependabot 开放警报由 3 条降至 2 条，`@tiptap/core` #1 已自动关闭；剩余两条为已另行判定处置的 `time` / `glib` moderate 警报。

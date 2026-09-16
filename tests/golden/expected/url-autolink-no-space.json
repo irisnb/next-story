@@ -1,0 +1,14 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "参见 https://example.com/wiki 页面"
+        }
+      ]
+    }
+  ]
+}

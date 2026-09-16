@@ -1,0 +1,48 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "全格式叠加的字",
+          "marks": [
+            {
+              "type": "bold"
+            },
+            {
+              "type": "italic"
+            },
+            {
+              "type": "underline"
+            },
+            {
+              "type": "strike"
+            },
+            {
+              "type": "textStyle",
+              "attrs": {
+                "color": "#556b2f",
+                "fontFamily": "SimHei",
+                "fontSize": "20px"
+              }
+            },
+            {
+              "type": "highlight",
+              "attrs": {
+                "color": "#ffe066"
+              }
+            },
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/full"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

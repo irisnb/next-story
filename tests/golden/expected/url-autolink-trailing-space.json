@@ -1,0 +1,30 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "参见 "
+        },
+        {
+          "type": "text",
+          "text": "https://example.com/wiki",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/wiki"
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " "
+        }
+      ]
+    }
+  ]
+}

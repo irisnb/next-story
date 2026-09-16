@@ -1,0 +1,36 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "attrs": {
+        "textAlign": "center",
+        "lineHeight": "1.8",
+        "spacingBefore": "8px",
+        "spacingAfter": "12px",
+        "textIndent": "2em",
+        "indentLeft": "24px",
+        "indentRight": "16px"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "属性齐全的段落"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "textAlign": "justify",
+        "textIndent": "4em"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "只有部分属性的段落"
+        }
+      ]
+    }
+  ]
+}

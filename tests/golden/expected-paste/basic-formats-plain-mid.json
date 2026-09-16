@@ -1,0 +1,125 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "前半"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "章节标题"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "粗体",
+          "marks": [
+            {
+              "type": "bold"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "斜体",
+          "marks": [
+            {
+              "type": "italic"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "下划线",
+          "marks": [
+            {
+              "type": "underline"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "删除线",
+          "marks": [
+            {
+              "type": "strike"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "红字",
+          "marks": [
+            {
+              "type": "textStyle",
+              "attrs": {
+                "color": "#cc0000"
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "与"
+        },
+        {
+          "type": "text",
+          "text": "高亮字",
+          "marks": [
+            {
+              "type": "highlight",
+              "attrs": {
+                "color": "#fff3b0"
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "以及"
+        },
+        {
+          "type": "text",
+          "text": "参考链接",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/ref"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "后半"
+        }
+      ]
+    }
+  ]
+}

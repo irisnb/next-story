@@ -1,0 +1,24 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "暗红宋体二十二的字",
+          "marks": [
+            {
+              "type": "textStyle",
+              "attrs": {
+                "color": "#8b0000",
+                "fontFamily": "SimSun",
+                "fontSize": "22px"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

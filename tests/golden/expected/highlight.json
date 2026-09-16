@@ -1,0 +1,22 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "重点句子",
+          "marks": [
+            {
+              "type": "highlight",
+              "attrs": {
+                "color": "#fff3b0"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

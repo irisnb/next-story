@@ -1,0 +1,38 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "开头的链接",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/head"
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "中间的普通文字"
+        },
+        {
+          "type": "text",
+          "text": "结尾的链接",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/tail"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

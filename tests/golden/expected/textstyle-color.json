@@ -1,0 +1,22 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "深蓝色的字",
+          "marks": [
+            {
+              "type": "textStyle",
+              "attrs": {
+                "color": "#3366cc"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -8,17 +8,17 @@
 - [x] 1.2 安装依赖，审阅 package-lock.json 差异，确认除 @tiptap 区块外无无关依赖被顺手抬升
 - [x] 1.3 全量验证：`npm run check` 全绿（typecheck / lint / 前端测试 / 可靠性 / 驱动 / 构建 / Rust）
 - [x] 1.4 写告警豁免记录（两洞编号、2.27.3 已含代码级修复的源码比对证据、告警库未收录说明），并提示用户在 GitHub 按记录处置两条 Dependabot 警报
-- [ ] 1.5 按 git-master 规范提交阶段一
+- [x] 1.5 按 git-master 规范提交阶段一
 
 ## 2. 冻结点：金样本基础设施（仍在 2.27.3 上）
 
-- [ ] 2.1 devDependencies 增加 happy-dom（仅测试用，不进生产依赖）
-- [ ] 2.2 建 A 层语料：覆盖格式版本 2 grammar 全部结构与边界的合成文档集——全部块类型、六级标题、全部 marks（含 textStyle 三属性组合）、段落属性全集、嵌套列表、有序列表非 1 起始、空文档、首尾与连续空段落、链接在文本边界、相邻异格式文本、中文与 emoji 内容；全部为合成内容
-- [ ] 2.3 建 A 层测试：headless Editor（`element: null`）装载 → `getJSON` → `canonicalDoc`，与冻结预期逐字节相等且通过 grammar 校验；冻结预期文件由当前 v2 管线生成
-- [ ] 2.4 建 B 层粘贴样本：成对 (html, text/plain) 样本覆盖代表性路径（格式映射、嵌套列表重建、表格降级、br 拆分、整次拒绝路径），`parseHtmlToBlocks` 注入 happy-dom 的真实 DOMParser
-- [ ] 2.5 建 B 层测试：`decidePasteAction` → `insertContent` 注入代表性位置（空文档、同格式段落中部、异格式边界、列表项内）→ `canonicalDoc` 与冻结预期相等；冻结预期由当前 v2 管线生成
-- [ ] 2.6 建 URL/autolink 用例：事务插入 URL 文本后断言链接 mark 范围，冻结 v2 预期
-- [ ] 2.7 全量验证全绿，按 git-master 规范提交冻结点（语料 + 测试 + 冻结预期文件）
+- [x] 2.1 devDependencies 增加 happy-dom（仅测试用，不进生产依赖）
+- [x] 2.2 建 A 层语料：覆盖格式版本 2 grammar 全部结构与边界的合成文档集——全部块类型、六级标题、全部 marks（含 textStyle 三属性组合）、段落属性全集、嵌套列表、有序列表非 1 起始、空文档、首尾与连续空段落、链接在文本边界、相邻异格式文本、中文与 emoji 内容；全部为合成内容
+- [x] 2.3 建 A 层测试：headless Editor（`element: null`）装载 → `getJSON` → `canonicalDoc`，与冻结预期逐字节相等且通过 grammar 校验；冻结预期文件由当前 v2 管线生成
+- [x] 2.4 建 B 层粘贴样本：成对 (html, text/plain) 样本覆盖代表性路径（格式映射、嵌套列表重建、表格降级、br 拆分、整次拒绝路径），`parseHtmlToBlocks` 注入 happy-dom 的真实 DOMParser
+- [x] 2.5 建 B 层测试：`decidePasteAction` → `insertContent` 注入代表性位置（空文档、同格式段落中部、异格式边界、列表项内）→ `canonicalDoc` 与冻结预期相等；冻结预期由当前 v2 管线生成
+- [x] 2.6 建 URL/autolink 用例：事务插入 URL 文本后断言链接 mark 范围，冻结 v2 预期
+- [x] 2.7 全量验证全绿，按 git-master 规范提交冻结点（语料 + 测试 + 冻结预期文件）
 
 ## 3. 阶段二：全量迁移（2.27.3 → 3.31.3）
 

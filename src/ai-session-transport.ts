@@ -67,6 +67,7 @@ export interface AiSessionTransport {
   onStreamText(listener: (event: StreamTextEvent) => void): () => void;
   onDriverLost(listener: () => void): () => void;
   installSessionEventRouting(): void;
+  destroySessionEventRouting(): void;
 }
 
 function defaultNewId(): string {
@@ -132,7 +133,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly inFlightByConversation: Map<string, StreamTarget> = new Map();
   private readonly streamListeners: Array<(event: StreamTextEvent) => void> = [];
   private readonly driverLostListeners: Array<() => void> = [];
-  private eventRoutingInstalled = false;
+  private eventRoutingGeneration = 0;
+  private eventRoutingCleanup: Array<() => void> | null = null;
 
   constructor(dependencies: ResidentSessionDependencies = {}) {
     this.deps = {
@@ -267,10 +269,21 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     origin: AiReplayOrigin,
   ): Promise<void> {
     const sessionId = this.deps.newId();
-    await this.deps.startSession(sessionId);
-    await this.deps.replayHistory(sessionId, [...turns], origin);
-    await this.deps.replayDone(sessionId);
-    this.sessions.set(conversationId, sessionId);
+    const startResult = await this.deps.startSession(sessionId);
+    if (!startResult.ok) throw new Error(startResult.error.message);
+
+    try {
+      const replayResult = await this.deps.replayHistory(sessionId, [...turns], origin);
+      if (!replayResult.ok) throw new Error(replayResult.error.message);
+
+      const doneResult = await this.deps.replayDone(sessionId);
+      if (!doneResult.ok) throw new Error(doneResult.error.message);
+
+      this.sessions.set(conversationId, sessionId);
+    } catch (error: unknown) {
+      void this.deps.endSession(sessionId).catch(() => {});
+      throw error;
+    }
   }
 
   /** 订阅流式增量事件（仅匹配当前在途消息的增量会到达），返回退订函数。 */
@@ -291,11 +304,21 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     };
   }
 
-  /** 安装 Tauri 事件路由（幂等，只装一次）：ai-delta 按在途消息过滤转发。 */
+  /** 安装 Tauri 事件路由（当前生命周期内幂等）：ai-delta 按在途消息过滤转发。 */
   installSessionEventRouting(): void {
-    if (this.eventRoutingInstalled) return;
-    this.eventRoutingInstalled = true;
+    if (this.eventRoutingCleanup !== null) return;
+    const generation = ++this.eventRoutingGeneration;
+    const cleanup: Array<() => void> = [];
+    this.eventRoutingCleanup = cleanup;
+    const retainUnlisten = (unlisten: () => void): void => {
+      if (this.eventRoutingCleanup !== cleanup || generation !== this.eventRoutingGeneration) {
+        unlisten();
+        return;
+      }
+      cleanup.push(unlisten);
+    };
     void this.deps.listenDelta((payload) => {
+      if (generation !== this.eventRoutingGeneration) return;
       const stream = this.currentStreams.get(payload.message_id);
       if (stream === undefined) return;
       if (payload.session_id !== stream.sessionId || payload.message_id !== stream.messageId) {
@@ -308,12 +331,22 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           text: payload.text,
         });
       }
-    });
+    }).then(retainUnlisten).catch(() => {});
     void this.deps.listenDriverLost(() => {
+      if (generation !== this.eventRoutingGeneration) return;
       // 驱动进程丢失：所有会话失效，清空会话映射。
       this.sessions.clear();
       for (const listener of this.driverLostListeners) listener();
-    });
+    }).then(retainUnlisten).catch(() => {});
+  }
+
+  /** 销毁当前 Tauri 事件路由；可重复调用，之后允许重新安装。 */
+  destroySessionEventRouting(): void {
+    const cleanup = this.eventRoutingCleanup;
+    if (cleanup === null) return;
+    this.eventRoutingCleanup = null;
+    this.eventRoutingGeneration += 1;
+    for (const unlisten of cleanup.splice(0)) unlisten();
   }
 }
 

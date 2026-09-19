@@ -80,6 +80,7 @@ function focusHarness(options: {
     onStreamText: () => () => {},
     onDriverLost: () => () => {},
     installSessionEventRouting: () => {},
+    destroySessionEventRouting: () => {},
   };
 
   const controller = setupAiFeature({

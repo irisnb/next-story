@@ -49,6 +49,7 @@ function selectionAuthHarness(options: {
     onStreamText: () => () => {},
     onDriverLost: () => () => {},
     installSessionEventRouting: () => {},
+    destroySessionEventRouting: () => {},
   };
 
   const state: {

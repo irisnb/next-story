@@ -48,6 +48,7 @@ interface PersistenceHarness {
 function persistenceHarness(overrides: {
   readonly results?: readonly GenerateAiResult[];
   readonly failSave?: boolean;
+  readonly replayError?: Error;
   readonly list?: { conversations: ConversationSummary[]; skipped: string[] };
   readonly getHiddenDocumentIds?: () => ReadonlySet<string>;
 } = {}): PersistenceHarness {
@@ -74,6 +75,7 @@ function persistenceHarness(overrides: {
     endAllSessions: () => { endSessionCalls += 1; },
     replaySession: (conversationId) => {
       replayCalls.push(conversationId);
+      if (overrides.replayError) return Promise.reject(overrides.replayError);
       return Promise.resolve();
     },
     onStreamText: () => () => {},
@@ -82,6 +84,7 @@ function persistenceHarness(overrides: {
       return () => {};
     },
     installSessionEventRouting: () => {},
+    destroySessionEventRouting: () => {},
   };
 
   const listResult = overrides.list ?? { conversations: [], skipped: [] };
@@ -420,6 +423,36 @@ test("5.8 driverLost recovery replays a no-material direct question", () => {
     ui.fireDriverLost();
 
     assert.deepEqual(ui.replayCalls, ["c-10"], "无材料直接提问应可恢复重放");
+  } finally {
+    ui.restore();
+  }
+});
+
+test("5.8a replay transport failure enters recovery error instead of completing recovery", async () => {
+  const ui = persistenceHarness({ replayError: new Error("历史重放失败") });
+  try {
+    ui.controller.openDiscussion({
+      conversation_id: "c-11",
+      title: "问题",
+      created_at: "t0",
+      updated_at: "t0",
+      last_status: "done",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
+      turns: [{ role: "assistant", text: "回答", status: "done" }],
+      provenance: [],
+    });
+
+    ui.fireDriverLost();
+    await flush();
+
+    assert.deepEqual(ui.replayCalls, ["c-11"]);
+    const request = ui.controller.state.getDiscussion("c-11")?.request;
+    assert.equal(request?.kind, "error");
+    if (request?.kind === "error") {
+      assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
+    }
   } finally {
     ui.restore();
   }

@@ -153,6 +153,7 @@ export interface AiFeatureController {
   deleteDiscussion(conversationId: string): Promise<void>;
   /** 权限变更后重算已打开讨论的材料限制并锁存（任务 5.2/5.4）。 */
   recomputeRestrictions(): void;
+  destroy(): void;
 }
 
 export interface AiFeatureDependencies {
@@ -306,6 +307,7 @@ export function setupAiFeature(
   // 集成点：后端可见性 API 未接入时返回空集（无受限）；就绪后注入真实实现。
   const getHiddenDocumentIds = dependencies.getHiddenDocumentIds ?? (() => new Set<string>());
   const hiddenDocumentIds = (): ReadonlySet<string> => getHiddenDocumentIds();
+  let destroyed = false;
 
   /** 保存指定讨论：接受即存（pending），终态原子更新；失败对用户可见。 */
   function persistDiscussion(conversationId: string | null): void {
@@ -319,10 +321,10 @@ export function setupAiFeature(
     const token = projectToken;
     void saveConversation(projectPath, record)
       .then(() => {
-        if (projectToken === token) state.clearSaveError();
+        if (!destroyed && projectToken === token) state.clearSaveError();
       })
       .catch(() => {
-        if (projectToken === token) state.setSaveError("讨论保存失败，本次内容可能未落盘");
+        if (!destroyed && projectToken === token) state.setSaveError("讨论保存失败，本次内容可能未落盘");
       });
   }
 
@@ -402,9 +404,11 @@ export function setupAiFeature(
       await restoreConversation(projectPath, conversationId);
       await saveConversation(projectPath, summaryToRecord(summary));
     } catch {
+      if (destroyed) return;
       state.setSaveError("撤销删除失败");
       return;
     }
+    if (destroyed) return;
     loadDiscussions();
   }
 
@@ -419,9 +423,11 @@ export function setupAiFeature(
     try {
       await deleteConversation(projectPath, conversationId);
     } catch {
+      if (destroyed) return;
       state.setSaveError("删除讨论失败");
       return;
     }
+    if (destroyed) return;
     if (summary) {
       clearUndo();
       const timer = setTimeout(() => { pendingUndo = null; }, UNDO_TIMEOUT_MS);
@@ -458,14 +464,14 @@ export function setupAiFeature(
     const token = projectToken;
     void listConversations(projectPath)
       .then((result) => {
-        if (projectToken !== token) return;
+        if (destroyed || projectToken !== token) return;
         state.loadDiscussions(result.conversations, result.skipped, hiddenDocumentIds());
         if (result.skipped.length > 0) {
           state.setSaveError(`有 ${result.skipped.length} 个讨论档案无法读取，已跳过`);
         }
       })
       .catch(() => {
-        if (projectToken !== token) return;
+        if (destroyed || projectToken !== token) return;
         state.setSaveError("读取讨论列表失败");
       });
   }
@@ -765,19 +771,22 @@ export function setupAiFeature(
 
   // 面板打开期间，编辑器选区变化会同步为待附带的重点材料（替换旧选区或清除）。
   const editorEventTypes = ["mouseup", "keyup", "select", "click", "input", "scroll"] as const;
+  const handleEditorSelectionEvent = (): void => {
+    if (!destroyed && state.isOpen) syncPendingSelection();
+  };
   for (const eventType of editorEventTypes) {
-    dom.editorTextarea.addEventListener(eventType, () => {
-      if (state.isOpen) syncPendingSelection();
-    });
+    dom.editorTextarea.addEventListener(eventType, handleEditorSelectionEvent);
   }
 
   // 常驻会话事件路由：流式增量按讨论身份推进对应讨论状态；驱动丢失进入恢复流程。
   transport.installSessionEventRouting();
-  transport.onStreamText(({ conversationId, text }) => {
+  const unsubscribeStreamText = transport.onStreamText(({ conversationId, text }) => {
+    if (destroyed) return;
     waitTiming.firstResponse(conversationId);
     state.appendStreamText(conversationId, text);
   });
-  transport.onDriverLost(() => {
+  const unsubscribeDriverLost = transport.onDriverLost(() => {
+    if (destroyed) return;
     // 驱动进程丢失：所有会话失效，在途请求作废；对每个打开窗口的讨论执行重放恢复。
     coordinator.releaseStaleRequestOwnership();
     const recoverable = [...state.windows.keys()].filter((id) => {
@@ -803,21 +812,25 @@ export function setupAiFeature(
         originOf(discussion.conversation!),
       )
         .then(() => {
+          if (destroyed) return;
           state.completeRecovery(conversationId);
         })
         .catch(() => {
+          if (destroyed) return;
           state.failRecovery(conversationId);
         });
     }
   });
 
   // 编辑器头「AI 面板」按钮：切换停靠区展开/收起。
-  dom.btnToggleAi.addEventListener("click", () => {
+  const handleToggleAi = (): void => {
+    if (destroyed) return;
     if (state.isOpen) state.close();
     else state.open();
-  });
+  };
+  dom.btnToggleAi.addEventListener("click", handleToggleAi);
 
-  setupAiDock(dom.aiDock, state, buildAiDockActions({
+  const aiDock = setupAiDock(dom.aiDock, state, buildAiDockActions({
     state,
     openConfigPage: hooks.openConfigPage,
     requestStructured,
@@ -848,13 +861,35 @@ export function setupAiFeature(
     state.reset();
   }
 
+  function destroy(): void {
+    if (destroyed) return;
+    destroyed = true;
+    projectToken += 1;
+    clearUndo();
+    scheduler.cancelAllQueued();
+    coordinator.releaseStaleRequestOwnership();
+    transport.endAllSessions();
+    selectionEntry.destroy();
+    aiDock.destroy();
+    for (const eventType of editorEventTypes) {
+      dom.editorTextarea.removeEventListener(eventType, handleEditorSelectionEvent);
+    }
+    dom.btnToggleAi.removeEventListener("click", handleToggleAi);
+    unsubscribeStreamText();
+    unsubscribeDriverLost();
+    transport.destroySessionEventRouting();
+    state.reset();
+  }
+
   return {
     state,
     beginProject(): void {
+      if (destroyed) return;
       resetProjectScopedAi();
       loadDiscussions();
     },
     endProject(): void {
+      if (destroyed) return;
       resetProjectScopedAi();
     },
     submitFollowUp(question: string): Promise<boolean> {
@@ -872,5 +907,6 @@ export function setupAiFeature(
     openDiscussion,
     deleteDiscussion,
     recomputeRestrictions,
+    destroy,
   };
 }

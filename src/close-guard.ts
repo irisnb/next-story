@@ -13,6 +13,27 @@ export interface CloseGuard {
   guardLeave(): Promise<boolean>;
 }
 
+export interface ApplicationDestroyOptions {
+  destroyAi(): void;
+  destroyEditor(): void;
+  destroyWindow(): Promise<void>;
+}
+
+export function createApplicationDestroyer(
+  options: ApplicationDestroyOptions,
+): () => Promise<void> {
+  let pending: Promise<void> | null = null;
+  return (): Promise<void> => {
+    if (pending) return pending;
+    pending = (async () => {
+      options.destroyAi();
+      options.destroyEditor();
+      await options.destroyWindow();
+    })();
+    return pending;
+  };
+}
+
 export function composeCloseGuards(guards: readonly CloseGuard[]): CloseGuard {
   return {
     isDirty(): boolean {
@@ -32,10 +53,8 @@ export function composeCloseGuards(guards: readonly CloseGuard[]): CloseGuard {
 export async function orchestrateCloseRequest(
   options: CloseRequestOptions,
 ): Promise<CloseRequestResult> {
-  if (!options.isDirty()) return "allow-default";
-
   options.preventDefault();
-  if (!await options.guardLeave()) return "kept-open";
+  if (options.isDirty() && !await options.guardLeave()) return "kept-open";
 
   try {
     await options.destroy();
@@ -68,12 +87,9 @@ export class CloseCoordinator {
     }
 
     const result = orchestrateCloseRequest({ ...this.options, preventDefault });
-    if (this.options.isDirty()) {
-      this.pending = result.finally(() => {
-        this.pending = null;
-      });
-      return this.pending;
-    }
-    return result;
+    this.pending = result.finally(() => {
+      this.pending = null;
+    });
+    return this.pending;
   }
 }

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { guardLeave, LeaveCoordinator, type LeaveChoice } from "../src/leave-guard.ts";
-import { CloseCoordinator, composeCloseGuards, orchestrateCloseRequest } from "../src/close-guard.ts";
+import {
+  CloseCoordinator,
+  composeCloseGuards,
+  createApplicationDestroyer,
+  orchestrateCloseRequest,
+} from "../src/close-guard.ts";
 import { EditorSaveState } from "../src/editor-save-state.ts";
 
 function deferredSave(): {
@@ -181,6 +186,36 @@ for (const choice of ["save-and-leave", "discard-and-leave"] as const) {
   });
 }
 
+test("clean native close prevents default and runs frontend cleanup before window destroy", async () => {
+  const calls: string[] = [];
+  const result = await orchestrateCloseRequest({
+    isDirty: () => false,
+    preventDefault: () => { calls.push("prevent-default"); },
+    guardLeave: async () => { calls.push("guard"); return true; },
+    destroy: async () => {
+      calls.push("destroy-ai");
+      calls.push("destroy-editor");
+      calls.push("destroy-window");
+    },
+  });
+
+  assert.equal(result, "closed");
+  assert.deepEqual(calls, ["prevent-default", "destroy-ai", "destroy-editor", "destroy-window"]);
+});
+
+test("application destroyer releases AI and editor before the native window exactly once", async () => {
+  const calls: string[] = [];
+  const destroy = createApplicationDestroyer({
+    destroyAi: () => { calls.push("ai"); },
+    destroyEditor: () => { calls.push("editor"); },
+    destroyWindow: async () => { calls.push("window"); },
+  });
+
+  await destroy();
+  await destroy();
+  assert.deepEqual(calls, ["ai", "editor", "window"]);
+});
+
 test("cancelled or failed native close stays open without destroying the window", async () => {
   let destroys = 0;
   const result = await orchestrateCloseRequest({
@@ -266,6 +301,24 @@ test("duplicate native close requests share one confirmation and destroy exactly
   const second = close.run(() => {});
   assert.equal(first, second);
   resolveLeave(true);
+  assert.equal(await first, "closed");
+  assert.equal(destroys, 1);
+});
+
+test("duplicate clean native close requests share one cleanup and destroy", async () => {
+  let resolveDestroy!: () => void;
+  const destroying = new Promise<void>((resolve) => { resolveDestroy = resolve; });
+  let destroys = 0;
+  const close = new CloseCoordinator({
+    isDirty: () => false,
+    guardLeave: async () => true,
+    destroy: async () => { destroys += 1; await destroying; },
+  });
+
+  const first = close.run(() => {});
+  const second = close.run(() => {});
+  assert.equal(first, second);
+  resolveDestroy();
   assert.equal(await first, "closed");
   assert.equal(destroys, 1);
 });

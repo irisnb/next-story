@@ -20,10 +20,17 @@ interface TransportHarness {
   driverLostHandlers: (() => void)[];
   ids: string[];
   failNextCommand(failure: unknown): void;
+  failBusinessCommand(command: string, message: string): void;
 }
 
 function okResult(content = "思考"): GenerateAiResult {
   return { ok: true, content };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
 function harness(overrides: Partial<ResidentSessionDependencies> = {}): TransportHarness {
@@ -33,6 +40,14 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
   const ids = ["session-1", "session-2", "session-3"];
   let idIndex = 0;
   let failure: unknown = null;
+  const businessFailures = new Map<string, string>();
+
+  function commandResult(command: string): GenerateAiResult {
+    const message = businessFailures.get(command);
+    return message === undefined
+      ? okResult()
+      : { ok: false, error: { code: "service", message } };
+  }
 
   const listen: ListenFn = <T,>(event: string, handler: (event: { payload: T }) => void) => {
     if (event === "ai-delta") {
@@ -47,7 +62,7 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
     startSession: (sessionId) => {
       commands.push({ cmd: "ai_start_session", args: { sessionId } });
       if (failure !== null) return Promise.reject(failure);
-      return Promise.resolve(okResult());
+      return Promise.resolve(commandResult("ai_start_session"));
     },
     sendMessage: (sessionId, messageId, kind, question, selectedText, identityOrCall) => {
       const args: Record<string, unknown> = { sessionId, messageId, kind, question };
@@ -74,17 +89,17 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
     endSession: (sessionId) => {
       commands.push({ cmd: "ai_end_session", args: { sessionId } });
       if (failure !== null) return Promise.reject(failure);
-      return Promise.resolve(okResult());
+      return Promise.resolve(commandResult("ai_end_session"));
     },
     replayHistory: (sessionId, turns, origin) => {
       commands.push({ cmd: "ai_replay_history", args: { sessionId, turns, origin } });
       if (failure !== null) return Promise.reject(failure);
-      return Promise.resolve(okResult());
+      return Promise.resolve(commandResult("ai_replay_history"));
     },
     replayDone: (sessionId) => {
       commands.push({ cmd: "ai_replay_done", args: { sessionId } });
       if (failure !== null) return Promise.reject(failure);
-      return Promise.resolve(okResult());
+      return Promise.resolve(commandResult("ai_replay_done"));
     },
     listenDelta: (handler, listenFn = listen) =>
       listenFn<AiDeltaPayload>("ai-delta", (event) => handler(event.payload)),
@@ -105,6 +120,10 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
     driverLostHandlers,
     ids,
     failNextCommand: (err) => { failure = err; },
+    failBusinessCommand: (command, message) => {
+      if (message === "") businessFailures.delete(command);
+      else businessFailures.set(command, message);
+    },
   };
 }
 
@@ -457,6 +476,66 @@ test("replaySession starts a new session, replays turns with origin, and marks d
   assert.equal(send.args.sessionId, "session-1");
 });
 
+test("replaySession rejects a start business failure without replaying or registering the session", async () => {
+  const ui = harness();
+  ui.failBusinessCommand("ai_start_session", "启动失败");
+
+  await assert.rejects(
+    ui.transport.replaySession("c-1", [], "direct_question"),
+    /启动失败/,
+  );
+  assert.deepEqual(ui.commands.map((entry) => entry.cmd), ["ai_start_session"]);
+
+  ui.failBusinessCommand("ai_start_session", "");
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("重新开始"));
+  const starts = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+  assert.equal(starts.length, 2);
+  assert.equal(starts[1].args.sessionId, "session-2");
+});
+
+test("replaySession rejects a history business failure and ends the partial session", async () => {
+  const ui = harness();
+  ui.failBusinessCommand("ai_replay_history", "历史重放失败");
+
+  await assert.rejects(
+    ui.transport.replaySession("c-1", [], "direct_question"),
+    /历史重放失败/,
+  );
+  assert.deepEqual(ui.commands.map((entry) => entry.cmd), [
+    "ai_start_session",
+    "ai_replay_history",
+    "ai_end_session",
+  ]);
+
+  ui.failBusinessCommand("ai_replay_history", "");
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("重新开始"));
+  const starts = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+  assert.equal(starts.length, 2);
+  assert.equal(starts[1].args.sessionId, "session-2");
+});
+
+test("replaySession rejects a done business failure and ends the partial session", async () => {
+  const ui = harness();
+  ui.failBusinessCommand("ai_replay_done", "重放完成失败");
+
+  await assert.rejects(
+    ui.transport.replaySession("c-1", [], "direct_question"),
+    /重放完成失败/,
+  );
+  assert.deepEqual(ui.commands.map((entry) => entry.cmd), [
+    "ai_start_session",
+    "ai_replay_history",
+    "ai_replay_done",
+    "ai_end_session",
+  ]);
+
+  ui.failBusinessCommand("ai_replay_done", "");
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("重新开始"));
+  const starts = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+  assert.equal(starts.length, 2);
+  assert.equal(starts[1].args.sessionId, "session-2");
+});
+
 test("stream text routes only deltas matching the in-flight message", async () => {
   const ui = harness();
   const received: string[] = [];
@@ -534,6 +613,78 @@ test("installSessionEventRouting is idempotent and installs each listener once",
 
   assert.equal(ui.deltaHandlers.length, 1);
   assert.equal(ui.driverLostHandlers.length, 1);
+});
+
+test("destroySessionEventRouting unlistens both completed registrations and is idempotent", async () => {
+  let deltaUnlistens = 0;
+  let lostUnlistens = 0;
+  const ui = harness({
+    listenDelta: () => Promise.resolve(() => { deltaUnlistens += 1; }),
+    listenDriverLost: () => Promise.resolve(() => { lostUnlistens += 1; }),
+  });
+
+  ui.transport.installSessionEventRouting();
+  await Promise.resolve();
+  ui.transport.destroySessionEventRouting();
+  ui.transport.destroySessionEventRouting();
+
+  assert.equal(deltaUnlistens, 1);
+  assert.equal(lostUnlistens, 1);
+});
+
+test("destroySessionEventRouting before registration completes unlistens late registrations", async () => {
+  const delta = deferred<UnlistenFn>();
+  const lost = deferred<UnlistenFn>();
+  let deltaUnlistens = 0;
+  let lostUnlistens = 0;
+  const ui = harness({
+    listenDelta: () => delta.promise,
+    listenDriverLost: () => lost.promise,
+  });
+
+  ui.transport.installSessionEventRouting();
+  ui.transport.destroySessionEventRouting();
+  delta.resolve(() => { deltaUnlistens += 1; });
+  lost.resolve(() => { lostUnlistens += 1; });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(deltaUnlistens, 1);
+  assert.equal(lostUnlistens, 1);
+});
+
+test("event routing can reinstall after destroy without accepting late callbacks from the old cycle", async () => {
+  const deltaHandlers: Array<(payload: AiDeltaPayload) => void> = [];
+  const lostHandlers: Array<() => void> = [];
+  const unlistens: number[] = [];
+  const ui = harness({
+    listenDelta: (handler) => {
+      deltaHandlers.push(handler);
+      const cycle = deltaHandlers.length;
+      return Promise.resolve(() => { unlistens.push(cycle); });
+    },
+    listenDriverLost: (handler) => {
+      lostHandlers.push(handler);
+      const cycle = lostHandlers.length;
+      return Promise.resolve(() => { unlistens.push(cycle + 10); });
+    },
+  });
+  let lostCalls = 0;
+  ui.transport.onDriverLost(() => { lostCalls += 1; });
+
+  ui.transport.installSessionEventRouting();
+  await Promise.resolve();
+  ui.transport.destroySessionEventRouting();
+  ui.transport.installSessionEventRouting();
+  await Promise.resolve();
+
+  assert.equal(deltaHandlers.length, 2);
+  assert.equal(lostHandlers.length, 2);
+  assert.deepEqual(unlistens.sort((a, b) => a - b), [1, 11]);
+  lostHandlers[0]();
+  assert.equal(lostCalls, 0, "旧安装周期的迟到回调不得传播");
+  lostHandlers[1]();
+  assert.equal(lostCalls, 1);
 });
 
 test("cancelMessage sends ai_cancel_message for the in-flight message of the conversation", async () => {

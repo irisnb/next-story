@@ -194,6 +194,7 @@ export function setupAiDock(
   let menu: HTMLElement | null = null;
   let sideBySidePair: [string, string] | null = null;
   let snapGuide: HTMLElement | null = null;
+  let destroyed = false;
 
   function buildWindowActions(conversationId: string): AiWindowActions {
     return {
@@ -738,9 +739,10 @@ export function setupAiDock(
     }
   }
 
-  document.addEventListener("pointerdown", (event) => {
+  const handleDocumentPointerDown = (event: PointerEvent): void => {
     if (menu && !menu.contains(event.target as Node)) closeMenu();
-  });
+  };
+  document.addEventListener("pointerdown", handleDocumentPointerDown);
 
   // ===== 会话列表（第 9 组重做：分组 / 相对时间 / 重命名 / 置顶 / 删除撤销 / 过滤） =====
   function conversationSummaryById(conversationId: string): ConversationSummary | undefined {
@@ -1074,49 +1076,75 @@ export function setupAiDock(
     layoutSideBySide();
   }
 
-  dom.listToggleBtn.addEventListener("click", () => {
+  const handleListToggle = (): void => {
     conversationListOpen = !conversationListOpen;
     if (!conversationListOpen) {
       pendingDeleteId = null;
       renamingId = null;
     }
     renderConversationList();
-  });
-  dom.conversationListCloseBtn.addEventListener("click", () => {
+  };
+  const handleConversationListClose = (): void => {
     conversationListOpen = false;
     pendingDeleteId = null;
     renamingId = null;
     renderConversationList();
-  });
-  dom.listNewConversationBtn.addEventListener("click", () => {
+  };
+  const handleListNewConversation = (): void => {
     conversationListOpen = false;
     renderConversationList();
     actions.onNewConversation();
-  });
-  dom.searchInput.addEventListener("input", () => {
+  };
+  const handleSearchInput = (): void => {
     listFilter = dom.searchInput.value;
     renderConversationList();
-  });
-  dom.newConversationBtn.addEventListener("click", () => actions.onNewConversation());
-  dom.moreBtn.addEventListener("click", (event) => {
+  };
+  const handleNewConversation = (): void => actions.onNewConversation();
+  const handleMore = (event: MouseEvent): void => {
     event.stopPropagation();
     openDockMenu(dom.moreBtn);
-  });
-  dom.collapseBtn.addEventListener("click", () => state.close());
-  dom.railNewBtn.addEventListener("click", () => { state.open(); actions.onNewConversation(); });
-  dom.railListBtn.addEventListener("click", () => { state.open(); conversationListOpen = true; renderConversationList(); });
-  dom.railMoreBtn.addEventListener("click", (event) => {
+  };
+  const handleCollapse = (): void => state.close();
+  const handleRailNew = (): void => { state.open(); actions.onNewConversation(); };
+  const handleRailList = (): void => { state.open(); conversationListOpen = true; renderConversationList(); };
+  const handleRailMore = (event: MouseEvent): void => {
     event.stopPropagation();
     openDockMenu(dom.railMoreBtn);
-  });
-  dom.railExpandBtn.addEventListener("click", () => state.open());
+  };
+  const handleRailExpand = (): void => state.open();
+
+  dom.listToggleBtn.addEventListener("click", handleListToggle);
+  dom.conversationListCloseBtn.addEventListener("click", handleConversationListClose);
+  dom.listNewConversationBtn.addEventListener("click", handleListNewConversation);
+  dom.searchInput.addEventListener("input", handleSearchInput);
+  dom.newConversationBtn.addEventListener("click", handleNewConversation);
+  dom.moreBtn.addEventListener("click", handleMore);
+  dom.collapseBtn.addEventListener("click", handleCollapse);
+  dom.railNewBtn.addEventListener("click", handleRailNew);
+  dom.railListBtn.addEventListener("click", handleRailList);
+  dom.railMoreBtn.addEventListener("click", handleRailMore);
+  dom.railExpandBtn.addEventListener("click", handleRailExpand);
 
   const unsubscribe = state.subscribe(sync);
   sync();
 
   return {
     destroy(): void {
+      if (destroyed) return;
+      destroyed = true;
       unsubscribe();
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      dom.listToggleBtn.removeEventListener("click", handleListToggle);
+      dom.conversationListCloseBtn.removeEventListener("click", handleConversationListClose);
+      dom.listNewConversationBtn.removeEventListener("click", handleListNewConversation);
+      dom.searchInput.removeEventListener("input", handleSearchInput);
+      dom.newConversationBtn.removeEventListener("click", handleNewConversation);
+      dom.moreBtn.removeEventListener("click", handleMore);
+      dom.collapseBtn.removeEventListener("click", handleCollapse);
+      dom.railNewBtn.removeEventListener("click", handleRailNew);
+      dom.railListBtn.removeEventListener("click", handleRailList);
+      dom.railMoreBtn.removeEventListener("click", handleRailMore);
+      dom.railExpandBtn.removeEventListener("click", handleRailExpand);
       for (const [id] of windows) destroyWindow(id);
       closeMenu();
       hideSnapGuide();

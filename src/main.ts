@@ -1,6 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import { CloseCoordinator, composeCloseGuards } from "./close-guard";
+import {
+  CloseCoordinator,
+  composeCloseGuards,
+  createApplicationDestroyer,
+} from "./close-guard";
 import { getAppDom } from "./dom";
 import { setupEditor } from "./editor";
 import { setupExportWord } from "./export-word";
@@ -137,10 +141,15 @@ window.addEventListener("DOMContentLoaded", () => {
     { isDirty: editor.hasUnsavedChanges, guardLeave: editor.guardLeave },
     { isDirty: llmConfig.hasUnsavedChanges, guardLeave: llmConfig.guardLeave },
   ]);
+  const destroyApplication = createApplicationDestroyer({
+    destroyAi: () => ai?.destroy(),
+    destroyEditor: () => editor.destroy(),
+    destroyWindow: () => appWindow.destroy(),
+  });
   const close = new CloseCoordinator({
     isDirty: closeGuard.isDirty,
     guardLeave: closeGuard.guardLeave,
-    destroy: () => appWindow.destroy(),
+    destroy: destroyApplication,
     reportError: reportCloseError,
   });
   void appWindow.onCloseRequested(async (event) => {

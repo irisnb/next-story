@@ -273,9 +273,7 @@ export function setupEditor(
       refreshEditorView(project);
     },
     beforeLoadProject: (_project) => {
-      setupFindModule();
-      setupToolbarModule();
-      setupLinkPopover();
+      setupEditorInteractionModules();
     },
     resolveDocumentId: (project) => {
       const resolved = resolveCurrentDocument(
@@ -440,6 +438,13 @@ export function setupEditor(
     });
   }
 
+  function setupEditorInteractionModules(): void {
+    setupFindModule();
+    setupToolbarModule();
+    setupLinkPopover();
+    setupInteractionModules();
+  }
+
   document.addEventListener("mousedown", (event) => {
     if (!dom.linkPopover.classList.contains("hidden") && !dom.linkPopover.contains(event.target as Node)) linkPopover?.hide();
     if (!dom.documentList.classList.contains("hidden") && !dom.documentList.contains(event.target as Node) && !dom.currentDocToggle.contains(event.target as Node)) documentView.closeList();
@@ -447,10 +452,7 @@ export function setupEditor(
   document.addEventListener("scroll", () => { contextMenu?.close(); linkPopover?.hide(); }, true);
 
   // 初始接线：首个作品打开前查找栏、工具栏等交互模块即可用（与旧行为一致）。
-  setupFindModule();
-  setupToolbarModule();
-  setupLinkPopover();
-  setupInteractionModules();
+  setupEditorInteractionModules();
 
   return {
     showProject,

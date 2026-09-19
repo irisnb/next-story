@@ -99,6 +99,17 @@ export class FakeElement {
     this.listeners.set(type, listeners);
   }
 
+  removeEventListener(type: string, listener: Listener): void {
+    const listeners = this.listeners.get(type);
+    if (!listeners) return;
+    const index = listeners.indexOf(listener);
+    if (index !== -1) listeners.splice(index, 1);
+  }
+
+  listenerCount(type: string): number {
+    return this.listeners.get(type)?.length ?? 0;
+  }
+
   dispatch(
     type: string,
     options: { key?: string; shiftKey?: boolean; isComposing?: boolean; clientX?: number; clientY?: number; button?: number; pointerId?: number; target?: unknown } = {},

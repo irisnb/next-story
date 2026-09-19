@@ -85,8 +85,12 @@ class FakeElement {
     if (index >= 0) listeners.splice(index, 1);
   }
 
-  dispatch(type: string): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) listener();
+  dispatch(type: string, event?: unknown): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener(event);
+  }
+
+  listenerCount(type: string): number {
+    return this.listeners.get(type)?.length ?? 0;
   }
 
   setAttribute(name: string, value: string): void {
@@ -272,6 +276,10 @@ function fakeDom(): {
       listeners.push(listener);
       documentListeners.set(type, listeners);
     },
+    removeEventListener: (type: string, listener: Listener) => {
+      const listeners = documentListeners.get(type) ?? [];
+      documentListeners.set(type, listeners.filter((current) => current !== listener));
+    },
     getElementById: (id: string) => elements.get(id) ?? null,
     createElement: () => new FakeElement(),
   } as unknown as Document;
@@ -427,6 +435,7 @@ interface Fixture {
   editors: FakeRichTextEditor[];
   contents: Map<string, string>;
   saved: Map<string, string>;
+  saveCalls: string[];
   memory: StorageLike;
 }
 
@@ -438,6 +447,7 @@ function editorFixture(
   const editors: FakeRichTextEditor[] = [];
   const contents = new Map<string, string>(Object.entries(initialContents));
   const saved = new Map<string, string>();
+  const saveCalls: string[] = [];
   const memory = memoryStorageFixture();
   const leaveDialog: LeaveDialogController = { choose: async () => "cancel" };
   const editor = setupEditor(ui.dom, leaveDialog, {
@@ -452,13 +462,14 @@ function editorFixture(
       return content;
     },
     saveDocument: async (_projectPath, documentId, content) => {
+      saveCalls.push(documentId);
       saved.set(documentId, content);
       contents.set(documentId, content);
     },
     memoryStorage: memory,
     ...extra,
   });
-  return { ui, editor, editors, contents, saved, memory };
+  return { ui, editor, editors, contents, saved, saveCalls, memory };
 }
 
 test("showProject begins the AI project and unload ends it", async () => {
@@ -477,6 +488,7 @@ test("showProject begins the AI project and unload ends it", async () => {
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      destroy: () => {},
     };
     fixture.editor.attachAi(ai);
 
@@ -507,6 +519,7 @@ test("applyTree with the same document does not reset the AI project", async () 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      destroy: () => {},
     };
     fixture.editor.attachAi(ai);
 
@@ -537,6 +550,7 @@ test("switching to another document does not reset the AI project", async () => 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      destroy: () => {},
     };
     fixture.editor.attachAi(ai);
 
@@ -820,6 +834,48 @@ test("editor surface Cmd+S still saves", async () => {
     await flushUntil(() => fixture.editor.hasUnsavedChanges() === false);
     assert.equal(fixture.saved.get("doc-1"), notebookJsonCurrent("新稿"));
   } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("unload then showProject restores one keyboard and context-menu listener", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("旧稿") });
+  const previousWindow = globalThis.window;
+  globalThis.window = { innerWidth: 1024, innerHeight: 768 } as Window & typeof globalThis;
+  try {
+    const project = projectState("作品", treeFrom([docNode("doc-1", "未命名文档")]));
+    await fixture.editor.showProject(project);
+    fixture.editor.unload();
+    await fixture.editor.showProject(project);
+
+    fixture.editors[fixture.editors.length - 1]?.edit(paragraphDoc("重开稿"));
+    const save = dispatchDocumentKeydown(fixture.ui.documentListeners, {
+      key: "s",
+      ctrlKey: true,
+      target: fixture.ui.dom.editorTextarea,
+    });
+    assert.equal(save.defaultPrevented, true, "重开作品后 Ctrl+S 应恢复");
+    await flushUntil(() => fixture.editor.hasUnsavedChanges() === false);
+    assert.deepEqual(fixture.saveCalls, ["doc-1"], "一次快捷键只保存一次");
+
+    const editorRoot = fixture.ui.elements.get("editor-textarea")!;
+    const contextMenu = fixture.ui.elements.get("context-menu")!;
+    contextMenu.classList.add("hidden");
+    let contextPrevented = 0;
+    editorRoot.dispatch("contextmenu", {
+      clientX: 10,
+      clientY: 20,
+      preventDefault: () => { contextPrevented += 1; },
+    });
+    assert.equal(contextPrevented, 1, "重开作品后右键菜单应恢复且只处理一次");
+    assert.equal(contextMenu.classList.contains("hidden"), false);
+
+    fixture.editor.unload();
+    await fixture.editor.showProject(project);
+    assert.equal(fixture.ui.documentListeners.get("keydown")?.length, 1, "重复重开不叠加快捷键监听");
+    assert.equal(editorRoot.listenerCount("contextmenu"), 1, "重复重开不叠加右键菜单监听");
+  } finally {
+    globalThis.window = previousWindow;
     fixture.ui.restore();
   }
 });

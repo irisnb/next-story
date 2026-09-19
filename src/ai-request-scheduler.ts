@@ -71,6 +71,11 @@ export class AiRequestScheduler {
     return true;
   }
 
+  /** 销毁上层控制器时丢弃全部尚未派发的请求。 */
+  cancelAllQueued(): void {
+    this.queue.length = 0;
+  }
+
   private start(request: ScheduledRequest): void {
     this.active.add(request.conversationId);
     let promise: Promise<void> | null;

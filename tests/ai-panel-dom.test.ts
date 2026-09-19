@@ -183,11 +183,25 @@ function featureHarness(results: GenerateAiResultSource[]): {
   elements: Map<string, FakeElement>;
   windowRoots: FakeElement[];
   requests: GenerateAiRequest[];
+  transportLifecycle: {
+    emitStream(conversationId: string, text: string): void;
+    emitDriverLost(): void;
+    readonly streamUnsubscribes: number;
+    readonly driverUnsubscribes: number;
+    readonly routeDestroys: number;
+    readonly endAllCalls: number;
+  };
   restore(): void;
 } {
   const env = installAiFeatureEnvironment();
   const requests: GenerateAiRequest[] = [];
   const remaining = [...results];
+  let streamListener: Parameters<AiSessionTransport["onStreamText"]>[0] | null = null;
+  let driverLostListener: Parameters<AiSessionTransport["onDriverLost"]>[0] | null = null;
+  let streamUnsubscribes = 0;
+  let driverUnsubscribes = 0;
+  let routeDestroys = 0;
+  let endAllCalls = 0;
   const transport: AiSessionTransport = {
     sendViaResidentSession: (_conversationId, request) => {
       requests.push(request);
@@ -197,11 +211,18 @@ function featureHarness(results: GenerateAiResultSource[]): {
     },
     cancelMessage: () => {},
     endSession: () => {},
-    endAllSessions: () => {},
+    endAllSessions: () => { endAllCalls += 1; },
     replaySession: () => Promise.resolve(),
-    onStreamText: () => () => {},
-    onDriverLost: () => () => {},
+    onStreamText: (listener) => {
+      streamListener = listener;
+      return () => { streamUnsubscribes += 1; };
+    },
+    onDriverLost: (listener) => {
+      driverLostListener = listener;
+      return () => { driverUnsubscribes += 1; };
+    },
     installSessionEventRouting: () => {},
+    destroySessionEventRouting: () => { routeDestroys += 1; },
   };
   const controller = setupAiFeature({
     aiDock: env.dom,
@@ -220,6 +241,14 @@ function featureHarness(results: GenerateAiResultSource[]): {
     elements: env.elements,
     windowRoots: env.windowRoots,
     requests,
+    transportLifecycle: {
+      emitStream: (conversationId, text) => streamListener?.({ conversationId, messageId: "late-message", text }),
+      emitDriverLost: () => driverLostListener?.(),
+      get streamUnsubscribes() { return streamUnsubscribes; },
+      get driverUnsubscribes() { return driverUnsubscribes; },
+      get routeDestroys() { return routeDestroys; },
+      get endAllCalls() { return endAllCalls; },
+    },
     restore: () => env.restore(),
   };
 }
@@ -313,6 +342,46 @@ test("project lifecycle reset clears windows and discussions", async () => {
     submitDirectQuestion(ui, "新作品问题");
     await flushAiFeatureFlow();
     assert.deepEqual(conversationText(ui.windowRoots[1]), ["新作品问题", "新作品回答"]);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("AI feature destroy releases owned resources once and ignores late work", async () => {
+  const pending = deferredGenerateResult();
+  const ui = featureHarness([pending.promise]);
+  try {
+    submitDirectQuestion(ui, "销毁前的问题");
+    await flushAiFeatureFlow();
+    const conversationId = ui.controller.state.activeConversationId!;
+    const editor = ui.elements.get("editor-textarea")!;
+    const toggle = ui.elements.get("btn-toggle-ai")!;
+    assert.equal(editor.listenerCount("mouseup"), 1);
+    assert.equal(toggle.listenerCount("click"), 1);
+    assert.equal(ui.windowRoots[0].parentElement !== null, true);
+
+    ui.controller.destroy();
+    const stateAfterDestroy = ui.controller.state.view;
+    assert.equal(editor.listenerCount("mouseup"), 0, "编辑器监听被移除");
+    assert.equal(toggle.listenerCount("click"), 0, "面板按钮监听被移除");
+    assert.equal(ui.elements.get("ai-new-conversation")!.listenerCount("click"), 0, "停靠区常驻监听被移除");
+    assert.equal(ui.windowRoots[0].parentElement, null, "AI 面板控制器销毁窗口和状态订阅");
+    assert.equal(ui.transportLifecycle.streamUnsubscribes, 1);
+    assert.equal(ui.transportLifecycle.driverUnsubscribes, 1);
+    assert.equal(ui.transportLifecycle.routeDestroys, 1);
+    assert.equal(ui.transportLifecycle.endAllCalls, 1);
+
+    ui.transportLifecycle.emitStream(conversationId, "迟到流式文本");
+    ui.transportLifecycle.emitDriverLost();
+    pending.resolve({ ok: true, content: "迟到终态" });
+    await flushAiFeatureFlow();
+    assert.deepEqual(ui.controller.state.view, stateAfterDestroy, "迟到事件和请求结果不得再写状态");
+
+    ui.controller.destroy();
+    assert.equal(ui.transportLifecycle.streamUnsubscribes, 1, "重复销毁不重复退订");
+    assert.equal(ui.transportLifecycle.driverUnsubscribes, 1);
+    assert.equal(ui.transportLifecycle.routeDestroys, 1);
+    assert.equal(ui.transportLifecycle.endAllCalls, 1);
   } finally {
     ui.restore();
   }

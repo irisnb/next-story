@@ -36,7 +36,8 @@ import {
   type AiReplayTurn,
   type AiSessionTransport,
 } from "./ai-session-transport.ts";
-import { loadLlmConfig, aiResolveReadingRequest } from "./project-api.ts";
+import { loadLlmConfig, aiResolveReadingRequest, exportWaitTimingJson, waitTimingFileName } from "./project-api.ts";
+import type { WaitTimingExportOutcome } from "./ai-dock.ts";
 import { flattenDocuments } from "./content-tree.ts";
 import { isDocumentAiVisible } from "./types.ts";
 import {
@@ -143,6 +144,8 @@ export interface AiFeatureDependencies {
    * 不引入任何受限行为（旧档案缺出处的保守受限仍生效）。
    */
   getHiddenDocumentIds?: () => ReadonlySet<string>;
+  /** 等待计时导出（app-real-chain-validation 任务 1.4）：保存对话框 + 落盘。 */
+  exportWaitTimingJson?: typeof exportWaitTimingJson;
 }
 
 interface AiFeatureWiring {
@@ -169,6 +172,12 @@ interface AiFeatureWiring {
   readonly isDocumentHidden: (documentId: string) => boolean;
   readonly resolveReadingRequest: (conversationId: string, granted: boolean) => void;
   readonly toggleOnDemandReading: (conversationId: string, granted: boolean) => void;
+  /** 是否有任何等待计时记录（历史全量 + 当前在途）。 */
+  readonly hasWaitTimingData: () => boolean;
+  /** 导出等待计时数据（保存对话框 + 落盘），结果折算成停靠区提示。 */
+  readonly exportWaitTiming: () => Promise<WaitTimingExportOutcome>;
+  /** 清空等待计时数据（内存记录）。 */
+  readonly clearWaitTiming: () => void;
 }
 
 function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
@@ -195,6 +204,9 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     isDocumentHidden,
     resolveReadingRequest,
     toggleOnDemandReading,
+    hasWaitTimingData,
+    exportWaitTiming,
+    clearWaitTiming,
   } = wiring;
 
   return {
@@ -241,6 +253,9 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     isDocumentHidden,
     onResolveReadingRequest: resolveReadingRequest,
     onToggleOnDemandReading: toggleOnDemandReading,
+    hasWaitTimingData,
+    exportWaitTiming,
+    clearWaitTiming,
   };
 }
 
@@ -277,6 +292,8 @@ export function setupAiFeature(
   // 集成点：后端可见性 API 未接入时返回空集（无受限）；就绪后注入真实实现。
   const getHiddenDocumentIds = dependencies.getHiddenDocumentIds ?? (() => new Set<string>());
   const hiddenDocumentIds = (): ReadonlySet<string> => getHiddenDocumentIds();
+  // 等待计时导出（任务 1.4）：默认走真实保存对话框 + 后端命令；测试注入假实现。
+  const exportWaitTimingCall = dependencies.exportWaitTimingJson ?? exportWaitTimingJson;
   let destroyed = false;
 
   // ===== AiFeatureContext：访问器式上下文（extract-ai-request-orchestration 组 3） =====
@@ -646,6 +663,28 @@ export function setupAiFeature(
   };
   dom.btnToggleAi.addEventListener("click", handleToggleAi);
 
+  // ===== 等待计时导出（app-real-chain-validation 任务 1.4 / design D2） =====
+  // 数据只来自内存计时记录；写盘只发生在用户经系统对话框选择的位置，
+  // 不读取也不触碰任何作品目录。清空只清内存，不影响已导出文件。
+  function hasWaitTimingData(): boolean {
+    return waitTiming.getRecords().length > 0;
+  }
+
+  async function exportWaitTiming(): Promise<WaitTimingExportOutcome> {
+    const count = waitTiming.getRecords().length;
+    const result = await exportWaitTimingCall(waitTiming.exportJson(), waitTimingFileName());
+    return {
+      ok: result.ok,
+      cancelled: result.cancelled ?? false,
+      count,
+      ...(result.message !== null ? { message: result.message } : {}),
+    };
+  }
+
+  function clearWaitTiming(): void {
+    waitTiming.clear();
+  }
+
   const aiDock = setupAiDock(dom.aiDock, context.state, buildAiDockActions({
     state: context.state,
     openConfigPage: hooks.openConfigPage,
@@ -669,6 +708,9 @@ export function setupAiFeature(
     isDocumentHidden: (documentId) => context.hiddenDocumentIds().has(documentId),
     resolveReadingRequest,
     toggleOnDemandReading,
+    hasWaitTimingData,
+    exportWaitTiming,
+    clearWaitTiming,
   }));
 
   function resetProjectScopedAi(): void {

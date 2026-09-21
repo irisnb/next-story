@@ -592,6 +592,42 @@ async fn export_project_to_word(
     })
 }
 
+/// 导出等待计时 JSON 的稳定返回结果（与 `ExportWordResult` 同形契约）：命令始终
+/// 成功返回该结构，前端据此区分成功 / 失败，不依赖 Tauri 错误序列化细节。
+#[derive(Debug, serde::Serialize)]
+struct ExportTimingResult {
+    ok: bool,
+    path: Option<String>,
+    message: Option<String>,
+}
+
+/// 导出等待计时数据：把前端传来的计时 JSON 字符串写入用户经系统保存对话框选择的
+/// 目标路径。只写该目标文件，不读取也不触碰任何作品目录
+/// （app-real-chain-validation design D2：落盘位置永远由用户主动选择）。
+#[tauri::command]
+async fn export_wait_timing_json(
+    target_path: String,
+    content: String,
+) -> Result<ExportTimingResult, String> {
+    let target = PathBuf::from(&target_path);
+    let written =
+        tauri::async_runtime::spawn_blocking(move || std::fs::write(&target, content.as_bytes()))
+            .await
+            .map_err(|e| format!("导出等待计时任务执行失败: {e}"))?;
+    Ok(match written {
+        Ok(()) => ExportTimingResult {
+            ok: true,
+            path: Some(target_path),
+            message: None,
+        },
+        Err(e) => ExportTimingResult {
+            ok: false,
+            path: None,
+            message: Some(format!("无法写入文件: {e}")),
+        },
+    })
+}
+
 // ========== LLM 配置命令 ==========
 
 /// 在系统默认浏览器中打开 http/https 链接；其它地址拒绝。
@@ -688,6 +724,7 @@ pub fn run() {
             ai_directory_projection,
             read_material,
             export_project_to_word,
+            export_wait_timing_json,
             open_url,
             save_llm_config,
             load_llm_config,

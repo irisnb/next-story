@@ -76,6 +76,58 @@ export async function exportProjectToWord(
   });
 }
 
+// ========== 等待计时导出（app-real-chain-validation 任务 1.4 / design D2） ==========
+
+/** 与 Tauri `save` 对话框同形的窄类型，便于在测试中注入假保存对话框。 */
+export type SaveDialogFn = (options: {
+  defaultPath?: string;
+  filters?: ReadonlyArray<{ name: string; extensions: readonly string[] }>;
+}) => Promise<string | null>;
+
+const defaultSaveDialog: SaveDialogFn = save as SaveDialogFn;
+
+/** 导出等待计时 JSON 的稳定返回契约（与后端 `ExportTimingResult` 同形）。 */
+export interface ExportWaitTimingResult {
+  ok: boolean;
+  /** 仅由前端在用户关闭保存对话框时设置，后端不返回该字段。 */
+  cancelled?: boolean;
+  path: string | null;
+  message: string | null;
+}
+
+/** 导出默认文件名：`wait-timing-YYYYMMDD-HHmm.json`（本机时区）。 */
+export function waitTimingFileName(now: Date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return (
+    `wait-timing-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}.json`
+  );
+}
+
+/**
+ * 导出等待计时数据：先弹出保存对话框（默认文件名含日期时间），用户取消时返回
+ * `{ ok: false, cancelled: true }` 且不产生文件；确认后调用后端命令把字符串写入
+ * 用户选择的目标路径。只写该目标，不触碰作品目录。
+ */
+export async function exportWaitTimingJson(
+  content: string,
+  defaultFileName: string,
+  saveDialog: SaveDialogFn = defaultSaveDialog,
+  call: InvokeFn = defaultInvoke,
+): Promise<ExportWaitTimingResult> {
+  const target = await saveDialog({
+    defaultPath: defaultFileName,
+    filters: [{ name: "JSON 文件", extensions: ["json"] }],
+  });
+  if (target === null) {
+    return { ok: false, cancelled: true, path: null, message: null };
+  }
+  return call<ExportWaitTimingResult>("export_wait_timing_json", {
+    targetPath: target,
+    content,
+  });
+}
+
 export async function createProject(name: string, saveLocation: string): Promise<string> {
   return tauriInvoke<string>("create_project", {
     params: {

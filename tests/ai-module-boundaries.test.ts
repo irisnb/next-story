@@ -5,15 +5,18 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 /**
- * ai-module-boundaries 静态边界测试（extract-ai-logic-seams 任务 6.1）。
+ * ai-module-boundaries 静态边界测试（extract-ai-logic-seams 任务 6.1 起建；
+ * extract-ai-request-orchestration 任务 6.1 扩展后两条新要求）。
  *
  * 扫描 `src/` 生产源码文本，锁定 AI 面板与编排前端的结构边界：
  * - reducer 迁移逻辑仅经 `AiPanelState` 外观消费；
  * - 面板事件类型单一事实源（ai-panel-events.ts）；
  * - `ai-feature-*` 编排聚焦模块不触碰 DOM 全局；
- * - 停靠区（ai-dock.ts）不反向依赖编排层（ai-feature.ts）。
+ * - 停靠区（ai-dock.ts）不反向依赖编排层（ai-feature.ts）；
+ * - 请求派发经统一网关（scheduler 准入与 coordinator 请求调用的组合仅在网关）；
+ * - 组合根装配边界（ai-feature.ts 不含编排规则实现体）。
  *
- * 匹配一律针对 import 语句形态与定义语句形态，不针对注释里的字样。
+ * 匹配一律针对 import 语句形态与实现特征符号，不针对注释里的字样。
  */
 
 const srcDir = path.join(fileURLToPath(new URL("../src", import.meta.url)));
@@ -119,5 +122,78 @@ test("ai-dock.ts 不导入 ai-feature.ts 及其内部模块（动作只经注入
     offenders,
     [],
     "停靠区不得反向依赖编排层及其内部模块（依赖方向保持编排层 → 停靠区单向）",
+  );
+});
+
+// ========== Requirement: 请求派发经统一网关 ==========
+
+// 调度器准入与协调器请求方法的组合调用按实现特征符号锁定：构造点（new）与
+// 请求方法调用点只允许出现在网关模块；协调器 / 调度器自身定义文件除外。
+
+const DISPATCH_CONSTRUCTION_SYMBOLS = [
+  "new AiRequestScheduler",
+  "new AiRequestCoordinator",
+] as const;
+
+const DISPATCH_REQUEST_SYMBOLS = [
+  /\.requestFor\(/,
+  /\.requestStructured\(/,
+  /\.requestDirectQuestionFor\(/,
+  /\.submit\(/,
+] as const;
+
+test("scheduler 准入与 coordinator 请求调用的组合仅出现在请求网关模块", () => {
+  const gateway = "ai-feature-request-gateway.ts";
+  const definitionModules = new Set(["ai-request.ts", "ai-request-scheduler.ts"]);
+  const offenders = productionFiles.filter((name) => {
+    if (name === gateway || definitionModules.has(name)) return false;
+    const source = sourceOf(name);
+    return (
+      DISPATCH_CONSTRUCTION_SYMBOLS.some((symbol) => source.includes(symbol)) ||
+      DISPATCH_REQUEST_SYMBOLS.some((pattern) => pattern.test(source))
+    );
+  });
+  assert.deepEqual(
+    offenders,
+    [],
+    "网关之外的生产代码不得自行组合调度准入与协调器请求调用",
+  );
+  // 正向锚点：网关确实持有调度器与协调器的构造点。
+  const gatewaySource = sourceOf(gateway);
+  for (const symbol of DISPATCH_CONSTRUCTION_SYMBOLS) {
+    assert.equal(
+      gatewaySource.includes(symbol),
+      true,
+      `请求网关应包含构造点 ${symbol}`,
+    );
+  }
+});
+
+// ========== Requirement: 组合根装配边界 ==========
+
+// 组合根不得驻留编排规则实现体，按实现特征符号锁定：派发管道（构造 / 提交时间点 /
+// 派发前复核装配）、材料组装（关注文档身份字段）、停止与重试规则（终态迁移与
+// 重试快照读取）。均为实现形态符号，wiring 字段传递与重导出不会命中。
+
+const ROOT_ORCHESTRATION_SYMBOLS = [
+  "new AiRequestScheduler",
+  "new AiRequestCoordinator",
+  "waitTiming.submit(",
+  "waitTiming.complete(",
+  "beforeDispatch:",
+  "focus_document_id:",
+  ".stopRequest(",
+  "retrySnapshot()",
+  "retryFirstRequest(",
+  "withFocusDocumentIdentity(",
+] as const;
+
+test("组合根（ai-feature.ts）不含派发、材料组装与停止/重试规则的实现体", () => {
+  const source = sourceOf("ai-feature.ts");
+  const offenders = ROOT_ORCHESTRATION_SYMBOLS.filter((symbol) => source.includes(symbol));
+  assert.deepEqual(
+    offenders,
+    [],
+    "编排规则实现体应住在聚焦模块（网关 / 材料组装 / 生命周期），组合根只做装配",
   );
 });

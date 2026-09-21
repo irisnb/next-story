@@ -22,9 +22,10 @@ import {
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
 import { idleRequest } from "./ai-panel-request-state.ts";
-import type { ConversationSummary, MaterialProvenance } from "./conversation-archive.ts";
+import type { ConversationSummary, MaterialProvenance, OnDemandReadingGrant, OnDemandReadingProvenance } from "./conversation-archive.ts";
 import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
+import type { PendingReadingRequest, ReadingProgress } from "./ai-panel-reducer.ts";
 
 export type {
   PanelRequestState,
@@ -99,12 +100,27 @@ export class AiPanelState {
   }
 
   get view(): PanelStateView {
+    const focused = this.state.focusedConversationId;
+    const discussion = focused === null ? null : this.state.discussions.get(focused) ?? null;
     return {
       visibility: this.state.visibility,
       request: activeRequestOf(this.state),
-      directQuestionDraft: this.draftOf(this.state.focusedConversationId),
+      directQuestionDraft: this.draftOf(focused),
       pendingSelection: this.state.pendingSelection,
       saveError: this.state.saveError,
+      readingRequest: discussion?.pendingReadingRequest
+        ? { reason: discussion.pendingReadingRequest.reason }
+        : null,
+      readingProgress: discussion?.readingProgress
+        ? {
+            status: discussion.readingProgress.status,
+            documentIds: discussion.readingProgress.documentIds,
+          }
+        : null,
+      onDemandReadingEnabled:
+        (discussion?.onDemandReadingGrant ??
+          discussion?.conversation?.onDemandReadingGrant ??
+          null) !== null,
     };
   }
 
@@ -123,6 +139,19 @@ export class AiPanelState {
         ? this.state.pendingSelection
         : null,
       saveError: this.state.saveError,
+      readingRequest: discussion?.pendingReadingRequest
+        ? { reason: discussion.pendingReadingRequest.reason }
+        : null,
+      readingProgress: discussion?.readingProgress
+        ? {
+            status: discussion.readingProgress.status,
+            documentIds: discussion.readingProgress.documentIds,
+          }
+        : null,
+      onDemandReadingEnabled:
+        (discussion?.onDemandReadingGrant ??
+          discussion?.conversation?.onDemandReadingGrant ??
+          null) !== null,
     };
   }
 
@@ -611,5 +640,58 @@ export class AiPanelState {
     if (request.kind === "direct_question") return request.status === "loading";
     if (request.kind === "loading") return request.phase === "first";
     return false;
+  }
+
+  // ========== 按需补读授权与过程状态（add-agent-on-demand-reading 任务 7） ==========
+
+  /** 收到按需补读授权请求（任务 7.1）：显示授权卡，轮次挂起等待用户决定。 */
+  receiveReadingRequest(conversationId: string, request: PendingReadingRequest): boolean {
+    return this.dispatch({ type: "reading_request", conversationId, ...request });
+  }
+
+  /** 用户对授权请求的决定：清除授权卡；允许写入讨论授权（属于讨论、跨重启保留）。 */
+  resolveReadingRequest(conversationId: string, granted: boolean): boolean {
+    return this.dispatch({ type: "resolve_reading_request", conversationId, granted });
+  }
+
+  /** 讨论内授权开关（任务 7.2）：随时开 / 关；关闭立即阻止后续读取、不清除已读。 */
+  setOnDemandReading(conversationId: string, granted: boolean): boolean {
+    return this.dispatch({ type: "set_on_demand_reading", conversationId, granted });
+  }
+
+  /** 补读过程轻量状态（任务 7.3）：由工具调用事件驱动（不含模型内部推理）。 */
+  noteToolCall(conversationId: string, tool: string, documentId?: string): boolean {
+    return this.dispatch({
+      type: "note_tool_call",
+      conversationId,
+      tool,
+      ...(documentId !== undefined ? { documentId } : {}),
+    });
+  }
+
+  /** 轮次完成后从档案刷新按需补读状态（任务 7.4 的显示数据）。 */
+  updateOnDemandState(
+    conversationId: string,
+    grant: OnDemandReadingGrant | null,
+    provenance: OnDemandReadingProvenance[] | null,
+  ): boolean {
+    return this.dispatch({ type: "update_on_demand_state", conversationId, grant, provenance });
+  }
+
+  /** 指定讨论的待决授权请求；无待决时为 null。 */
+  pendingReadingRequestOf(conversationId: string): PendingReadingRequest | null {
+    return this.state.discussions.get(conversationId)?.pendingReadingRequest ?? null;
+  }
+
+  /** 指定讨论的补读过程轻量状态；无补读活动时为 null。 */
+  readingProgressOf(conversationId: string): ReadingProgress | null {
+    return this.state.discussions.get(conversationId)?.readingProgress ?? null;
+  }
+
+  /** 指定讨论是否已开启按需补读授权（Discussion 级真相源，对话载体兜底）。 */
+  onDemandReadingEnabledOf(conversationId: string): boolean {
+    const discussion = this.state.discussions.get(conversationId);
+    const grant = discussion?.onDemandReadingGrant ?? discussion?.conversation?.onDemandReadingGrant ?? null;
+    return grant !== null;
   }
 }

@@ -5,6 +5,8 @@ import type {
   ConversationTurn,
   FirstRoundMaterial as ArchivedFirstRoundMaterial,
   MaterialProvenance,
+  OnDemandReadingGrant,
+  OnDemandReadingProvenance,
 } from "./conversation-archive.ts";
 import { deriveConversationTitle } from "./conversation-archive.ts";
 
@@ -66,6 +68,17 @@ export interface TemporaryConversation {
    * `undefined` 仅在「旧档案缺出处」时出现（由 `restrictionReason` 区分）。
    */
   provenance?: MaterialProvenance[];
+  /**
+   * 按需补读授权状态（add-agent-on-demand-reading 任务 7.2）：`null` / 缺省表示
+   * 未授权；授权属于讨论、跨重启保留（重开档案 / 摘要携带）。前端保存链携带它，
+   * 授权事实由后端档案保管。
+   */
+  onDemandReadingGrant?: OnDemandReadingGrant | null;
+  /**
+   * 按需补读读取出处（任务 7.4）：后端工具通道按轮写入档案；重开档案 / 刷新查询时
+   * 携带，供「本次参考了什么」展示文档与阅读程度。前端保存链不携带（后端保全）。
+   */
+  onDemandReadingProvenance?: OnDemandReadingProvenance[];
 }
 
 export type ReadonlyTemporaryConversation = Readonly<{
@@ -83,6 +96,8 @@ export type ReadonlyTemporaryConversation = Readonly<{
   restricted?: boolean;
   restrictionReason?: RestrictionReason;
   provenance?: ReadonlyArray<Readonly<MaterialProvenance>>;
+  onDemandReadingGrant?: Readonly<OnDemandReadingGrant> | null;
+  onDemandReadingProvenance?: ReadonlyArray<Readonly<OnDemandReadingProvenance>>;
 }>;
 
 /**
@@ -100,6 +115,15 @@ export interface Discussion {
   readonly pendingFirstRequest: FirstRoundMaterial | null;
   /** 首轮冻结选区锚点；直接提问无选区时为 null。 */
   readonly anchor: SelectionSnapshot | null;
+  /**
+   * 按需补读授权状态（任务 7.2 运行期真相源，Discussion 级）：首轮在途（尚无对话
+   * 本体）时也能授权；已建立对话时与 conversation 载体字段保持镜像。
+   */
+  onDemandReadingGrant?: import("./conversation-archive.ts").OnDemandReadingGrant | null;
+  /** 待决的按需补读授权请求（等待用户决定时显示授权卡）；无待决时为 null。 */
+  readonly pendingReadingRequest: import("./ai-panel-reducer.ts").PendingReadingRequest | null;
+  /** 补读过程轻量状态（生成中显示；不含模型内部推理）；无补读活动时为 null。 */
+  readonly readingProgress: import("./ai-panel-reducer.ts").ReadingProgress | null;
 }
 
 export function frozenSnapshot(snapshot: SelectionSnapshot): SelectionSnapshot {
@@ -283,6 +307,7 @@ export function createConversationFromFirstSuccess(
     pending: null,
     customTitle: null,
     pinned: false,
+    onDemandReadingGrant: null,
   };
 }
 
@@ -525,6 +550,14 @@ export function readonlyConversationView(
     provenance: conversation.provenance
       ? Object.freeze(conversation.provenance.map((p) => Object.freeze({ ...p })))
       : undefined,
+    onDemandReadingGrant: conversation.onDemandReadingGrant
+      ? Object.freeze({ ...conversation.onDemandReadingGrant })
+      : conversation.onDemandReadingGrant === null
+        ? null
+        : undefined,
+    onDemandReadingProvenance: conversation.onDemandReadingProvenance
+      ? Object.freeze(conversation.onDemandReadingProvenance.map((p) => Object.freeze({ ...p })))
+      : undefined,
   });
 }
 
@@ -573,6 +606,10 @@ export function buildConversationRecord(
       const provenance = conversationProvenanceForArchive(conversation);
       return provenance !== undefined ? { provenance } : {};
     })(),
+    // 按需补读授权状态：前端保存链携带运行期跟踪的授权（null = 未授权 / 已关闭）。
+    // 补读出处（on_demand_reading_provenance）由后端通道按轮写入，前端不携带
+    // （后端保存时保全档案已有出处，见 conversation_store::save_conversation）。
+    on_demand_reading_grant: conversation.onDemandReadingGrant ?? null,
   };
 }
 
@@ -645,6 +682,8 @@ export function conversationFromRecord(
     restricted,
     restrictionReason,
     provenance: record.provenance,
+    onDemandReadingGrant: record.on_demand_reading_grant ?? null,
+    onDemandReadingProvenance: record.on_demand_reading_provenance ?? undefined,
   };
 }
 
@@ -681,6 +720,9 @@ export function buildDiscussionRecord(discussion: Discussion): ConversationRecor
     first_round_material: material,
     turns,
     provenance: materialProvenanceFromAnchor(discussion.anchor),
+    // 按需补读授权：首轮在途期间允许的授权也随「接受即存 / 停止终态」保存落档
+    // （授权属于讨论；无授权时为 null，与保存契约一致）。
+    on_demand_reading_grant: discussion.onDemandReadingGrant ?? null,
   };
 }
 
@@ -713,6 +755,8 @@ export function summaryOf(  conversation: TemporaryConversation,
     pinned: conversation.pinned ?? false,
     // 显示层脱敏依据：受限讨论的关注文档标题不得泄露（旧出处脱敏，任务 4.4）。
     restricted: conversation.restricted ?? false,
+    // 按需补读授权随摘要携带（重开恢复；授权属于讨论、跨重启保留）。
+    on_demand_reading_grant: conversation.onDemandReadingGrant ?? null,
     ...(() => {
       const provenance = conversationProvenanceForArchive(conversation);
       return provenance !== undefined ? { provenance } : {};

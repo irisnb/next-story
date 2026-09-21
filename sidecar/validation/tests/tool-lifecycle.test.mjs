@@ -15,8 +15,8 @@ function inv(overrides = {}) {
   return createToolInvocation({
     requestId: "req-1",
     toolId: "t1",
-    tool: "story.read_document",
-    capability: "story.read_document",
+    tool: "story-read",
+    capability: "story-read",
     startedAt: 0,
     ...overrides,
   });

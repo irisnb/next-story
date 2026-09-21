@@ -12,7 +12,7 @@
 //! 安全边界（任务 3.5）：协议命令面只有会话管理与文本生成，不存在任何向用户
 //! 文档写入的通道；容器装配由驱动侧默认拒绝完成（见 `sidecar/driver/gen-config.mjs`）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -64,6 +64,24 @@ pub enum DriverCommand {
         session_id: String,
     },
     Shutdown,
+    /// 宿主回填工具执行结果（add-agent-on-demand-reading 任务 5.2，设计 D2）：
+    /// 驱动把结果喂回模型会话并继续挂起轮次。
+    ToolResult {
+        session_id: String,
+        call_id: String,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<ToolResultErrorPayload>,
+    },
+}
+
+/// 工具结果的结构化拒绝负载（协议 `tool_result.error`）：只携带稳定 reason，
+/// 绝不携带作品内容。
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolResultErrorPayload {
+    pub reason: String,
 }
 
 /// 崩溃恢复的历史轮次（前端显示历史的增量投影，不含任何作品文件内容）。
@@ -73,7 +91,10 @@ pub struct DriverReplayTurn {
     pub text: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+/// 驱动事件（驱动 → 宿主）。`Serialize` 仅供协议契约测试提取 serde 标签名
+/// （与 protocol.json 单一真相源对照，见测试 `protocol_json_pins_driver_event_and_command_vocabularies`）；
+/// 生产链路只做反序列化。
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DriverEvent {
     Ready {
@@ -111,6 +132,15 @@ pub enum DriverEvent {
     SessionEnded {
         session_id: String,
     },
+    /// 工具调用（驱动 → 宿主，任务 5.2，设计 D2）：模型发起的受控只读工具调用
+    /// 交宿主执行；轮次挂起直到宿主回填 `tool_result`（或被停止生成取消）。
+    ToolCall {
+        session_id: String,
+        message_id: String,
+        call_id: String,
+        tool: String,
+        args: serde_json::Value,
+    },
     Error {
         session_id: Option<String>,
         message_id: Option<String>,
@@ -130,12 +160,30 @@ pub struct DeltaPayload {
 
 pub type DeltaSink = Arc<dyn Fn(DeltaPayload) + Send + Sync>;
 
+/// 工具调用事件负载：宿主把它交给执行通道（story_tool_channel），
+/// 并可转发前端做轻量过程呈现（Tauri 事件 `ai-tool-call`，UI 是任务组 7）。
+#[derive(Clone, Serialize, Debug)]
+pub struct ToolCallPayload {
+    pub session_id: String,
+    pub message_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub args: serde_json::Value,
+}
+
+pub type ToolCallSink = Arc<dyn Fn(ToolCallPayload) + Send + Sync>;
+
 /// 驱动进程的启动参数（来自用户保存的唯一 LLM 配置）。
+/// `max_tokens`（任务 8.1，设计 D10）参与相等比较：配置变化时 `ensure_started`
+/// 会退役旧代并按新参数重启驱动，新上限即生效。
 #[derive(Clone, Debug, PartialEq)]
 pub struct DriverParams {
     pub model: String,
     pub api_base_url: String,
     pub api_key: String,
+    /// 可选的单次生成 max_tokens 上限；`None` 不透传 `--max-tokens`
+    /// （spawn 参数与现状逐字节一致），驱动使用其默认 131072。
+    pub max_tokens: Option<u64>,
 }
 
 /// 一次生成请求的成功终态：最终全文 + provider 侧发送回执。
@@ -450,6 +498,10 @@ struct Inner {
     max_concurrent_generations: usize,
     sink: Mutex<Option<DeltaSink>>,
     loss_sink: Mutex<Option<LossSink>>,
+    tool_call_sink: Mutex<Option<ToolCallSink>>,
+    /// 工具挂起中的消息（任务 5.2/5.3，设计 D8）：挂起轮不适用请求级超时，
+    /// 只由工具结果回填、终态或停止生成解除。
+    suspended: Mutex<HashSet<String>>,
     spawn_lock: Mutex<()>,
 }
 
@@ -532,8 +584,36 @@ impl Inner {
             | DriverEvent::MessageFailed { message_id, .. } => {
                 let message_id = message_id.clone();
                 let key = PendingKey::Message(message_id.clone());
+                // 终态送达即解除工具挂起（挂起轮随终态收束）。
+                self.resume(&message_id);
                 if !runtime.deliver(&key, event) {
                     eprintln!("dsh_driver: 无等待者的消息终态（{message_id}）");
+                }
+            }
+            DriverEvent::ToolCall {
+                session_id,
+                message_id,
+                call_id,
+                tool,
+                args,
+            } => {
+                // 只有当前就绪代的工具调用才进入执行通道（旧代调用一并丢弃）。
+                if !self.is_current_ready(generation) {
+                    return;
+                }
+                // 挂起标记先于转发：等待方在请求级超时到达时据此转为挂起等待（D8）。
+                self.suspend(message_id);
+                let sink = lock_recover(&self.tool_call_sink).clone();
+                if let Some(sink) = sink {
+                    sink(ToolCallPayload {
+                        session_id: session_id.clone(),
+                        message_id: message_id.clone(),
+                        call_id: call_id.clone(),
+                        tool: tool.clone(),
+                        args: args.clone(),
+                    });
+                } else {
+                    eprintln!("dsh_driver: 工具调用无接收通道（tool={tool}），已丢弃");
                 }
             }
             DriverEvent::SessionStarted { session_id }
@@ -547,6 +627,9 @@ impl Inner {
                 code,
                 ..
             } => {
+                if let Some(mid) = message_id {
+                    self.resume(mid);
+                }
                 let delivered = message_id
                     .as_ref()
                     .map(|mid| runtime.deliver(&PendingKey::Message(mid.clone()), event.clone()))
@@ -571,6 +654,21 @@ impl Inner {
         let lifecycle = lock_recover(&self.lifecycle);
         matches!(&lifecycle.current, Some(current)
             if current.id == generation && current.phase == GenerationPhase::Ready)
+    }
+
+    /// 标记消息进入工具挂起（挂起轮不适用请求级超时，设计 D8）。
+    fn suspend(&self, message_id: &str) {
+        lock_recover(&self.suspended).insert(message_id.to_string());
+    }
+
+    /// 解除工具挂起（工具结果回填 / 终态送达 / 错误收束）。
+    fn resume(&self, message_id: &str) {
+        lock_recover(&self.suspended).remove(message_id);
+    }
+
+    /// 消息是否处于工具挂起（等待工具结果或授权决定）。
+    fn is_suspended(&self, message_id: &str) -> bool {
+        lock_recover(&self.suspended).contains(message_id)
     }
 
     /// 标记死亡：只有指定代际仍是当前代时才回收进程；只有**已就绪**的当前代
@@ -633,6 +731,8 @@ impl DshDriverManager {
                 max_concurrent_generations,
                 sink: Mutex::new(None),
                 loss_sink: Mutex::new(None),
+                tool_call_sink: Mutex::new(None),
+                suspended: Mutex::new(HashSet::new()),
                 spawn_lock: Mutex::new(()),
             }),
         }
@@ -677,6 +777,34 @@ impl DshDriverManager {
     /// 注册驱动进程丢失回调（已就绪代意外退出时；前端据此触发历史重放恢复）。
     pub fn set_loss_sink(&self, sink: LossSink) {
         *lock_recover(&self.inner.loss_sink) = Some(sink);
+    }
+
+    /// 注册工具调用回调（任务 5.2：驱动 tool_call 事件 → 宿主执行通道）。
+    pub fn set_tool_call_sink(&self, sink: ToolCallSink) {
+        *lock_recover(&self.inner.tool_call_sink) = Some(sink);
+    }
+
+    /// 回填工具结果并解除该消息的挂起（任务 5.2；D8：恢复 = 工具结果返回）。
+    /// 驱动侧对未知 / 已取消的 call_id 回 `tool_call_not_found` 错误（迟到丢弃）。
+    pub fn send_tool_result(
+        &self,
+        session_id: &str,
+        message_id: &str,
+        call_id: &str,
+        ok: bool,
+        result: Option<serde_json::Value>,
+        error_reason: Option<String>,
+    ) -> Result<(), GenerateAiError> {
+        let cmd = DriverCommand::ToolResult {
+            session_id: session_id.to_string(),
+            call_id: call_id.to_string(),
+            ok,
+            result,
+            error: error_reason.map(|reason| ToolResultErrorPayload { reason }),
+        };
+        self.write_command(&cmd)?;
+        self.inner.resume(message_id);
+        Ok(())
     }
 
     // ---- 进程生命周期（代际化） ----
@@ -756,6 +884,11 @@ impl DshDriverManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // max_tokens 可选透传（任务 8.1，设计 D10）：未配置时不追加任何参数，
+        // spawn 命令行与现状逐字节一致（缺省行为不变）。
+        if let Some(max_tokens) = params.max_tokens {
+            command.arg("--max-tokens").arg(max_tokens.to_string());
+        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -944,6 +1077,27 @@ impl DshDriverManager {
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
+                // 工具挂起中的轮次不适用请求级超时（任务 5.2/5.3，设计 D8：等待
+                // 授权期间轮次挂起、不产生模型请求，占用语义不变）：阻塞等待
+                // 工具结果回填 / 授权决定 / 停止生成带来的下一个事件。
+                if self.inner.is_suspended(message_id) {
+                    match rx.recv() {
+                        Ok(DriverEvent::MessageDone { text, .. }) => {
+                            return Ok(MessageOutcome {
+                                text,
+                                sent_confirmed,
+                            });
+                        }
+                        Ok(DriverEvent::MessageFailed { code, .. }) => {
+                            return Err(map_driver_failure(&code, ""));
+                        }
+                        Ok(DriverEvent::Error { code, message, .. }) => {
+                            return Err(map_driver_failure(&code, &message));
+                        }
+                        Ok(_) => continue,
+                        Err(_) => return Err(service_error("驱动应答通道关闭")),
+                    }
+                }
                 // 请求级超时：先取消，给宽限期回收终态（design.md D9）
                 let _ = self.cancel_message(session_id, message_id);
                 let outcome = rx.recv_timeout(CANCEL_GRACE);
@@ -1236,6 +1390,292 @@ mod tests {
         );
     }
 
+    /// 任务组 1.3（change: add-agent-on-demand-reading，设计 D7）：驱动协议单一真相源
+    /// `sidecar/driver/protocol.json` 与本模块协议类型双向钉死——
+    /// 真相源 status=active 的条目与 Rust 认识的命令/事件一一对应；planned 条目
+    /// （tool_call / tool_result，工具桥接）在本 change 后续任务组落地时翻成 active。
+    #[test]
+    fn protocol_json_pins_driver_event_and_command_vocabularies() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("sidecar")
+            .join("driver")
+            .join("protocol.json");
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读取 protocol.json 失败：{e}"));
+        let value: serde_json::Value =
+            serde_json::from_str(&text).expect("protocol.json 必须是合法 JSON");
+        assert_eq!(
+            value["protocol_version"].as_u64(),
+            Some(u64::from(PROTOCOL_VERSION)),
+            "protocol.json 的 protocol_version 必须与本模块常量一致"
+        );
+
+        fn active_names(value: &serde_json::Value, section: &str, direction: &str) -> Vec<String> {
+            value[section]
+                .as_array()
+                .unwrap_or_else(|| panic!("{section} 必须是数组"))
+                .iter()
+                .filter(|e| e["direction"] == direction && e["status"] == "active")
+                .map(|e| {
+                    e["name"]
+                        .as_str()
+                        .unwrap_or_else(|| panic!("{section} 条目缺少 name"))
+                        .to_string()
+                })
+                .collect()
+        }
+        fn tag_of(serializable: impl serde::Serialize) -> String {
+            serde_json::to_value(serializable).unwrap()["type"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+
+        // 双向：Rust 认识的事件都在协议里（active），协议 active 事件 Rust 都有变体。
+        let rust_events: Vec<String> = vec![
+            tag_of(DriverEvent::Ready {
+                protocol_version: 1,
+            }),
+            tag_of(DriverEvent::SessionStarted {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverEvent::Delta {
+                session_id: "s".into(),
+                message_id: "m".into(),
+                seq: 0,
+                text: "t".into(),
+            }),
+            tag_of(DriverEvent::MessageSent {
+                session_id: "s".into(),
+                message_id: "m".into(),
+            }),
+            tag_of(DriverEvent::MessageDone {
+                session_id: "s".into(),
+                message_id: "m".into(),
+                text: "t".into(),
+            }),
+            tag_of(DriverEvent::MessageFailed {
+                session_id: "s".into(),
+                message_id: "m".into(),
+                code: "c".into(),
+                message: "m".into(),
+            }),
+            tag_of(DriverEvent::ReplayOk {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverEvent::SessionEnded {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverEvent::Error {
+                session_id: None,
+                message_id: None,
+                code: "c".into(),
+                message: "m".into(),
+            }),
+            tag_of(DriverEvent::ToolCall {
+                session_id: "s".into(),
+                message_id: "m".into(),
+                call_id: "call-1".into(),
+                tool: "story-read".into(),
+                args: serde_json::json!({}),
+            }),
+        ];
+        let protocol_events = active_names(&value, "events", "outbound");
+        assert_eq!(
+            protocol_events, rust_events,
+            "protocol.json 的 active 出站事件必须与 DriverEvent 变体一一对应"
+        );
+
+        // 双向：Rust 发出的命令都在协议里（active），协议 active 命令 Rust 都有变体。
+        let rust_commands: Vec<String> = vec![
+            tag_of(DriverCommand::StartSession {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverCommand::SendMessage {
+                session_id: "s".into(),
+                message_id: "m".into(),
+                text: "t".into(),
+            }),
+            tag_of(DriverCommand::ReplayHistory {
+                session_id: "s".into(),
+                turns: vec![],
+            }),
+            tag_of(DriverCommand::ReplayDone {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverCommand::CancelMessage {
+                session_id: "s".into(),
+                message_id: "m".into(),
+            }),
+            tag_of(DriverCommand::EndSession {
+                session_id: "s".into(),
+            }),
+            tag_of(DriverCommand::Shutdown),
+            tag_of(DriverCommand::ToolResult {
+                session_id: "s".into(),
+                call_id: "call-1".into(),
+                ok: true,
+                result: Some(serde_json::json!({"granted": true})),
+                error: None,
+            }),
+        ];
+        let protocol_commands = active_names(&value, "commands", "inbound");
+        assert_eq!(
+            protocol_commands, rust_commands,
+            "protocol.json 的 active 入站命令必须与 DriverCommand 变体一一对应"
+        );
+
+        // 工具桥接两项（tool_call / tool_result）已随任务组 5 投产：不再有 planned 条目。
+        let planned: Vec<String> = value["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(value["commands"].as_array().unwrap().iter())
+            .filter(|e| e["status"] == "planned")
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            planned.is_empty(),
+            "工具桥接已投产，planned 条目应为空（当前实际：{planned:?}）"
+        );
+    }
+
+    /// 任务 5.2：tool_call 帧可解析；路由到工具回调并把消息标记挂起，
+    /// 终态送达后解除挂起（D8：挂起轮不适用请求级超时）。
+    ///
+    /// 装配说明：ToolCall 路由有代际门禁（旧代 tool_call 一律丢弃，与 Delta 同理，
+    /// 任务 5.3 迟到丢弃），因此本测试经真实假驱动 `ensure_started` 安装「当前就绪
+    /// 代」，再取真实代际身份与运行时手动路由事件。
+    #[test]
+    fn tool_call_routes_to_sink_and_suspends_until_terminal() {
+        let (_temp, paths, params) = fake_driver_paths(
+            "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'shutdown') process.exit(0);\n\
+             });\n\
+             rl.on('close', () => process.exit(0));\n\
+             setInterval(() => {}, 1000);\n",
+        );
+        let manager = DshDriverManager::new();
+        let hits = Arc::new(Mutex::new(Vec::new()));
+        let hits_for_sink = hits.clone();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            hits_for_sink.lock().unwrap().push(payload);
+        }));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        // 取当前就绪代的真实身份与运行时（代际由 manager 分配，测试不猜测）。
+        let (generation, runtime) = {
+            let lifecycle = lock_recover(&manager.inner.lifecycle);
+            let current = lifecycle
+                .current
+                .as_ref()
+                .expect("ensure_started 后必有当前代");
+            (current.id, current.runtime.clone())
+        };
+        let (_registration, rx) = runtime
+            .register(PendingKey::Message("m1".into()))
+            .expect("注册消息等待");
+
+        let event: DriverEvent = serde_json::from_str(
+            r#"{"type":"tool_call","session_id":"s1","message_id":"m1","call_id":"call-1","tool":"story-read","args":{"document_id":"doc-1"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(&event, DriverEvent::ToolCall { tool, args, .. }
+            if tool == "story-read" && args["document_id"] == "doc-1"));
+        manager.inner.route_event(generation, &runtime, event);
+
+        assert!(manager.inner.is_suspended("m1"), "工具调用后消息应进入挂起");
+        let payload = hits.lock().unwrap().pop().expect("sink 收到工具调用");
+        assert_eq!(payload.call_id, "call-1");
+        assert_eq!(payload.args["document_id"], "doc-1");
+
+        // 终态送达：解除挂起 + 等待者收到终态。
+        manager.inner.route_event(
+            generation,
+            &runtime,
+            DriverEvent::MessageDone {
+                session_id: "s1".into(),
+                message_id: "m1".into(),
+                text: "答案".into(),
+            },
+        );
+        assert!(!manager.inner.is_suspended("m1"), "终态后应解除挂起");
+        let outcome = rx
+            .recv_timeout(Duration::from_millis(200))
+            .expect("等待者收到终态");
+        assert!(matches!(outcome, DriverEvent::MessageDone { .. }));
+
+        // 非当前代的 tool_call 一律丢弃（迟到丢弃）：路由到伪造旧代不得挂起、不得进 sink。
+        let stale_calls = Arc::new(Mutex::new(Vec::new()));
+        let stale_for_sink = stale_calls.clone();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            stale_for_sink.lock().unwrap().push(payload);
+        }));
+        manager.inner.route_event(
+            GenerationId(999),
+            &runtime,
+            DriverEvent::ToolCall {
+                session_id: "s1".into(),
+                message_id: "m-stale".into(),
+                call_id: "call-stale".into(),
+                tool: "story-read".into(),
+                args: serde_json::json!({}),
+            },
+        );
+        assert!(
+            !manager.inner.is_suspended("m-stale"),
+            "旧代 tool_call 不得挂起任何消息"
+        );
+        assert!(
+            stale_calls.lock().unwrap().is_empty(),
+            "旧代 tool_call 不得进入执行通道"
+        );
+
+        manager.shutdown_best_effort();
+    }
+
+    /// 任务 5.2：tool_result 命令的协议形状——成功携带 result；拒绝跳过 result、
+    /// 携带 error.reason 且不含任何作品内容。
+    #[test]
+    fn tool_result_command_serializes_to_protocol_shapes() {
+        let ok = serde_json::to_value(DriverCommand::ToolResult {
+            session_id: "s1".into(),
+            call_id: "call-1".into(),
+            ok: true,
+            result: Some(serde_json::json!({"granted": true})),
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(ok["type"], "tool_result");
+        assert_eq!(ok["call_id"], "call-1");
+        assert_eq!(ok["ok"], true);
+        assert_eq!(ok["result"]["granted"], true);
+        assert!(ok.get("error").is_none(), "成功结果不得携带 error 字段");
+
+        let denied = serde_json::to_value(DriverCommand::ToolResult {
+            session_id: "s1".into(),
+            call_id: "call-2".into(),
+            ok: false,
+            result: None,
+            error: Some(ToolResultErrorPayload {
+                reason: "on_demand_reading_unauthorized".into(),
+            }),
+        })
+        .unwrap();
+        assert_eq!(denied["ok"], false);
+        assert_eq!(denied["error"]["reason"], "on_demand_reading_unauthorized");
+        assert!(denied.get("result").is_none(), "拒绝不得携带结果字段");
+        let text = denied.to_string();
+        for forbidden in ["content", "body", "正文"] {
+            assert!(!text.contains(forbidden), "拒绝帧不得携带作品内容: {text}");
+        }
+    }
+
     /// provider 发送回执（add-automatic-story-context）：`message_sent` 帧可解析；
     /// 路由时只通知等待者、不消费等待注册——回执后终态仍可送达同一等待者；
     /// 无等待者时安全丢弃。回执不满足 MessageDone/Failed 等待条件。
@@ -1390,7 +1830,8 @@ mod tests {
                  }\n\
                  console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '回复' }));\n\
                }\n\
-             });\n",
+             });\n\
+             rl.on('close', () => process.exit(0));\n",
         )
         .expect("write fake driver");
 
@@ -1405,6 +1846,7 @@ mod tests {
             model: "m".to_string(),
             api_base_url: "http://localhost".to_string(),
             api_key: "k".to_string(),
+            max_tokens: None,
         };
 
         let manager = DshDriverManager::new();
@@ -1457,6 +1899,7 @@ mod tests {
             model: "m".to_string(),
             api_base_url: "http://localhost".to_string(),
             api_key: "k".to_string(),
+            max_tokens: None,
         };
 
         let manager = DshDriverManager::new();
@@ -1493,6 +1936,7 @@ mod tests {
             model: "m".to_string(),
             api_base_url: "http://localhost".to_string(),
             api_key: "k".to_string(),
+            max_tokens: None,
         };
         (temp, paths, params)
     }
@@ -1523,7 +1967,7 @@ mod tests {
     #[test]
     fn startup_gate_rejects_error_event_before_ready() {
         let (_temp, paths, params) = fake_driver_paths(
-            "console.log(JSON.stringify({type:\"error\",session_id:null,message_id:null,code:\"internal\",message:\"x\"}));\nsetInterval(() => {}, 1000);\n",
+            "console.log(JSON.stringify({type:\"error\",session_id:null,message_id:null,code:\"internal\",message:\"x\"}));\nsetInterval(() => {}, 1000);\nprocess.stdin.on('end', () => process.exit(0));\nprocess.stdin.resume();\n",
         );
         let manager = DshDriverManager::new();
         let result = manager.ensure_started(&params, &paths);
@@ -1536,7 +1980,7 @@ mod tests {
     #[test]
     fn startup_gate_rejects_wrong_protocol_version() {
         let (_temp, paths, params) = fake_driver_paths(
-            "console.log(JSON.stringify({type:\"ready\",protocol_version:99}));\nsetInterval(() => {}, 1000);\n",
+            "console.log(JSON.stringify({type:\"ready\",protocol_version:99}));\nsetInterval(() => {}, 1000);\nprocess.stdin.on('end', () => process.exit(0));\nprocess.stdin.resume();\n",
         );
         let manager = DshDriverManager::new();
         let result = manager.ensure_started(&params, &paths);
@@ -1576,6 +2020,7 @@ mod tests {
              console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
              const rl = readline.createInterface({ input: process.stdin });\n\
              rl.on('line', () => { /* 忽略一切命令，包括 shutdown */ });\n\
+             rl.on('close', () => process.exit(0));\n\
              setInterval(() => {}, 1000);\n";
         let (temp1, paths1, params1) = fake_driver_paths(stubborn);
         let manager = DshDriverManager::new();
@@ -1595,8 +2040,11 @@ mod tests {
                let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
                if (cmd.type === 'send_message') {\n\
                  console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '回复2' }));\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
                }\n\
-             });\n";
+             });\n\
+             rl.on('close', () => process.exit(0));\n";
         let (temp2, paths2, _) = fake_driver_paths(normal);
         let mut params2 = params1.clone();
         params2.model = "m2".to_string();
@@ -1636,8 +2084,11 @@ mod tests {
                  setTimeout(() => {\n\
                    console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '慢回复' }));\n\
                  }, 1500);\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
                }\n\
-             });\n";
+             });\n\
+             rl.on('close', () => process.exit(0));\n";
         let (_temp, paths, params) = fake_driver_paths(slow);
         let manager = DshDriverManager::new_with_limit(2);
         manager.ensure_started(&params, &paths).expect("驱动启动");
@@ -1703,8 +2154,11 @@ mod tests {
                let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
                if (cmd.type === 'cancel_message') {\n\
                  console.log(JSON.stringify({ type: 'message_failed', session_id: cmd.session_id, message_id: cmd.message_id, code: 'cancelled', message: '已取消' }));\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
                }\n\
              });\n\
+             rl.on('close', () => process.exit(0));\n\
              setInterval(() => {}, 1000);\n";
         let (_temp, paths, params) = fake_driver_paths(silent);
         let manager = DshDriverManager::new_with_limit(1);
@@ -1744,5 +2198,59 @@ mod tests {
             assert!(!diag.contains("林站在天台边"), "诊断不得含正文: {diag}");
             assert!(diag.chars().count() <= 160, "诊断长度受限: {diag}");
         }
+    }
+
+    /// 任务 8.1（add-agent-on-demand-reading，设计 D10）：max_tokens 透传——
+    /// 配置 `Some(4096)` 时 spawn 追加 `--max-tokens 4096`；未配置（`None`）时
+    /// 不追加该参数（spawn 命令行与现状逐字节一致），驱动使用其默认 131072。
+    /// 假驱动直接回报它实际收到的 argv 形态，端到端断言。
+    #[test]
+    fn max_tokens_is_passed_through_only_when_configured() {
+        let script = "import readline from 'node:readline';\n\
+             const argv = process.argv;\n\
+             const i = argv.indexOf('--max-tokens');\n\
+             const seen = i >= 0 ? 'passed:' + argv[i + 1] : 'absent';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'send_message') {\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: seen }));\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
+               }\n\
+             });\n\
+             rl.on('close', () => process.exit(0));\n\
+             setInterval(() => {}, 1000);\n";
+        let (_temp, paths, params) = fake_driver_paths(script);
+
+        // 配置值：透传到驱动命令行。
+        let configured = DriverParams {
+            max_tokens: Some(4096),
+            ..params.clone()
+        };
+        let manager = DshDriverManager::new();
+        manager
+            .ensure_started(&configured, &paths)
+            .expect("驱动启动（已配置）");
+        let outcome = manager
+            .send_message_and_wait("s1", "m1", "问题", Duration::from_secs(15))
+            .expect("回显（已配置）");
+        assert_eq!(outcome.text, "passed:4096", "配置值必须透传 --max-tokens 4096");
+        manager.shutdown_best_effort();
+
+        // 未配置：参数不出现——缺省行为与现状一致（驱动侧维持默认 131072）。
+        let manager_plain = DshDriverManager::new();
+        manager_plain
+            .ensure_started(&params, &paths)
+            .expect("驱动启动（未配置）");
+        let outcome_plain = manager_plain
+            .send_message_and_wait("s1", "m1", "问题", Duration::from_secs(15))
+            .expect("回显（未配置）");
+        assert_eq!(
+            outcome_plain.text, "absent",
+            "未配置时不得追加 --max-tokens 参数"
+        );
+        manager_plain.shutdown_best_effort();
     }
 }

@@ -5,11 +5,17 @@
 //! 本模块把这些行 id 收敛为单一事实源，供 [`crate::dsh_sidecar`] 生成 patch 时使用，
 //! 也作为未来引入插件/工具能力时的授权边界参照。
 
-/// 首版永久禁用的 DSH 工具/能力行 id（对应 dsh-base 组成里的行）。
+/// 首版永久禁用的危险 DSH 工具/能力行 id（对应 dsh-base 组成里的行）。
 ///
 /// 禁用的目的：让 AI 核心在结构上拿不到「写文件、跑命令、联网、派生子 agent」的入口，
 /// 从而在源头守住铁律 1。`tool-todo` 与 `exit_plan_mode` 是 agent 内部记账，
 /// 不碰文件/命令，不禁。
+///
+/// 单一真相源（change: add-agent-on-demand-reading 设计 D14，任务 1.4）：本清单与
+/// `sidecar/driver/denied-capabilities.json` 中 `gateway=true` 的条目一一对应，由两端
+/// 契约测试双向钉死；该文件的完整 `entries` 同时是 `sidecar/driver/gen-config.mjs`
+/// 装配禁用清单（DENY_IDS / cordis.driver.yaml）的来源。增删危险工具只改那份清单文件，
+/// 再同步本常量并跑两端测试。
 pub const FORBIDDEN_TOOL_IDS: &[&str] = &[
     "tool-bash",
     "tool-pwsh",
@@ -31,11 +37,32 @@ pub const FORBIDDEN_TOOL_IDS: &[&str] = &[
     "skill-filesystem",
 ];
 
-/// 验证 harness 唯一暴露的受控只读作品工具名（任务 2.2/2.3/2.4 的边界锚点）。
+/// 受控只读作品工具总集（dash 命名，任务组 1 统一命名）：Agent 按需补读工具面
+/// （见 [`AGENT_STORY_TOOLS`]）+ 系统自动取材路径保留的 `story-snapshot`。
 ///
 /// AI 核心请求作品材料只能通过这些名字；任何其它工具名都拒绝。这些是产品级
 /// 只读能力名，不含任何写入、命令、联网、子 agent 语义。
-pub const READ_ONLY_STORY_TOOLS: &[&str] = &["story-list", "story-read", "story-snapshot"];
+pub const READ_ONLY_STORY_TOOLS: &[&str] = &[
+    "story-list",
+    "story-read",
+    "story-search",
+    "story-request-reading",
+    "story-snapshot",
+];
+
+/// Agent 按需补读工具面（change: add-agent-on-demand-reading 设计 D6/D13，任务 3.1）：
+/// 宿主真实放行的四个只读工具。
+///
+/// `story-snapshot` 只保留给系统自动取材路径，不进入 Agent 工具面（本阶段补读
+/// 只读已保存正文）。网关按名放行不等于读取放行：每次调用的逐次校验（讨论授权
+/// 状态 / 作品身份 / 回收站 / AI 可见性 / 版本 / 待恢复事务）在宿主工具执行器
+/// `crate::story_tools` 完成（设计 D3）。
+pub const AGENT_STORY_TOOLS: &[&str] = &[
+    "story-list",
+    "story-read",
+    "story-search",
+    "story-request-reading",
+];
 
 /// 工具授权判定：把某个工具/能力名归入「只读作品」「永久禁用」「未知拒绝」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,17 +89,27 @@ pub fn authorize_tool(name: &str) -> ToolAuthorization {
 /// 授权检查：判断某个核心能力是否被产品允许。
 ///
 /// 文本生成、流式与取消随常驻会话改造（resident-ai-session）落地并授权；
-/// 工具调用与多 Agent 仍然拒绝——AI 核心在结构上拿不到任何文档写入、
-/// 命令执行、联网或子 agent 入口（驱动侧默认拒绝装配，见
-/// `sidecar/driver/gen-config.mjs`；协议命令面无文档写入通道，见
-/// `dsh_driver` 的协议面锚点测试）。
+/// 工具调用随按需补读改造（add-agent-on-demand-reading，任务 3.1）成为已实现
+/// 能力并授权——但能力级放行只是「工具循环被产品允许」，每个具体工具名仍必须
+/// 经 [`authorize_tool_call`] 逐名判定（仅四件套放行，默认拒绝）；多 Agent 仍然
+/// 拒绝。AI 核心在结构上仍拿不到任何文档写入、命令执行、联网或子 agent 入口
+/// （驱动侧默认拒绝装配，见 `sidecar/driver/gen-config.mjs`；协议命令面无文档
+/// 写入通道，见 `dsh_driver` 的协议面锚点测试）。
 pub fn authorize(capability: crate::runtime_contract::CoreCapability) -> bool {
     matches!(
         capability,
         crate::runtime_contract::CoreCapability::TextGeneration
             | crate::runtime_contract::CoreCapability::Streaming
             | crate::runtime_contract::CoreCapability::Cancellation
+            | crate::runtime_contract::CoreCapability::ToolCall
     )
+}
+
+/// 工具调用能力的逐名授权（任务 3.1）：仅 Agent 按需补读工具面四件套放行；
+/// 其余一律拒绝——含未知名、永久禁用名与系统保留名 `story-snapshot`（它不属于
+/// Agent 工具面）。默认失败关闭，绝不落入通用执行。
+pub fn authorize_tool_call(name: &str) -> bool {
+    AGENT_STORY_TOOLS.contains(&name)
 }
 
 #[cfg(test)]
@@ -92,10 +129,27 @@ mod tests {
         assert!(authorize(CoreCapability::Cancellation));
     }
 
+    /// 任务 3.1（add-agent-on-demand-reading）：工具调用能力随宿主执行器落地并授权；
+    /// 多 Agent 仍然拒绝。能力级放行必须配合逐名判定（见下个测试）。
     #[test]
-    fn tool_call_and_multi_agent_are_rejected() {
-        assert!(!authorize(CoreCapability::ToolCall));
+    fn tool_call_is_authorized_but_multi_agent_stays_rejected() {
+        assert!(authorize(CoreCapability::ToolCall));
         assert!(!authorize(CoreCapability::MultiAgent));
+    }
+
+    /// 任务 3.1：工具调用逐名授权——仅 Agent 工具面四件套放行；系统保留名
+    /// `story-snapshot`、禁用名与未知名一律拒绝（默认失败关闭）。
+    #[test]
+    fn tool_call_by_name_authorizes_only_agent_story_tools() {
+        for name in AGENT_STORY_TOOLS {
+            assert!(authorize_tool_call(name), "Agent 工具应放行: {name}");
+        }
+        // story-snapshot 保留给系统自动取材路径，不得进入 Agent 工具面。
+        assert!(!authorize_tool_call("story-snapshot"));
+        assert!(!authorize_tool_call("tool-fs"));
+        assert!(!authorize_tool_call("tool-bash"));
+        assert!(!authorize_tool_call("some-unknown-tool"));
+        assert!(!authorize_tool_call(""));
     }
 
     #[test]
@@ -128,6 +182,11 @@ mod tests {
                 "只读工具不应出现在禁用清单: {name}"
             );
         }
+        // Agent 工具面是只读总集的子集；story-snapshot 是系统保留名、不在 Agent 面。
+        for name in AGENT_STORY_TOOLS {
+            assert!(READ_ONLY_STORY_TOOLS.contains(name), "{name}");
+        }
+        assert!(!AGENT_STORY_TOOLS.contains(&"story-snapshot"));
     }
 
     #[test]
@@ -178,6 +237,58 @@ mod tests {
                 ToolAuthorization::Unknown,
                 "讨论档案命令作为工具名应被拒绝: {name}"
             );
+        }
+    }
+
+    /// 任务组 1.4（change: add-agent-on-demand-reading，设计 D14）：禁用能力清单单一真相源
+    /// `sidecar/driver/denied-capabilities.json`。本模块的 FORBIDDEN_TOOL_IDS 必须与该清单中
+    /// `gateway=true` 的条目双向一一对应；清单完整 `entries` 同时是 gen-config.mjs 装配禁用
+    /// 清单（DENY_IDS / cordis.driver.yaml）的来源，两端由各自测试钉死。
+    #[test]
+    fn forbidden_tool_ids_match_denied_capabilities_truth_source() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("sidecar")
+            .join("driver")
+            .join("denied-capabilities.json");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("读取 denied-capabilities.json 失败：{e}"));
+        let value: serde_json::Value =
+            serde_json::from_str(&text).expect("denied-capabilities.json 必须是合法 JSON");
+        let entries = value["entries"]
+            .as_array()
+            .expect("entries 必须是数组")
+            .iter()
+            .map(|e| {
+                let id = e["id"].as_str().unwrap_or_else(|| panic!("条目缺少 id：{e}"));
+                let gateway = e["gateway"].as_bool().unwrap_or(false);
+                (id, gateway)
+            })
+            .collect::<Vec<_>>();
+
+        let mut all_ids = std::collections::BTreeSet::new();
+        let mut gateway_ids = std::collections::BTreeSet::new();
+        for (id, gateway) in &entries {
+            assert!(all_ids.insert(*id), "清单存在重复 id：{id}");
+            if *gateway {
+                gateway_ids.insert(*id);
+            }
+        }
+
+        let rust_ids: std::collections::BTreeSet<&str> = FORBIDDEN_TOOL_IDS.iter().copied().collect();
+        // 双向钉死：gateway=true 子集 == Rust 危险工具清单。
+        assert_eq!(
+            gateway_ids, rust_ids,
+            "FORBIDDEN_TOOL_IDS 必须与 denied-capabilities.json 的 gateway=true 条目一一对应"
+        );
+        // 结构性：危险工具必须在装配禁用清单内（装配时同时禁用）。
+        for id in FORBIDDEN_TOOL_IDS {
+            assert!(all_ids.contains(id), "危险工具 {id} 必须在装配禁用清单内");
+        }
+        // 只读作品工具（含 Agent 工具面四件套与系统保留名 story-snapshot）
+        // 不得出现在任何禁用清单。
+        for name in READ_ONLY_STORY_TOOLS {
+            assert!(!all_ids.contains(name), "只读工具 {name} 不得出现在禁用清单");
         }
     }
 }

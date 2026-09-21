@@ -7,6 +7,8 @@ import {
   aiStartSession,
   listenAiDelta,
   listenAiDriverLost,
+  listenAiReadingRequest,
+  listenAiToolCall,
   type AiReplayOrigin,
   type AiReplayTurn,
 } from "./project-api.ts";
@@ -43,6 +45,30 @@ export interface StreamTextEvent {
   readonly text: string;
 }
 
+/**
+ * 工具调用轻量过程事件（add-agent-on-demand-reading 任务 7.3）：按在途消息路由到
+ * 所属讨论，供「正在搜索 / 正在阅读」状态显示。不携带任何作品数据或执行结果。
+ */
+export interface ToolCallEvent {
+  readonly conversationId: string;
+  readonly messageId: string;
+  readonly callId: string;
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+}
+
+/**
+ * 按需补读授权请求事件（任务 7.1）：后端拦截 `story-request-reading` 后转为面向
+ * 用户的授权提示；载荷只携带身份与模型提供的请求原因，不携带作品数据。
+ */
+export interface ReadingRequestEvent {
+  readonly conversationId: string;
+  readonly sessionId: string;
+  readonly messageId: string;
+  readonly callId: string;
+  readonly reason: string;
+}
+
 export interface ResidentSessionDependencies {
   startSession?: typeof aiStartSession;
   sendMessage?: typeof aiSendMessage;
@@ -52,6 +78,8 @@ export interface ResidentSessionDependencies {
   replayDone?: typeof aiReplayDone;
   listenDelta?: typeof listenAiDelta;
   listenDriverLost?: typeof listenAiDriverLost;
+  listenToolCall?: typeof listenAiToolCall;
+  listenReadingRequest?: typeof listenAiReadingRequest;
   /** 会话 / 消息 ID 生成器；默认 `crypto.randomUUID`。 */
   newId?: () => string;
 }
@@ -66,6 +94,10 @@ export interface AiSessionTransport {
   replaySession(conversationId: string, turns: readonly AiReplayTurn[], origin: AiReplayOrigin): Promise<void>;
   onStreamText(listener: (event: StreamTextEvent) => void): () => void;
   onDriverLost(listener: () => void): () => void;
+  /** 订阅工具调用轻量过程事件（按在途消息路由到所属讨论），返回退订函数。 */
+  onToolCall(listener: (event: ToolCallEvent) => void): () => void;
+  /** 订阅按需补读授权请求事件（按载荷中的讨论身份路由），返回退订函数。 */
+  onReadingRequest(listener: (event: ReadingRequestEvent) => void): () => void;
   installSessionEventRouting(): void;
   destroySessionEventRouting(): void;
 }
@@ -133,6 +165,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly inFlightByConversation: Map<string, StreamTarget> = new Map();
   private readonly streamListeners: Array<(event: StreamTextEvent) => void> = [];
   private readonly driverLostListeners: Array<() => void> = [];
+  private readonly toolCallListeners: Array<(event: ToolCallEvent) => void> = [];
+  private readonly readingRequestListeners: Array<(event: ReadingRequestEvent) => void> = [];
   private eventRoutingGeneration = 0;
   private eventRoutingCleanup: Array<() => void> | null = null;
 
@@ -146,6 +180,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
       replayDone: dependencies.replayDone ?? aiReplayDone,
       listenDelta: dependencies.listenDelta ?? listenAiDelta,
       listenDriverLost: dependencies.listenDriverLost ?? listenAiDriverLost,
+      listenToolCall: dependencies.listenToolCall ?? listenAiToolCall,
+      listenReadingRequest: dependencies.listenReadingRequest ?? listenAiReadingRequest,
       newId: dependencies.newId ?? defaultNewId,
     };
   }
@@ -304,6 +340,24 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     };
   }
 
+  /** 订阅工具调用轻量过程事件，返回退订函数。 */
+  onToolCall(listener: (event: ToolCallEvent) => void): () => void {
+    this.toolCallListeners.push(listener);
+    return () => {
+      const index = this.toolCallListeners.indexOf(listener);
+      if (index !== -1) this.toolCallListeners.splice(index, 1);
+    };
+  }
+
+  /** 订阅按需补读授权请求事件，返回退订函数。 */
+  onReadingRequest(listener: (event: ReadingRequestEvent) => void): () => void {
+    this.readingRequestListeners.push(listener);
+    return () => {
+      const index = this.readingRequestListeners.indexOf(listener);
+      if (index !== -1) this.readingRequestListeners.splice(index, 1);
+    };
+  }
+
   /** 安装 Tauri 事件路由（当前生命周期内幂等）：ai-delta 按在途消息过滤转发。 */
   installSessionEventRouting(): void {
     if (this.eventRoutingCleanup !== null) return;
@@ -337,6 +391,38 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
       // 驱动进程丢失：所有会话失效，清空会话映射。
       this.sessions.clear();
       for (const listener of this.driverLostListeners) listener();
+    }).then(retainUnlisten).catch(() => {});
+    // 工具调用轻量过程（任务 7.3）：按在途消息路由到所属讨论（与增量同一过滤，
+    // 迟到 / 未知消息的工具调用事件不转发，不污染其他讨论）。
+    void this.deps.listenToolCall((payload) => {
+      if (generation !== this.eventRoutingGeneration) return;
+      const stream = this.currentStreams.get(payload.message_id);
+      if (stream === undefined) return;
+      if (payload.session_id !== stream.sessionId || payload.message_id !== stream.messageId) {
+        return;
+      }
+      for (const listener of this.toolCallListeners) {
+        listener({
+          conversationId: stream.conversationId,
+          messageId: payload.message_id,
+          callId: payload.call_id,
+          tool: payload.tool,
+          args: payload.args ?? {},
+        });
+      }
+    }).then(retainUnlisten).catch(() => {});
+    // 按需补读授权请求（任务 7.1）：按载荷中的讨论身份路由（授权属于讨论）。
+    void this.deps.listenReadingRequest((payload) => {
+      if (generation !== this.eventRoutingGeneration) return;
+      for (const listener of this.readingRequestListeners) {
+        listener({
+          conversationId: payload.conversation_id,
+          sessionId: payload.session_id,
+          messageId: payload.message_id,
+          callId: payload.call_id,
+          reason: payload.reason,
+        });
+      }
     }).then(retainUnlisten).catch(() => {});
   }
 

@@ -333,6 +333,59 @@ export function listenAiDelta(
   return listen<AiDeltaPayload>("ai-delta", (event) => handler(event.payload));
 }
 
+// ========== 按需补读事件与命令（change: add-agent-on-demand-reading 任务 7） ==========
+
+/** `"ai-tool-call"` 事件载荷：一次工具调用的轻量过程信息（不含作品数据）。 */
+export interface AiToolCallPayload {
+  session_id: string;
+  message_id: string;
+  call_id: string;
+  /** 工具名（story-list / story-read / story-search / story-request-reading）。 */
+  tool: string;
+  /** 工具参数（结构因工具而异；只含模型请求的参数，不含执行结果）。 */
+  args: Record<string, unknown>;
+}
+
+/** `"ai-reading-request"` 事件载荷：面向用户的按需补读授权请求（设计 D1）。 */
+export interface AiReadingRequestPayload {
+  session_id: string;
+  message_id: string;
+  call_id: string;
+  conversation_id: string;
+  /** 模型提供的请求原因（透传，不携带作品数据）。 */
+  reason: string;
+}
+
+/** 订阅 `"ai-tool-call"` 轻量过程事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenAiToolCall(
+  handler: (payload: AiToolCallPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<AiToolCallPayload>("ai-tool-call", (event) => handler(event.payload));
+}
+
+/** 订阅 `"ai-reading-request"` 授权请求事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenAiReadingRequest(
+  handler: (payload: AiReadingRequestPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<AiReadingRequestPayload>("ai-reading-request", (event) => handler(event.payload));
+}
+
+/**
+ * 用户对按需补读授权请求的决定：允许（`granted: true`）→ 授权写入讨论档案并回填
+ * `{granted:true}`，被暂停的轮次自动继续原问题；拒绝 → 回填 `{granted:false}`，
+ * 模型基于既有材料有限回答。
+ */
+export async function aiResolveReadingRequest(
+  sessionId: string,
+  callId: string,
+  granted: boolean,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("ai_resolve_reading_request", { sessionId, callId, granted });
+}
+
 /** 订阅 `"ai-driver-lost"` 事件（驱动进程丢失，无载荷），返回退订函数。 */
 export function listenAiDriverLost(
   handler: () => void,

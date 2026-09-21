@@ -1,0 +1,198 @@
+{
+  "protocol_version": 1,
+  "name": "next-story-dsh-driver",
+  "description": "Next Story 常驻 DSH 会话驱动协议的单一真相源（Rust 宿主 dsh_driver.rs ↔ node 驱动 driver.mjs，stdin/stdout 行分隔 JSON）。方向以驱动进程为视角：inbound = 宿主→驱动（命令）；outbound = 驱动→宿主（事件）。生产 driver.mjs、验证替身 adapter.mjs 与两端测试共用本文件（change: add-agent-on-demand-reading 设计 D7）；Rust 契约测试断言本文件 status=active 的条目与 dsh_driver.rs 的事件/命令枚举一一对应。",
+  "status_values": {
+    "active": "生产 v1 已实现：driver.mjs 与 Rust 宿主都必须认识并处理",
+    "planned": "已定义、生产未实现；验证替身可先按本定义演练。当前无 planned 条目（工具桥接 tool_call / tool_result 已随 add-agent-on-demand-reading 任务组 5 投产）"
+  },
+  "commands": [
+    {
+      "name": "start_session",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。会话身份（宿主侧使用讨论身份）。",
+        "system_prompt": "可选，string。系统提示词；驱动接受该字段，Rust 宿主 v1 不发送。"
+      },
+      "description": "登记会话（不建 Agent）；replay 或首次 send 时才创建。"
+    },
+    {
+      "name": "send_message",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。消息身份（宿主生成）。",
+        "text": "必填，string。用户问题文本（增量追问，历史由常驻会话维护）。"
+      },
+      "description": "发送一轮用户消息，驱动流式回应。"
+    },
+    {
+      "name": "replay_history",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "turns": "必填，数组，元素 {role:\"user\"|\"assistant\", text:string}。前端显示历史的增量投影，不含任何作品文件内容。"
+      },
+      "description": "崩溃恢复：向未启动的会话注入历史轮次。"
+    },
+    {
+      "name": "replay_done",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。"
+      },
+      "description": "历史注入完毕；驱动据此创建 Agent 并回 replay_ok。"
+    },
+    {
+      "name": "cancel_message",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。要取消的消息身份。"
+      },
+      "description": "取消进行中的生成；取消命令走旁路不排队。"
+    },
+    {
+      "name": "end_session",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。"
+      },
+      "description": "结束会话并销毁 Agent，回 session_ended。"
+    },
+    {
+      "name": "shutdown",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {},
+      "description": "驱动优雅退出：等待在途命令收束后清理并 exit 0。"
+    },
+    {
+      "name": "tool_result",
+      "direction": "inbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "call_id": "必填，string。所回应的 tool_call 身份。",
+        "ok": "必填，boolean。宿主侧执行是否成功。",
+        "result": "ok=true 时出现，object。宿主执行出的结构化结果（如目录列表、正文材料、授权决定 granted/denied）。",
+        "error": "ok=false 时出现，object。结构化拒绝 {reason, ...}；拒绝时不得携带作品内容。"
+      },
+      "description": "宿主回填工具执行结果（设计 D2）；驱动把结果喂回模型会话并继续挂起轮次。生产桥接已随 add-agent-on-demand-reading 任务组 5 落地；迟到 / 未知 / 已取消的 call_id 被驱动拒绝（tool_call_not_found），不重开调用。"
+    }
+  ],
+  "events": [
+    {
+      "name": "ready",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "protocol_version": "必填，integer。须与本文件 protocol_version 一致。"
+      },
+      "description": "驱动启动完成握手，stdout 首帧；版本不符时宿主判启动失败。"
+    },
+    {
+      "name": "session_started",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。"
+      },
+      "description": "会话登记成功。"
+    },
+    {
+      "name": "delta",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。",
+        "seq": "必填，integer。驱动会话事件序号。",
+        "text": "必填，string。流式增量文本。"
+      },
+      "description": "流式增量（逐字呈现）。"
+    },
+    {
+      "name": "message_sent",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。"
+      },
+      "description": "provider 发送回执：本轮首次观测到 provider 侧回应证据时发出一次，必须先于 message_done/message_failed；只反映真实观测，不伪造。"
+    },
+    {
+      "name": "message_done",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。",
+        "text": "必填，string。本轮最终全文。"
+      },
+      "description": "生成成功终态。"
+    },
+    {
+      "name": "message_failed",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。",
+        "code": "必填，string。稳定错误族（cancelled / busy / bad_request / internal 或 provider 错误码）。",
+        "message": "必填，string。用户可读错误说明。"
+      },
+      "description": "生成失败终态（含取消）；一轮恰好一个终态。"
+    },
+    {
+      "name": "replay_ok",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。"
+      },
+      "description": "历史注入完成、Agent 已创建。"
+    },
+    {
+      "name": "session_ended",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。"
+      },
+      "description": "会话已结束并清理。"
+    },
+    {
+      "name": "error",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "可选，string|null。能定位到会话时携带。",
+        "message_id": "可选，string|null。能定位到消息时携带。",
+        "code": "必填，string。",
+        "message": "必填，string。"
+      },
+      "description": "命令级错误（单帧错误不致命）：会话不存在、参数非法、帧超限等。"
+    },
+    {
+      "name": "tool_call",
+      "direction": "outbound",
+      "status": "active",
+      "fields": {
+        "session_id": "必填，string。",
+        "message_id": "必填，string。所属轮次。",
+        "call_id": "必填，string。调用身份；宿主的 tool_result 须以同一身份回应。",
+        "tool": "必填，string。dash 风格 Agent 工具名（story-list / story-read / story-search / story-request-reading，设计 D6）。",
+        "args": "必填，object。调用参数；不含任何写入语义。"
+      },
+      "description": "驱动把模型发起的工具调用交宿主执行（设计 D2）；轮次挂起直到 tool_result 回填（或被停止生成取消）。node 驱动进程不自行读取作品文件。生产桥接已随 add-agent-on-demand-reading 任务组 5 落地。"
+    }
+  ]
+}

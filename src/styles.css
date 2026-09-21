@@ -907,6 +907,56 @@
 .ai-material-retrieval { font-size: 0.8rem; color: var(--color-muted); line-height: 1.5; }
 .ai-material-note { font-size: 0.78rem; color: var(--color-muted); line-height: 1.5; }
 
+/* 按需补读授权请求卡（add-agent-on-demand-reading 任务 7.1）：与材料说明同族，
+   克制呈现原因与权限边界。 */
+.ai-reading-request {
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-reading-request.hidden { display: none; }
+.ai-reading-request-title { font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.ai-reading-request-reason {
+  font-size: 0.82rem;
+  color: var(--color-text-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.ai-reading-request-note { font-size: 0.78rem; color: var(--color-muted); line-height: 1.5; }
+.ai-reading-request-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* 补读过程轻量状态（任务 7.3）：默认一行状态，可展开已读文档列表。 */
+.ai-reading-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-reading-status.hidden { display: none; }
+.ai-reading-toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.ai-reading-status-line { font-size: 0.8rem; color: var(--color-muted); line-height: 1.5; }
+.ai-reading-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 10px;
+}
+.ai-reading-status-list.hidden { display: none; }
+.ai-reading-doc { font-size: 0.78rem; color: var(--color-muted); line-height: 1.5; }
+.ai-reading-doc.is-masked { font-style: italic; }
+
 .ai-follow-up-error-actions {
   display: flex;
   flex-wrap: wrap;

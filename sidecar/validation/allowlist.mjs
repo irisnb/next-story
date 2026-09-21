@@ -1,11 +1,14 @@
-// allowlist.mjs — 阶段 1 的 DSH 能力 allowlist，默认拒绝（change: dsh-capability-integration-validation 任务 1.3）
+// allowlist.mjs — 阶段 1 的 DSH 能力 allowlist，默认拒绝（change: dsh-capability-integration-validation 任务 1.3；
+// 工具命名统一见 change: add-agent-on-demand-reading 任务 1.2 / 设计 D6）
 //
-// 允许集只含受控只读能力；通用文件、Shell、网络、子代理、无限循环、作品写入全部保持禁用。
+// 允许集只含受控只读能力，命名与 Rust capability_gateway.rs 的 dash 风格 Agent 工具面一致；
+// 通用文件、Shell、网络、子代理、无限循环、作品写入全部保持禁用。
 // 任何未知能力也默认拒绝（default-deny）。本模块纯函数，无 IO。
 export const ALLOWED_CAPABILITIES = Object.freeze([
-  "story.list",          // 列出允许范围
-  "story.read_document", // 读取指定文档（受控只读）
-  "story.read_snapshot", // 传递未保存快照（受控只读）
+  "story-list",            // 列出允许范围（Agent 工具面）
+  "story-read",            // 读取指定文档已保存正文（受控只读）
+  "story-search",          // 跨文档字面检索（受控只读）
+  "story-request-reading", // 按需补读授权请求（专用控制工具，设计 D1）
 ]);
 
 export const FORBIDDEN_CAPABILITIES = Object.freeze([

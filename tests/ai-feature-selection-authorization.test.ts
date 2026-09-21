@@ -48,6 +48,8 @@ function selectionAuthHarness(options: {
     replaySession: () => Promise.resolve(),
     onStreamText: () => () => {},
     onDriverLost: () => () => {},
+    onToolCall: () => () => {},
+    onReadingRequest: () => () => {},
     installSessionEventRouting: () => {},
     destroySessionEventRouting: () => {},
   };

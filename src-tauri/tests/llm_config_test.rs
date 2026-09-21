@@ -25,6 +25,7 @@ fn sample_config(api_base_url: String) -> LlmConfig {
         api_base_url,
         api_key: "test-key".to_string(),
         model: "test-model".to_string(),
+        max_tokens: None,
     }
 }
 
@@ -343,6 +344,7 @@ fn save_with_empty_api_key_reuses_existing_keyring_secret() {
         api_base_url: "https://new.example.com/v1".to_string(),
         api_key: "".to_string(),
         model: "test-model".to_string(),
+        max_tokens: None,
     };
     save_llm_config_with_store(&base, &url_only, &store).expect("save url-only config");
 
@@ -475,6 +477,7 @@ fn validation_rejects_missing_fields_and_bad_url() {
         api_base_url: "".to_string(),
         api_key: "k".to_string(),
         model: "m".to_string(),
+        max_tokens: None,
     };
     assert!(matches!(
         validate_llm_config(&missing_url),
@@ -485,6 +488,7 @@ fn validation_rejects_missing_fields_and_bad_url() {
         api_base_url: "https://x".to_string(),
         api_key: "".to_string(),
         model: "m".to_string(),
+        max_tokens: None,
     };
     assert!(matches!(
         validate_llm_config(&missing_key),
@@ -495,6 +499,7 @@ fn validation_rejects_missing_fields_and_bad_url() {
         api_base_url: "https://x".to_string(),
         api_key: "k".to_string(),
         model: "".to_string(),
+        max_tokens: None,
     };
     assert!(matches!(
         validate_llm_config(&missing_model),
@@ -505,11 +510,77 @@ fn validation_rejects_missing_fields_and_bad_url() {
         api_base_url: "ftp://x".to_string(),
         api_key: "k".to_string(),
         model: "m".to_string(),
+        max_tokens: None,
     };
     assert!(matches!(
         validate_llm_config(&bad_url),
         Err(LlmConfigError::InvalidApiBaseUrl(_))
     ));
+}
+
+/// 任务 8.1（add-agent-on-demand-reading，设计 D10）：max_tokens 可选字段——
+/// 缺省 `None` 合法（维持驱动默认 131072）；配置了必须是 1..=MAX_TOKENS_LIMIT
+/// 的正整数，后端校验兜底。
+#[test]
+fn validation_bounds_optional_max_tokens() {
+    let mut config = sample_config("https://api.example.com/v1".to_string());
+
+    config.max_tokens = None;
+    assert!(validate_llm_config(&config).is_ok(), "缺省合法（默认 131072）");
+    config.max_tokens = Some(1);
+    assert!(validate_llm_config(&config).is_ok());
+    config.max_tokens = Some(131072);
+    assert!(validate_llm_config(&config).is_ok());
+    config.max_tokens = Some(next_story_lib::llm_config::MAX_TOKENS_LIMIT);
+    assert!(validate_llm_config(&config).is_ok(), "上限边界值合法");
+
+    config.max_tokens = Some(0);
+    assert!(matches!(
+        validate_llm_config(&config),
+        Err(LlmConfigError::InvalidMaxTokens)
+    ));
+    config.max_tokens = Some(next_story_lib::llm_config::MAX_TOKENS_LIMIT + 1);
+    assert!(matches!(
+        validate_llm_config(&config),
+        Err(LlmConfigError::InvalidMaxTokens)
+    ));
+}
+
+/// 任务 8.1：max_tokens 持久化往返——配置值原样保存/加载/摘要往返；未配置时
+/// 磁盘文件不含该键（既有配置文件形状零变化），加载回 `None`。
+#[test]
+fn max_tokens_round_trips_and_default_keeps_file_shape() {
+    let base = TempDir::new().expect("temp dir");
+    let store = MockStore::new();
+
+    let mut configured = sample_config("https://api.example.com/v1".to_string());
+    configured.max_tokens = Some(4096);
+    save_llm_config_with_store(base.path(), &configured, &store).expect("save configured");
+
+    let loaded = load_llm_config_with_store(base.path(), &store)
+        .expect("load")
+        .expect("exists");
+    assert_eq!(loaded.max_tokens, Some(4096), "配置值必须原样往返");
+
+    let summary = load_llm_config_summary_with_store(base.path(), &store)
+        .expect("summary")
+        .expect("exists");
+    assert_eq!(summary.max_tokens, Some(4096), "摘要携带 max_tokens");
+
+    // 未配置：保存后磁盘文件不含 max_tokens 键（旧文件形状不变），加载回 None。
+    let base_plain = TempDir::new().expect("temp dir 2");
+    let plain = sample_config("https://api.example.com/v1".to_string());
+    save_llm_config_with_store(base_plain.path(), &plain, &store).expect("save plain");
+    let raw = std::fs::read_to_string(
+        std::path::Path::new(base_plain.path())
+            .join("llm-config.json"),
+    )
+    .expect("read raw");
+    assert!(!raw.contains("max_tokens"), "未配置时文件不含该键: {raw}");
+    let loaded_plain = load_llm_config_with_store(base_plain.path(), &store)
+        .expect("load plain")
+        .expect("exists");
+    assert_eq!(loaded_plain.max_tokens, None);
 }
 
 #[test]
@@ -679,6 +750,7 @@ async fn generate_rejects_incomplete_config_as_configuration_required() {
         api_base_url: "".to_string(),
         api_key: "k".to_string(),
         model: "m".to_string(),
+        max_tokens: None,
     };
     let error = generate_ai_thinking(&config, "x")
         .await

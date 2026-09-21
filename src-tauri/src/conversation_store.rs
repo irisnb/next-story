@@ -89,6 +89,45 @@ pub struct MaterialProvenance {
     pub search_limited: Option<bool>,
 }
 
+/// 按需补读授权状态（change: add-agent-on-demand-reading 任务 4.1，设计 D3）：
+/// 授权真相持久化在讨论档案，宿主逐次校验；授权属于讨论、跨重启保留。
+/// `None`（缺字段 / 显式未设置）表示未授权；用户关闭授权即回到 `None`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OnDemandReadingGrant {
+    /// 已授权时间（RFC3339，由写入方盖章）。
+    pub granted_at: String,
+}
+
+/// 按需补读的阅读程度（三档；change: add-agent-on-demand-reading 任务 4.1）。
+/// 本组只定义枚举与存储；按轮累计读取范围对照正文长度的判定逻辑是任务 6.2。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadingDepth {
+    /// 搜索片段：仅检索命中，未读取正文区间。
+    SearchSnippet,
+    /// 局部阅读：读取过正文但未覆盖全文。
+    Partial,
+    /// 完整阅读：覆盖全文。
+    Full,
+}
+
+/// 按需补读读取出处的一条最小元数据（任务 4.1）：只存文档身份、版本、阅读
+/// 程度、所属轮次与是否进入模型上下文，MUST NOT 保存读取的正文副本。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OnDemandReadingProvenance {
+    /// 来源文档身份。
+    pub document_id: String,
+    /// 所读已保存正文的内容派生版本。
+    pub version: String,
+    /// 阅读程度（三档）。
+    pub depth: ReadingDepth,
+    /// 所属轮次（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）。
+    pub turn_index: u32,
+    /// 是否进入模型上下文：与 `MaterialProvenance::entered_model_context` 同一
+    /// 语义（材料已组装进被提交的工具结果），MUST NOT 被解读为「已实际发送」。
+    pub entered_model_context: bool,
+}
+
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
 /// 多窗口快车道（任务 9.1）新增两个可选字段：自定义标题 `title` 与置顶标记 `pinned`，
 /// 均带 `#[serde(default)]`，缺失时按「未重命名、未置顶」处理，不视为损坏、不提升版本号。
@@ -113,6 +152,16 @@ pub struct ConversationRecord {
     /// （`vec` 可为空，表示本轮未使用任何作品材料）。不提升档案版本号，缺失不视为损坏。
     #[serde(default)]
     pub provenance: Option<Vec<MaterialProvenance>>,
+    /// 按需补读授权状态（任务 4.1，设计 D3）：`None` 表示未授权（含旧档案缺字段的
+    /// 缺省），`Some(_)` 表示已授权及时间。授权属于讨论、跨重启保留；用户关闭即置回
+    /// `None`。缺失不视为损坏、不触发任何新行为（不自动重放语义照旧）。
+    #[serde(default)]
+    pub on_demand_reading_grant: Option<OnDemandReadingGrant>,
+    /// 按需补读读取出处（最小元数据，任务 4.1）：`None` 表示旧档案缺字段（视为无
+    /// 补读记录），`Some(vec)` 可为空。只存文档身份、版本、阅读程度、轮次与是否进入
+    /// 模型上下文，MUST NOT 保存正文副本。不提升档案版本号。
+    #[serde(default)]
+    pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
 }
 
 /// 会话列表条目：除列表展示所需的身份 / 标题 / 时间 / 终态外，还携带重开所需的
@@ -136,6 +185,11 @@ pub struct ConversationSummary {
     pub pinned: bool,
     /// 材料出处元数据：`None` 表示旧档案缺少该字段（保守：可查看但不可自动重放）。
     pub provenance: Option<Vec<MaterialProvenance>>,
+    /// 按需补读授权状态：`None` 表示未授权（含旧档案缺字段缺省）。摘要携带它供
+    /// 前端授权开关与重开恢复使用（授权属于讨论、跨重启保留）。
+    pub on_demand_reading_grant: Option<OnDemandReadingGrant>,
+    /// 按需补读读取出处（最小元数据）：`None` 表示旧档案缺字段（视为无补读记录）。
+    pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
 }
 
 /// 会话列表结果：正常条目 + 被跳过（损坏/超限等）的可见提示。
@@ -348,6 +402,17 @@ pub fn save_conversation(
         ));
     }
 
+    // 前端保存链保全（add-agent-on-demand-reading 任务 7）：按需补读出处由宿主
+    // 工具通道按轮写入（`upsert_on_demand_provenance`），前端记录不携带该字段
+    // （`None`）。保存时若调用方未提供出处而档案已有，则保留档案已有出处——
+    // 前端轮次终态保存不得抹掉通道刚落档的补读记录。通道自身写入时始终携带
+    // `Some(_)`（读改写），不受此保全影响。
+    if stamped.on_demand_reading_provenance.is_none() && file.is_file() {
+        if let Ok(existing) = read_record_file(&file) {
+            stamped.on_demand_reading_provenance = existing.on_demand_reading_provenance;
+        }
+    }
+
     let dir = conversations_dir(root);
     fs::create_dir_all(&dir).map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
 
@@ -412,6 +477,86 @@ pub fn read_conversation(
     Ok(record)
 }
 
+// ========== 按需补读授权开关与影响查询（add-agent-on-demand-reading 任务 7.2/7.4/7.5 的最小命令支撑） ==========
+
+/// 一个使用过指定文档的讨论（影响提示的最小展示数据；不含出处细节）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationUsage {
+    pub conversation_id: String,
+    pub title: String,
+}
+
+/// 指定讨论的按需补读状态（授权 + 补读出处；供前端在轮次完成后刷新显示）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct OnDemandReadingState {
+    /// 授权状态：`None` 表示未授权（含旧档案缺字段缺省）。
+    #[serde(default)]
+    pub grant: Option<OnDemandReadingGrant>,
+    /// 补读出处（最小元数据）：`None` 表示旧档案缺字段（视为无补读记录）。
+    #[serde(default)]
+    pub provenance: Option<Vec<OnDemandReadingProvenance>>,
+}
+
+/// 开启 / 关闭指定讨论的按需补读授权（任务 7.2：讨论内授权开关）。
+/// 读改写落盘：开启写入已授权及时间；关闭置回 `None`（未授权）。
+/// 关闭不清除已读内容：补读出处（`on_demand_reading_provenance`）原样保留。
+pub fn set_on_demand_reading(
+    root: &Path,
+    id: &str,
+    granted: bool,
+) -> Result<(), ConversationStoreError> {
+    let mut record = read_conversation(root, id)?;
+    if granted {
+        record.on_demand_reading_grant = Some(OnDemandReadingGrant {
+            granted_at: current_utc_timestamp(),
+        });
+    } else {
+        record.on_demand_reading_grant = None;
+    }
+    save_conversation(root, &record)
+}
+
+/// 查询使用过指定文档的讨论（任务 7.5：关闭 AI 可见性前的影响提示）。
+/// 覆盖两类出处：常规材料出处（`provenance`，含选区 / 关注文档 / 检索命中）与
+/// 按需补读出处（`on_demand_reading_provenance`）。只读，不修改任何档案。
+pub fn conversations_using_document(
+    root: &Path,
+    document_id: &str,
+) -> Result<Vec<ConversationUsage>, ConversationStoreError> {
+    let mut usage = Vec::new();
+    for summary in list_conversations(root)?.conversations {
+        let referenced = summary
+            .provenance
+            .as_ref()
+            .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id))
+            || summary
+                .on_demand_reading_provenance
+                .as_ref()
+                .is_some_and(|entries| {
+                    entries.iter().any(|p| p.document_id == document_id)
+                });
+        if referenced {
+            usage.push(ConversationUsage {
+                conversation_id: summary.conversation_id,
+                title: summary.title,
+            });
+        }
+    }
+    Ok(usage)
+}
+
+/// 读取指定讨论的按需补读状态（授权 + 补读出处；任务 7.4 显示刷新用）。只读。
+pub fn on_demand_reading_state(
+    root: &Path,
+    id: &str,
+) -> Result<OnDemandReadingState, ConversationStoreError> {
+    let record = read_conversation(root, id)?;
+    Ok(OnDemandReadingState {
+        grant: record.on_demand_reading_grant,
+        provenance: record.on_demand_reading_provenance,
+    })
+}
+
 // ========== 摘要派生 ==========
 
 fn summarize(record: &ConversationRecord) -> ConversationSummary {
@@ -428,6 +573,8 @@ fn summarize(record: &ConversationRecord) -> ConversationSummary {
         custom_title: record.title.clone(),
         pinned: record.pinned,
         provenance: record.provenance.clone(),
+        on_demand_reading_grant: record.on_demand_reading_grant.clone(),
+        on_demand_reading_provenance: record.on_demand_reading_provenance.clone(),
     }
 }
 
@@ -508,6 +655,8 @@ mod tests {
             title: None,
             pinned: false,
             provenance: Some(vec![]),
+            on_demand_reading_grant: None,
+            on_demand_reading_provenance: None,
         }
     }
 
@@ -968,6 +1117,348 @@ mod tests {
                 "出处元数据不得伪造发送状态字段: {forbidden_state}"
             );
         }
+    }
+
+    // ========== 按需补读授权状态与读取出处（add-agent-on-demand-reading 任务 4.1/4.2） ==========
+
+    #[test]
+    fn on_demand_reading_state_round_trips_across_restart() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
+        rec.on_demand_reading_grant = Some(OnDemandReadingGrant {
+            granted_at: "2026-09-20T08:30:00.123Z".to_string(),
+        });
+        rec.on_demand_reading_provenance = Some(vec![
+            OnDemandReadingProvenance {
+                document_id: "doc-1".to_string(),
+                version: "version-hash-1".to_string(),
+                depth: ReadingDepth::Full,
+                turn_index: 2,
+                entered_model_context: true,
+            },
+            OnDemandReadingProvenance {
+                document_id: "doc-2".to_string(),
+                version: "version-hash-2".to_string(),
+                depth: ReadingDepth::Partial,
+                turn_index: 2,
+                entered_model_context: true,
+            },
+            OnDemandReadingProvenance {
+                document_id: "doc-3".to_string(),
+                version: "version-hash-3".to_string(),
+                depth: ReadingDepth::SearchSnippet,
+                turn_index: 3,
+                entered_model_context: false,
+            },
+        ]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+
+        // 「重启」：新实例只依赖磁盘档案恢复状态（保存 → 重开 → 状态恢复）。
+        let loaded = read_conversation(temp.path(), "conv-1").expect("read after restart");
+        assert_eq!(
+            loaded.on_demand_reading_grant, rec.on_demand_reading_grant,
+            "授权状态（已授权及时间）必须跨重启恢复"
+        );
+        assert_eq!(
+            loaded.on_demand_reading_provenance, rec.on_demand_reading_provenance,
+            "补读出处（含三档阅读程度）必须跨重启恢复"
+        );
+
+        // 摘要携带两组字段：授权开关与「本次参考了什么」扩展的数据面。
+        let result = list_conversations(temp.path()).expect("list");
+        assert_eq!(result.conversations.len(), 1);
+        let summary = &result.conversations[0];
+        assert_eq!(summary.on_demand_reading_grant, rec.on_demand_reading_grant);
+        assert_eq!(
+            summary.on_demand_reading_provenance,
+            rec.on_demand_reading_provenance
+        );
+
+        // 未授权档案：字段保持 None（未授权），保存往返不引入状态。
+        save_conversation(
+            temp.path(),
+            &record("conv-plain", Some("未授权讨论"), None, vec![]),
+        )
+        .expect("save plain");
+        let plain = read_conversation(temp.path(), "conv-plain").expect("read plain");
+        assert_eq!(plain.on_demand_reading_grant, None, "缺省即未授权");
+        assert_eq!(plain.on_demand_reading_provenance, None, "缺省即无补读记录");
+    }
+
+    #[test]
+    fn on_demand_provenance_stores_minimal_metadata_without_body_copy() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-1", None, Some("林站在天台边。"), vec![]);
+        rec.on_demand_reading_grant = Some(OnDemandReadingGrant {
+            granted_at: "2026-09-20T08:30:00.123Z".to_string(),
+        });
+        rec.on_demand_reading_provenance = Some(vec![OnDemandReadingProvenance {
+            document_id: "doc-9".to_string(),
+            version: "version-hash-9".to_string(),
+            depth: ReadingDepth::Partial,
+            turn_index: 1,
+            entered_model_context: true,
+        }]);
+
+        save_conversation(temp.path(), &rec).expect("save");
+
+        // 序列化形状：授权对象只含 granted_at；出处条目字段在最小白名单内，
+        // 绝不出现正文副本字段。
+        let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("raw");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        let grant = parsed["on_demand_reading_grant"].as_object().expect("grant");
+        assert_eq!(
+            grant.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec!["granted_at"],
+            "授权对象只存已授权时间"
+        );
+
+        let entries = parsed["on_demand_reading_provenance"]
+            .as_array()
+            .expect("provenance array");
+        assert_eq!(entries.len(), 1);
+        let entry = entries[0].as_object().expect("entry object");
+        const ALLOWED: [&str; 5] = [
+            "document_id",
+            "version",
+            "depth",
+            "turn_index",
+            "entered_model_context",
+        ];
+        for key in entry.keys() {
+            assert!(
+                ALLOWED.contains(&key.as_str()),
+                "补读出处出现未授权字段: {key}"
+            );
+        }
+        assert_eq!(entry["depth"], serde_json::json!("partial"));
+        assert_eq!(entry["entered_model_context"], serde_json::json!(true));
+        // 不含正文副本：条目里没有任何内容字段（与既有出处白名单同一红线）；
+        // 检查范围限于补读出处数组——首轮冻结选区文本在 first_round_material
+        // 中保存是既有合法行为，不属于出处副本。
+        for forbidden in ["content", "body", "text", "snippet"] {
+            assert!(
+                !entry.contains_key(forbidden),
+                "补读出处不得包含正文副本字段: {forbidden}"
+            );
+        }
+        let provenance_raw = parsed["on_demand_reading_provenance"].to_string();
+        assert!(
+            !provenance_raw.contains("林站在天台边"),
+            "补读出处元数据不得含正文文本"
+        );
+
+        // 三档阅读程度的稳定标签（snake_case）。
+        let mut rec2 = record("conv-2", Some("三档"), None, vec![]);
+        rec2.on_demand_reading_provenance = Some(vec![
+            OnDemandReadingProvenance {
+                document_id: "a".to_string(),
+                version: "v".to_string(),
+                depth: ReadingDepth::SearchSnippet,
+                turn_index: 0,
+                entered_model_context: true,
+            },
+            OnDemandReadingProvenance {
+                document_id: "b".to_string(),
+                version: "v".to_string(),
+                depth: ReadingDepth::Full,
+                turn_index: 0,
+                entered_model_context: true,
+            },
+        ]);
+        save_conversation(temp.path(), &rec2).expect("save 2");
+        let raw2 = fs::read_to_string(conversation_file(temp.path(), "conv-2")).expect("raw 2");
+        assert!(raw2.contains("\"search_snippet\""));
+        assert!(raw2.contains("\"full\""));
+    }
+
+    /// 任务 4.2：旧档案缺少按需补读字段 → 正常打开查看、视为未授权；
+    /// 缺字段不触发任何新行为（不自动重放语义照旧）。
+    #[test]
+    fn old_archive_without_on_demand_fields_reads_as_unauthorized() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-old",
+            Some("旧档案问题"),
+            None,
+            vec![turn("assistant", "旧回答", "success")],
+        );
+        let mut value = serde_json::to_value(&rec).expect("to value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("on_demand_reading_grant");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("on_demand_reading_provenance");
+        let dir = conversations_dir(temp.path());
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            dir.join("conv-old.json"),
+            serde_json::to_string_pretty(&value).expect("serialize"),
+        )
+        .expect("write old archive");
+
+        // 正常列出：不跳过、不损坏。
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(result.skipped.is_empty(), "缺按需补读字段的旧档案不得跳过");
+        assert_eq!(result.conversations.len(), 1);
+        let summary = &result.conversations[0];
+        assert_eq!(
+            summary.on_demand_reading_grant, None,
+            "旧档案缺授权字段按未授权处理"
+        );
+        assert_eq!(
+            summary.on_demand_reading_provenance, None,
+            "旧档案缺补读出处按无记录处理"
+        );
+
+        // 正常读取查看。
+        let loaded = read_conversation(temp.path(), "conv-old").expect("read old");
+        assert_eq!(loaded.on_demand_reading_grant, None);
+        assert_eq!(loaded.on_demand_reading_provenance, None);
+    }
+
+    // ========== 按需补读授权开关与影响查询（add-agent-on-demand-reading 任务 7） ==========
+
+    #[test]
+    fn set_on_demand_reading_toggles_grant_and_keeps_provenance() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut rec = record("conv-t", Some("问题"), None, vec![]);
+        rec.on_demand_reading_provenance = Some(vec![OnDemandReadingProvenance {
+            document_id: "doc-1".to_string(),
+            version: "v1".to_string(),
+            depth: ReadingDepth::Partial,
+            turn_index: 1,
+            entered_model_context: true,
+        }]);
+        save_conversation(temp.path(), &rec).expect("save");
+
+        // 开启：写入已授权及时间。
+        set_on_demand_reading(temp.path(), "conv-t", true).expect("grant");
+        let granted = read_conversation(temp.path(), "conv-t").expect("read");
+        let grant = granted.on_demand_reading_grant.expect("granted");
+        assert!(!grant.granted_at.is_empty());
+        assert_eq!(
+            granted.on_demand_reading_provenance, rec.on_demand_reading_provenance,
+            "开启授权不得改动补读出处"
+        );
+
+        // 关闭：置回未授权；已读内容（出处）不清除。
+        set_on_demand_reading(temp.path(), "conv-t", false).expect("revoke");
+        let revoked = read_conversation(temp.path(), "conv-t").expect("read");
+        assert_eq!(revoked.on_demand_reading_grant, None, "关闭即未授权");
+        assert_eq!(
+            revoked.on_demand_reading_provenance, rec.on_demand_reading_provenance,
+            "关闭不清除已读内容的出处记录"
+        );
+
+        // 状态查询与档案一致。
+        let state = on_demand_reading_state(temp.path(), "conv-t").expect("state");
+        assert_eq!(state.grant, None);
+        assert_eq!(state.provenance, rec.on_demand_reading_provenance);
+    }
+
+    #[test]
+    fn conversations_using_document_covers_material_and_on_demand_provenance() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        // 材料出处引用 doc-1 的讨论。
+        let mut material_rec = record("conv-m", Some("材料讨论"), None, vec![]);
+        material_rec.provenance = Some(vec![MaterialProvenance {
+            document_id: "doc-1".to_string(),
+            material_type: "focus_document".to_string(),
+            document_version: None,
+            turn_index: 0,
+            entered_model_context: true,
+            sent_confirmed: None,
+            matched_term: None,
+            from_unsaved_snapshot: false,
+            search_status: None,
+            search_limited: None,
+        }]);
+        save_conversation(temp.path(), &material_rec).expect("save material");
+        // 按需补读出处引用 doc-1 的讨论。
+        let mut on_demand_rec = record("conv-r", Some("补读讨论"), None, vec![]);
+        on_demand_rec.on_demand_reading_provenance = Some(vec![OnDemandReadingProvenance {
+            document_id: "doc-1".to_string(),
+            version: "v1".to_string(),
+            depth: ReadingDepth::Full,
+            turn_index: 2,
+            entered_model_context: true,
+        }]);
+        save_conversation(temp.path(), &on_demand_rec).expect("save on-demand");
+        // 无关讨论。
+        save_conversation(temp.path(), &record("conv-x", Some("无关"), None, vec![]))
+            .expect("save unrelated");
+
+        let mut usage = conversations_using_document(temp.path(), "doc-1").expect("usage");
+        usage.sort_by(|a, b| a.conversation_id.cmp(&b.conversation_id));
+        assert_eq!(
+            usage,
+            vec![
+                ConversationUsage {
+                    conversation_id: "conv-m".to_string(),
+                    title: "材料讨论".to_string(),
+                },
+                ConversationUsage {
+                    conversation_id: "conv-r".to_string(),
+                    title: "补读讨论".to_string(),
+                },
+            ],
+            "材料出处与补读出处都计入影响范围"
+        );
+
+        // 未被任何讨论使用：空结果（关闭前不弹影响提示）。
+        assert!(conversations_using_document(temp.path(), "doc-none")
+            .expect("usage none")
+            .is_empty());
+    }
+
+    /// 任务 7 前端保存链保全：前端记录不携带补读出处（`None`）时，保存不得抹掉
+    /// 宿主通道已落档的出处；显式携带 `Some(_)`（通道读改写 / 删除撤销重写）时以
+    /// 调用方为准。
+    #[test]
+    fn save_preserves_backend_owned_on_demand_provenance_when_caller_omits_it() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record("conv-p", Some("问题"), None, vec![]);
+        save_conversation(temp.path(), &rec).expect("initial save");
+
+        // 宿主通道按轮写入补读出处（读改写，始终携带 Some）。
+        let mut with_provenance = read_conversation(temp.path(), "conv-p").expect("read");
+        with_provenance.on_demand_reading_provenance = Some(vec![OnDemandReadingProvenance {
+            document_id: "doc-2".to_string(),
+            version: "v2".to_string(),
+            depth: ReadingDepth::SearchSnippet,
+            turn_index: 1,
+            entered_model_context: true,
+        }]);
+        save_conversation(temp.path(), &with_provenance).expect("save provenance");
+
+        // 前端轮次终态保存：记录不携带出处字段 → 档案已有出处必须保全。
+        let frontend_rec = record("conv-p", Some("问题"), None, vec![
+            turn("assistant", "终态回答", "success"),
+        ]);
+        save_conversation(temp.path(), &frontend_rec).expect("frontend save");
+        let loaded = read_conversation(temp.path(), "conv-p").expect("read");
+        assert_eq!(
+            loaded.on_demand_reading_provenance,
+            with_provenance.on_demand_reading_provenance,
+            "前端保存不得抹掉通道落档的补读出处"
+        );
+        assert_eq!(
+            loaded.turns.last().map(|t| t.text.clone()),
+            Some("终态回答".to_string()),
+            "前端保存的轮次内容正常落盘"
+        );
+
+        // 显式携带（删除撤销重写路径）：以调用方为准。
+        let mut explicit = read_conversation(temp.path(), "conv-p").expect("read");
+        explicit.on_demand_reading_provenance = Some(vec![]);
+        save_conversation(temp.path(), &explicit).expect("explicit save");
+        let reloaded = read_conversation(temp.path(), "conv-p").expect("read");
+        assert_eq!(reloaded.on_demand_reading_provenance, Some(vec![]));
     }
 
     #[test]

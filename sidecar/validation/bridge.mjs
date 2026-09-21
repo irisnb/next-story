@@ -4,18 +4,20 @@
 // 逐项校验作品身份、文档存在、可见性（隐藏 / 回收站）、文档类型、版本、范围、快照身份。
 // 任何失败都返回结构化拒绝，绝不返回内容，也绝不写入作品。
 //
-// 能力命名对齐本目录 allowlist.mjs（点分能力名），对应 Rust capability_gateway.rs 的
-// 只读工具名 story-list / story-read / story-snapshot（kebab 工具名，仅产品侧命名，本验证不写入 Rust）。
+// 能力命名对齐本目录 allowlist.mjs（dash 风格 Agent 工具面，设计 D6）：story-list /
+// story-read / story-search / story-request-reading，与 Rust capability_gateway.rs 的
+// READ_ONLY_STORY_TOOLS 方向一致（story-snapshot 保留给系统自动取材路径，不进 Agent 工具面）。
 // 本模块纯函数，无 IO、无网络、无作品写入。
 
 import { authorize } from "./allowlist.mjs";
 import { isVisible, isRecycled } from "./fixtures/story-fixture.mjs";
 
-/** 验证用只读工具名 → 点分能力名。未知工具一律无映射（default-deny）。 */
+/** 验证用只读工具名 → 能力名（dash 风格，工具名即能力名）。未知工具一律无映射（default-deny）。 */
 export const READ_TOOL_CAPABILITIES = Object.freeze({
-  "story.list": "story.list",
-  "story.read_document": "story.read_document",
-  "story.read_snapshot": "story.read_snapshot",
+  "story-list": "story-list",
+  "story-read": "story-read",
+  "story-search": "story-search",
+  "story-request-reading": "story-request-reading",
 });
 
 /** 八类结构化拒绝原因（与 Rust MaterialDenialReason 对齐）。 */

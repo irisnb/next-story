@@ -57,6 +57,8 @@ export class FakeEvent {
   }
 
   preventDefault(): void { this.defaultPrevented = true; }
+  stopPropagation(): void {}
+  stopImmediatePropagation(): void {}
 }
 
 export class FakeElement {
@@ -178,6 +180,9 @@ export const AI_WINDOW_ROLES = [
   "materials-toggle", "stop", "more", "close", "body", "resize",
   "snapshot-block", "snapshot-text", "welcome", "loading", "response",
   "materials-panel", "materials-body", "materials-close",
+  "reading-request", "reading-request-title", "reading-request-reason",
+  "reading-request-notes", "reading-allow", "reading-deny",
+  "reading-status", "reading-toggle", "reading-status-line", "reading-status-list",
   "error-block", "error-message", "retry", "config-block", "go-config",
   "conversation",
   "follow-up-form", "follow-up-input", "follow-up-send",
@@ -205,7 +210,7 @@ export function createAiWindowFixture(conversationId: string): {
       el.tag = "form";
     } else if (role === "follow-up-input" || role === "direct-question-input") {
       el.tag = "textarea";
-    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation" || role === "focus-switch" || role === "materials-toggle" || role === "materials-close") {
+    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation" || role === "focus-switch" || role === "materials-toggle" || role === "materials-close" || role === "reading-allow" || role === "reading-deny" || role === "reading-toggle") {
       el.tag = "button";
     }
     roles.set(role, el);
@@ -217,7 +222,19 @@ export function createAiWindowFixture(conversationId: string): {
     roles.get("materials-body")!,
     roles.get("materials-close")!,
   );
-  for (const role of ["snapshot-block", "snapshot-text", "materials-panel", "welcome", "loading", "response", "conversation", "error-block", "error-message", "retry", "config-block", "go-config", "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit"]) {
+  roles.get("reading-request")!.append(
+    roles.get("reading-request-title")!,
+    roles.get("reading-request-reason")!,
+    roles.get("reading-request-notes")!,
+    roles.get("reading-allow")!,
+    roles.get("reading-deny")!,
+  );
+  roles.get("reading-status")!.append(
+    roles.get("reading-toggle")!,
+    roles.get("reading-status-list")!,
+  );
+  roles.get("reading-toggle")!.append(roles.get("reading-status-line")!);
+  for (const role of ["snapshot-block", "snapshot-text", "materials-panel", "reading-request", "reading-status", "welcome", "loading", "response", "conversation", "error-block", "error-message", "retry", "config-block", "go-config", "follow-up-error", "follow-up-error-message", "follow-up-retry", "follow-up-edit"]) {
     body.append(roles.get(role)!);
   }
   const input = new FakeElement("role-input");

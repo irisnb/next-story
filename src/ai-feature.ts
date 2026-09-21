@@ -30,15 +30,17 @@ import {
   type AiReplayTurn,
   type AiSessionTransport,
 } from "./ai-session-transport.ts";
-import { loadLlmConfig } from "./project-api.ts";
+import { loadLlmConfig, aiResolveReadingRequest } from "./project-api.ts";
 import { canonicalNotebookJson } from "./structured-notebook.ts";
 import { flattenDocuments } from "./content-tree.ts";
 import { isDocumentAiVisible } from "./types.ts";
 import {
   conversationDelete,
   conversationList,
+  conversationOnDemandReading,
   conversationRestore,
   conversationSave,
+  conversationSetOnDemandReading,
   generateConversationId,
   roundProvenanceToMaterialProvenance,
   type ConversationRecord,
@@ -128,6 +130,12 @@ export function summaryToRecord(summary: ConversationSummary): ConversationRecor
     ...(summary.custom_title?.trim() ? { title: summary.custom_title } : {}),
     ...(summary.pinned ? { pinned: true } : {}),
     ...(summary.provenance !== undefined ? { provenance: summary.provenance } : {}),
+    on_demand_reading_grant: summary.on_demand_reading_grant ?? null,
+    // 补读出处随摘要携带：删除撤销重写以摘要快照为准（后端保存保全覆盖不到显式
+    // 携带的记录，这里不做读改写合并）。
+    ...(summary.on_demand_reading_provenance !== null && summary.on_demand_reading_provenance !== undefined
+      ? { on_demand_reading_provenance: summary.on_demand_reading_provenance }
+      : {}),
   };
 }
 
@@ -166,6 +174,15 @@ export interface AiFeatureDependencies {
   newConversationId?: () => string;
   maxConcurrent?: number;
   /**
+   * 用户对按需补读授权请求的决定回填（任务 7.1）：允许 → 后端写授权并继续原问题；
+   * 拒绝 → 有限回答。
+   */
+  resolveReadingRequest?: typeof aiResolveReadingRequest;
+  /** 讨论内授权开关（任务 7.2）：开启 / 关闭按需补读授权。 */
+  setOnDemandReading?: typeof conversationSetOnDemandReading;
+  /** 读取指定讨论的按需补读状态（任务 7.4 显示刷新）。 */
+  fetchOnDemandReading?: typeof conversationOnDemandReading;
+  /**
    * 集成点（controlled-story-read-visibility）：返回当前作品下「不允许 AI 查看」的
    * 文档 ID 集合。后端可见性 API 就绪后由其实名实现注入；未接入时缺省返回空集，
    * 不引入任何受限行为（旧档案缺出处的保守受限仍生效）。
@@ -198,6 +215,8 @@ interface AiFeatureWiring {
   readonly getVisibleDocuments: () => ReadonlyArray<{ id: string; name: string }>;
   readonly resolveDocumentTitle: (documentId: string) => string | null;
   readonly isDocumentHidden: (documentId: string) => boolean;
+  readonly resolveReadingRequest: (conversationId: string, granted: boolean) => void;
+  readonly toggleOnDemandReading: (conversationId: string, granted: boolean) => void;
 }
 
 function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
@@ -221,6 +240,8 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     getVisibleDocuments,
     resolveDocumentTitle,
     isDocumentHidden,
+    resolveReadingRequest,
+    toggleOnDemandReading,
   } = wiring;
 
   return {
@@ -276,6 +297,8 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     getVisibleDocuments,
     resolveDocumentTitle,
     isDocumentHidden,
+    onResolveReadingRequest: resolveReadingRequest,
+    onToggleOnDemandReading: toggleOnDemandReading,
   };
 }
 
@@ -304,6 +327,11 @@ export function setupAiFeature(
   const saveConversation = dependencies.conversationSave ?? conversationSave;
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;
   const restoreConversation = dependencies.conversationRestore ?? conversationRestore;
+  const resolveReadingRequestCall = dependencies.resolveReadingRequest ?? aiResolveReadingRequest;
+  const setOnDemandReadingCall =
+    dependencies.setOnDemandReading ?? conversationSetOnDemandReading;
+  const fetchOnDemandReadingCall =
+    dependencies.fetchOnDemandReading ?? conversationOnDemandReading;
   // 集成点：后端可见性 API 未接入时返回空集（无受限）；就绪后注入真实实现。
   const getHiddenDocumentIds = dependencies.getHiddenDocumentIds ?? (() => new Set<string>());
   const hiddenDocumentIds = (): ReadonlySet<string> => getHiddenDocumentIds();
@@ -377,6 +405,69 @@ export function setupAiFeature(
     if (state.setFocusDocument(conversationId, documentId, documentTitle)) {
       persistDiscussion(conversationId);
     }
+  }
+
+  // ===== 按需补读授权交互（add-agent-on-demand-reading 任务 7.1/7.2/7.4） =====
+
+  /**
+   * 轮次终态后从档案刷新按需补读状态（任务 7.4）：后端工具通道按轮把补读出处
+   * 写入档案，前端内存副本不知道；这里拉取最新授权 + 出处供「本次参考了什么」
+   * 展示。失败静默（显示保持旧值，不伪造）。
+   */
+  function refreshOnDemandState(conversationId: string): void {
+    const projectPath = getCurrentProjectPath();
+    if (projectPath === null) return;
+    const token = projectToken;
+    void fetchOnDemandReadingCall(projectPath, conversationId)
+      .then((result) => {
+        if (destroyed || projectToken !== token) return;
+        state.updateOnDemandState(
+          conversationId,
+          result.grant ?? null,
+          result.provenance ?? null,
+        );
+      })
+      .catch(() => {
+        // 静默：显示层保持旧值。
+      });
+  }
+
+  /**
+   * 用户对授权请求的决定（任务 7.1）：调 `ai_resolve_reading_request` 回填；
+   * 成功后清除授权卡，允许时写入讨论授权（授权属于讨论、跨重启保留）。
+   * 迟到 / 身份不符的失败也清除授权卡（该轮已收束），但不伪造授权。
+   */
+  function resolveReadingRequest(conversationId: string, granted: boolean): void {
+    const pending = state.pendingReadingRequestOf(conversationId);
+    if (pending === null) return;
+    void resolveReadingRequestCall(pending.sessionId, pending.callId, granted)
+      .then((result) => {
+        if (destroyed) return;
+        state.resolveReadingRequest(conversationId, granted && result.ok);
+      })
+      .catch(() => {
+        if (destroyed) return;
+        state.resolveReadingRequest(conversationId, false);
+      });
+  }
+
+  /**
+   * 讨论内授权开关（任务 7.2）：调后端读改写命令（开启写授权及时间 / 关闭置回
+   * 未授权）；成功后更新本地状态。关闭立即阻止后续读取、不清除已读内容（后端
+   * 语义），失败时本地状态不动并提示。
+   */
+  function toggleOnDemandReading(conversationId: string, granted: boolean): void {
+    const projectPath = getCurrentProjectPath();
+    if (projectPath === null) return;
+    void setOnDemandReadingCall(projectPath, conversationId, granted)
+      .then(() => {
+        if (destroyed) return;
+        state.setOnDemandReading(conversationId, granted);
+      })
+      .catch(() => {
+        if (destroyed) return;
+        state.setSaveError("按需补读设置未能保存，授权状态未改变");
+      });
   }
 
   // 删除撤销：删除立即生效，前端保留内存副本，提示期内可撤销（约 6 秒）。
@@ -487,11 +578,13 @@ export function setupAiFeature(
         waitTiming.complete(conversationId);
         state.succeed(snapshot, content, conversationId);
         persistDiscussion(conversationId);
+        refreshOnDemandState(conversationId);
       },
       onError: (snapshot: SelectionSnapshot, error, conversationId: string) => {
         waitTiming.complete(conversationId);
         applyGenerateError(state, snapshot, error, conversationId);
         persistDiscussion(conversationId);
+        refreshOnDemandState(conversationId);
       },
       onStructuredSuccess: (content, provenance, sentConfirmed, identity) => {
         waitTiming.complete(identity.conversationId);
@@ -501,6 +594,7 @@ export function setupAiFeature(
           roundProvenanceToMaterialProvenance(provenance, identity.turnId ?? 0, sentConfirmed),
         );
         persistDiscussion(identity.conversationId);
+        refreshOnDemandState(identity.conversationId);
       },
       onStructuredError: (error, identity) => {
         waitTiming.complete(identity.conversationId);
@@ -510,6 +604,7 @@ export function setupAiFeature(
           state.failFollowUp(identity.turnId ?? -1, error, identity.conversationId);
         }
         persistDiscussion(identity.conversationId);
+        refreshOnDemandState(identity.conversationId);
       },
       onDirectQuestionSuccess: (content, provenance, sentConfirmed, conversationId) => {
         waitTiming.complete(conversationId);
@@ -519,6 +614,7 @@ export function setupAiFeature(
           roundProvenanceToMaterialProvenance(provenance, 0, sentConfirmed),
         );
         persistDiscussion(conversationId);
+        refreshOnDemandState(conversationId);
       },
       onDirectQuestionError: (error, conversationId) => {
         waitTiming.complete(conversationId);
@@ -528,6 +624,7 @@ export function setupAiFeature(
           state.failDirectQuestion(error, conversationId);
         }
         persistDiscussion(conversationId);
+        refreshOnDemandState(conversationId);
       },
     },
     () => projectToken,
@@ -785,6 +882,19 @@ export function setupAiFeature(
     waitTiming.firstResponse(conversationId);
     state.appendStreamText(conversationId, text);
   });
+  // 按需补读授权请求（任务 7.1）：显示授权卡，该轮挂起等待用户决定。
+  const unsubscribeReadingRequest = transport.onReadingRequest(({ conversationId, sessionId, messageId, callId, reason }) => {
+    if (destroyed) return;
+    state.receiveReadingRequest(conversationId, { sessionId, messageId, callId, reason });
+  });
+  // 工具调用轻量过程（任务 7.3）：驱动「正在搜索 / 正在阅读」状态行；不展示模型
+  // 内部推理，也不携带任何作品数据。
+  const unsubscribeToolCall = transport.onToolCall(({ conversationId, tool, args }) => {
+    if (destroyed) return;
+    const documentId =
+      typeof args.document_id === "string" && args.document_id !== "" ? args.document_id : undefined;
+    state.noteToolCall(conversationId, tool, documentId);
+  });
   const unsubscribeDriverLost = transport.onDriverLost(() => {
     if (destroyed) return;
     // 驱动进程丢失：所有会话失效，在途请求作废；对每个打开窗口的讨论执行重放恢复。
@@ -850,6 +960,8 @@ export function setupAiFeature(
     getVisibleDocuments: visibleDocuments,
     resolveDocumentTitle,
     isDocumentHidden: (documentId) => hiddenDocumentIds().has(documentId),
+    resolveReadingRequest,
+    toggleOnDemandReading,
   }));
 
   function resetProjectScopedAi(): void {
@@ -877,6 +989,8 @@ export function setupAiFeature(
     dom.btnToggleAi.removeEventListener("click", handleToggleAi);
     unsubscribeStreamText();
     unsubscribeDriverLost();
+    unsubscribeReadingRequest();
+    unsubscribeToolCall();
     transport.destroySessionEventRouting();
     state.reset();
   }

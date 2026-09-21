@@ -28,6 +28,20 @@ export interface LlmConfigFormServices {
  */
 export const KEY_MASK = "••••••••";
 
+/**
+ * max_tokens 的前端校验上限（与后端 `llm_config::MAX_TOKENS_LIMIT` 同规则）：
+ * 空输入 = 缺省（驱动默认 131072）；填写必须是 1–1048576 的整数。
+ */
+export const MAX_TOKENS_LIMIT = 1_048_576;
+
+/** 解析 max_tokens 输入：空 = 缺省（null）；合法整数 = 数值；非法 = NaN。 */
+function parseMaxTokens(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  if (!/^\d+$/.test(trimmed)) return Number.NaN;
+  return Number(trimmed);
+}
+
 export function setupLlmConfigForm(
   dom: AppDom,
   overrides: Partial<LlmConfigFormServices> = {},
@@ -98,6 +112,15 @@ export function setupLlmConfigForm(
       hideError(dom.modelNameError);
     }
 
+    // max_tokens 可选：空 = 缺省；填写必须是 1–上限 的整数（后端同规则兜底）。
+    const maxTokens = parseMaxTokens(dom.maxTokensInput.value);
+    if (Number.isNaN(maxTokens) || (maxTokens !== null && (maxTokens < 1 || maxTokens > MAX_TOKENS_LIMIT))) {
+      showError(dom.maxTokensError, `留空使用默认，或填写 1 到 ${MAX_TOKENS_LIMIT} 之间的整数`);
+      valid = false;
+    } else {
+      hideError(dom.maxTokensError);
+    }
+
     const disabled = uiState.controlsDisabled(valid);
     dom.btnSaveConfig.disabled = disabled;
     dom.btnTestConfig.disabled = disabled;
@@ -105,10 +128,11 @@ export function setupLlmConfigForm(
     dom.apiBaseUrlInput.disabled = fieldsDisabled;
     dom.apiKeyInput.disabled = fieldsDisabled;
     dom.modelNameInput.disabled = fieldsDisabled;
+    dom.maxTokensInput.disabled = fieldsDisabled;
     return valid;
   }
 
-  /** 只有用户主动输入新密钥时才在保存/测试载荷里携带 `api_key`。 */
+  /** 只有用户主动输入新密钥时才在保存/测试载荷里携带 `api_key`；max_tokens 空输入省略。 */
   function currentConfig(): LlmConfig {
     const key = enteredKey();
     const config: LlmConfig = {
@@ -116,6 +140,8 @@ export function setupLlmConfigForm(
       model: dom.modelNameInput.value.trim(),
     };
     if (key !== "") config.api_key = key;
+    const maxTokens = parseMaxTokens(dom.maxTokensInput.value);
+    if (!Number.isNaN(maxTokens) && maxTokens !== null) config.max_tokens = maxTokens;
     return config;
   }
 
@@ -136,6 +162,7 @@ export function setupLlmConfigForm(
     dom.apiBaseUrlInput.value = saved?.api_base_url ?? "";
     dom.modelNameInput.value = saved?.model ?? "";
     dom.apiKeyInput.value = saved?.has_api_key ? KEY_MASK : "";
+    dom.maxTokensInput.value = saved?.max_tokens !== undefined ? String(saved.max_tokens) : "";
   }
 
   async function loadSaved(generation: number): Promise<void> {
@@ -240,6 +267,7 @@ export function setupLlmConfigForm(
   dom.apiBaseUrlInput.addEventListener("input", handleInput);
   dom.apiKeyInput.addEventListener("input", handleInput);
   dom.modelNameInput.addEventListener("input", handleInput);
+  dom.maxTokensInput.addEventListener("input", handleInput);
   // 聚焦掩码输入框时清空掩码，让用户直接输入新密钥，而不是把新密钥追加到掩码后面。
   dom.apiKeyInput.addEventListener("focus", () => {
     if (dom.apiKeyInput.value === KEY_MASK) {

@@ -221,6 +221,8 @@ function featureHarness(results: GenerateAiResultSource[]): {
       driverLostListener = listener;
       return () => { driverUnsubscribes += 1; };
     },
+    onToolCall: () => () => {},
+    onReadingRequest: () => () => {},
     installSessionEventRouting: () => {},
     destroySessionEventRouting: () => { routeDestroys += 1; },
   };

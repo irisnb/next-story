@@ -6,7 +6,11 @@ import {
   conversationRestrictionNotice,
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
-import type { MaterialProvenance } from "./conversation-archive.ts";
+import type {
+  MaterialProvenance,
+  OnDemandReadingProvenance,
+  ReadingDepth,
+} from "./conversation-archive.ts";
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -72,6 +76,48 @@ export interface MaterialView {
   /** 统一的检索范围与诚实边界说明。 */
   readonly scopeNote: string;
 }
+
+/**
+ * 按需补读授权请求卡（add-agent-on-demand-reading 任务 7.1）的显示数据：
+ * 模型提供的请求原因 + 权限边界说明。措辞红线：不得表述为「现在才允许 AI 查看
+ * 作品」——既有自动材料（关注文档现场、目录投影、检索片段）本来就在工作；
+ * 本卡只决定是否开启「围绕当前问题补充阅读作品文档」。
+ */
+export interface ReadingRequestView {
+  /** 模型提供的请求原因（透传）。 */
+  readonly reason: string;
+  /** 权限边界说明（仅本讨论、只读、不再重复询问、可随时关闭）。 */
+  readonly boundaryNotes: readonly string[];
+}
+
+/** 授权卡的固定边界说明（任务 7.1 行为合同）。 */
+export const READING_REQUEST_BOUNDARY_NOTES: readonly string[] = [
+  "只在本讨论内生效，其他讨论不受影响",
+  "AI 只会阅读作品文档，不会修改任何内容",
+  "允许后本讨论内不再重复询问，AI 需要时自行补读",
+  "你可以随时在窗口菜单关闭；关闭不会清除已读内容",
+];
+
+/** 授权卡的标题说明（区分「按需补读」与既有自动附带材料）。 */
+export const READING_REQUEST_TITLE =
+  "AI 希望围绕这个问题补充阅读你的作品文档";
+
+/** 补读过程轻量状态（任务 7.3）的显示数据：一句话状态 + 可展开的文档列表。 */
+export interface ReadingProgressView {
+  /** 简短状态行（正在检索 / 正在阅读 / 正在查看目录）。 */
+  readonly statusLabel: string;
+  /** 正在阅读 / 已读的文档显示项（标题按当前作品树解析，隐藏来源脱敏）。 */
+  readonly documents: ReadonlyArray<{ readonly title: string; readonly masked: boolean }>;
+  /** 是否有可展开的文档列表。 */
+  readonly hasDocuments: boolean;
+}
+
+/** 按需补读阅读程度（三档，任务 7.4；判定在后端，显示层只翻译标签）。 */
+const READING_DEPTH_LABELS: Record<ReadingDepth, string> = {
+  search_snippet: "搜索片段",
+  partial: "局部阅读",
+  full: "完整阅读",
+};
 
 /** 材料类型的显示标签；`revoked` 属于锁存脱敏标记，不单独展示。 */
 const MATERIAL_KIND_LABELS: Record<MaterialProvenance["material_type"], string> = {
@@ -149,11 +195,20 @@ export function buildMaterialView(
     list.push(entry);
     byTurn.set(entry.turn_index, list);
   }
+  // 按需补读出处（任务 7.4）：并入同一轮分组，显示文档与阅读程度（三档标签由
+  // 后端按轮判定；显示层只翻译，不重算）。
+  const onDemandByTurn = new Map<number, OnDemandReadingProvenance[]>();
+  for (const entry of conversation.onDemandReadingProvenance ?? []) {
+    const list = onDemandByTurn.get(entry.turn_index) ?? [];
+    list.push(entry);
+    onDemandByTurn.set(entry.turn_index, list);
+  }
+  const allTurns = [...new Set([...byTurn.keys(), ...onDemandByTurn.keys()])].sort((a, b) => a - b);
 
   let hiddenSourceCount = 0;
   const rounds: MaterialRoundView[] = [];
-  for (const turnIndex of [...byTurn.keys()].sort((a, b) => a - b)) {
-    const entries = byTurn.get(turnIndex)!;
+  for (const turnIndex of allTurns) {
+    const entries = byTurn.get(turnIndex) ?? [];
     const focusEntry = entries.find((entry) => entry.material_type === "focus_document");
     const sources: MaterialSourceView[] = entries.map((entry) => {
       const masked = entry.material_type === "revoked" || context.isDocumentHidden(entry.document_id);
@@ -170,6 +225,21 @@ export function buildMaterialView(
         masked,
       };
     });
+    for (const entry of onDemandByTurn.get(turnIndex) ?? []) {
+      const masked = context.isDocumentHidden(entry.document_id);
+      if (masked) hiddenSourceCount += 1;
+      const title = masked
+        ? MASKED_SOURCE_TITLE
+        : context.resolveDocumentTitle(entry.document_id) ?? MISSING_SOURCE_TITLE;
+      sources.push({
+        kindLabel: "按需补读",
+        title,
+        versionLabel: masked ? null : shortVersion(entry.version),
+        stateLabel: masked ? null : READING_DEPTH_LABELS[entry.depth] ?? entry.depth,
+        matchedTerm: null,
+        masked,
+      });
+    }
     const limited = focusEntry?.search_limited === true;
     const sentConfirmed = entries.some((entry) => entry.sent_confirmed === true);
     rounds.push({
@@ -251,9 +321,45 @@ export interface AiPanelView {
    * `unavailable` 为 true）。由窗口层按需展开，不打断对话。
    */
   readonly material: MaterialView | null;
+  /** 待决的按需补读授权请求卡（任务 7.1）；无待决时为 null。 */
+  readonly readingRequest: ReadingRequestView | null;
+  /**
+   * 补读过程轻量状态（任务 7.3）：仅在生成中呈现（正在搜索 / 正在阅读与已读
+   * 文档列表）；不在生成中或无补读活动时为 null。不展示模型内部推理。
+   */
+  readonly readingProgress: ReadingProgressView | null;
+  /** 该讨论是否已开启按需补读授权（任务 7.2 开关状态）。 */
+  readonly onDemandReadingEnabled: boolean;
 }
 
-/** 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。 */
+function buildReadingProgressView(
+  panelState: PanelStateView,
+  generating: boolean,
+  context: MaterialContext,
+): ReadingProgressView | null {
+  const progress = panelState.readingProgress ?? null;
+  if (!generating || progress === null) return null;
+  const statusLabel =
+    progress.status === "searching"
+      ? "正在检索作品文档…"
+      : progress.status === "reading"
+        ? "正在阅读作品文档…"
+        : "正在查看作品目录…";
+  const documents = progress.documentIds.map((documentId) => {
+    const masked = context.isDocumentHidden(documentId);
+    return {
+      title: masked
+        ? MASKED_SOURCE_TITLE
+        : context.resolveDocumentTitle(documentId) ?? MISSING_SOURCE_TITLE,
+      masked,
+    };
+  });
+  return { statusLabel, documents, hasDocuments: documents.length > 0 };
+}
+
+/**
+ * 从 `request.kind` 穷尽推导出的、只依赖请求本身的显示片段。
+ */
 interface RequestDisplayFacts {
   readonly snapshot: SnapshotView | null;
   readonly loadingVisible: boolean;
@@ -466,6 +572,10 @@ export function buildAiPanelView(
   conversation: ReadonlyTemporaryConversation | null,
   materialContext?: MaterialContext,
 ): AiPanelView {
+  const materialContextValue: MaterialContext = materialContext ?? {
+    resolveDocumentTitle: () => null,
+    isDocumentHidden: () => false,
+  };
   const facts = requestFacts(panelState.request);
   // 统一对话视图（D1）：直接提问请求从被接受起就产出对话流；
   // 其余情况由已建立的临时对话推导。两条路径不再互斥切换。
@@ -553,6 +663,25 @@ export function buildAiPanelView(
     newConversationVisible,
     saveError: panelState.saveError,
     restrictionNotice,
-    material: buildMaterialView(conversation, materialContext),
+    material: buildMaterialView(conversation, materialContextValue),
+    readingRequest: panelState.readingRequest
+      ? {
+          reason: panelState.readingRequest.reason,
+          boundaryNotes: READING_REQUEST_BOUNDARY_NOTES,
+        }
+      : null,
+    readingProgress: buildReadingProgressView(
+      panelState,
+      windowGenerating(panelState.request),
+      materialContextValue,
+    ),
+    onDemandReadingEnabled: panelState.onDemandReadingEnabled ?? false,
   };
+}
+
+/** 讨论是否处于生成中（排队中尚无模型请求，不显示补读过程）。 */
+function windowGenerating(request: PanelRequestState): boolean {
+  if (request.kind === "loading") return !request.queued;
+  if (request.kind === "direct_question") return request.status === "loading" && !request.queued;
+  return false;
 }

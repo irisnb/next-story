@@ -27,6 +27,11 @@ pub use story_material::*;
 pub use story_search::*;
 // 常规取材组装只在 crate 内（lib.rs 命令层）使用，不对外导出。
 pub(crate) use story_search::assemble_round_context;
+// 宿主只读工具执行器（story_tools，add-agent-on-demand-reading 任务组 3）复用同一
+// 受控读取授权核心与已保存正文校验读取：与既有取材路径走同一条只读边界，
+// 不向作品领域层之外暴露任何写入入口。
+pub(crate) use operations::read_and_validate_notebook;
+pub(crate) use story_material::{compute_version, read_material_from_tree};
 pub use validation::*;
 
 use serde::{Deserialize, Serialize};

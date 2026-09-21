@@ -29,6 +29,9 @@ test("LLM config lives inside the settings module, not a standalone page", () =>
   assert.doesNotMatch(html, /\bid="llm-config-page"/);
   assert.match(html, /<section\b[^>]*\bid="module-settings"/);
   assert.match(html, /<button\b[^>]*\bid="btn-back-config"[^>]*>返回写作<\/button>/);
+  // 任务 8.1：max_tokens 可选输入位于设置模块的 LLM 配置表单（留空 = 默认 131072）。
+  assert.match(html, /<input\b[^>]*\bid="max-tokens"[^>]*placeholder="[^"]*131072/);
+  assert.match(html, /\bid="max-tokens-error"/);
 });
 
 test("file management module exposes tree, recycle bin, and new-node actions", () => {

@@ -35,6 +35,8 @@ import {
 import type {
   ConversationSummary,
   MaterialProvenance,
+  OnDemandReadingGrant,
+  OnDemandReadingProvenance,
 } from "./conversation-archive.ts";
 import type { GenerateAiError, SelectionSnapshot } from "./types.ts";
 import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
@@ -56,6 +58,30 @@ import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.t
 
 /** 窗口的停靠状态；浮动行为后续 wave 实现，本 wave 全部为「停靠」。 */
 export type WindowPlacement = "docked" | "floating";
+
+/**
+ * 待决的按需补读授权请求（add-agent-on-demand-reading 任务 7.1）：后端拦截
+ * `story-request-reading` 后转来的授权提示。等待期间该轮挂起；用户决定经
+ * `ai_resolve_reading_request` 回填。停止生成取消等待时一并清除。
+ */
+export interface PendingReadingRequest {
+  readonly sessionId: string;
+  readonly messageId: string;
+  readonly callId: string;
+  /** 模型提供的请求原因（透传）。 */
+  readonly reason: string;
+}
+
+/**
+ * 补读过程的轻量状态（任务 7.3）：由 `ai-tool-call` 事件驱动；只记录正在做什么
+ * 与工具引用过的文档身份，不记录（也不展示）模型内部推理。显示层只在生成中呈现。
+ */
+export interface ReadingProgress {
+  /** 最近一次工具的活动：列目录 / 检索 / 阅读。 */
+  readonly status: "listing" | "searching" | "reading";
+  /** 工具（story-read）引用过的文档身份（去重，按出现顺序）。 */
+  readonly documentIds: readonly string[];
+}
 
 export interface AiPanelCoreState {
   readonly visibility: PanelVisibility;
@@ -218,6 +244,28 @@ export type AiPanelEvent =
       readonly conversationId: string;
       readonly focusDocumentId: string | null;
       readonly focusDocumentTitle: string | null;
+    }
+  | {
+      readonly type: "reading_request";
+      readonly conversationId: string;
+      readonly sessionId: string;
+      readonly messageId: string;
+      readonly callId: string;
+      readonly reason: string;
+    }
+  | { readonly type: "resolve_reading_request"; readonly conversationId: string; readonly granted: boolean }
+  | { readonly type: "set_on_demand_reading"; readonly conversationId: string; readonly granted: boolean }
+  | {
+      readonly type: "note_tool_call";
+      readonly conversationId: string;
+      readonly tool: string;
+      readonly documentId?: string;
+    }
+  | {
+      readonly type: "update_on_demand_state";
+      readonly conversationId: string;
+      readonly grant: OnDemandReadingGrant | null;
+      readonly provenance: OnDemandReadingProvenance[] | null;
     };
 
 function activeDiscussion(state: AiPanelCoreState): Discussion | null {
@@ -266,6 +314,8 @@ function applyFirstSuccess(discussion: Discussion, response: string): Discussion
     material,
     response,
   );
+  // 首轮在途期间允许的按需补读授权随对话本体落档（授权属于讨论）。
+  created.onDemandReadingGrant = discussion.onDemandReadingGrant ?? null;
   return {
     ...discussion,
     updatedAt: discussion.createdAt,
@@ -326,6 +376,9 @@ export function reduceAiPanelState(
           conversation: null,
           anchor,
           pendingFirstRequest: material,
+          onDemandReadingGrant: null,
+          pendingReadingRequest: null,
+          readingProgress: null,
         };
       }
       return {
@@ -574,6 +627,9 @@ export function reduceAiPanelState(
           conversation: null,
           anchor: frozenSelection,
           pendingFirstRequest: material,
+          onDemandReadingGrant: null,
+          pendingReadingRequest: null,
+          readingProgress: null,
         };
       }
       return {
@@ -702,6 +758,9 @@ export function reduceAiPanelState(
         conversation: null,
         anchor: null,
         pendingFirstRequest: null,
+        onDemandReadingGrant: null,
+        pendingReadingRequest: null,
+        readingProgress: null,
       };
       return {
         ...state,
@@ -746,6 +805,9 @@ export function reduceAiPanelState(
           conversation,
           anchor: null,
           pendingFirstRequest: null,
+          onDemandReadingGrant: conversation.onDemandReadingGrant ?? null,
+          pendingReadingRequest: null,
+          readingProgress: null,
         });
       }
       return {
@@ -790,6 +852,9 @@ export function reduceAiPanelState(
         conversation,
         anchor: conversation.anchor,
         pendingFirstRequest: null,
+        onDemandReadingGrant: conversation.onDemandReadingGrant ?? null,
+        pendingReadingRequest: null,
+        readingProgress: null,
       };
       return {
         ...state,
@@ -829,18 +894,25 @@ export function reduceAiPanelState(
     case "stop_request": {
       const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;
+      // 停止生成只结束当前轮：清除等待中的授权请求与过程状态（等待中可停止取消，
+      // 任务 7.1/7.6），但不改变按需补读授权状态（停止与授权解耦，任务 7.2）。
+      const cleared: Discussion = {
+        ...discussion,
+        pendingReadingRequest: null,
+        readingProgress: null,
+      };
       const request = discussion.request;
       if (request.kind === "direct_question" && (request.status === "loading" || request.queued)) {
         // 直接提问首轮停止（含排队中）：保留问题与已流式内容，标记为「已停止」。
         return setDiscussion(state, {
-          ...discussion,
+          ...cleared,
           request: { ...request, status: "stopped", queued: undefined },
         });
       }
       if (request.kind === "loading" && request.phase === "first") {
         // 召唤首轮停止：保留冻结材料与已流式内容。
         return setDiscussion(state, {
-          ...discussion,
+          ...cleared,
           request: {
             kind: "stopped",
             snapshot: request.snapshot,
@@ -855,7 +927,7 @@ export function reduceAiPanelState(
         const pending = conversation?.pending;
         if (!conversation || !pending || pending.error || pending.interrupted) return state;
         return setDiscussion(state, {
-          ...discussion,
+          ...cleared,
           conversation: { ...conversation, pending: { ...pending, interrupted: true } },
           request: {
             kind: "stopped",
@@ -866,7 +938,12 @@ export function reduceAiPanelState(
           },
         });
       }
-      return state;
+      // 非生成中状态：仅当残留待决授权卡 / 过程状态时清理（等待授权的轮次停止路径
+      // 由 loading 分支与直接提问分支覆盖；这里兜底迟到残留）。
+      if (discussion.pendingReadingRequest === null && discussion.readingProgress === null) {
+        return state;
+      }
+      return setDiscussion(state, cleared);
     }
     case "focus_window": {
       if (!state.windows.has(event.conversationId)) return state;
@@ -1050,6 +1127,125 @@ export function reduceAiPanelState(
         ...discussion,
         focusDocumentId: event.focusDocumentId,
         focusDocumentTitle: event.focusDocumentTitle,
+      });
+    }
+    case "reading_request": {
+      // 收到按需补读授权请求（任务 7.1）：显示授权卡，轮次挂起等待用户决定。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const request: PendingReadingRequest = {
+        sessionId: event.sessionId,
+        messageId: event.messageId,
+        callId: event.callId,
+        reason: event.reason,
+      };
+      if (
+        discussion.pendingReadingRequest !== null &&
+        discussion.pendingReadingRequest.callId === request.callId
+      ) {
+        return state;
+      }
+      return setDiscussion(state, { ...discussion, pendingReadingRequest: request });
+    }
+    case "resolve_reading_request": {
+      // 用户对授权请求的决定（任务 7.1）：清除授权卡；允许 → 授权写入讨论
+      // （授权属于讨论、跨重启保留；首轮在途时讨论尚无对话本体，授权记在
+      // Discussion 级真相源，首轮成功后随对话落档）。拒绝不改变授权状态。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      if (!event.granted) {
+        if (discussion.pendingReadingRequest === null) return state;
+        return setDiscussion(state, { ...discussion, pendingReadingRequest: null });
+      }
+      const grant = discussion.onDemandReadingGrant ?? { granted_at: new Date().toISOString() };
+      if (discussion.pendingReadingRequest === null && discussion.onDemandReadingGrant === grant) {
+        return state;
+      }
+      return setDiscussion(state, {
+        ...discussion,
+        pendingReadingRequest: null,
+        onDemandReadingGrant: grant,
+        ...(discussion.conversation
+          ? { conversation: { ...discussion.conversation, onDemandReadingGrant: grant } }
+          : {}),
+      });
+    }
+    case "set_on_demand_reading": {
+      // 讨论内授权开关（任务 7.2）：随时开 / 关；关闭（granted=false）立即阻止
+      // 后续读取（后端逐次校验档案授权），且不清除已读内容（出处保留）。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const current = discussion.onDemandReadingGrant ?? null;
+      const next = event.granted ? (current ?? { granted_at: new Date().toISOString() }) : null;
+      if (current !== null && next !== null) {
+        // 已授权再开启：授权状态不变（保留原授权时间），仅清掉残留授权卡。
+        return discussion.pendingReadingRequest === null
+          ? state
+          : setDiscussion(state, { ...discussion, pendingReadingRequest: null });
+      }
+      if (current === next) return state;
+      return setDiscussion(state, {
+        ...discussion,
+        onDemandReadingGrant: next,
+        ...(discussion.conversation
+          ? { conversation: { ...discussion.conversation, onDemandReadingGrant: next } }
+          : {}),
+      });
+    }
+    case "note_tool_call": {
+      // 补读过程轻量状态（任务 7.3）：由 ai-tool-call 事件驱动；只记录活动类型与
+      // 工具引用过的文档身份，不记录模型内部推理。状态只在生成中由显示层呈现。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const status =
+        event.tool === "story-search"
+          ? ("searching" as const)
+          : event.tool === "story-read"
+            ? ("reading" as const)
+            : event.tool === "story-list"
+              ? ("listing" as const)
+              : null;
+      if (status === null) return state;
+      const previous = discussion.readingProgress;
+      const documentIds = event.tool === "story-read" && event.documentId
+        ? previous?.documentIds.includes(event.documentId)
+          ? previous.documentIds
+          : [...(previous?.documentIds ?? []), event.documentId]
+        : (previous?.documentIds ?? []);
+      if (
+        previous !== null &&
+        previous.status === status &&
+        previous.documentIds === documentIds
+      ) {
+        return state;
+      }
+      return setDiscussion(state, {
+        ...discussion,
+        readingProgress: { status, documentIds },
+      });
+    }
+    case "update_on_demand_state": {
+      // 轮次完成后从档案刷新按需补读状态（任务 7.4）：合并后端通道按轮写入的
+      // 补读出处与授权事实，供「本次参考了什么」展示。
+      const discussion = discussionById(state, event.conversationId);
+      const conversation = discussion?.conversation ?? null;
+      if (!discussion || !conversation) return state;
+      const nextProvenance = event.provenance ?? undefined;
+      const nextGrant = event.grant ?? null;
+      if (
+        (discussion.onDemandReadingGrant ?? null) === nextGrant &&
+        conversation.onDemandReadingProvenance === nextProvenance
+      ) {
+        return state;
+      }
+      return setDiscussion(state, {
+        ...discussion,
+        onDemandReadingGrant: nextGrant,
+        conversation: {
+          ...conversation,
+          onDemandReadingGrant: nextGrant,
+          onDemandReadingProvenance: nextProvenance,
+        },
       });
     }
   }

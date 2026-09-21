@@ -79,6 +79,8 @@ function focusHarness(options: {
     replaySession: () => Promise.resolve(),
     onStreamText: () => () => {},
     onDriverLost: () => () => {},
+    onToolCall: () => () => {},
+    onReadingRequest: () => () => {},
     installSessionEventRouting: () => {},
     destroySessionEventRouting: () => {},
   };

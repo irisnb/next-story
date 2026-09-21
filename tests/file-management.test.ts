@@ -157,6 +157,10 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     setDocumentAiVisibility: async (_projectPath, _documentId, visible) => {
       calls.push(`set_document_ai_visibility:${visible}`);
     },
+    conversationsUsingDocument: async () => {
+      calls.push("conversations_using_document");
+      return [];
+    },
     ...initial,
   };
 

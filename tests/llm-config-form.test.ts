@@ -100,8 +100,8 @@ function makeHarness(options: {
 } {
   const ids = [
     "api-base-url", "api-base-url-error", "api-key", "api-key-error",
-    "model-name", "model-name-error", "llm-save-status", "btn-save-config",
-    "btn-test-config", "btn-back-config",
+    "model-name", "model-name-error", "max-tokens", "max-tokens-error",
+    "llm-save-status", "btn-save-config", "btn-test-config", "btn-back-config",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement(id, ["hidden"])]));
   const previousDocument = globalThis.document;
@@ -119,6 +119,8 @@ function makeHarness(options: {
     apiKeyError: elements.get("api-key-error"),
     modelNameInput: elements.get("model-name"),
     modelNameError: elements.get("model-name-error"),
+    maxTokensInput: elements.get("max-tokens"),
+    maxTokensError: elements.get("max-tokens-error"),
     llmSaveStatus: elements.get("llm-save-status"),
     btnSaveConfig: elements.get("btn-save-config"),
     btnTestConfig: elements.get("btn-test-config"),
@@ -228,5 +230,63 @@ test("LLM config back discard leaves without saving current input", async () => 
     assert.equal(ui.module(), "writing");
   } finally {
     ui.restore();
+  }
+});
+
+test("max_tokens: valid value is carried into the saved config", async () => {
+  const ui = makeHarness();
+  try {
+    ui.controller.open();
+    await ui.flush();
+    ui.dom.maxTokensInput.value = "4096";
+    ui.elements.get("max-tokens")!.dispatch("input");
+
+    const saved = await ui.controller.save();
+    assert.equal(saved, true);
+    assert.equal(ui.saved[0]?.max_tokens, 4096);
+    // 校验通过：错误提示隐藏。
+    assert.equal(ui.dom.maxTokensError.classList.contains("hidden"), true);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("max_tokens: empty input keeps the field omitted (default behavior)", async () => {
+  const ui = makeHarness();
+  try {
+    ui.controller.open();
+    await ui.flush();
+    ui.dom.maxTokensInput.value = "";
+    ui.elements.get("max-tokens")!.dispatch("input");
+
+    const saved = await ui.controller.save();
+    assert.equal(saved, true);
+    assert.equal(ui.saved[0]?.max_tokens, undefined, "空输入不得携带 max_tokens");
+    assert.equal("max_tokens" in ui.saved[0]!, false);
+  } finally {
+    ui.restore();
+  }
+});
+
+test("max_tokens: invalid values are blocked with a visible error", async () => {
+  for (const bad of ["0", "-5", "abc", "12.5", "9999999"]) {
+    const ui = makeHarness();
+    try {
+      ui.controller.open();
+      await ui.flush();
+      ui.dom.maxTokensInput.value = bad;
+      ui.elements.get("max-tokens")!.dispatch("input");
+
+      const saved = await ui.controller.save();
+      assert.equal(saved, false, `非法值 ${bad} 必须拦截保存`);
+      assert.deepEqual(ui.saved, [], `非法值 ${bad} 不得产生保存调用`);
+      assert.equal(
+        ui.dom.maxTokensError.classList.contains("hidden"),
+        false,
+        `非法值 ${bad} 必须显示错误提示`,
+      );
+    } finally {
+      ui.restore();
+    }
   }
 });

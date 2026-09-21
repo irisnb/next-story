@@ -151,6 +151,13 @@ export interface AiDockActions {
   resolveDocumentTitle: (documentId: string) => string | null;
   /** 文档当前是否不允许 AI 查看（隐藏来源必须脱敏）。 */
   isDocumentHidden: (documentId: string) => boolean;
+  /** 用户对按需补读授权请求的决定（任务 7.1）：允许 / 拒绝。 */
+  onResolveReadingRequest: (conversationId: string, granted: boolean) => void;
+  /**
+   * 讨论内授权开关（任务 7.2）：开启 / 关闭按需补读。关闭立即阻止后续读取，
+   * 不清除已读内容（后端语义）。
+   */
+  onToggleOnDemandReading: (conversationId: string, granted: boolean) => void;
 }
 
 interface WindowEntry {
@@ -211,6 +218,7 @@ export function setupAiDock(
       onClose: () => actions.onClose(conversationId),
       onNewConversation: () => actions.onNewConversation(),
       onOpenFocusPicker: (anchor) => openFocusDocumentMenu(anchor, conversationId),
+      onResolveReadingRequest: (granted) => actions.onResolveReadingRequest(conversationId, granted),
       resolveDocumentTitle: actions.resolveDocumentTitle,
       isDocumentHidden: actions.isDocumentHidden,
     };
@@ -624,11 +632,19 @@ export function setupAiDock(
       discussion !== null &&
       discussion.focusDocumentId !== null &&
       discussion.conversation?.restricted !== true;
+    // 按需补读授权开关（任务 7.2）：随时开 / 关。关闭文案明示「不清除已读内容」；
+    // 授权与停止生成解耦（停止只结束当前轮，不改授权状态）。
+    const readingEnabled = state.onDemandReadingEnabledOf(conversationId);
     menu = buildMenu([
       { icon: "i-float", label: current?.placement === "floating" ? "停靠窗口" : "浮动窗口", action: () => current && togglePlacement(conversationId, current) },
       { icon: "i-sbs", label: "与…并排对照", disabled: !canSideBySide, action: () => openSideBySideMenu(anchor, conversationId) },
       { icon: "i-doc", label: "切换关注文档…", disabled: !canSwitchFocus, action: () => openFocusDocumentMenu(anchor, conversationId) },
       { icon: "i-info", label: "本次参考了什么", action: () => windows.get(conversationId)?.controller.toggleMaterials() },
+      {
+        icon: "i-doc",
+        label: readingEnabled ? "关闭按需补读（不清除已读内容）" : "开启按需补读",
+        action: () => actions.onToggleOnDemandReading(conversationId, !readingEnabled),
+      },
       { icon: "i-reset", label: "恢复默认布局", action: () => { state.resetLayout(); } },
       { divider: true },
       { icon: "i-trash", label: "删除讨论…", danger: true, action: () => { void actions.onDelete(conversationId); } },

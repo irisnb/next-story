@@ -4,6 +4,7 @@ import { AiPanelScrollResetController } from "./ai-panel-scroll.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
 import {
   buildAiPanelView,
+  READING_REQUEST_TITLE,
   type ConversationView,
   type MaterialSourceView,
   type MaterialView,
@@ -45,6 +46,11 @@ export interface AiWindowActions {
   resolveDocumentTitle?: (documentId: string) => string | null;
   /** 文档当前是否不允许 AI 查看（隐藏来源脱敏判定）；缺省不做隐藏判定。 */
   isDocumentHidden?: (documentId: string) => boolean;
+  /**
+   * 用户对按需补读授权请求的决定（任务 7.1）：允许 → 后端写授权并继续原问题；
+   * 拒绝 → AI 基于既有材料有限回答。缺省不显示操作（无接线时卡片不可交互）。
+   */
+  onResolveReadingRequest?: (granted: boolean) => void;
 }
 
 export interface AiWindowController {
@@ -142,6 +148,8 @@ export function setupAiWindow(
   let disposed = false;
   /** 「本次参考了什么」面板展开状态（纯显示层，不进状态、不持久化）。 */
   let materialsOpen = false;
+  /** 补读过程详情（已读文档列表）展开状态（纯显示层，不进状态、不持久化）。 */
+  let readingDetailsOpen = false;
   /** 切换关注文档提示的显示时长。 */
   const FOCUS_NOTICE_MS = 6000;
   let focusNoticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -176,6 +184,14 @@ export function setupAiWindow(
     render();
   });
   dom.focusSwitch.addEventListener("click", () => actions.onOpenFocusPicker?.(dom.focusSwitch));
+  // 授权卡决定（任务 7.1）：允许 → 继续原问题；拒绝 → 有限回答。
+  dom.readingAllow.addEventListener("click", () => actions.onResolveReadingRequest?.(true));
+  dom.readingDeny.addEventListener("click", () => actions.onResolveReadingRequest?.(false));
+  // 补读过程详情（任务 7.3）：展开 / 收起已读文档列表。
+  dom.readingToggle.addEventListener("click", () => {
+    readingDetailsOpen = !readingDetailsOpen;
+    render();
+  });
 
   // 吸底滚动：滚动事件只维护「贴底」布尔标记（阈值约 40px）。
   const BOTTOM_FOLLOW_THRESHOLD_PX = 40;
@@ -343,6 +359,54 @@ export function setupAiWindow(
     dom.materialsBody.append(scope);
   }
 
+  /**
+   * 渲染按需补读授权请求卡（任务 7.1）：显示模型提供的请求原因与权限边界
+   * （仅本讨论、只读、不再重复询问、可随时关闭），提供允许 / 拒绝。
+   * 措辞红线：不得表述为「现在才允许 AI 查看作品」。
+   */
+  function renderReadingRequest(
+    view: import("./ai-panel-view-model.ts").ReadingRequestView | null,
+  ): void {
+    dom.readingRequest.classList.toggle("hidden", view === null);
+    if (view === null) return;
+    dom.readingRequestTitle.textContent = READING_REQUEST_TITLE;
+    dom.readingRequestReason.textContent = view.reason;
+    dom.readingRequestNotes.replaceChildren();
+    for (const note of view.boundaryNotes) {
+      const line = document.createElement("div");
+      line.classList.add("ai-reading-request-note");
+      line.textContent = note;
+      dom.readingRequestNotes.append(line);
+    }
+  }
+
+  /**
+   * 渲染补读过程轻量状态（任务 7.3）：默认一行状态（正在检索 / 正在阅读），
+   * 可展开查看已读文档列表；不展示模型内部推理。
+   */
+  function renderReadingProgress(
+    view: import("./ai-panel-view-model.ts").ReadingProgressView | null,
+  ): void {
+    dom.readingStatus.classList.toggle("hidden", view === null);
+    if (view === null) {
+      readingDetailsOpen = false;
+      return;
+    }
+    dom.readingStatusLine.textContent = view.hasDocuments
+      ? `${view.statusLabel}（已读 ${view.documents.length} 篇）`
+      : view.statusLabel;
+    dom.readingStatusList.classList.toggle("hidden", !readingDetailsOpen || !view.hasDocuments);
+    dom.readingStatusList.replaceChildren();
+    if (!readingDetailsOpen) return;
+    for (const doc of view.documents) {
+      const line = document.createElement("div");
+      line.classList.add("ai-reading-doc");
+      if (doc.masked) line.classList.add("is-masked");
+      line.textContent = doc.title;
+      dom.readingStatusList.append(line);
+    }
+  }
+
   function render(): void {
     const conversationView = state.conversationOf(conversationId);
     const view = buildAiPanelView(
@@ -418,6 +482,8 @@ export function setupAiWindow(
 
     renderConversation(view.conversation);
     renderMaterials(view.material);
+    renderReadingRequest(view.readingRequest);
+    renderReadingProgress(view.readingProgress);
 
     dom.errorBlock.classList.toggle("hidden", view.errorBlock === null);
     if (view.errorBlock) {

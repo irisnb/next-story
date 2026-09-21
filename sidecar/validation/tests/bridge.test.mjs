@@ -13,18 +13,19 @@ import {
   DENIAL_REASONS,
 } from "../bridge.mjs";
 
-test("toolToCapability 映射三个只读能力，未知/写入工具返回 null", () => {
-  assert.equal(toolToCapability("story.read_document"), "story.read_document");
-  assert.equal(toolToCapability("story.read_snapshot"), "story.read_snapshot");
-  assert.equal(toolToCapability("story.list"), "story.list");
+test("toolToCapability 映射 dash 风格只读 Agent 工具面，未知/写入工具返回 null", () => {
+  assert.equal(toolToCapability("story-list"), "story-list");
+  assert.equal(toolToCapability("story-read"), "story-read");
+  assert.equal(toolToCapability("story-search"), "story-search");
+  assert.equal(toolToCapability("story-request-reading"), "story-request-reading");
   assert.equal(toolToCapability("story.write"), null);
   assert.equal(toolToCapability("tool-fs"), null);
   assert.equal(toolToCapability("unknown.thing"), null);
 });
 
 test("authorizeReadTool 只放行只读能力，写入/未知默认拒绝", () => {
-  assert.deepEqual(authorizeReadTool("story.read_document"), {
-    allowed: true, capability: "story.read_document", reason: null,
+  assert.deepEqual(authorizeReadTool("story-read"), {
+    allowed: true, capability: "story-read", reason: null,
   });
   assert.equal(authorizeReadTool("story.write").allowed, false);
   assert.equal(authorizeReadTool("story.write").reason, "forbidden_capability");

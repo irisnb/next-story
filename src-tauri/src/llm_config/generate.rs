@@ -54,13 +54,33 @@ fn context_clause(_entry: PromptEntry) -> &'static str {
     ""
 }
 
-/// 三层组装系统提示词：红线层 + 入口层 + 语境层。
+/// 工具使用层（add-agent-on-demand-reading 任务 5.4）：受控只读补读工具的使用
+/// 规范。措辞克制：只说明机制与权限边界，不写阅读效果承诺。强制点在宿主
+/// （设计 D13），提示词只是引导，不是闸门。
+fn tool_reading_prompt(entry: PromptEntry) -> &'static str {
+    match entry {
+        PromptEntry::DirectQuestion => {
+            "你可以使用只读的作品补读工具：story-list 列出目录、story-read 读取已保存\
+正文、story-search 检索片段。默认未获授权时这些调用会被系统拒绝。若现有材料确实\
+不足以回答，先调用 story-request-reading 并说明原因，等用户决定后再继续；未获允许\
+时，基于现有材料回答并说明哪些部分无法确认。补读只服务于回答当前问题，读取不会\
+修改作品任何内容。"
+        }
+        PromptEntry::Summon => {
+            "本轮只围绕提供的冻结选区回应，不使用补读工具，也不请求授权；若确需更多\
+材料，先完成本轮回应并说明材料所限。"
+        }
+    }
+}
+
+/// 三层组装系统提示词：红线层 + 入口层 + 语境层 + 工具使用层。
 ///
 /// 组装职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
 pub fn compose_system_prompt(entry: PromptEntry) -> String {
     let mut prompt = String::from(constitution_prompt());
     prompt.push_str(entry_stance(entry));
     prompt.push_str(context_clause(entry));
+    prompt.push_str(tool_reading_prompt(entry));
     prompt
 }
 
@@ -123,6 +143,7 @@ async fn generate_with_dsh(
         model: config.model.clone(),
         api_base_url: config.api_base_url.clone(),
         api_key: config.api_key.clone(),
+        max_tokens: config.max_tokens,
     };
     let manager = crate::dsh_driver::global_driver_manager().clone();
 
@@ -213,6 +234,7 @@ async fn ensure_driver_started(
         model: config.model.clone(),
         api_base_url: config.api_base_url.clone(),
         api_key: config.api_key.clone(),
+        max_tokens: config.max_tokens,
     };
     tauri::async_runtime::spawn_blocking(move || {
         crate::dsh_driver::global_driver_manager().ensure_started(&params, &paths)
@@ -888,6 +910,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// 任务 5.4（add-agent-on-demand-reading）：工具使用层随系统提示词组装——
+    /// 直接提问入口含四件套引导与「先请求授权」规范；召唤入口含「本轮不使用
+    /// 补读工具」的硬门禁引导。措辞锚定防漂移。
+    #[test]
+    fn tool_reading_prompt_is_composed_for_both_entries() {
+        let direct = compose_system_prompt(PromptEntry::DirectQuestion);
+        assert!(direct.contains("story-list"), "直接提问应引导目录工具");
+        assert!(direct.contains("story-request-reading"), "直接提问应引导授权请求");
+        assert!(direct.contains("先调用 story-request-reading 并说明原因"), "先请求后读取");
+        assert!(direct.contains("等用户决定后再继续"), "等待用户决定");
+        assert!(direct.contains("读取不会\n修改作品任何内容") || direct.contains("读取不会修改作品任何内容"), "只读边界");
+
+        let summon = compose_system_prompt(PromptEntry::Summon);
+        assert!(
+            summon.contains("本轮只围绕提供的冻结选区回应，不使用补读工具"),
+            "召唤首轮应声明不使用补读工具"
+        );
+        assert!(
+            !summon.contains("先调用 story-request-reading"),
+            "召唤首轮不得引导请求授权"
+        );
     }
 
     /// 召唤首轮组装：含选区材料、不含问题文本、含召唤入口层立场句。

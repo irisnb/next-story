@@ -58,6 +58,18 @@ export interface AiWindowDom {
   readonly materialsPanel: HTMLElement;
   readonly materialsBody: HTMLElement;
   readonly materialsClose: HTMLButtonElement;
+  /** 按需补读授权请求卡（等待用户决定时显示；add-agent-on-demand-reading 任务 7.1）。 */
+  readonly readingRequest: HTMLElement;
+  readonly readingRequestTitle: HTMLElement;
+  readonly readingRequestReason: HTMLElement;
+  readonly readingRequestNotes: HTMLElement;
+  readonly readingAllow: HTMLButtonElement;
+  readonly readingDeny: HTMLButtonElement;
+  /** 补读过程轻量状态（默认一行，可展开已读文档列表；任务 7.3）。 */
+  readonly readingStatus: HTMLElement;
+  readonly readingToggle: HTMLButtonElement;
+  readonly readingStatusLine: HTMLElement;
+  readonly readingStatusList: HTMLElement;
   /** 切换关注文档后的清晰中文提示（短暂显示，随后自动隐藏）。 */
   readonly focusNotice: HTMLElement;
   /** 受限讨论提示容器（材料权限已变化时显示，不泄露隐藏文件身份）。 */
@@ -201,6 +213,8 @@ export interface AppDom {
   apiKeyError: HTMLElement;
   modelNameInput: HTMLInputElement;
   modelNameError: HTMLElement;
+  maxTokensInput: HTMLInputElement;
+  maxTokensError: HTMLElement;
   llmSaveStatus: HTMLElement;
   btnSaveConfig: HTMLButtonElement;
   btnTestConfig: HTMLButtonElement;
@@ -284,6 +298,16 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     materialsPanel: requireRole(root, "materials-panel"),
     materialsBody: requireRole(root, "materials-body"),
     materialsClose: requireRole<HTMLButtonElement>(root, "materials-close"),
+    readingRequest: requireRole(root, "reading-request"),
+    readingRequestTitle: requireRole(root, "reading-request-title"),
+    readingRequestReason: requireRole(root, "reading-request-reason"),
+    readingRequestNotes: requireRole(root, "reading-request-notes"),
+    readingAllow: requireRole<HTMLButtonElement>(root, "reading-allow"),
+    readingDeny: requireRole<HTMLButtonElement>(root, "reading-deny"),
+    readingStatus: requireRole(root, "reading-status"),
+    readingToggle: requireRole<HTMLButtonElement>(root, "reading-toggle"),
+    readingStatusLine: requireRole(root, "reading-status-line"),
+    readingStatusList: requireRole(root, "reading-status-list"),
     focusNotice: requireRole(root, "focus-notice"),
     restrictionNotice: requireRole(root, "restriction-notice"),
     restrictionNoticeMessage: requireRole(root, "restriction-notice-message"),
@@ -401,6 +425,8 @@ export function getAppDom(): AppDom {
     apiKeyError: requireElement("api-key-error"),
     modelNameInput: requireElement("model-name"),
     modelNameError: requireElement("model-name-error"),
+    maxTokensInput: requireElement("max-tokens"),
+    maxTokensError: requireElement("max-tokens-error"),
     llmSaveStatus: requireElement("llm-save-status"),
     btnSaveConfig: requireElement("btn-save-config"),
     btnTestConfig: requireElement("btn-test-config"),

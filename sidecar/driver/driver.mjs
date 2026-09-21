@@ -5,36 +5,71 @@
 // 用法：node driver.mjs --api-base <url> --model <model> [--max-tokens <n>]
 // 环境：DEEPSEEK_API_KEY（宿主从钥匙串读出注入，不落盘）、DSH_HOME（宿主指定的版本隔离目录）
 //
-// 协议 v1（design.md D2）：
-//   入站  start_session {session_id, system_prompt?}
-//         send_message   {session_id, message_id, text}
-//         replay_history {session_id, turns:[{role:"user"|"assistant", text}]}
-//         replay_done    {session_id}
-//         cancel_message {session_id, message_id}
-//         end_session    {session_id}
-//         shutdown
-//   出站  ready {protocol_version}
-//         session_started {session_id}
-//         delta     {session_id, message_id, seq, text}
-//         message_sent   {session_id, message_id}（provider 发送回执：本轮首次观测到
-//                        provider 侧回应证据时发出一次，先于 message_done/message_failed）
-//         message_done   {session_id, message_id, text}
-//         message_failed {session_id, message_id, code, message}
-//         replay_ok {session_id}
-//         session_ended {session_id}
-//         error {session_id?, message_id?, code, message}
-import { writeFileSync } from "node:fs";
+// 协议 v1（design.md D2）：命令/事件词表的单一真相源是同目录 protocol.json（机器可读：
+// 名称、方向、字段、active/planned 状态；change: add-agent-on-demand-reading 设计 D7）。
+// 生产 v1 命令面：start_session / send_message / replay_history / replay_done /
+//   cancel_message / end_session / shutdown / tool_result（宿主→驱动的工具结果回填）
+// 生产 v1 事件面：ready / session_started / delta / message_sent（provider 发送回执，
+//   本轮首次观测到回应证据时一次、先于终态）/ message_done / message_failed /
+//   replay_ok / session_ended / error / tool_call（驱动→宿主的工具调用，设计 D2）
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
 import { createSessionQueues } from "./session-queue.mjs";
+import { loadProtocol } from "./protocol.mjs";
+import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROTOCOL_VERSION = 1;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_CONSECUTIVE_MALFORMED = 10;
+
+// ── 协议单一真相源（任务 1.2，设计 D7）────────────────────────────────────────
+// 版本与词表来自 protocol.json；启动时自检本文件实际处理/发出的集合与真相源一致，
+// 漂移即拒绝启动（防替身/宿主两端再分叉，审计 P2-5）。
+const protocol = loadProtocol();
+const PROTOCOL_VERSION = protocol.protocolVersion;
+
+// 本驱动实际处理的入站命令（dispatchCommand/handleCommand 的 switch 依据）。
+// shutdown 在 dispatchCommand 单独分流，同样属于命令面。
+const HANDLED_COMMANDS = new Set([
+  "start_session", "send_message", "replay_history", "replay_done",
+  "cancel_message", "end_session", "shutdown", "tool_result",
+]);
+// 本驱动实际发出的出站事件（emit 调用点全集）。
+const EMITTED_EVENTS = new Set([
+  "ready", "session_started", "delta", "message_sent", "message_done",
+  "message_failed", "replay_ok", "session_ended", "error", "tool_call",
+]);
+
+function assertProtocolCoherence() {
+  for (const name of protocol.activeCommands) {
+    if (!HANDLED_COMMANDS.has(name)) {
+      process.stderr.write(`driver: protocol.json 声明的 active 命令未实现：${name}\n`);
+      process.exit(1);
+    }
+  }
+  for (const name of HANDLED_COMMANDS) {
+    if (!protocol.activeCommands.includes(name)) {
+      process.stderr.write(`driver: 实现的命令未在 protocol.json 声明为 active：${name}\n`);
+      process.exit(1);
+    }
+  }
+  for (const name of protocol.activeEvents) {
+    if (!EMITTED_EVENTS.has(name)) {
+      process.stderr.write(`driver: protocol.json 声明的 active 事件未实现：${name}\n`);
+      process.exit(1);
+    }
+  }
+  for (const name of EMITTED_EVENTS) {
+    if (!protocol.activeEvents.includes(name)) {
+      process.stderr.write(`driver: 发出的事件未在 protocol.json 声明为 active：${name}\n`);
+      process.exit(1);
+    }
+  }
+}
+assertProtocolCoherence();
 
 // ── 参数与环境 ───────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -102,13 +137,113 @@ function textOfAssistantMessage(event) {
     .filter((b) => b.type === "text").map((b) => b.text).join("");
 }
 
+// ── 工具桥接（add-agent-on-demand-reading 任务 5.1/5.2，设计 D2）──────────────
+// Agent 工具面四件套（story-list / story-read / story-search / story-request-reading）：
+// 注册的是 DSH 工具声明，实现仅为协议桥接——把模型发起的工具调用以 tool_call 事件
+// 交宿主执行，本进程不读取任何作品文件；等宿主 tool_result 回填后作为工具结果
+// 喂回模型会话，原轮继续（暂停 = 挂起的工具调用，恢复 = 工具结果返回，设计 D1）。
+const STORY_TOOLS = ["story-list", "story-read", "story-search", "story-request-reading"];
+
+const STORY_TOOL_META = {
+  "story-list": {
+    description: "列出本作品允许 AI 查看的文档目录与各文档当前版本。只读，不修改作品。",
+    parameters: {},
+  },
+  "story-read": {
+    description: "读取一篇文档的已保存正文（可带版本与字节范围）。只读已保存内容，不读未保存修改。",
+    parameters: {
+      document_id: { type: "string", required: true, description: "目标文档稳定 ID（来自 story-list）。" },
+      // DSH 编译器规则：required 存在时必须为 true，可选参数直接省略该字段。
+      version: { type: "string", description: "期望版本；与当前版本不一致会被拒绝。" },
+      range: {
+        type: "object", description: "可选正文字节区间（左闭右开）。",
+        additionalProperties: false,
+        properties: {
+          start: { type: "integer", required: true, description: "起始字节偏移。" },
+          end: { type: "integer", required: true, description: "结束字节偏移（不含）。" },
+        },
+      },
+    },
+  },
+  "story-search": {
+    description: "按检索词在本作品允许 AI 查看的已保存正文中做字面检索，返回命中片段。",
+    parameters: {
+      query: { type: "string", required: true, description: "检索词。" },
+    },
+  },
+  "story-request-reading": {
+    description: "现有材料不足以回答时，请求用户开启本讨论的按需补读。须说明原因；得到允许后才能读取。",
+    parameters: {
+      reason: { type: "string", required: true, description: "为什么现有材料不足、需要补读（向用户展示）。" },
+    },
+  },
+};
+
+/** 落定一个挂起的工具调用（幂等：未知 call_id 返回 false）。 */
+function settlePendingToolCall(session, callId, value) {
+  const pending = session.pendingToolCalls.get(callId);
+  if (!pending) return false;
+  session.pendingToolCalls.delete(callId);
+  pending.resolve(value);
+  return true;
+}
+
+/** 落定该会话全部挂起工具调用（取消 / 结束会话时兜底，防止轮次悬挂）。 */
+function settleAllPendingToolCalls(session, value) {
+  for (const callId of [...session.pendingToolCalls.keys()]) {
+    settlePendingToolCall(session, callId, value);
+  }
+}
+
+// 在 Agent 私有作用域注册四件套：工具面只对本会话可见；宿主负责授权与执行。
+function registerStoryTools(agentCtx, session) {
+  const bridge = (toolName) => defineTool({
+    name: toolName,
+    description: STORY_TOOL_META[toolName].description,
+    parameters: STORY_TOOL_META[toolName].parameters,
+    output: {
+      // DSH 编译器要求完整形式的 object 节点显式声明 additionalProperties
+      // （真实链路 9.2 实测：缺失会在 defineTool 注册期被拒）。工具结果为
+      // 动态开放结构（目录/正文/检索/授权结果），取 true。
+      schema: { type: "object", additionalProperties: true },
+      render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }],
+    },
+    // 宿主侧出处档案是读改写：轮内工具串行，避免并发丢更新。
+    isConcurrencySafe: false,
+    async execute(args, exec) {
+      const callId = String(exec.callId);
+      // 停止生成 / 会话结束时经中止信号落定为取消（DSH 侧按中止语义收束本调用）。
+      const settleOnAbort = () => settlePendingToolCall(session, callId, { denied: true, reason: "cancelled" });
+      exec.signal.addEventListener("abort", settleOnAbort, { once: true });
+      emit({
+        type: "tool_call", session_id: session.id,
+        message_id: session.currentMessageId ?? "",
+        call_id: callId, tool: toolName,
+        args: args && typeof args === "object" && !Array.isArray(args) ? args : {},
+      });
+      const value = await new Promise((resolve) => {
+        session.pendingToolCalls.set(callId, { resolve });
+      });
+      exec.signal.removeEventListener("abort", settleOnAbort);
+      return value;
+    },
+  });
+  for (const name of STORY_TOOLS) {
+    agentCtx.tools.register(bridge(name));
+  }
+}
+
 async function createAgentFor(session, seed) {
   const handle = await agents.create({
     sessionId: SessionId(session.id),
     meta: { cwd: __dirname, ...(seed ? { seedLength: seed.length } : {}) },
     ...(seed ? { seed } : {}),
     agentOptions: { provider: selection.provider, model: selection.model },
-    setup: (agentCtx) => { installModelSelection(agentCtx, { current: selection, assembled: undefined }); },
+    setup: (agentCtx) => {
+      installModelSelection(agentCtx, { current: selection, assembled: undefined });
+      // 工具面四件套注册在 Agent 私有作用域（任务 5.1）；实现只桥接宿主。
+      registerStoryTools(agentCtx, session);
+    },
   });
   session.handle = handle;
   session.agent = handle.agent;
@@ -174,6 +309,7 @@ function runTurn(session, messageId, text) {
   let folded = "";
   let sentEmitted = false;
   session.busy = true;
+  session.currentMessageId = messageId;
   session.cancelRequested = false;
 
   // provider 发送回执（add-automatic-story-context）：本轮范围内首次观测到
@@ -211,6 +347,7 @@ function runTurn(session, messageId, text) {
   const finish = (msg) => {
     clearInterval(poll);
     session.busy = false;
+    session.currentMessageId = null;
     emit(msg);
   };
 
@@ -259,6 +396,8 @@ async function handleCommand(cmd) {
       sessions.set(sid, {
         id: sid, systemPrompt: typeof cmd.system_prompt === "string" ? cmd.system_prompt : "",
         agent: null, handle: null, busy: false, cancelRequested: false, seedTurns: [],
+        // 工具桥接状态：当前轮消息身份 + 挂起的工具调用（call_id → 落定器）。
+        currentMessageId: null, pendingToolCalls: new Map(),
       });
       emit({ type: "session_started", session_id: sid });
       return;
@@ -294,16 +433,37 @@ async function handleCommand(cmd) {
       runTurn(session, String(cmd.message_id ?? randomUUID()), cmd.text);
       return;
     }
+    case "tool_result": {
+      // 宿主回填工具结果（任务 5.2）：成功/拒绝都作为工具结果喂回模型并继续原轮。
+      // 迟到 / 未知 / 已取消的 call_id 一律拒绝，不重开调用（5.3 迟到丢弃）。
+      const session = sessions.get(sid);
+      if (!session) return emit({ type: "error", session_id: sid, code: "session_not_found", message: "会话不存在" });
+      const callId = typeof cmd.call_id === "string" ? cmd.call_id : "";
+      if (!callId || !settlePendingToolCall(session, callId, cmd.ok === true
+        ? (cmd.result ?? {})
+        : { denied: true, reason: cmd.error?.reason ?? "tool_failed" })) {
+        return emit({
+          type: "error", session_id: sid, message_id: session.currentMessageId,
+          code: "tool_call_not_found", message: "没有该身份的挂起工具调用",
+        });
+      }
+      return;
+    }
     case "cancel_message": {
       const session = sessions.get(sid);
       if (!session?.agent) return emit({ type: "error", session_id: sid, code: "session_not_found", message: "会话不存在" });
       session.cancelRequested = true;
+      // 等待工具结果 / 等待授权的轮次同样可被取消（任务 5.3）：落定挂起调用，
+      // 让轮次随中止信号收束，不再回填结果。
+      settleAllPendingToolCalls(session, { denied: true, reason: "cancelled" });
       try { session.agent.cancel(); } catch (error) { diag(`cancel error: ${String(error)}`); }
       return;
     }
     case "end_session": {
       const session = sessions.get(sid);
       if (!session) return emit({ type: "error", session_id: sid, code: "session_not_found", message: "会话不存在" });
+      // 会话身份失效：挂起工具调用一律落定为取消（迟到的 tool_result 随后被拒）。
+      settleAllPendingToolCalls(session, { denied: true, reason: "cancelled" });
       sessions.delete(sid);
       try { await session.handle?.dispose?.(); } catch (error) { diag(`dispose error: ${String(error)}`); }
       emit({ type: "session_ended", session_id: sid });
@@ -324,6 +484,12 @@ function dispatchCommand(cmd) {
   }
   if (type === "shutdown") {
     return handleShutdown();
+  }
+  if (!HANDLED_COMMANDS.has(type)) {
+    // 未知消息类型：直接丢弃（不排队、单帧错误不致命），stderr 记诊断。
+    // 词表来自 protocol.json（HANDLED_COMMANDS 已在启动时与真相源自检一致）。
+    diag(`unknown message type: ${JSON.stringify(type)}`);
+    return Promise.resolve();
   }
   const sid = cmd?.session_id;
   if (typeof sid !== "string" || sid === "") {

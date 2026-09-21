@@ -83,6 +83,8 @@ function persistenceHarness(overrides: {
       driverLostHandlers.push(listener);
       return () => {};
     },
+    onToolCall: () => () => {},
+    onReadingRequest: () => () => {},
     installSessionEventRouting: () => {},
     destroySessionEventRouting: () => {},
   };

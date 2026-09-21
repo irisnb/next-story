@@ -81,6 +81,21 @@ export interface PanelStateView {
   pendingSelection: SelectionSnapshot | null;
   /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
   saveError: string | null;
+  /**
+   * 待决的按需补读授权请求（add-agent-on-demand-reading 任务 7.1，授权卡显示
+   * 数据）；无待决时为 null。由各讨论的显示输入（`viewOf`）携带。
+   */
+  readingRequest?: { readonly reason: string } | null;
+  /**
+   * 补读过程轻量状态（任务 7.3）：活动类型与工具引用过的文档身份；无补读活动时
+   * 为 null。只在生成中由显示层呈现，不包含模型内部推理。
+   */
+  readingProgress?: {
+    readonly status: "listing" | "searching" | "reading";
+    readonly documentIds: readonly string[];
+  } | null;
+  /** 该讨论是否已开启按需补读授权（任务 7.2 开关状态）。 */
+  onDemandReadingEnabled?: boolean;
 }
 
 export function idleRequest(): PanelRequestState {

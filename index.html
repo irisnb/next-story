@@ -235,6 +235,21 @@
                     </div>
                     <div data-role="materials-body" class="ai-materials-body"></div>
                   </div>
+                  <div data-role="reading-request" class="ai-reading-request hidden">
+                    <div data-role="reading-request-title" class="ai-reading-request-title">AI 希望围绕这个问题补充阅读你的作品文档</div>
+                    <div data-role="reading-request-reason" class="ai-reading-request-reason"></div>
+                    <div data-role="reading-request-notes" class="ai-reading-request-notes"></div>
+                    <div class="ai-reading-request-actions">
+                      <button data-role="reading-allow" class="ai-panel-btn ai-reading-allow" type="button">允许</button>
+                      <button data-role="reading-deny" class="ai-panel-btn" type="button">本次不允许</button>
+                    </div>
+                  </div>
+                  <div data-role="reading-status" class="ai-reading-status hidden">
+                    <button data-role="reading-toggle" class="ai-reading-toggle" type="button">
+                      <span data-role="reading-status-line" class="ai-reading-status-line"></span>
+                    </button>
+                    <div data-role="reading-status-list" class="ai-reading-status-list hidden"></div>
+                  </div>
                   <div data-role="welcome" class="ai-welcome hidden">想聊点什么？直接提问就好。</div>
                   <div data-role="loading" class="ai-loading hidden">正在思考…</div>
                   <pre data-role="response" class="ai-response hidden"></pre>
@@ -518,6 +533,13 @@
             <label class="form-label" for="model-name">模型名</label>
             <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
             <p id="model-name-error" class="error-message hidden"></p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="max-tokens">单次生成上限（可选）</label>
+            <input type="text" id="max-tokens" class="form-input" inputmode="numeric" placeholder="留空使用默认 131072" />
+            <p class="form-help">按所用端点支持的范围填写（整数）；留空即使用默认值。</p>
+            <p id="max-tokens-error" class="error-message hidden"></p>
           </div>
 
           <p id="llm-save-status" class="save-status">未保存</p>

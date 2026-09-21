@@ -12,6 +12,8 @@ export interface RefreshCompletion {
 export interface LlmConfigBaseline {
   api_base_url: string;
   model: string;
+  /** 可选 max_tokens（省略 = 缺省）；参与脏比较。 */
+  maxTokens?: number;
   hasApiKey: boolean;
 }
 
@@ -55,6 +57,7 @@ export class LlmConfigUiState {
     this.baseline = {
       api_base_url: config.api_base_url,
       model: config.model,
+      ...(config.max_tokens !== undefined ? { maxTokens: config.max_tokens } : {}),
       hasApiKey: keySaved,
     };
     this.dirty = false;
@@ -78,12 +81,18 @@ export class LlmConfigUiState {
   hasUnsavedChanges(config: LlmConfig): boolean {
     if (this.discardAuthorized) return false;
     if (!this.baseline) {
-      return config.api_base_url !== "" || config.model !== "" || config.api_key !== undefined;
+      return (
+        config.api_base_url !== "" ||
+        config.model !== "" ||
+        config.api_key !== undefined ||
+        config.max_tokens !== undefined
+      );
     }
     const typedNewKey = config.api_key !== undefined;
     return (
       config.api_base_url !== this.baseline.api_base_url ||
       config.model !== this.baseline.model ||
+      config.max_tokens !== this.baseline.maxTokens ||
       typedNewKey
     );
   }

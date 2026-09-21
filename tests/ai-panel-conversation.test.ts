@@ -350,6 +350,8 @@ test("buildDiscussionRecord covers the first-round in-flight state", () => {
     conversation: null,
     anchor: snapshot("林站在天台边。"),
     pendingFirstRequest: summonRequest("林站在天台边。"),
+    pendingReadingRequest: null,
+    readingProgress: null,
   };
   const record = buildDiscussionRecord(discussion);
   assert.equal(record.conversation_id, "c-1");
@@ -368,6 +370,8 @@ test("conversationFromRecord flags a summon first-round pending turn as interrup
     conversation: null,
     anchor: snapshot("林站在天台边。"),
     pendingFirstRequest: summonRequest("林站在天台边。"),
+    pendingReadingRequest: null,
+    readingProgress: null,
   };
   const record = buildDiscussionRecord(discussion);
   const reopened = conversationFromRecord(record);
@@ -387,6 +391,8 @@ test("conversationFromRecord flags a direct-question first-round pending turn as
     conversation: null,
     anchor: null,
     pendingFirstRequest: directQuestionRequest("这个角色为什么犹豫？"),
+    pendingReadingRequest: null,
+    readingProgress: null,
   };
   const record = buildDiscussionRecord(discussion);
   assert.deepEqual(record.turns, [

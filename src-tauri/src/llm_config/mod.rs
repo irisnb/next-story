@@ -12,6 +12,10 @@ pub use secret_store::{KeyringStore, SecretStore, KEYRING_ACCOUNT, KEYRING_SERVI
 const CONFIG_FILE_NAME: &str = "llm-config.json";
 /// LLM 配置文件读取大小上限，防止损坏或被替换为巨型文件时无界分配内存。
 const MAX_CONFIG_BYTES: u64 = 64 * 1024;
+/// `max_tokens` 的结构校验上限（内部初始值）。缺省（未配置）不透传，由驱动
+/// 用其默认 131072；本上限只拦结构非法的巨值（各端点自身的取值范围由端点校验，
+/// 审计 P2-8：更小上限端点会拒过大值——用户按端点文档配置即可）。
+pub const MAX_TOKENS_LIMIT: u64 = 1_048_576;
 
 /// 应用级 LLM 配置（API Key 存操作系统钥匙串，磁盘文件不落明文）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +28,10 @@ pub struct LlmConfig {
     pub api_key: String,
     /// 模型名
     pub model: String,
+    /// 可选的单次生成 max_tokens 上限（add-agent-on-demand-reading 任务 8.1，
+    /// 设计 D10）：`None`（缺省）不透传，驱动维持现有默认 131072。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
 }
 
 /// 磁盘持久化的 LLM 配置：只含非敏感字段，API Key 单独存操作系统钥匙串。
@@ -33,6 +41,10 @@ pub struct LlmConfigStored {
     pub api_base_url: String,
     /// 模型名
     pub model: String,
+    /// 可选的单次生成 max_tokens 上限；缺省（旧配置文件无该键）为 `None`，
+    /// 序列化时省略——未配置的配置文件形状与既有文件一致。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
 }
 
 impl LlmConfigStored {
@@ -42,6 +54,7 @@ impl LlmConfigStored {
             api_base_url: self.api_base_url,
             api_key,
             model: self.model,
+            max_tokens: self.max_tokens,
         }
     }
 }
@@ -51,6 +64,7 @@ impl From<&LlmConfig> for LlmConfigStored {
         LlmConfigStored {
             api_base_url: config.api_base_url.clone(),
             model: config.model.clone(),
+            max_tokens: config.max_tokens,
         }
     }
 }
@@ -63,6 +77,9 @@ pub struct LlmConfigSummary {
     pub api_base_url: String,
     /// 模型名
     pub model: String,
+    /// 可选的单次生成 max_tokens 上限；未配置时省略（`None`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
     /// 钥匙串中是否已保存 API Key。
     pub has_api_key: bool,
 }
@@ -80,6 +97,8 @@ pub enum LlmConfigError {
     InvalidApiBaseUrl(String),
     /// 远程 API 地址使用了明文 HTTP
     InsecureRemoteApiUrl(String),
+    /// max_tokens 非法（非正整数或超过结构上限）
+    InvalidMaxTokens,
     /// 读取失败
     ReadError(String),
     /// 写入失败
@@ -100,6 +119,10 @@ impl std::fmt::Display for LlmConfigError {
             LlmConfigError::InsecureRemoteApiUrl(url) => {
                 write!(f, "远程 API 地址必须使用 HTTPS: {}", url)
             }
+            LlmConfigError::InvalidMaxTokens => write!(
+                f,
+                "max_tokens 必须是 1 到 {MAX_TOKENS_LIMIT} 之间的整数"
+            ),
             LlmConfigError::ReadError(msg) => write!(f, "读取配置失败: {}", msg),
             LlmConfigError::WriteError(msg) => write!(f, "保存配置失败: {}", msg),
             LlmConfigError::SecretStoreError(msg) => write!(f, "访问系统钥匙串失败: {}", msg),
@@ -397,6 +420,14 @@ pub fn validate_llm_config(config: &LlmConfig) -> Result<(), LlmConfigError> {
         return Err(LlmConfigError::MissingModel);
     }
 
+    // max_tokens 可选；配置了就必须是 1..=MAX_TOKENS_LIMIT 的整数（后端兜底，
+    // 前端表单有同规则拦截）。
+    if let Some(max_tokens) = config.max_tokens {
+        if max_tokens == 0 || max_tokens > MAX_TOKENS_LIMIT {
+            return Err(LlmConfigError::InvalidMaxTokens);
+        }
+    }
+
     parse_api_base_url(&config.api_base_url)?;
 
     Ok(())
@@ -465,6 +496,7 @@ pub fn resolve_effective_config(config: &LlmConfig) -> Result<LlmConfig, LlmConf
         api_base_url: config.api_base_url.clone(),
         api_key,
         model: config.model.clone(),
+        max_tokens: config.max_tokens,
     })
 }
 
@@ -485,6 +517,7 @@ fn save_llm_config_transaction(
         api_base_url: config.api_base_url.clone(),
         api_key: effective_key.clone(),
         model: config.model.clone(),
+        max_tokens: config.max_tokens,
     };
     validate_llm_config(&effective_config)?;
 
@@ -624,6 +657,7 @@ pub fn load_llm_config_summary_with_store(
         return Ok(Some(LlmConfigSummary {
             api_base_url: legacy.api_base_url,
             model: legacy.model,
+            max_tokens: legacy.max_tokens,
             has_api_key: true,
         }));
     }
@@ -634,6 +668,7 @@ pub fn load_llm_config_summary_with_store(
     Ok(Some(LlmConfigSummary {
         api_base_url: stored.api_base_url,
         model: stored.model,
+        max_tokens: stored.max_tokens,
         has_api_key,
     }))
 }

@@ -4,6 +4,10 @@ import {
   type MoveTarget,
 } from "./content-tree.ts";
 import {
+  conversationsUsingDocument,
+  type ConversationUsage,
+} from "./conversation-archive.ts";
+import {
   createDocument,
   createFolder,
   deleteNode,
@@ -25,6 +29,14 @@ export interface FileManagementServices {
   deleteNode(projectPath: string, id: string): Promise<void>;
   restoreNode(projectPath: string, id: string): Promise<void>;
   setDocumentAiVisibility(projectPath: string, documentId: string, visible: boolean): Promise<void>;
+  /**
+   * 查询使用过指定文档的讨论（add-agent-on-demand-reading 任务 7.5）：关闭该文档
+   * AI 可见性前的影响提示数据。缺省实现来自讨论档案车道（只读）。
+   */
+  conversationsUsingDocument(
+    projectPath: string,
+    documentId: string,
+  ): Promise<ConversationUsage[]>;
 }
 
 export interface FileManagementController {
@@ -41,6 +53,7 @@ const defaultServices: FileManagementServices = {
   deleteNode,
   restoreNode,
   setDocumentAiVisibility,
+  conversationsUsingDocument,
 };
 
 type FileManagementDom = Pick<
@@ -134,10 +147,50 @@ export function setupFileManagement(
     actions.replaceChildren(select, apply, cancel);
   }
 
-  /** 切换单篇文档的 AI 可见性：成功刷新树；失败保持原状态并显示中文提示。 */
+  /**
+   * 关闭 AI 可见性前的影响提示文案（add-agent-on-demand-reading 任务 7.5）：
+   * 明示后果（受影响讨论永久只读、旧出处脱敏），并列出受影响讨论的标题。
+   */
+  function visibilityImpactMessage(documentName: string, usage: ConversationUsage[]): string {
+    const titles = usage.slice(0, 5).map((item) => `「${item.title}」`).join("、");
+    const suffix = usage.length > 5 ? "等" : "";
+    return (
+      `以下 ${usage.length} 个讨论使用过《${documentName}》：${titles}${suffix}。\n` +
+      "关闭后这些讨论将永久只读，无法沿原上下文继续；旧的参考出处会脱敏显示。\n" +
+      "确定要关闭这篇文档的 AI 可见性吗？"
+    );
+  }
+
+  /** 查询使用过指定文档的讨论；查询失败时按「有影响」保守处理（失败关闭）。 */
+  async function documentUsage(documentId: string): Promise<ConversationUsage[] | null> {
+    if (projectPath === null) return null;
+    try {
+      return await services.conversationsUsingDocument(projectPath, documentId);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 切换单篇文档的 AI 可见性：成功刷新树；失败保持原状态并显示中文提示。
+   * 关闭前先展示受影响讨论的后果说明（永久只读、旧出处脱敏），确认后才执行
+   * （任务 7.5）；开启不需要确认。
+   */
   async function toggleVisibility(id: string, currentVisible: boolean): Promise<void> {
-    if (projectPath === null) return;
+    if (projectPath === null || tree === null) return;
     const next = !currentVisible;
+    if (!next) {
+      const node = tree.nodes[id];
+      const usage = await documentUsage(id);
+      // 查询失败（null）时保守拦截：宁可多一次确认，不悄悄关闭。
+      if (usage === null || usage.length > 0) {
+        const message =
+          usage === null
+            ? "无法确认有哪些讨论使用过这篇文档。关闭后相关讨论将永久只读、旧出处脱敏。\n确定要关闭吗？"
+            : visibilityImpactMessage(node?.name ?? "这篇文档", usage);
+        if (!window.confirm(message)) return;
+      }
+    }
     setStatus("正在保存 AI 可见性...", "busy");
     try {
       await services.setDocumentAiVisibility(projectPath, id, next);

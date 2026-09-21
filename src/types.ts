@@ -18,6 +18,12 @@ export interface LlmConfig {
    */
   api_key?: string;
   model: string;
+  /**
+   * 可选的单次生成 max_tokens 上限（add-agent-on-demand-reading 任务 8.1）：
+   * 省略（空输入）= 维持驱动默认 131072；配置时必须是 1–1048576 的整数
+   * （前端表单与后端校验同规则）。
+   */
+  max_tokens?: number;
 }
 
 /**
@@ -27,6 +33,8 @@ export interface LlmConfig {
 export interface LlmConfigSummary {
   api_base_url: string;
   model: string;
+  /** 已保存的可选 max_tokens 上限；未配置时省略。 */
+  max_tokens?: number;
   has_api_key: boolean;
 }
 

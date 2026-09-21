@@ -1101,6 +1101,9 @@ mod tests {
         );
     }
 
+    /// 只读接口探针：方法名 → 以 &DiskStoryReader 探测行为的函数指针。
+    type ReaderProbe = fn(&DiskStoryReader) -> bool;
+
     /// StrictStoryReader 窄化形状回归：trait 面上不存在任何写入语义入口；
     /// 生产实现 DiskStoryReader 也只经严格只读路径读取。
     #[test]
@@ -1108,7 +1111,7 @@ mod tests {
         // 编译期形状断言：trait 方法集 = { work_id, strict_content_tree,
         // saved_document_body }。用函数指针集合钉死方法签名数量与只读命名，
         // 防止将来有人往接口上加写入方法而不改测试。
-        let methods: &[(&str, fn(&DiskStoryReader) -> bool)] = &[
+        let methods: &[(&str, ReaderProbe)] = &[
             ("work_id", |r| !r.work_id().is_empty()),
             ("strict_content_tree", |r| {
                 r.strict_content_tree().is_ok() || r.strict_content_tree().is_err()

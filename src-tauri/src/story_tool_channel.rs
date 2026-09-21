@@ -163,6 +163,9 @@ enum ReadPreparation {
     Execute { version: Option<String> },
 }
 
+/// 已提供键（设计 D9）：（文档 id, 版本, 请求范围）。
+type ProvidedKey = (String, String, Option<(usize, usize)>);
+
 /// 一轮的补读监管状态：register_round 时整体重置（跨轮不共享；旧轮状态作废）。
 #[derive(Debug, Default, Clone)]
 struct RoundReadingState {
@@ -171,7 +174,7 @@ struct RoundReadingState {
     /// 本轮停读的文档（版本失配后；下一轮自然恢复）。
     blocked: HashSet<String>,
     /// 已提供（文档, 版本, 请求范围）→ 首次提供的有效范围（设计 D9）。
-    provided: HashMap<(String, String, Option<(usize, usize)>), MaterialRange>,
+    provided: HashMap<ProvidedKey, MaterialRange>,
     /// 文档名（去重提示的出处用）。
     names: HashMap<String, String>,
     /// 按轮累计的读取覆盖（设计 D12）。
@@ -534,9 +537,7 @@ impl StoryToolChannel {
             // 未授权或已关闭讨论不得因去重提示泄露「本轮已读过」的事实。
             let preparation = if is_reading_tool {
                 let mut rounds = lock(&this.rounds);
-                let state = rounds
-                    .entry(context.conversation_id.clone())
-                    .or_insert_with(RoundReadingState::default);
+                let state = rounds.entry(context.conversation_id.clone()).or_default();
                 if state.fused {
                     // D5：保险丝已触发，该轮后续补读一律结构化「补读已停止」。
                     let _ = driver.send_tool_result(
@@ -594,7 +595,7 @@ impl StoryToolChannel {
                     if is_reading_tool {
                         lock(&this.rounds)
                             .entry(context.conversation_id.clone())
-                            .or_insert_with(RoundReadingState::default)
+                            .or_default()
                             .note_reading_arrival_completed(Duration::ZERO, &this.fuse_config);
                     }
                     let _ = driver.send_tool_result(
@@ -611,7 +612,7 @@ impl StoryToolChannel {
                     if is_reading_tool {
                         lock(&this.rounds)
                             .entry(context.conversation_id.clone())
-                            .or_insert_with(RoundReadingState::default)
+                            .or_default()
                             .note_reading_arrival_completed(Duration::ZERO, &this.fuse_config);
                     }
                     let result = serde_json::to_value(StoryToolOutcome::AlreadyProvided(hint)).ok();
@@ -651,9 +652,7 @@ impl StoryToolChannel {
             // 版本漂移的文档不进结果）、保险丝收尾（D5）。
             if is_reading_tool {
                 let mut rounds = lock(&this.rounds);
-                let state = rounds
-                    .entry(context.conversation_id.clone())
-                    .or_insert_with(RoundReadingState::default);
+                let state = rounds.entry(context.conversation_id.clone()).or_default();
                 match &mut outcome {
                     Ok(StoryToolOutcome::Read(material)) => {
                         let requested_range = match &call {
@@ -1807,8 +1806,10 @@ setInterval(() => {}, 1000);
             max_tool_calls: 2,
             max_accumulated_duration: Duration::from_millis(100),
         };
-        let mut state = RoundReadingState::default();
-        state.reading_calls = 1;
+        let mut state = RoundReadingState {
+            reading_calls: 1,
+            ..RoundReadingState::default()
+        };
         state.note_reading_arrival_completed(Duration::ZERO, &config);
         assert!(!state.fused, "未到阈值不触发");
         state.reading_calls = 2;
@@ -1816,8 +1817,10 @@ setInterval(() => {}, 1000);
         assert!(state.fused, "计数达到上限即触发（后续补读停止）");
 
         // 时长维度独立触发。
-        let mut slow = RoundReadingState::default();
-        slow.reading_calls = 1;
+        let mut slow = RoundReadingState {
+            reading_calls: 1,
+            ..RoundReadingState::default()
+        };
         slow.note_reading_arrival_completed(Duration::from_millis(150), &config);
         assert!(slow.fused, "累计时长超限即触发");
     }

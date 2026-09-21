@@ -1,0 +1,678 @@
+﻿{
+  "records": [
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 335364.299999997,
+      "queuedAt": null,
+      "startedAt": 335364.90000000596,
+      "firstResponseAt": 395097.5,
+      "completedAt": 400901
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 703909.700000003,
+      "queuedAt": null,
+      "startedAt": 703909.799999997,
+      "firstResponseAt": 716269.900000006,
+      "completedAt": 720536.900000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "direct_question",
+      "submittedAt": 940083.900000006,
+      "queuedAt": null,
+      "startedAt": 940084.599999994,
+      "firstResponseAt": 968976.5,
+      "completedAt": 974766.099999994
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 1155784.599999994,
+      "queuedAt": null,
+      "startedAt": 1155784.599999994,
+      "firstResponseAt": 1160862,
+      "completedAt": 1164209
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "summon",
+      "submittedAt": 1574800.5,
+      "queuedAt": null,
+      "startedAt": 1574801.200000003,
+      "firstResponseAt": 1583910.099999994,
+      "completedAt": 1593888.900000006
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 1675439.5,
+      "queuedAt": null,
+      "startedAt": 1675439.599999994,
+      "firstResponseAt": 1677884.099999994,
+      "completedAt": 1680789.799999997
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 1894622.099999994,
+      "queuedAt": null,
+      "startedAt": 1894622.200000003,
+      "firstResponseAt": 1898787.799999997,
+      "completedAt": 1902445.099999994
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 1920479.700000003,
+      "queuedAt": null,
+      "startedAt": 1920479.700000003,
+      "firstResponseAt": null,
+      "completedAt": 2212973.5
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 2422353.200000003,
+      "queuedAt": null,
+      "startedAt": 2422353.200000003,
+      "firstResponseAt": 2423927.099999994,
+      "completedAt": 2424377.700000003
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 2233126,
+      "queuedAt": null,
+      "startedAt": 2233126.200000003,
+      "firstResponseAt": null,
+      "completedAt": 2450686.599999994
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 2453118.400000006,
+      "queuedAt": null,
+      "startedAt": 2453118.400000006,
+      "firstResponseAt": 2454040.700000003,
+      "completedAt": 2454917.099999994
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 2665396.799999997,
+      "queuedAt": null,
+      "startedAt": 2665396.799999997,
+      "firstResponseAt": 2669262.900000006,
+      "completedAt": 2670389
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 2792388.700000003,
+      "queuedAt": null,
+      "startedAt": 2792388.700000003,
+      "firstResponseAt": null,
+      "completedAt": 2958253.599999994
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 2961067,
+      "queuedAt": null,
+      "startedAt": 2961067.200000003,
+      "firstResponseAt": 2962728.5,
+      "completedAt": 2966479.900000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 2996978.799999997,
+      "queuedAt": null,
+      "startedAt": 2996978.799999997,
+      "firstResponseAt": 3004992.099999994,
+      "completedAt": 3166265.799999997
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 3845747.599999994,
+      "queuedAt": null,
+      "startedAt": 3845747.799999997,
+      "firstResponseAt": 3848866.700000003,
+      "completedAt": 3852738.200000003
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 3865976.200000003,
+      "queuedAt": null,
+      "startedAt": 3865976.299999997,
+      "firstResponseAt": 3868960.799999997,
+      "completedAt": 3872673
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 3953939.200000003,
+      "queuedAt": null,
+      "startedAt": 3953939.299999997,
+      "firstResponseAt": 3955215.099999994,
+      "completedAt": 3963112.400000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 3953620.5,
+      "queuedAt": null,
+      "startedAt": 3953620.5,
+      "firstResponseAt": 3958770,
+      "completedAt": 3967103.099999994
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4348633.700000003,
+      "queuedAt": null,
+      "startedAt": 4348633.799999997,
+      "firstResponseAt": 4350627,
+      "completedAt": 4358517.099999994
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4362797.900000006,
+      "queuedAt": null,
+      "startedAt": 4362797.900000006,
+      "firstResponseAt": 4365167.400000006,
+      "completedAt": 4376322.599999994
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4400544,
+      "queuedAt": null,
+      "startedAt": 4400544.099999994,
+      "firstResponseAt": 4414375.700000003,
+      "completedAt": 4421642.700000003
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4437188.400000006,
+      "queuedAt": null,
+      "startedAt": 4437188.400000006,
+      "firstResponseAt": 4440634.5,
+      "completedAt": 4447378.299999997
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4473469.599999994,
+      "queuedAt": null,
+      "startedAt": 4473469.700000003,
+      "firstResponseAt": 4475784.299999997,
+      "completedAt": 4488844.200000003
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4487316,
+      "queuedAt": null,
+      "startedAt": 4487316,
+      "firstResponseAt": 4488292.5,
+      "completedAt": 4497881.200000003
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "direct_question",
+      "submittedAt": 4500832.299999997,
+      "queuedAt": null,
+      "startedAt": 4500832.900000006,
+      "firstResponseAt": 4504861,
+      "completedAt": 4508337.400000006
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "follow_up",
+      "submittedAt": 4571160.300000012,
+      "queuedAt": null,
+      "startedAt": 4571160.300000012,
+      "firstResponseAt": 4575081,
+      "completedAt": 4589215.699999988
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 4647150.599999994,
+      "queuedAt": null,
+      "startedAt": 4647150.599999994,
+      "firstResponseAt": 4648422.199999988,
+      "completedAt": 4653461.400000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4661015.699999988,
+      "queuedAt": null,
+      "startedAt": 4661015.699999988,
+      "firstResponseAt": 4661944.800000012,
+      "completedAt": 4673385.900000006
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "follow_up",
+      "submittedAt": 4677222.300000012,
+      "queuedAt": null,
+      "startedAt": 4677222.300000012,
+      "firstResponseAt": 4680292.599999994,
+      "completedAt": 4686655.900000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4786425.300000012,
+      "queuedAt": null,
+      "startedAt": 4786425.300000012,
+      "firstResponseAt": 4789572.400000006,
+      "completedAt": 4804736.5
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 4786599.300000012,
+      "queuedAt": null,
+      "startedAt": 4786599.400000006,
+      "firstResponseAt": 4787522.400000006,
+      "completedAt": 4804784.800000012
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4786780.800000012,
+      "queuedAt": 4786780.900000006,
+      "startedAt": 4804783.400000006,
+      "firstResponseAt": 4809479,
+      "completedAt": 4825559.599999994
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4865909.099999994,
+      "queuedAt": null,
+      "startedAt": 4865909.099999994,
+      "firstResponseAt": 4868712.199999988,
+      "completedAt": 4874910.800000012
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4893262.599999994,
+      "queuedAt": null,
+      "startedAt": 4893262.599999994,
+      "firstResponseAt": 4894845.599999994,
+      "completedAt": 4903741.599999994
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4908134.699999988,
+      "queuedAt": null,
+      "startedAt": 4908134.699999988,
+      "firstResponseAt": 4909086.400000006,
+      "completedAt": 4915523.300000012
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 4948899.400000006,
+      "queuedAt": null,
+      "startedAt": 4948899.400000006,
+      "firstResponseAt": 4950220.699999988,
+      "completedAt": 4969383.699999988
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 4949066.099999994,
+      "queuedAt": null,
+      "startedAt": 4949066.199999988,
+      "firstResponseAt": 4950713.800000012,
+      "completedAt": 4969459.699999988
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 5007775.699999988,
+      "queuedAt": null,
+      "startedAt": 5007775.699999988,
+      "firstResponseAt": 5009065,
+      "completedAt": 5027085.699999988
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 5072231,
+      "queuedAt": null,
+      "startedAt": 5072231,
+      "firstResponseAt": 5076181.900000006,
+      "completedAt": 5093441.900000006
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 5152351.099999994,
+      "queuedAt": null,
+      "startedAt": 5152351.099999994,
+      "firstResponseAt": 5153732.699999988,
+      "completedAt": 5180735.099999994
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "summon",
+      "submittedAt": 5167351.300000012,
+      "queuedAt": null,
+      "startedAt": 5167352.099999994,
+      "firstResponseAt": 5169073.199999988,
+      "completedAt": 5180814.900000006
+    }
+  ],
+  "summary": [
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 59732.59999999404,
+      "totalDurationMs": 65536.70000000298
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 12360.10000000894,
+      "totalDurationMs": 16627.20000000298
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "direct_question",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 28891.90000000596,
+      "totalDurationMs": 34682.19999998808
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 5077.4000000059605,
+      "totalDurationMs": 8424.40000000596
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "summon",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 9108.89999999106,
+      "totalDurationMs": 19088.40000000596
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 2444.5,
+      "totalDurationMs": 5350.29999999702
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 4165.5999999940395,
+      "totalDurationMs": 7823
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": null,
+      "totalDurationMs": 292493.799999997
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1573.8999999910593,
+      "totalDurationMs": 2024.5
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": null,
+      "totalDurationMs": 217560.59999999404
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 922.2999999970198,
+      "totalDurationMs": 1798.699999988079
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3866.1000000089407,
+      "totalDurationMs": 4992.20000000298
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": null,
+      "totalDurationMs": 165864.89999999106
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1661.2999999970198,
+      "totalDurationMs": 5412.9000000059605
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 8013.29999999702,
+      "totalDurationMs": 169287
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3118.9000000059605,
+      "totalDurationMs": 6990.600000008941
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 2984.5,
+      "totalDurationMs": 6696.79999999702
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1275.7999999970198,
+      "totalDurationMs": 9173.20000000298
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 5149.5,
+      "totalDurationMs": 13482.59999999404
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1993.2000000029802,
+      "totalDurationMs": 9883.39999999106
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 2369.5,
+      "totalDurationMs": 13524.699999988079
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 13831.60000000894,
+      "totalDurationMs": 21098.70000000298
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3446.0999999940395,
+      "totalDurationMs": 10189.89999999106
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 2314.5999999940395,
+      "totalDurationMs": 15374.60000000894
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 976.5,
+      "totalDurationMs": 10565.20000000298
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "direct_question",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 4028.0999999940395,
+      "totalDurationMs": 7505.100000008941
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3920.699999988079,
+      "totalDurationMs": 18055.399999976158
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1271.5999999940395,
+      "totalDurationMs": 6310.800000011921
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 929.1000000238419,
+      "totalDurationMs": 12370.200000017881
+    },
+    {
+      "conversationId": "mubhkstw-9add0f6068b4474cba038ead23e49c13",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3070.2999999821186,
+      "totalDurationMs": 9433.59999999404
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3147.0999999940395,
+      "totalDurationMs": 18311.19999998808
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 923,
+      "totalDurationMs": 18185.5
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": 18002.5,
+      "firstResponseDurationMs": 4695.5999999940395,
+      "totalDurationMs": 38778.79999998212
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 2803.0999999940395,
+      "totalDurationMs": 9001.700000017881
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1583,
+      "totalDurationMs": 10479
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 951.7000000178814,
+      "totalDurationMs": 7388.600000023842
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1321.2999999821186,
+      "totalDurationMs": 20484.29999998212
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1647.6000000238419,
+      "totalDurationMs": 20393.59999999404
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1289.300000011921,
+      "totalDurationMs": 19310
+    },
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 3950.9000000059605,
+      "totalDurationMs": 21210.90000000596
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1381.5999999940395,
+      "totalDurationMs": 28384
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "summon",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 1721.0999999940395,
+      "totalDurationMs": 13463.59999999404
+    }
+  ]
+}

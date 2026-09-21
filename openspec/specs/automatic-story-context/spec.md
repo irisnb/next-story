@@ -180,7 +180,7 @@ TBD - created by archiving change add-automatic-story-context. Update Purpose af
 - **AND** AI 路径中不存在写入作品的命令
 
 ### Requirement: 讨论间材料隔离且及时召唤例外
-系统 SHALL 让每个讨论独立持有关注文档、快照和本轮材料，讨论之间 MUST NOT 串用；并 MUST NOT 将常规现场材料准备或跨文档字面检索强制加入及时召唤首轮或其既定追问流程。
+系统 SHALL 让每个讨论独立持有关注文档、快照和本轮材料，讨论之间 MUST NOT 串用；并 MUST NOT 将常规现场材料准备或跨文档字面检索强制加入及时召唤首轮或其既定追问流程。本要求只约束 A 部分自动取材：讨论经按需补读授权后，其追问（含及时召唤讨论的追问）SHALL 可按 `agent-on-demand-reading` 能力使用受控只读工具，该工具使用 MUST NOT 被视为常规取材材料的自动附带，也 MUST NOT 因此改变召唤首轮的快车道边界。
 
 #### Scenario: 多讨论不串用材料
 - **WHEN** 多个讨论窗口并存且各自绑定不同关注文档
@@ -190,6 +190,11 @@ TBD - created by archiving change add-automatic-story-context. Update Purpose af
 - **WHEN** 用户发起及时召唤
 - **THEN** 召唤按冻结选区快车道发起
 - **AND** 请求不包含常规现场材料、目录投影或跨文档检索片段
+
+#### Scenario: 召唤追问经授权使用补读工具不算自动取材
+- **WHEN** 及时召唤讨论的追问获得按需补读授权且 Agent 调用补读工具
+- **THEN** 该读取按 `agent-on-demand-reading` 能力规则执行
+- **AND** 不因此向该轮自动附带常规现场材料或检索片段
 
 ### Requirement: 权限变化后旧讨论永久只读且旧出处脱敏
 系统 SHALL 与阶段 4 对齐：权限关闭后，使用过后来被隐藏材料的讨论永久标记为只读，可查看历史但 MUST NOT 继续追问或通过恢复/重放再次发送；重新开启可见性 MUST NOT 解除该受限状态。查看旧讨论时，旧材料出处 MUST 脱敏，不泄露被隐藏文档的名称、ID 或路径。

@@ -69,7 +69,7 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 
 ## 当前实现的诚实边界
 
-当前已实现（2026-08 常驻会话改造后，2026-09 讨论保存与隔离、多窗口与快车道改造后，2026-09-14 阶段 4/5 归档后）：
+当前已实现（2026-08 常驻会话改造后，2026-09 讨论保存与隔离、多窗口与快车道改造后，2026-09-14 阶段 4/5 归档后，2026-09-21 阶段 6 归档后）：
 
 - **常驻 AI 会话**：两种首轮入口——面板直接提问（编辑器选区作为可选重点提示自动附带），以及选区「AI 及时召唤」（以冻结选区为材料、无需先输入问题，见 `selection-ai-summon`）；两者进入同一个**讨论**。回复**流式逐字呈现**；追问只发送增量问题，历史由常驻会话在驱动进程内维护。
 - 首次回应成功后在当前讨论内**线性追问**；可取消生成；**可停止生成**（停止只结束对应讨论，已完成内容保留、不产生成功轮次）。
@@ -84,8 +84,9 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 - **选区及时召唤已恢复**：选区旁显示单一「AI」按钮，点击后以冻结选区发起讨论首轮；`思维扩展` 已正式退场。
 - **受控只读与 AI 可见性**：统一后端只读读取边界（目录、正文、经校验的未保存快照）与文档级 AI 可见性；隐藏、回收站与越权读取被拒绝；使用过后来被隐藏材料的讨论永久只读，旧出处脱敏显示（见 `controlled-story-read-visibility`）。
 - **常规讨论自动现场材料（阶段五 A）**：常规首轮与追问自动附带关注文档现场材料（已保存正文或经校验的未保存快照）、允许目录投影与后端确定性跨文档字面检索（NFKC 规范化；8 候选词 / 5 文档 / 10 片段 / 命中前后各 120 字符为检索输出硬上限，非模型上下文上限）；关注文档显式切换、下一轮生效，查看文档不自动改绑；材料出处持久化，「本次参考了什么」轻量可查看；及时召唤不经过常规取材流程；`message_sent` 发送回执折算为轮级 `sent_confirmed`，无回执不伪造（见 `automatic-story-context`）。
+- **按需补读（阶段六）**：材料不足时模型经 `story-request-reading` 发起授权请求，用户允许后围绕问题自主调用受控只读工具（`story-list` / `story-read` / `story-search`）；授权属于讨论（允许 / 拒绝 / 随时关闭、跨重启保留），等待期间轮次挂起、不产生模型请求；非关注文档只读已保存正文，轮内版本固定、同轮去重、失控保险丝（非配额）；读取出处（文档 / 版本 / 阅读程度）入「本次参考了什么」与讨论档案；及时召唤首轮不补读，后续追问按普通规则（见 `agent-on-demand-reading`）。
 
-完整行为以 `openspec/specs/`（尤其 `resident-ai-session`、`persistent-ai-panel-entry`、`ai-thinking-panel`、`ai-feature-orchestration`、`selection-ai-summon`、`conversation-management`、`conversation-persistence`、`discussion-windows`、`ai-request-scheduling`、`conversation-list`、`controlled-story-read-visibility`、`automatic-story-context`）为准。当前没有：Agent 按需补读（让 AI 看见作品 B：围绕问题自主调用只读工具）、附近上下文（光标周边取材）、全文摘要、语义 / 向量检索、完整作品认知、后台预加载、记忆、Agent 循环、AI 内容库、用户确认的作品信息、思考收束、安全返回写作——这些都不是当前能力，不能写成已实现；系统主动附带材料与跨文档字面检索已由阶段五 A 实现，但不等于上述能力。真实链路驱动级回归已通过（2026-09-14，智谱 `glm-5.3-flash`，含 `message_sent` 回执断言）；应用级真实材料链路与等待基线（第 10 组）尚未完成，并发上限数值待实测确定。
+完整行为以 `openspec/specs/`（尤其 `resident-ai-session`、`persistent-ai-panel-entry`、`ai-thinking-panel`、`ai-feature-orchestration`、`selection-ai-summon`、`conversation-management`、`conversation-persistence`、`discussion-windows`、`ai-request-scheduling`、`conversation-list`、`controlled-story-read-visibility`、`automatic-story-context`、`agent-on-demand-reading`）为准。当前没有：附近上下文（光标周边取材）、全文摘要、语义 / 向量检索、完整作品认知、后台预加载、记忆、Agent 循环、AI 内容库、用户确认的作品信息、思考收束、安全返回写作——这些都不是当前能力，不能写成已实现；系统主动附带材料与跨文档字面检索已由阶段五 A 实现，按需补读已由阶段六实现，但不等于上述能力。真实链路驱动级回归已通过（2026-09-14 智谱 `glm-5.3-flash`，含 `message_sent` 回执断言；2026-09-21 按需补读 3 场景经智谱 coding 端点 `glm-5.3` 复验通过）；应用级真实材料链路与等待基线（第 10 组）尚未完成，并发上限数值待实测确定。
 
 ## 文档地图
 

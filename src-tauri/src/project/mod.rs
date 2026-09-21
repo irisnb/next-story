@@ -37,7 +37,7 @@ pub use validation::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 /// 项目元信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,17 +173,20 @@ impl ProjectPaths {
 /// 在进程内串行化，不同作品仍可并行。锁在 Tauri 应用状态中维护，
 /// 由命令层在阻塞线程内「取锁 → 操作 → 释放」（见 `lib.rs` 各命令处理器）。
 ///
-/// 每个作品路径对应一个进程生命周期内不复用的 `&'static Mutex<()>`（`Box::leak`），
-/// 与「`HashMap` 持 `Arc<Mutex<()>>` 且条目从不删除」等价：锁对象与注册表同寿，
-/// 因此返回的 guard 只需持 `'static` 的 `MutexGuard`，无需自引用结构。
+/// 每个作品路径对应一个 `parking_lot::Mutex<()>`，注册表只持 `Weak`，返回的
+/// guard 经 `lock_arc` 自持 `Arc`：最后一个持有人释放后锁对象即失效回收，
+/// 下次 acquire 重建（修复 P2-12：旧实现 `Box::leak` 每作品路径泄漏一个
+/// `Mutex`，进程内永不回收）。持有人在时 `Weak::upgrade` 必成功，同路径互斥
+/// 与跨路径并行语义不变。
 #[derive(Clone, Default)]
 pub struct ProjectLocks {
-    inner: Arc<Mutex<HashMap<PathBuf, &'static Mutex<()>>>>,
+    inner: Arc<Mutex<HashMap<PathBuf, Weak<parking_lot::Mutex<()>>>>>,
 }
 
 /// 持有中的作品锁；析构时自动释放，保证「取锁 → 执行 → 释放」不会漏放。
+/// guard 自持锁的 `Arc`，注册表条目的失效回收不影响持有人。
 pub struct ProjectLockGuard {
-    _guard: std::sync::MutexGuard<'static, ()>,
+    _guard: parking_lot::ArcMutexGuard<parking_lot::RawMutex, ()>,
 }
 
 impl ProjectLocks {
@@ -194,19 +197,27 @@ impl ProjectLocks {
             .canonicalize()
             .map_err(|e| ProjectError::InvalidStructure(format!("作品路径无法解析: {e}")))?;
 
-        // 把 `&'static` 引用复制出来，避免锁守卫借用注册表自身的互斥。
-        let lock: &'static Mutex<()> = {
+        // 在注册表临界区内取得（或重建）自持 `Arc` 的锁对象后立即离开临界区，
+        // 避免取作品锁时阻塞其他作品访问注册表。
+        let lock: Arc<parking_lot::Mutex<()>> = {
             let mut locks = self
                 .inner
                 .lock()
                 .map_err(|_| ProjectError::WriteError("作品锁注册表不可用".to_string()))?;
-            locks
-                .entry(canonical)
-                .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
+            match locks.get(&canonical).and_then(|weak| weak.upgrade()) {
+                // 有持有人：upgrade 必成功，与所有持有人共享同一把锁。
+                Some(live) => live,
+                // 首取或全部持有人已释放（条目失效）：重建锁对象，顺带覆盖死条目。
+                None => {
+                    let fresh = Arc::new(parking_lot::Mutex::new(()));
+                    locks.insert(canonical, Arc::downgrade(&fresh));
+                    fresh
+                }
+            }
         };
 
-        let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        Ok(ProjectLockGuard { _guard: guard })
+        let _guard = lock.lock_arc();
+        Ok(ProjectLockGuard { _guard })
     }
 }
 
@@ -231,4 +242,81 @@ pub fn open_existing_project(project_root: &Path) -> Result<ProjectOpenResult, P
     )?;
     operations::validate_project_structure(project_root)?;
     operations::open_project(project_root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProjectLocks;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    /// P2-12：条目在无持有人后失效（锁对象被真正回收而非 `Box::leak` 常驻），
+    /// 下次 acquire 重建锁对象；重建后同路径仍然互斥——A 持锁期间同路径的
+    /// B 必须阻塞，A 释放后 B 才能取得。
+    #[test]
+    fn rebuilt_entry_after_expiry_still_serializes_same_path() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let root = temp.path().to_path_buf();
+        // 注册表键为规范化路径（Windows 下带 `\\?\` 前缀），白盒探针须用同一键。
+        let canonical = root.canonicalize().expect("canonicalize 作品根");
+
+        let locks = ProjectLocks::default();
+        // 第一轮：取得并释放，制造「条目无持有人」状态。
+        drop(locks.acquire(&root).expect("首次取得作品锁"));
+
+        // 白盒断言：注册表不再持任何活引用（旧实现的泄漏已消除）。
+        {
+            let map = locks.inner.lock().expect("锁注册表可用");
+            if let Some(weak) = map.get(&canonical) {
+                assert!(
+                    weak.upgrade().is_none(),
+                    "无持有人后注册表不应持有活锁对象"
+                );
+            }
+        }
+
+        // 重建后同路径互斥：与 operations.rs 1.6 的信号同步手法一致，但两线程
+        // 用同一路径，预期相反——B 必须等 A 释放后才能取得。B 只在主线程确认
+        // A 已持锁并放行后才开始取锁，排除 B 抢跑导致的过期信号。
+        let (a_holding_tx, a_holding_rx) = mpsc::channel();
+        let (release_a_tx, release_a_rx) = mpsc::channel();
+        let (b_go_tx, b_go_rx) = mpsc::channel();
+        let (b_acquired_tx, b_acquired_rx) = mpsc::channel();
+
+        let locks_a = locks.clone();
+        let root_a = root.clone();
+        let handle_a = thread::spawn(move || {
+            let _guard = locks_a.acquire(&root_a).expect("A 重建后取得作品锁");
+            let _ = a_holding_tx.send(());
+            // 等主线程确认 B 已被挡住后再放行，保证 A 持锁时间足够长。
+            let _ = release_a_rx.recv();
+        });
+
+        let locks_b = locks.clone();
+        let root_b = root.clone();
+        let handle_b = thread::spawn(move || {
+            // 等主线程放行（此时 A 必已持锁）再取锁。
+            let _ = b_go_rx.recv();
+            let _guard = locks_b.acquire(&root_b).expect("B 在 A 释放后取得作品锁");
+            let _ = b_acquired_tx.send(());
+        });
+
+        a_holding_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("A 已持锁");
+        b_go_tx.send(()).expect("放行 B 取锁");
+        // A 持锁期间 B 不应取得同一把锁（B 已受命取锁却未返回）。
+        assert!(
+            b_acquired_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "A 持锁期间同路径的 B 不应取得锁"
+        );
+
+        release_a_tx.send(()).expect("放行 A");
+        b_acquired_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("B 在 A 释放后取得锁");
+        handle_a.join().expect("A 线程正常结束");
+        handle_b.join().expect("B 线程正常结束");
+    }
 }

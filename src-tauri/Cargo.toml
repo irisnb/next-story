@@ -27,6 +27,10 @@ keyring = { version = "~3.6.3", features = ["apple-native", "windows-native", "a
 open = "5"
 # 生成真正的 Office Open XML `.docx`（MIT 许可，见 design.md 决策 1）。
 docx = "1.1.2"
+# P2-12 锁回收：作品锁 guard 需自持锁所有权（`lock_arc` / `ArcMutexGuard`），
+# 须启用 `arc_lock` feature；parking_lot 0.12.5 已在依赖树内（tauri 生态传递引入），
+# 提为直接依赖不引入新的外部 crate 或新版本。
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
+import type { ConversationIdentity } from "./ai-conversation-identity.ts";
 import type {
   ContentTree,
   GenerateAiResult,
@@ -315,6 +316,11 @@ export async function aiSendMessage(
     focusProjectPath?: string;
     focusDocumentVersion?: string;
     focusSnapshot?: string;
+    /**
+     * 讨论身份（design D7）：映射为线上 `conversationId`／`conversationProjectPath`
+     * （Tauri 自动转 snake_case 对齐后端参数），供后端注册本轮按需补读工具路由。
+     */
+    conversation?: ConversationIdentity;
   } | InvokeFn = defaultInvoke,
   maybeCall: InvokeFn = defaultInvoke,
 ): Promise<GenerateAiResult> {
@@ -332,6 +338,10 @@ export async function aiSendMessage(
     if (identityOrCall.focusProjectPath !== undefined) args.focusProjectPath = identityOrCall.focusProjectPath;
     if (identityOrCall.focusDocumentVersion !== undefined) args.focusDocumentVersion = identityOrCall.focusDocumentVersion;
     if (identityOrCall.focusSnapshot !== undefined) args.focusSnapshot = identityOrCall.focusSnapshot;
+    if (identityOrCall.conversation !== undefined) {
+      args.conversationId = identityOrCall.conversation.conversationId;
+      args.conversationProjectPath = identityOrCall.conversation.conversationProjectPath;
+    }
   }
   return call<GenerateAiResult>("ai_send_message", args);
 }

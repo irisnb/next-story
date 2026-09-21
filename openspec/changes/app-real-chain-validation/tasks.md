@@ -18,6 +18,7 @@
 
 - [ ] 3.1 本地 release 测试版构建（devtools 可用）
 - [ ] 3.2 验证用作品准备：多文档＋唯一关键词分布、隐藏文档、跨文档命中词、讨论档案；场景判据表按 design D6 逐条落成可勾选清单
+- [x] 3.3 CDP 驱动仪器（`verification/driver.mjs`：eval／click／clickText／type／key／shot／wait），供代理驱动验证会话与 D 组重建复用（design D1 2026-09-21 修订：代理驱动＋用户抽查）
 
 ## 4. 应用级验证会话（用户在场；智谱 coding 端点 glm-5.3）
 
@@ -32,9 +33,18 @@
 - [ ] 5.1 前端 `DEFAULT_MAX_CONCURRENT` 与后端 `DEFAULT_MAX_CONCURRENT_GENERATIONS` 改为实测定值（双层同值），相关测试断言同步
 - [ ] 5.2 上限数值与实测依据在 `ai-request-scheduling` 规格（归档后正式条款）与 `validation.md` 双向一致
 
-## 6. 文档同步与全量回归
+## 6. 前端讨论身份接线修复（2026-09-21 验证中发现缺陷，用户确认扩入；design D7）
 
-- [ ] 6.1 `AGENTS.md` 诚实边界收账（应用级真实材料链路／等待基线／并发上限数值改已完成并记录）；README 状态段同步
-- [ ] 6.2 审计文档第八节 8b 行与处理进度回记（含 fmt／clippy／不稳定测试三笔本次开工前清掉的暗账）
-- [ ] 6.3 全量回归：前端测试、Rust 测试（含集成）、离线验证、可靠性、驱动队列、typecheck、ESLint、生产构建、`cargo check --all-targets`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`openspec validate --strict`
-- [ ] 6.4 提交推送并确认 CI 双平台绿灯
+- [x] 6.1 新模块 `src/ai-conversation-identity.ts`：`ConversationIdentity` 类型＋`resolveConversationIdentity` 纯解析（空白守卫镜像后端语义）＋单元测试
+- [x] 6.2 `project-api.ts` `aiSendMessage` identity 新增可选 `conversation?: ConversationIdentity`，映射为线上参数 `conversationId`／`conversationProjectPath`（既有 8 字段不动，签名兼容）
+- [x] 6.3 `ai-session-transport.ts`：注入 `getCurrentProjectPath`，三处 `sendMessage` 调用点统一经解析携带讨论身份（守卫路径：路径为 null 时不携带；解析上提到 await 前避免切作品竞态）
+- [x] 6.4 组合根 `ai-feature.ts` 装配传入 `getCurrentProjectPath`（既有访问器一处一行；顺带移除成为死代码的传输层单例导出，全仓零引用已验）
+- [x] 6.5 传输层测试断言三类发送均携带讨论身份（含守卫路径）；typecheck／ESLint／前端全量回归通过（959/959，＋8 新测试）
+- [ ] 6.6 重建 release 测试版并在真实应用复验 A3 授权·允许链路（授权弹窗出现→允许→工具循环→出处落档）
+
+## 7. 文档同步与全量回归
+
+- [ ] 7.1 `AGENTS.md` 诚实边界收账（应用级真实材料链路／等待基线／并发上限数值改已完成并记录）；README 状态段同步
+- [ ] 7.2 审计文档第八节 8b 行与处理进度回记（含 fmt／clippy／不稳定测试／前端接线缺陷四笔本次发现的暗账）
+- [ ] 7.3 全量回归：前端测试、Rust 测试（含集成）、离线验证、可靠性、驱动队列、typecheck、ESLint、生产构建、`cargo check --all-targets`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`openspec validate --strict`
+- [ ] 7.4 提交推送并确认 CI 双平台绿灯

@@ -31,7 +31,7 @@ import {
 } from "./selection-adapter.ts";
 import { setupSelectionEntry, type SelectionEntryEditor } from "./selection-entry.ts";
 import {
-  aiSessionTransport,
+  ResidentAiSessionTransport,
   type AiReplayOrigin,
   type AiReplayTurn,
   type AiSessionTransport,
@@ -279,7 +279,11 @@ export function setupAiFeature(
   const state = new AiPanelState(() => {}, newConversationId);
   let projectToken = 0;
   const loadConfig = dependencies.loadConfig ?? loadLlmConfig;
-  const transport = dependencies.transport ?? aiSessionTransport;
+  // 传输层默认实例（design D7）：注入作品路径访问器，发送时携带讨论身份供后端
+  // 注册按需补读工具路由（访问器逐次现取，context 装配后才会被调用）。
+  const transport =
+    dependencies.transport ??
+    new ResidentAiSessionTransport({ getCurrentProjectPath: () => context.getCurrentProjectPath() });
   const listConversations = dependencies.conversationList ?? conversationList;
   const saveConversation = dependencies.conversationSave ?? conversationSave;
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;

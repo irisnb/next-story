@@ -25,11 +25,16 @@
 
 ## Decisions
 
-### D1 验证会话形态：用户亲自操作，编排者记录（沿用 09-11 先例）
+### D1 验证会话形态：代理驱动真实应用＋用户抽查（2026-09-21 用户确认修订）
 
-- 构建用本地 release 测试版；导出依赖 D2 的入口（不依赖 devtools，但 devtools 保持可用作诊断）。
+> 原设计为「用户亲自操作，编排者记录（沿用 09-11 先例）」；应用户要求改为代理驱动。验证方法在 `validation.md` 如实记录，不冒充用户亲手操作。
+
+- 构建用本地 release 测试版，以 WebView2 调试通道（`--remote-debugging-port`）启动；编排者经 CDP 协议在**真实应用**内读界面、点击、输入、截图留证——应用、配置、模型、数据全真，仅操作者由脚本代行。
+- 原生对话框（建作品选位置、导出保存对话框）超出调试通道能力，由用户协助点击（预计 3–5 次）。
 - 每场景有可观察判据（回答含指定关键词、出处面板出现指定文档、排队文案只在对应窗口出现等），不判「回答质量好坏」——质量评估属「好问题验收」。
-- 结果与全部实测数据记入本 change 的 `validation.md`；审计文档第八节同步回记。
+- 关键场景（A1／A3／B1 等）由用户在场抽查确认；体感类观察不由脚本冒充。
+- 驱动仪器为 change 内验证工具（`verification/driver.mjs`），随 change 归档，D 组重建后复用。
+- 结果与全部实测数据记入本 change 的 `validation.md`（含验证方法说明）；审计文档第八节同步回记。
 
 ### D2 导出入口：开发者向、图标级、一键落盘
 
@@ -62,7 +67,24 @@
 - **C 等待基线**：C1 单路常规首轮×3（分项）；C2 排队场景分项；C3 授权等待单独标注（用户驱动，不计入模型等待）。全部经 D2 入口导出留档。
 - **D 并发档位**：按 D4。
 
-### D7 规格与文档落地
+### D7 前端讨论身份接线（2026-09-21 验证中发现缺陷的修复，用户确认扩入；模块化按用户指示）
+
+**缺陷链（A3 实测发现，五环证据见验证记录）**：前端 `aiSendMessage` 参数面从未包含讨论身份 → 后端 `ai_send_message` 的 `(Some, Some)` 分支永不命中 → 每次发送 `clear_session` 清路由 → 模型工具调用失败关闭为 `on_demand_reading_unauthorized` → `story-request-reading` 永远到不了请求路径 → 授权弹窗永不出现。阶段 6 的 Rust 级真实链路测试直接向通道注册轮次，绕过了前端发送路径，故未暴露。
+
+**修复设计（纯前端；后端参数早已就位）**：
+
+1. **新模块 `src/ai-conversation-identity.ts`**（约 40 行，独立成文不堆热点）：
+   - `ConversationIdentity` 类型：`{ conversationId, conversationProjectPath }`；
+   - `resolveConversationIdentity(conversationId, projectPath)` 纯函数：任一为空白返回 null（镜像后端 `!trim().is_empty()` 守卫语义）；
+   - 独立单元测试。
+2. **`project-api.ts`**：`aiSendMessage` 的 identity 对象新增可选 `conversation?: ConversationIdentity` 字段，映射为扁平线上参数 `conversationId`／`conversationProjectPath`（Tauri 自动转 snake_case 对齐后端）。既有 8 个字段不动（签名兼容，零调用面破坏）。
+3. **`ai-session-transport.ts`**（会话身份收敛层，文档自述「会话身份与传输状态收敛在本模块」）：依赖注入新增 `getCurrentProjectPath?: () => string | null`（照 `ai-feature-on-demand-reading.ts` 同款注入先例）；三处 `deps.sendMessage` 调用点（首轮／召唤／追问）统一经 `resolveConversationIdentity` 解析并携带讨论身份。**不在三个 sender 各自接线**（避免三处复制同一逻辑）。
+4. **组合根 `ai-feature.ts`**：装配传输层时传入 `getCurrentProjectPath`（`AiFeatureContext` 既有访问器，一处一行）。
+5. **测试**：传输层测试断言三类发送都带 `conversationId`／`conversationProjectPath`（含路径为 null 时不带的守卫路径）；新模块直测；既有网关／sender 测试不受影响（签名兼容）。
+
+**备选与否**：在三个 sender（`ai-feature-direct-question` 等）各自拼装身份被否——三处复制、且身份解析守卫会漂移；经 `GenerateAiRequest` 中间表示携带被否——该结构是「请求内容」语义，讨论身份是「传输路由」语义，归传输层。
+
+### D8 规格与文档落地
 
 - `ai-request-scheduling` 两条 requirement 修改（见 specs delta）：上限数值条款落「实测确定＋前后端同值＋记录义务」；等待分段记录条款扩「多轮历史保留＋一键导出、不上报外部」。
 - `AGENTS.md` 诚实边界、README 状态段、审计文档回记——「尚未完成的验证」收账，实测数据如实标注「样本、非承诺」。

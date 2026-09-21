@@ -76,6 +76,10 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
         if (identityOrCall.focusProjectPath !== undefined) args.focusProjectPath = identityOrCall.focusProjectPath;
         if (identityOrCall.focusDocumentVersion !== undefined) args.focusDocumentVersion = identityOrCall.focusDocumentVersion;
         if (identityOrCall.focusSnapshot !== undefined) args.focusSnapshot = identityOrCall.focusSnapshot;
+        if (identityOrCall.conversation !== undefined) {
+          args.conversationId = identityOrCall.conversation.conversationId;
+          args.conversationProjectPath = identityOrCall.conversation.conversationProjectPath;
+        }
       }
       commands.push({ cmd: "ai_send_message", args });
       if (failure !== null) return Promise.reject(failure);
@@ -399,6 +403,75 @@ test("different conversations get separate sessions and non-colliding message id
   assert.deepEqual(startCalls.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
   const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
   assert.deepEqual(sendCalls.map((entry) => entry.args.messageId), ["c-1:msg-1", "c-2:msg-2"]);
+});
+
+// ---- 讨论身份接线（design D7 任务 6.5）：三类发送统一携带讨论身份 ----
+
+test("all three send kinds carry the conversation identity when a project path is available", async () => {
+  const ui = harness({ getCurrentProjectPath: () => "C:/作品" });
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("首轮问题"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("追问问题"));
+  await ui.transport.sendViaResidentSession("c-2", { kind: "summon", selected_text: "冻结选区" });
+
+  const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+  assert.deepEqual(sendCalls.map((entry) => entry.args.kind), ["first", "follow_up", "summon_first"]);
+  assert.deepEqual(
+    sendCalls.map((entry) => [entry.args.conversationId, entry.args.conversationProjectPath]),
+    [
+      ["c-1", "C:/作品"],
+      ["c-1", "C:/作品"],
+      ["c-2", "C:/作品"],
+    ],
+  );
+});
+
+test("conversation identity rides along with focus document identity on a first send", async () => {
+  const ui = harness({ getCurrentProjectPath: () => "C:/作品" });
+  await ui.transport.sendViaResidentSession("c-1", {
+    kind: "direct_question",
+    question: "这个问题",
+    focus_document_id: "focus-1",
+    focus_project_path: "C:/作品",
+  });
+
+  assert.deepEqual(ui.commands[1].args, {
+    sessionId: "session-1",
+    messageId: "c-1:msg-1",
+    kind: "first",
+    question: "这个问题",
+    focusDocumentId: "focus-1",
+    focusProjectPath: "C:/作品",
+    conversationId: "c-1",
+    conversationProjectPath: "C:/作品",
+  });
+});
+
+test("sends omit the conversation identity when no project path accessor is injected", async () => {
+  const ui = harness();
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("首轮问题"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("追问问题"));
+  await ui.transport.sendViaResidentSession("c-2", { kind: "summon", selected_text: "冻结选区" });
+
+  const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+  assert.equal(sendCalls.length, 3);
+  for (const call of sendCalls) {
+    assert.equal("conversationId" in call.args, false);
+    assert.equal("conversationProjectPath" in call.args, false);
+  }
+});
+
+test("sends omit the conversation identity when getCurrentProjectPath returns null", async () => {
+  const ui = harness({ getCurrentProjectPath: () => null });
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("首轮问题"));
+  await ui.transport.sendViaResidentSession("c-1", followUpRequest("追问问题"));
+  await ui.transport.sendViaResidentSession("c-2", { kind: "summon", selected_text: "冻结选区" });
+
+  const sendCalls = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+  assert.equal(sendCalls.length, 3);
+  for (const call of sendCalls) {
+    assert.equal("conversationId" in call.args, false);
+    assert.equal("conversationProjectPath" in call.args, false);
+  }
 });
 
 test("a failed send clears the in-flight stream target", async () => {

@@ -12,6 +12,7 @@ import {
   type AiReplayOrigin,
   type AiReplayTurn,
 } from "./project-api.ts";
+import { resolveConversationIdentity } from "./ai-conversation-identity.ts";
 import type { GenerateAiRequest, GenerateAiResult } from "./types.ts";
 
 export type { AiReplayOrigin, AiReplayTurn } from "./project-api.ts";
@@ -80,6 +81,11 @@ export interface ResidentSessionDependencies {
   listenDriverLost?: typeof listenAiDriverLost;
   listenToolCall?: typeof listenAiToolCall;
   listenReadingRequest?: typeof listenAiReadingRequest;
+  /**
+   * 当前作品根路径访问器（design D7）：发送时与讨论 id 一起解析为讨论身份，
+   * 供后端注册按需补读工具路由；缺省返回 null（不携带，与旧发送行为向后兼容）。
+   */
+  getCurrentProjectPath?: () => string | null;
   /** 会话 / 消息 ID 生成器；默认 `crypto.randomUUID`。 */
   newId?: () => string;
 }
@@ -182,6 +188,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
       listenDriverLost: dependencies.listenDriverLost ?? listenAiDriverLost,
       listenToolCall: dependencies.listenToolCall ?? listenAiToolCall,
       listenReadingRequest: dependencies.listenReadingRequest ?? listenAiReadingRequest,
+      getCurrentProjectPath: dependencies.getCurrentProjectPath ?? (() => null),
       newId: dependencies.newId ?? defaultNewId,
     };
   }
@@ -221,12 +228,20 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
    * - `follow_up`：只发 messages 中最后一条 user 消息（增量问题）。
    * 首轮请求携带来源身份（作品 / 文档 / 版本）与未保存正文快照（`snapshot`）；
    * 追问请求若保留首轮快照与来源身份，也随请求透传（后端可据增量语义选择是否使用）。
+   *
+   * 讨论身份（design D7）：三类发送统一在提交时解析 `讨论 id＋当前作品根路径`，
+   * 随 identity 携带（后端据此注册本轮按需补读工具路由）；任一为空白时不携带，
+   * 后端清路由，与旧发送行为向后兼容。作品路径在进入任何 await 前现取，避免
+   * 会话启动期间切换作品读到新值。
    */
   async sendViaResidentSession(conversationId: string, request: GenerateAiRequest): Promise<GenerateAiResult> {
+    const conversation = resolveConversationIdentity(conversationId, this.deps.getCurrentProjectPath());
     const sessionId = await this.ensureSessionStarted(conversationId);
     this.messageCounter += 1;
     const messageId = `${conversationId}:msg-${this.messageCounter}`;
     const target: StreamTarget = { conversationId, sessionId, messageId };
+    const identity =
+      conversation === null ? materialIdentityOf(request) : { ...materialIdentityOf(request), conversation };
     if (request.kind === "direct_question") {
       this.beginStreamTarget(target);
       try {
@@ -236,7 +251,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           "first",
           request.question,
           request.selected_text,
-          materialIdentityOf(request),
+          identity,
         );
       } finally {
         this.clearStreamTarget(target);
@@ -251,7 +266,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
           "summon_first",
           "",
           request.selected_text,
-          materialIdentityOf(request),
+          identity,
         );
       } finally {
         this.clearStreamTarget(target);
@@ -266,7 +281,7 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
         "follow_up",
         question,
         undefined,
-        materialIdentityOf(request),
+        identity,
       );
     } finally {
       this.clearStreamTarget(target);
@@ -435,6 +450,3 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     for (const unlisten of cleanup.splice(0)) unlisten();
   }
 }
-
-/** 应用内共享的常驻会话传输层单例。 */
-export const aiSessionTransport: AiSessionTransport = new ResidentAiSessionTransport();

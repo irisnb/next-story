@@ -10,6 +10,7 @@
 - **等待基线采集**：新增**轻量、开发者向**的等待计时导出入口（一键导出 JSON 文件，不进主用户流）；计时仪器改为**保留多轮历史**（现状：同讨论新一轮提交覆盖上一条在途记录，多轮采集会丢数据）。分项如实记录（提交→首次真实回应、提交→完整回答、应用内排队时长），**数据呈报用户后再另行约定等待目标**——本 change 只交数据，不承诺秒数、不定目标数值（方向版 7.7）。
 - **并发上限实测与定值**：真实端点下同时发起多路生成，实测限流表现、稳定性与等待分项；确定数值后同步修改前端 `DEFAULT_MAX_CONCURRENT`（`src/ai-request-scheduler.ts:26`）与后端 `DEFAULT_MAX_CONCURRENT_GENERATIONS`（`src-tauri/src/dsh_driver.rs:714`），双层保持同值，实测依据记录进规格。
 - **折入：不稳定测试确定性改造**：`story_tool_channel::tests::mid_round_save_maps_to_story_version_changed` 现靠时间赌注（后台线程睡 700ms 保存＋步间延迟 1500ms）维持时序，CI 慢机器上偶发挂红（2026-09-21 实测：本地过、CI 两次运行一过一挂）。改为**文件标记握手**（首读完成标记→保存线程见标记才保存并回标记→固定版读取等标记），消除时间依赖；超时失败响亮。
+- **折入修复（2026-09-21 验证中发现，用户确认扩入）：前端讨论身份接线**：应用级 E2E 实测发现按需补读在真实应用中失灵——前端 `aiSendMessage` 从未传 `conversation_id`／`conversation_project_path`（git 全历史零命中），后端每次发送都走 `clear_session` 清路由，模型所有工具调用被失败关闭为 `on_demand_reading_unauthorized`，授权弹窗永不触发。修复为纯前端接线：新模块 `src/ai-conversation-identity.ts`（类型＋守卫解析，不堆入既有热点），传输层（`ai-session-transport.ts`，会话身份收敛层）三处发送点统一携带讨论身份。
 - **文档同步**：`AGENTS.md` 诚实边界收账（「应用级真实材料链路与等待基线尚未完成、并发上限数值待实测」改已完成并记录）、README 状态段、审计文档第八节回记。
 
 ## Capabilities

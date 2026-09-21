@@ -54,12 +54,70 @@ test("first response is recorded once and not overwritten by later deltas", () =
   assert.ok(record.firstResponseAt !== null);
 });
 
-test("submit for the same conversation overwrites the in-flight record", () => {
+test("same conversation completing multiple rounds keeps every round in exportJson", () => {
+  const collector = newCollector();
+  // 第一轮：排队 → 开始 → 首次回应 → 完成的完整时间线。
+  collector.submit("c-1", "direct_question");
+  collector.queued("c-1");
+  collector.started("c-1");
+  collector.firstResponse("c-1");
+  collector.complete("c-1");
+  // 第二轮：同讨论新一轮，未经排队。
+  collector.submit("c-1", "follow_up");
+  collector.started("c-1");
+  collector.firstResponse("c-1");
+  collector.complete("c-1");
+
+  const parsed = JSON.parse(collector.exportJson());
+  assert.equal(parsed.records.length, 2);
+  assert.equal(parsed.summary.length, 2);
+  assert.equal(parsed.records[0].kind, "direct_question");
+  assert.equal(parsed.records[1].kind, "follow_up");
+  // 两轮 summary 各自派生：第一轮排队过，第二轮从未排队。
+  assert.ok(parsed.records[0].completedAt !== null);
+  assert.ok(parsed.records[1].completedAt !== null);
+  assert.ok(parsed.summary[0].queuedDurationMs !== null);
+  assert.ok(parsed.summary[0].firstResponseDurationMs !== null);
+  assert.ok(parsed.summary[0].totalDurationMs !== null);
+  assert.equal(parsed.summary[1].queuedDurationMs, null);
+  assert.ok(parsed.summary[1].firstResponseDurationMs !== null);
+  assert.ok(parsed.summary[1].totalDurationMs !== null);
+});
+
+test("replaced in-flight round is archived as-is with missing timestamps kept null", () => {
   const collector = newCollector();
   collector.submit("c-1", "direct_question");
+  collector.started("c-1");
+  // 未完成即被同讨论新一轮顶替：旧轮按原样归档。
   collector.submit("c-1", "follow_up");
-  assert.equal(collector.getRecords().length, 1);
-  assert.equal(collector.getRecords()[0].kind, "follow_up");
+  collector.complete("c-1");
+
+  const records = collector.getRecords();
+  assert.equal(records.length, 2);
+  const archived = records[0];
+  assert.equal(archived.kind, "direct_question");
+  assert.ok(archived.submittedAt !== null);
+  assert.ok(archived.startedAt !== null);
+  assert.equal(archived.queuedAt, null);
+  assert.equal(archived.firstResponseAt, null);
+  assert.equal(archived.completedAt, null);
+  const current = records[1];
+  assert.equal(current.kind, "follow_up");
+  assert.ok(current.completedAt !== null);
+});
+
+test("history is bounded: oldest dropped beyond injected limit", () => {
+  const collector = new WaitTimingCollector(3);
+  for (let i = 0; i < 5; i++) {
+    collector.submit(`c-${i}`, "direct_question");
+    collector.complete(`c-${i}`);
+  }
+  const records = collector.getRecords();
+  assert.equal(records.length, 3);
+  assert.deepEqual(
+    records.map((r) => r.conversationId),
+    ["c-2", "c-3", "c-4"],
+  );
 });
 
 test("exportJson returns records and summary; clear empties the collector", () => {

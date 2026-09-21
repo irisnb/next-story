@@ -8,6 +8,12 @@
  * 关键约定（design D7 / specs ai-request-scheduling「等待分段记录」）：
  * - 「首次真实模型回应」= 首个流式增量或完成事件到达，MUST NOT 用排队/等待/思考文案冒充；
  * - 排队时长 = 入队 → 开始生成；提交到首次回应与提交到完成分开记录。
+ *
+ * 历史保留（change: app-real-chain-validation，design D3）：
+ * - 在途记录仍按讨论存 Map（每讨论至多一条）；轮次到达终态（complete）或被同讨论
+ *   新一轮 submit 顶替时，整条记录移入有界历史列表，被顶替的在途记录按原样归档；
+ * - 历史列表 FIFO 丢最旧，默认上限 500 条（安全上界，可注入小上限以便测试）；
+ * - exportJson / summarize 同步覆盖「历史全量 + 当前在途」；clear 同时清空两者。
  */
 
 export interface WaitTimingRecord {
@@ -29,14 +35,38 @@ export interface WaitTimingSummary {
   readonly totalDurationMs: number | null;
 }
 
-export class WaitTimingCollector {  private readonly records = new Map<string, WaitTimingRecord>();
+/** 历史列表容量默认上限（design D3：500 条安全上界，非实测结论；可经构造注入小上限测试）。 */
+const DEFAULT_TIMING_HISTORY_LIMIT = 500;
+
+export class WaitTimingCollector {
+  /** 在途记录，按讨论为键，每讨论至多一条。 */
+  private readonly records = new Map<string, WaitTimingRecord>();
+  /** 已归档的历史记录，先入在前；含已终态与被顶替的轮次。 */
+  private readonly history: WaitTimingRecord[] = [];
+  private readonly historyLimit: number;
+
+  constructor(historyLimit: number = DEFAULT_TIMING_HISTORY_LIMIT) {
+    this.historyLimit = historyLimit;
+  }
 
   private now(): number {
     return typeof performance !== "undefined" ? performance.now() : Date.now();
   }
 
-  /** 记录一次请求的提交。同讨论再次提交会覆盖该讨论的上一条在途记录。 */
+  /** 归档一条记录进有界历史（FIFO 丢最旧）。 */
+  private archive(record: WaitTimingRecord): void {
+    this.history.push(record);
+    while (this.history.length > this.historyLimit) {
+      this.history.shift();
+    }
+  }
+
+  /** 记录一次请求的提交。同讨论再次提交时，上一条在途记录按原样归档进历史。 */
   submit(conversationId: string, kind: string): void {
+    const previous = this.records.get(conversationId);
+    if (previous) {
+      this.archive(previous);
+    }
     this.records.set(conversationId, {
       conversationId,
       kind,
@@ -69,15 +99,19 @@ export class WaitTimingCollector {  private readonly records = new Map<string, W
     }
   }
 
+  /** 记录完成并把这轮记录移入有界历史（终态归档）。 */
   complete(conversationId: string): void {
     const record = this.records.get(conversationId);
     if (record && record.completedAt === null) {
       (record as { completedAt: number | null }).completedAt = this.now();
+      this.records.delete(conversationId);
+      this.archive(record);
     }
   }
 
+  /** 全量记录 = 历史全量（先入在前）+ 当前在途。 */
   getRecords(): readonly WaitTimingRecord[] {
-    return [...this.records.values()];
+    return [...this.history, ...this.records.values()];
   }
 
   /** 派生时长摘要（排队 / 首次回应 / 总时长）。 */
@@ -98,6 +132,7 @@ export class WaitTimingCollector {  private readonly records = new Map<string, W
 
   clear(): void {
     this.records.clear();
+    this.history.length = 0;
   }
 }
 

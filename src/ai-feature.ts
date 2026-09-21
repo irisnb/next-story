@@ -6,6 +6,8 @@ import {
   retryFollowUpAcceptedRequest,
 } from "./ai-feature-follow-up.ts";
 import { startDirectQuestion } from "./ai-feature-direct-question.ts";
+import { setupOnDemandReadingInteractions } from "./ai-feature-on-demand-reading.ts";
+import { setupDeleteUndo } from "./ai-feature-delete-undo.ts";
 import { AiPanelState } from "./ai-panel-state.ts";
 import {
   buildDiscussionRecord,
@@ -43,7 +45,6 @@ import {
   conversationSetOnDemandReading,
   generateConversationId,
   roundProvenanceToMaterialProvenance,
-  type ConversationRecord,
   type ConversationSummary,
 } from "./conversation-archive.ts";
 import type {
@@ -114,29 +115,6 @@ export function historyTurnsOf(
 /** 讨论的发起方式：重放时按来源组装入口层提示词。 */
 export function originOf(conversation: ReadonlyTemporaryConversation): AiReplayOrigin {
   return conversation.initialUserMaterial.kind === "direct_question" ? "direct_question" : "summon";
-}
-
-/** 把会话列表摘要还原为档案保存契约（删除撤销用内存副本重新写回）。 */
-export function summaryToRecord(summary: ConversationSummary): ConversationRecord {
-  return {
-    version: 1,
-    conversation_id: summary.conversation_id,
-    created_at: summary.created_at,
-    updated_at: summary.updated_at,
-    focus_document_id: summary.focus_document_id,
-    focus_document_title: summary.focus_document_title,
-    first_round_material: summary.first_round_material,
-    turns: summary.turns,
-    ...(summary.custom_title?.trim() ? { title: summary.custom_title } : {}),
-    ...(summary.pinned ? { pinned: true } : {}),
-    ...(summary.provenance !== undefined ? { provenance: summary.provenance } : {}),
-    on_demand_reading_grant: summary.on_demand_reading_grant ?? null,
-    // 补读出处随摘要携带：删除撤销重写以摘要快照为准（后端保存保全覆盖不到显式
-    // 携带的记录，这里不做读改写合并）。
-    ...(summary.on_demand_reading_provenance !== null && summary.on_demand_reading_provenance !== undefined
-      ? { on_demand_reading_provenance: summary.on_demand_reading_provenance }
-      : {}),
-  };
 }
 
 export interface AiFeatureHooks {
@@ -408,128 +386,45 @@ export function setupAiFeature(
   }
 
   // ===== 按需补读授权交互（add-agent-on-demand-reading 任务 7.1/7.2/7.4） =====
+  // 提取至 ai-feature-on-demand-reading.ts（extract-ai-logic-seams 第一刀）：
+  // 显式依赖参数注入，访问器逐次求值（无快照化，design D6）。
 
-  /**
-   * 轮次终态后从档案刷新按需补读状态（任务 7.4）：后端工具通道按轮把补读出处
-   * 写入档案，前端内存副本不知道；这里拉取最新授权 + 出处供「本次参考了什么」
-   * 展示。失败静默（显示保持旧值，不伪造）。
-   */
-  function refreshOnDemandState(conversationId: string): void {
-    const projectPath = getCurrentProjectPath();
-    if (projectPath === null) return;
-    const token = projectToken;
-    void fetchOnDemandReadingCall(projectPath, conversationId)
-      .then((result) => {
-        if (destroyed || projectToken !== token) return;
-        state.updateOnDemandState(
-          conversationId,
-          result.grant ?? null,
-          result.provenance ?? null,
-        );
-      })
-      .catch(() => {
-        // 静默：显示层保持旧值。
-      });
-  }
+  const {
+    refreshOnDemandState,
+    resolveReadingRequest,
+    toggleOnDemandReading,
+  } = setupOnDemandReadingInteractions({
+    state,
+    getCurrentProjectPath,
+    getProjectToken: () => projectToken,
+    isDestroyed: () => destroyed,
+    fetchOnDemandReading: fetchOnDemandReadingCall,
+    resolveReadingRequest: resolveReadingRequestCall,
+    setOnDemandReading: setOnDemandReadingCall,
+  });
 
-  /**
-   * 用户对授权请求的决定（任务 7.1）：调 `ai_resolve_reading_request` 回填；
-   * 成功后清除授权卡，允许时写入讨论授权（授权属于讨论、跨重启保留）。
-   * 迟到 / 身份不符的失败也清除授权卡（该轮已收束），但不伪造授权。
-   */
-  function resolveReadingRequest(conversationId: string, granted: boolean): void {
-    const pending = state.pendingReadingRequestOf(conversationId);
-    if (pending === null) return;
-    void resolveReadingRequestCall(pending.sessionId, pending.callId, granted)
-      .then((result) => {
-        if (destroyed) return;
-        state.resolveReadingRequest(conversationId, granted && result.ok);
-      })
-      .catch(() => {
-        if (destroyed) return;
-        state.resolveReadingRequest(conversationId, false);
-      });
-  }
+  // ===== 删除＋撤销机制 =====
+  // 提取至 ai-feature-delete-undo.ts（extract-ai-logic-seams 第二刀）：显式依赖
+  // 参数注入，访问器逐次求值（无快照化，design D6）。clearUndo 在
+  // resetProjectScopedAi / destroy 的原位置调用，清理步骤不重排。
 
-  /**
-   * 讨论内授权开关（任务 7.2）：调后端读改写命令（开启写授权及时间 / 关闭置回
-   * 未授权）；成功后更新本地状态。关闭立即阻止后续读取、不清除已读内容（后端
-   * 语义），失败时本地状态不动并提示。
-   */
-  function toggleOnDemandReading(conversationId: string, granted: boolean): void {
-    const projectPath = getCurrentProjectPath();
-    if (projectPath === null) return;
-    void setOnDemandReadingCall(projectPath, conversationId, granted)
-      .then(() => {
-        if (destroyed) return;
-        state.setOnDemandReading(conversationId, granted);
-      })
-      .catch(() => {
-        if (destroyed) return;
-        state.setSaveError("按需补读设置未能保存，授权状态未改变");
-      });
-  }
-
-  // 删除撤销：删除立即生效，前端保留内存副本，提示期内可撤销（约 6 秒）。
-  const UNDO_TIMEOUT_MS = 6000;
-  let pendingUndo: { conversationId: string; summary: ConversationSummary; timer: ReturnType<typeof setTimeout> } | null = null;
-
-  function clearUndo(): void {
-    if (pendingUndo) {
-      clearTimeout(pendingUndo.timer);
-      pendingUndo = null;
-    }
-  }
-
-  function getUndoNotice(): { title: string } | null {
-    return pendingUndo ? { title: pendingUndo.summary.title } : null;
-  }
-
-  async function undoDelete(): Promise<void> {
-    if (!pendingUndo) return;
-    const { conversationId, summary } = pendingUndo;
-    clearUndo();
-    const projectPath = getCurrentProjectPath();
-    if (projectPath === null) return;
-    try {
-      await restoreConversation(projectPath, conversationId);
-      await saveConversation(projectPath, summaryToRecord(summary));
-    } catch {
-      if (destroyed) return;
-      state.setSaveError("撤销删除失败");
-      return;
-    }
-    if (destroyed) return;
-    loadDiscussions();
-  }
-
-  async function deleteDiscussion(conversationId: string): Promise<void> {
-    const summary = state.conversations.find((c) => c.conversation_id === conversationId);
-    transport.cancelMessage(conversationId);
-    transport.endSession(conversationId);
-    scheduler.cancelQueued(conversationId);
-    state.deleteDiscussion(conversationId);
-    const projectPath = getCurrentProjectPath();
-    if (projectPath === null) return;
-    try {
-      await deleteConversation(projectPath, conversationId);
-    } catch {
-      if (destroyed) return;
-      state.setSaveError("删除讨论失败");
-      return;
-    }
-    if (destroyed) return;
-    if (summary) {
-      clearUndo();
-      const timer = setTimeout(() => { pendingUndo = null; }, UNDO_TIMEOUT_MS);
-      timer.unref?.();
-      pendingUndo = {
-        conversationId,
-        summary,
-        timer,
-      };
-    }
-  }
+  const {
+    clearUndo,
+    getUndoNotice,
+    undoDelete,
+    deleteDiscussion,
+  } = setupDeleteUndo({
+    state,
+    getCurrentProjectPath,
+    isDestroyed: () => destroyed,
+    cancelMessage: (conversationId) => transport.cancelMessage(conversationId),
+    endSession: (conversationId) => transport.endSession(conversationId),
+    cancelQueued: (conversationId) => scheduler.cancelQueued(conversationId),
+    restoreConversation,
+    saveConversation,
+    deleteConversation,
+    reloadDiscussions: loadDiscussions,
+  });
 
   /** 重命名讨论：更新内存标题并持久化到档案。 */
   async function renameDiscussion(conversationId: string, title: string): Promise<boolean> {

@@ -4,7 +4,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { ReadonlyTemporaryConversation } from "../src/ai-panel-state.ts";
 import { buildDiscussionRecord, conversationFromRecord } from "../src/ai-panel-conversation.ts";
-import { summaryToRecord } from "../src/ai-feature.ts";
+import { summaryToRecord } from "../src/ai-feature-delete-undo.ts";
 import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {

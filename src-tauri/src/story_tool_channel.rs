@@ -1094,11 +1094,16 @@ rl.on('line', (line) => {
 
     /// 多步脚本驱动：send_message 的 text 是 JSON 步骤数组——
     /// `{tool, args}` 发起一次 tool_call（等 tool_result 回填后继续下一步），
-    /// `{delay: ms}` 步内延迟（测试在延迟窗口内从外部保存文档出新版本）。
-    /// 轮内全部步骤收束后回 message_done，text 为逐调用结果数组
+    /// `{delay: ms}` 步内延迟（测试在延迟窗口内从外部保存文档出新版本），
+    /// `{mark: path}` 同步创建空标记文件后立即继续下一步（向外部线程发信号），
+    /// `{waitFor: path, timeoutMs}` 每 25ms 轮询标记文件，出现即继续；超时则
+    /// emit message_failed（code = wait_marker_timeout）终止该轮——测试响亮失败、
+    /// 可诊断。mark / waitFor / delay 步不产生结果槽位。轮内全部步骤收束后回
+    /// message_done，text 为逐调用结果数组
     /// （成功 = 宿主回填的 result 对象；拒绝 = {denied: reason}）。
     fn multi_step_driver() -> String {
         r#"
+import fs from 'node:fs';
 import readline from 'node:readline';
 console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));
 const currentMsg = new Map();
@@ -1117,6 +1122,25 @@ function step(session) {
   q.i += 1;
   if (s && typeof s.delay === 'number') {
     setTimeout(() => step(session), s.delay);
+    return;
+  }
+  if (s && typeof s.mark === 'string') {
+    fs.writeFileSync(s.mark, '');
+    step(session);
+    return;
+  }
+  if (s && typeof s.waitFor === 'string') {
+    const deadline = Date.now() + (s.timeoutMs ?? 30000);
+    const poll = () => {
+      if (fs.existsSync(s.waitFor)) { step(session); return; }
+      if (Date.now() >= deadline) {
+        queues.delete(session);
+        emit({ type: 'message_failed', session_id: session, message_id: currentMsg.get(session), code: 'wait_marker_timeout', message: '等待标记文件超时: ' + s.waitFor });
+        return;
+      }
+      setTimeout(poll, 25);
+    };
+    poll();
     return;
   }
   const callId = 'call-' + q.i;
@@ -1897,6 +1921,9 @@ setInterval(() => {}, 1000);
 
     /// 6.1 集成（规格场景「读到一半出新版」）：分段补读期间文档保存为新版——
     /// 后续按固定版本读取被映射为 story_version_changed，本轮停读。
+    /// 时序用文件标记握手而非固定延迟：首读完成 → 驱动创建标记 A →
+    /// 保存线程等到 A 才执行 save_document、落盘后创建标记 B →
+    /// 驱动等 B 出现才发起固定版读取。事件顺序由握手保证，与机器速度无关。
     #[test]
     fn mid_round_save_maps_to_story_version_changed() {
         let temp = tempfile::TempDir::new().expect("temp dir");
@@ -1913,23 +1940,32 @@ setInterval(() => {}, 1000);
         )
         .expect("save archive");
 
+        // 标记文件放测试临时目录（作品文件夹之外），驱动与保存线程共用绝对路径。
+        let marker_a = temp.path().join("first-read-done.marker");
+        let marker_b = temp.path().join("save-done.marker");
+
         let (_driver_temp, paths, params) = fake_driver(&multi_step_driver());
         let (manager, channel, _guard) = wire_channel();
         manager.ensure_started(&params, &paths).expect("驱动启动");
         manager.start_session("s1").expect("start session");
         channel.register_round("s1", "conv", root.clone(), false);
 
-        // 后台在首读完成后保存新版本（延迟窗口内）。
+        // 保存线程：轮询等标记 A（首读完成）→ 保存新版本 → 创建标记 B。
         let saver_root = root.clone();
         let saver_doc = doc.clone();
+        let saver_marker_a = marker_a.clone();
+        let saver_marker_b = marker_b.clone();
         let saver = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(700));
+            while !saver_marker_a.exists() {
+                std::thread::sleep(Duration::from_millis(10));
+            }
             save_document(
                 &saver_root,
                 &saver_doc,
                 &notebook_with_text("中途保存的新版本。"),
             )
             .expect("save mid-round");
+            std::fs::write(&saver_marker_b, "").expect("create marker b");
         });
 
         let pinned = compute_version(&content1);
@@ -1940,13 +1976,14 @@ setInterval(() => {}, 1000);
             "m1",
             serde_json::json!([
                 read_step(&doc, None, None),
-                { "delay": 1500 },
+                { "mark": marker_a.to_string_lossy() },
+                { "waitFor": marker_b.to_string_lossy(), "timeoutMs": 30000 },
                 // 带范围（与首读的去重键不同）：真正触达执行器的版本校验。
                 read_step(&doc, Some(&pinned), Some((points[0], points[1]))),
             ]),
         );
         saver.join().expect("saver");
-        // 延迟步不产生结果槽位：acc = [首读结果, 固定版读取结果]。
+        // mark / waitFor 步不产生结果槽位：acc = [首读结果, 固定版读取结果]。
         assert!(
             acc[0]["Read"].is_object(),
             "首读应成功并固定版本: {}",

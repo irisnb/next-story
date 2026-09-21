@@ -97,13 +97,21 @@ fn setup_fixture() -> RealLinkFixture {
     let tree = recover_then_read_content_tree(&root).expect("open tree");
     let doc_a = tree.root_children[0].clone();
     rename_node(&root, &doc_a, "甲篇").expect("rename a");
-    save_document(&root, &doc_a, &notebook_with_text("林晓在天台边发现了第七封信。"))
-        .expect("save a");
+    save_document(
+        &root,
+        &doc_a,
+        &notebook_with_text("林晓在天台边发现了第七封信。"),
+    )
+    .expect("save a");
     for name in ["乙篇", "丙篇"] {
         let id = create_document(&root, None).expect("create doc");
         rename_node(&root, &id, name).expect("rename");
-        save_document(&root, &id, &notebook_with_text(&format!("{name}：平凡的一天。")))
-            .expect("save");
+        save_document(
+            &root,
+            &id,
+            &notebook_with_text(&format!("{name}：平凡的一天。")),
+        )
+        .expect("save");
     }
     save_conversation(&root, &archive_record("conv-tools", true)).expect("archive tools");
     save_conversation(&root, &archive_record("conv-auth", false)).expect("archive auth");
@@ -159,7 +167,9 @@ fn wire(params: &DriverParams, home: tempfile::TempDir) -> WiredChannels {
         requests_for_sink.lock().unwrap().push(event);
     }));
 
-    manager.ensure_started(params, &paths).expect("真实驱动启动");
+    manager
+        .ensure_started(params, &paths)
+        .expect("真实驱动启动");
     WiredChannels {
         manager,
         normal,
@@ -185,7 +195,10 @@ fn real_link_tool_loop_reads_document_and_confirms_sent() {
     let fixture = setup_fixture();
     let home = tempfile::TempDir::new().expect("home dir");
     let wired = wire(&real_params(), home);
-    wired.manager.start_session("s-tools").expect("start session");
+    wired
+        .manager
+        .start_session("s-tools")
+        .expect("start session");
     wired
         .normal
         .register_round("s-tools", "conv-tools", fixture.root.clone(), false);
@@ -202,9 +215,15 @@ fn real_link_tool_loop_reads_document_and_confirms_sent() {
         )
         .expect("真实链路轮次应完成");
 
-    assert!(outcome.sent_confirmed, "message_sent 回执必须观测到（真实 provider 侧证据）");
+    assert!(
+        outcome.sent_confirmed,
+        "message_sent 回执必须观测到（真实 provider 侧证据）"
+    );
     let calls = wired.calls_total.load(Ordering::SeqCst);
-    assert!(calls >= 1, "真实模型应至少发起一次工具调用（实际 {calls} 次）");
+    assert!(
+        calls >= 1,
+        "真实模型应至少发起一次工具调用（实际 {calls} 次）"
+    );
     assert!(
         outcome.text.contains("第七封信"),
         "回答应引用经工具读取的甲篇正文（含关键词「第七封信」）：{}",
@@ -227,7 +246,10 @@ fn real_link_authorization_request_suspends_then_grant_continues() {
     let fixture = setup_fixture();
     let home = tempfile::TempDir::new().expect("home dir");
     let wired = wire(&real_params(), home);
-    wired.manager.start_session("s-auth").expect("start session");
+    wired
+        .manager
+        .start_session("s-auth")
+        .expect("start session");
     wired
         .normal
         .register_round("s-auth", "conv-auth", fixture.root.clone(), false);
@@ -287,7 +309,10 @@ fn real_link_fuse_stops_excess_reads_and_model_concludes() {
     let fixture = setup_fixture();
     let home = tempfile::TempDir::new().expect("home dir");
     let wired = wire(&real_params(), home);
-    wired.manager.start_session("fuse-s1").expect("start session");
+    wired
+        .manager
+        .start_session("fuse-s1")
+        .expect("start session");
     wired
         .tight
         .register_round("fuse-s1", "conv-fuse", fixture.root.clone(), false);
@@ -314,7 +339,10 @@ fn real_link_fuse_stops_excess_reads_and_model_concludes() {
         (recorded as u64) < arrived,
         "保险丝证据：成功落档读取数（{recorded}）必须小于到达数（{arrived}）——超出部分被 reading_stopped 拒绝"
     );
-    assert!(recorded <= 1, "每轮 1 次补读上限：落档读取至多 1 篇（实际 {recorded}）");
+    assert!(
+        recorded <= 1,
+        "每轮 1 次补读上限：落档读取至多 1 篇（实际 {recorded}）"
+    );
     assert!(
         !outcome.text.trim().is_empty(),
         "被熔断后模型应基于已读材料给出收束回答"

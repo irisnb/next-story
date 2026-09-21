@@ -137,7 +137,10 @@ impl DocCoverage {
     }
 
     fn covered_len(&self) -> usize {
-        self.intervals.iter().map(|(s, e)| e.saturating_sub(*s)).sum()
+        self.intervals
+            .iter()
+            .map(|(s, e)| e.saturating_sub(*s))
+            .sum()
     }
 
     /// 是否覆盖全文：需要已知全文长度且区间全覆盖（长度未知时不冒充完整）。
@@ -220,11 +223,7 @@ impl RoundReadingState {
         if let Some(&effective_range) = self.provided.get(&key) {
             return ReadPreparation::AlreadyProvided(ProvidedHint {
                 document_id: document_id.to_string(),
-                document_name: self
-                    .names
-                    .get(document_id)
-                    .cloned()
-                    .unwrap_or_default(),
+                document_name: self.names.get(document_id).cloned().unwrap_or_default(),
                 version: effective_version.unwrap_or_default(),
                 range: effective_range,
                 turn_index,
@@ -248,7 +247,8 @@ impl RoundReadingState {
         self.pinned
             .entry(document_id.to_string())
             .or_insert_with(|| version.clone());
-        self.names.insert(document_id.to_string(), document_name.to_string());
+        self.names
+            .insert(document_id.to_string(), document_name.to_string());
         let key = (
             document_id.to_string(),
             version.clone(),
@@ -315,7 +315,11 @@ impl RoundReadingState {
         }
         for (document_id, version) in &self.search_only {
             if !self.coverage.contains_key(document_id) {
-                updates.push((document_id.clone(), version.clone(), ReadingDepth::SearchSnippet));
+                updates.push((
+                    document_id.clone(),
+                    version.clone(),
+                    ReadingDepth::SearchSnippet,
+                ));
             }
         }
         updates
@@ -452,7 +456,10 @@ impl StoryToolChannel {
         std::thread::spawn(move || {
             let this = &*channel;
             let Some(driver) = driver else {
-                eprintln!("story_tool_channel: 驱动未接线，工具调用被丢弃（tool={}）", payload.tool);
+                eprintln!(
+                    "story_tool_channel: 驱动未接线，工具调用被丢弃（tool={}）",
+                    payload.tool
+                );
                 return;
             };
             let Some(context) = context else {
@@ -518,7 +525,9 @@ impl StoryToolChannel {
             // ===== 任务组 6：轮内监管（状态在本通道；执行器保持无状态） =====
             let is_reading_tool = matches!(
                 call,
-                StoryToolCall::List { .. } | StoryToolCall::Read { .. } | StoryToolCall::Search { .. }
+                StoryToolCall::List { .. }
+                    | StoryToolCall::Read { .. }
+                    | StoryToolCall::Search { .. }
             );
             // 阶段一（仅内存，不持锁执行 IO）：保险丝 + 读取前置决策（停读 /
             // 固定表改写与失配 / 同轮去重）。决策结果在授权解析之后才生效——
@@ -623,9 +632,7 @@ impl StoryToolChannel {
                 (
                     Some(ReadPreparation::Execute { version }),
                     StoryToolCall::Read {
-                        document_id,
-                        range,
-                        ..
+                        document_id, range, ..
                     },
                 ) => StoryToolCall::Read {
                     work_id: None,
@@ -656,12 +663,13 @@ impl StoryToolChannel {
                         // 全文长度：正文字节数（仅长度，不取内容）；整篇读取时
                         // material.range.end 即全文长度，可兜底。
                         let total_len =
-                            saved_document_length(&context.project_root, &material.document_id)
-                                .or(if requested_range.is_none() {
+                            saved_document_length(&context.project_root, &material.document_id).or(
+                                if requested_range.is_none() {
                                     Some(material.range.end)
                                 } else {
                                     None
-                                });
+                                },
+                            );
                         state.record_read_success(
                             &material.document_id,
                             &material.document_name,
@@ -884,7 +892,9 @@ fn upsert_on_demand_provenance(
 
 /// 恢复式取锁（与 dsh_driver 一致：中毒后取内部数据，不连锁 panic）。
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
@@ -914,7 +924,11 @@ mod tests {
         .unwrap()
     }
 
-    fn setup_work_with_doc(temp: &tempfile::TempDir, name: &str, content: &str) -> (PathBuf, String) {
+    fn setup_work_with_doc(
+        temp: &tempfile::TempDir,
+        name: &str,
+        content: &str,
+    ) -> (PathBuf, String) {
         let root = create_new_project(CreateProjectParams {
             name: name.to_string(),
             save_location: temp.path().to_string_lossy().to_string(),
@@ -972,7 +986,13 @@ mod tests {
         (temp, paths, params)
     }
 
-    fn tool_call(session: &str, message: &str, call_id: &str, tool: &str, args: serde_json::Value) -> ToolCallPayload {
+    fn tool_call(
+        session: &str,
+        message: &str,
+        call_id: &str,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> ToolCallPayload {
         ToolCallPayload {
             session_id: session.to_string(),
             message_id: message.to_string(),
@@ -1055,7 +1075,9 @@ rl.on('line', (line) => {
 
     /// 组装「manager + channel」并接线（工具回调 → 通道；通道 → manager 回填），
     /// 注入保险丝配置。返回的 DriverGuard 在测试任何退出路径优雅关停驱动。
-    fn wire_channel_with(fuse: ReadingFuseConfig) -> (Arc<DshDriverManager>, Arc<StoryToolChannel>, DriverGuard) {
+    fn wire_channel_with(
+        fuse: ReadingFuseConfig,
+    ) -> (Arc<DshDriverManager>, Arc<StoryToolChannel>, DriverGuard) {
         let manager = Arc::new(DshDriverManager::new());
         let channel = Arc::new(StoryToolChannel::with_fuse_config(fuse));
         channel.attach_driver((*manager).clone());
@@ -1160,7 +1182,11 @@ setInterval(() => {}, 1000);
         points
     }
 
-    fn read_step(document_id: &str, version: Option<&str>, range: Option<(usize, usize)>) -> serde_json::Value {
+    fn read_step(
+        document_id: &str,
+        version: Option<&str>,
+        range: Option<(usize, usize)>,
+    ) -> serde_json::Value {
         let mut args = serde_json::json!({ "document_id": document_id });
         if let Some(version) = version {
             args["version"] = serde_json::json!(version);
@@ -1171,7 +1197,10 @@ setInterval(() => {}, 1000);
         serde_json::json!({ "tool": "story-read", "args": args })
     }
 
-    fn provenance_of(root: &Path, id: &str) -> Vec<crate::conversation_store::OnDemandReadingProvenance> {
+    fn provenance_of(
+        root: &Path,
+        id: &str,
+    ) -> Vec<crate::conversation_store::OnDemandReadingProvenance> {
         read_conversation(root, id)
             .expect("read archive")
             .on_demand_reading_provenance
@@ -1209,8 +1238,16 @@ setInterval(() => {}, 1000);
         assert!(outcome.sent_confirmed, "回执语义不变");
 
         // 结果文本来自驱动回填的 tool_result：包含已保存正文材料与版本。
-        assert!(outcome.text.contains("林晓站在天台边"), "正文材料应回到模型: {}", outcome.text);
-        assert!(outcome.text.contains(&doc_id), "文档身份应出现在材料: {}", outcome.text);
+        assert!(
+            outcome.text.contains("林晓站在天台边"),
+            "正文材料应回到模型: {}",
+            outcome.text
+        );
+        assert!(
+            outcome.text.contains(&doc_id),
+            "文档身份应出现在材料: {}",
+            outcome.text
+        );
 
         // 出处已落档（完整阅读）。
         let record = read_conversation(&root, "conv-1").expect("read archive");
@@ -1226,7 +1263,8 @@ setInterval(() => {}, 1000);
     #[test]
     fn unauthorized_read_tool_denied_through_channel() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, doc_id) = setup_work_with_doc(&temp, "未授权通道作品", &notebook_with_text("正文"));
+        let (root, doc_id) =
+            setup_work_with_doc(&temp, "未授权通道作品", &notebook_with_text("正文"));
         save_archive(&root, &archive("conv-2", None)).expect("save archive");
 
         let (_driver_temp, paths, params) = fake_driver(&read_bridge_driver(&doc_id));
@@ -1259,7 +1297,8 @@ setInterval(() => {}, 1000);
     #[test]
     fn reading_request_suspends_round_and_resolution_continues() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, _doc_id) = setup_work_with_doc(&temp, "授权请求作品", &notebook_with_text("正文"));
+        let (root, _doc_id) =
+            setup_work_with_doc(&temp, "授权请求作品", &notebook_with_text("正文"));
         save_archive(&root, &archive("conv-3", None)).expect("save archive");
 
         let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
@@ -1288,7 +1327,10 @@ setInterval(() => {}, 1000);
         assert_eq!(received[0].conversation_id, "conv-3");
         assert_eq!(received[0].reason, "材料不足，需要确认时间线");
         let json = serde_json::to_string(&received[0]).unwrap();
-        assert!(!json.contains("正文") && !json.contains("作品文本"), "授权事件不得携带作品数据");
+        assert!(
+            !json.contains("正文") && !json.contains("作品文本"),
+            "授权事件不得携带作品数据"
+        );
         assert!(!send.is_finished(), "挂起期间轮次不得因请求超时终结");
 
         // 等过 2 秒请求级超时线：挂起轮不受超时取消（D8），仍等待用户决定。
@@ -1342,7 +1384,8 @@ setInterval(() => {}, 1000);
     #[test]
     fn suspended_round_can_be_cancelled_and_late_resolution_is_dropped() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, _doc_id) = setup_work_with_doc(&temp, "取消挂起作品", &notebook_with_text("正文"));
+        let (root, _doc_id) =
+            setup_work_with_doc(&temp, "取消挂起作品", &notebook_with_text("正文"));
         save_archive(&root, &archive("conv-4", None)).expect("save archive");
 
         let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
@@ -1380,7 +1423,10 @@ setInterval(() => {}, 1000);
             .expect("迟到决定仍应被处理（授权落档）");
         std::thread::sleep(Duration::from_millis(500));
         let record = read_conversation(&root, "conv-4").expect("read archive");
-        assert!(record.on_demand_reading_grant.is_some(), "授权属于讨论，跨轮有效");
+        assert!(
+            record.on_demand_reading_grant.is_some(),
+            "授权属于讨论，跨轮有效"
+        );
 
         manager.shutdown_best_effort();
     }
@@ -1389,7 +1435,8 @@ setInterval(() => {}, 1000);
     #[test]
     fn summon_first_round_hard_gate_rejects_all_tool_calls() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, doc_id) = setup_work_with_doc(&temp, "硬门禁通道作品", &notebook_with_text("正文"));
+        let (root, doc_id) =
+            setup_work_with_doc(&temp, "硬门禁通道作品", &notebook_with_text("正文"));
         save_archive(
             &root,
             &archive(
@@ -1464,7 +1511,9 @@ setInterval(() => {}, 1000);
             outcome.text
         );
         assert!(
-            channel.resolve_reading_request("s1", "call-1", true).is_err(),
+            channel
+                .resolve_reading_request("s1", "call-1", true)
+                .is_err(),
             "无待决授权时决定必须失败"
         );
         manager.shutdown_best_effort();
@@ -1474,7 +1523,8 @@ setInterval(() => {}, 1000);
     #[test]
     fn pending_authorization_identity_must_match() {
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, _doc_id) = setup_work_with_doc(&temp, "身份校验作品", &notebook_with_text("正文"));
+        let (root, _doc_id) =
+            setup_work_with_doc(&temp, "身份校验作品", &notebook_with_text("正文"));
         save_archive(&root, &archive("conv-6", None)).expect("save archive");
 
         let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
@@ -1545,7 +1595,9 @@ setInterval(() => {}, 1000);
         channel.handle_tool_call(payload);
         std::thread::sleep(Duration::from_millis(600));
         assert!(
-            channel.resolve_reading_request("s1", "call-1", true).is_err(),
+            channel
+                .resolve_reading_request("s1", "call-1", true)
+                .is_err(),
             "清会话后不得有待决授权"
         );
         let record = read_conversation(&root, "conv-7").expect("archive 仍在");
@@ -1629,7 +1681,12 @@ setInterval(() => {}, 1000);
             MaterialRange { start: 0, end: 5 },
             Some(10),
         );
-        match state.prepare_read(0, "d", Some("v1".into()), Some(MaterialRange { start: 0, end: 5 })) {
+        match state.prepare_read(
+            0,
+            "d",
+            Some("v1".into()),
+            Some(MaterialRange { start: 0, end: 5 }),
+        ) {
             ReadPreparation::AlreadyProvided(hint) => {
                 assert_eq!(hint.document_id, "d");
                 assert_eq!(hint.document_name, "文档");
@@ -1641,7 +1698,12 @@ setInterval(() => {}, 1000);
         }
         // 不同范围、不同版本形态（None ↔ Some）不命中。
         assert!(matches!(
-            state.prepare_read(0, "d", Some("v1".into()), Some(MaterialRange { start: 5, end: 10 })),
+            state.prepare_read(
+                0,
+                "d",
+                Some("v1".into()),
+                Some(MaterialRange { start: 5, end: 10 })
+            ),
             ReadPreparation::Execute { .. }
         ));
         assert!(matches!(
@@ -1651,7 +1713,12 @@ setInterval(() => {}, 1000);
         // 跨轮：状态整体重置，同请求不屏蔽（D9）。
         let mut fresh = RoundReadingState::default();
         assert!(matches!(
-            fresh.prepare_read(0, "d", Some("v1".into()), Some(MaterialRange { start: 0, end: 5 })),
+            fresh.prepare_read(
+                0,
+                "d",
+                Some("v1".into()),
+                Some(MaterialRange { start: 0, end: 5 })
+            ),
             ReadPreparation::Execute { .. }
         ));
     }
@@ -1674,8 +1741,14 @@ setInterval(() => {}, 1000);
             "a",
             "甲",
             "v1".to_string(),
-            Some(MaterialRange { start: 50, end: 100 }),
-            MaterialRange { start: 50, end: 100 },
+            Some(MaterialRange {
+                start: 50,
+                end: 100,
+            }),
+            MaterialRange {
+                start: 50,
+                end: 100,
+            },
             Some(100),
         );
         // 仅检索命中（无读取覆盖）。
@@ -1774,8 +1847,16 @@ setInterval(() => {}, 1000);
 
         // 轮 0：首读（无版本）→ 成功并固定 v1。
         channel.register_round("s1", "conv", root.clone(), false);
-        let acc = send_round(&manager, "s1", "m0", serde_json::json!([read_step(&doc, None, None)]));
-        assert_eq!(acc[0]["Read"]["version"], compute_version(&content1).as_str());
+        let acc = send_round(
+            &manager,
+            "s1",
+            "m0",
+            serde_json::json!([read_step(&doc, None, None)]),
+        );
+        assert_eq!(
+            acc[0]["Read"]["version"],
+            compute_version(&content1).as_str()
+        );
 
         // 期间保存为新版。
         let content2 = notebook_with_text("第二版正文，内容不同。");
@@ -1840,8 +1921,12 @@ setInterval(() => {}, 1000);
         let saver_doc = doc.clone();
         let saver = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(700));
-            save_document(&saver_root, &saver_doc, &notebook_with_text("中途保存的新版本。"))
-                .expect("save mid-round");
+            save_document(
+                &saver_root,
+                &saver_doc,
+                &notebook_with_text("中途保存的新版本。"),
+            )
+            .expect("save mid-round");
         });
 
         let pinned = compute_version(&content1);
@@ -1981,11 +2066,10 @@ setInterval(() => {}, 1000);
         let (_driver_temp, paths, params) = fake_driver(&multi_step_driver());
 
         // 紧配置：每轮 2 次补读。第 3 次起 reading_stopped。
-        let (manager, channel, _guard) =
-            wire_channel_with(ReadingFuseConfig {
-                max_tool_calls: 2,
-                max_accumulated_duration: Duration::from_secs(120),
-            });
+        let (manager, channel, _guard) = wire_channel_with(ReadingFuseConfig {
+            max_tool_calls: 2,
+            max_accumulated_duration: Duration::from_secs(120),
+        });
         manager.ensure_started(&params, &paths).expect("驱动启动");
         manager.start_session("s1").expect("start session");
         let points = cut_points(&content, 4);
@@ -2000,7 +2084,11 @@ setInterval(() => {}, 1000);
         assert!(acc[0]["Read"].is_object(), "第 1 次正常执行: {}", acc[0]);
         assert!(acc[1]["Read"].is_object(), "第 2 次正常执行: {}", acc[1]);
         assert_eq!(acc[2]["denied"], "reading_stopped", "越限后停: {}", acc[2]);
-        assert_eq!(acc[3]["denied"], "reading_stopped", "后续一律停: {}", acc[3]);
+        assert_eq!(
+            acc[3]["denied"], "reading_stopped",
+            "后续一律停: {}",
+            acc[3]
+        );
         manager.shutdown_best_effort();
 
         // 默认配置：同规模补读全部正常（正常路径不受打扰）。
@@ -2016,7 +2104,10 @@ setInterval(() => {}, 1000);
         channel2.register_round("s2", "conv", root.clone(), false);
         let acc = send_round(&manager2, "s2", "m0", serde_json::Value::Array(steps));
         for (index, result) in acc.as_array().unwrap().iter().enumerate() {
-            assert!(result["Read"].is_object(), "第 {index} 次不应被打扰: {result}");
+            assert!(
+                result["Read"].is_object(),
+                "第 {index} 次不应被打扰: {result}"
+            );
         }
         manager2.shutdown_best_effort();
     }

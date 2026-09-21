@@ -19,8 +19,8 @@ use next_story_lib::project::{
 };
 use next_story_lib::story_tool_channel::{ReadingFuseConfig, StoryToolChannel};
 use next_story_lib::story_tools::{
-    execute_story_tool_for_conversation, AuthorizationResolution, DiskStoryReader,
-    StoryToolCall, StoryToolDenialReason,
+    execute_story_tool_for_conversation, AuthorizationResolution, DiskStoryReader, StoryToolCall,
+    StoryToolDenialReason,
 };
 
 fn notebook_with_text(text: &str) -> String {
@@ -43,11 +43,21 @@ fn setup_work_with_docs(temp: &tempfile::TempDir) -> (PathBuf, Vec<String>) {
     .expect("create work");
     let tree = recover_then_read_content_tree(&root).expect("open tree");
     let mut doc_ids = vec![tree.root_children[0].clone()];
-    save_document(&root, &doc_ids[0], &notebook_with_text("正文甲：林晓在天台。")).expect("save");
+    save_document(
+        &root,
+        &doc_ids[0],
+        &notebook_with_text("正文甲：林晓在天台。"),
+    )
+    .expect("save");
     for name in ["乙篇", "丙篇"] {
         let id = next_story_lib::project::create_document(&root, None).expect("create doc");
         next_story_lib::project::rename_node(&root, &id, name).expect("rename");
-        save_document(&root, &id, &notebook_with_text(&format!("{name}的正文内容。"))).expect("save");
+        save_document(
+            &root,
+            &id,
+            &notebook_with_text(&format!("{name}的正文内容。")),
+        )
+        .expect("save");
         doc_ids.push(id);
     }
     (root, doc_ids)
@@ -127,8 +137,15 @@ fn negative_tool_names_fail_to_parse_as_story_tool_calls() {
             "网关不得放行 {bad}"
         );
     }
-    for good in ["story-list", "story-read", "story-search", "story-request-reading"] {
-        assert!(next_story_lib::capability_gateway::authorize_tool_call(good));
+    for good in [
+        "story-list",
+        "story-read",
+        "story-search",
+        "story-request-reading",
+    ] {
+        assert!(next_story_lib::capability_gateway::authorize_tool_call(
+            good
+        ));
     }
 }
 
@@ -141,11 +158,10 @@ fn negative_direct_calls_fail_closed_with_zero_disk_side_effects() {
     // 未授权档案 + 已授权档案各一份。
     save_conversation(&root, &archive_record("conv-un")).expect("save un");
     let mut granted = archive_record("conv-gr");
-    granted.on_demand_reading_grant = Some(
-        next_story_lib::conversation_store::OnDemandReadingGrant {
+    granted.on_demand_reading_grant =
+        Some(next_story_lib::conversation_store::OnDemandReadingGrant {
             granted_at: "2026-09-20T08:30:00.000Z".to_string(),
-        },
-    );
+        });
     save_conversation(&root, &granted).expect("save granted");
 
     let before_work = snapshot_tree(&root);
@@ -204,7 +220,9 @@ fn negative_direct_calls_fail_closed_with_zero_disk_side_effects() {
     assert_eq!(denial.reason, StoryToolDenialReason::DocumentMissing);
 
     // ④ 通道侧：无路由上下文 / 未注册会话的 tool_call 也失败关闭（不悬挂、不落档）。
-    let channel = std::sync::Arc::new(StoryToolChannel::with_fuse_config(ReadingFuseConfig::default()));
+    let channel = std::sync::Arc::new(StoryToolChannel::with_fuse_config(
+        ReadingFuseConfig::default(),
+    ));
     channel.handle_tool_call(next_story_lib::dsh_driver::ToolCallPayload {
         session_id: "未注册会话".to_string(),
         message_id: "m1".to_string(),
@@ -221,7 +239,11 @@ fn negative_direct_calls_fail_closed_with_zero_disk_side_effects() {
     );
 
     // 零磁盘副作用：作品树（正文、内容树、元信息）与讨论档案逐字节不变。
-    assert_eq!(before_work, snapshot_tree(&root), "作品树不得有任何字节变化");
+    assert_eq!(
+        before_work,
+        snapshot_tree(&root),
+        "作品树不得有任何字节变化"
+    );
     assert_eq!(
         before_archives,
         snapshot_archives(&root),

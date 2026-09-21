@@ -260,7 +260,9 @@ mod tests {
             .expect("entries 必须是数组")
             .iter()
             .map(|e| {
-                let id = e["id"].as_str().unwrap_or_else(|| panic!("条目缺少 id：{e}"));
+                let id = e["id"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("条目缺少 id：{e}"));
                 let gateway = e["gateway"].as_bool().unwrap_or(false);
                 (id, gateway)
             })
@@ -275,7 +277,8 @@ mod tests {
             }
         }
 
-        let rust_ids: std::collections::BTreeSet<&str> = FORBIDDEN_TOOL_IDS.iter().copied().collect();
+        let rust_ids: std::collections::BTreeSet<&str> =
+            FORBIDDEN_TOOL_IDS.iter().copied().collect();
         // 双向钉死：gateway=true 子集 == Rust 危险工具清单。
         assert_eq!(
             gateway_ids, rust_ids,
@@ -288,7 +291,10 @@ mod tests {
         // 只读作品工具（含 Agent 工具面四件套与系统保留名 story-snapshot）
         // 不得出现在任何禁用清单。
         for name in READ_ONLY_STORY_TOOLS {
-            assert!(!all_ids.contains(name), "只读工具 {name} 不得出现在禁用清单");
+            assert!(
+                !all_ids.contains(name),
+                "只读工具 {name} 不得出现在禁用清单"
+            );
         }
     }
 }

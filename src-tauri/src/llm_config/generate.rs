@@ -919,10 +919,20 @@ mod tests {
     fn tool_reading_prompt_is_composed_for_both_entries() {
         let direct = compose_system_prompt(PromptEntry::DirectQuestion);
         assert!(direct.contains("story-list"), "直接提问应引导目录工具");
-        assert!(direct.contains("story-request-reading"), "直接提问应引导授权请求");
-        assert!(direct.contains("先调用 story-request-reading 并说明原因"), "先请求后读取");
+        assert!(
+            direct.contains("story-request-reading"),
+            "直接提问应引导授权请求"
+        );
+        assert!(
+            direct.contains("先调用 story-request-reading 并说明原因"),
+            "先请求后读取"
+        );
         assert!(direct.contains("等用户决定后再继续"), "等待用户决定");
-        assert!(direct.contains("读取不会\n修改作品任何内容") || direct.contains("读取不会修改作品任何内容"), "只读边界");
+        assert!(
+            direct.contains("读取不会\n修改作品任何内容")
+                || direct.contains("读取不会修改作品任何内容"),
+            "只读边界"
+        );
 
         let summon = compose_system_prompt(PromptEntry::Summon);
         assert!(

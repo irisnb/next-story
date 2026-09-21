@@ -532,9 +532,7 @@ pub fn conversations_using_document(
             || summary
                 .on_demand_reading_provenance
                 .as_ref()
-                .is_some_and(|entries| {
-                    entries.iter().any(|p| p.document_id == document_id)
-                });
+                .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id));
         if referenced {
             usage.push(ConversationUsage {
                 conversation_id: summary.conversation_id,
@@ -1207,7 +1205,9 @@ mod tests {
         // 绝不出现正文副本字段。
         let raw = fs::read_to_string(conversation_file(temp.path(), "conv-1")).expect("raw");
         let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
-        let grant = parsed["on_demand_reading_grant"].as_object().expect("grant");
+        let grant = parsed["on_demand_reading_grant"]
+            .as_object()
+            .expect("grant");
         assert_eq!(
             grant.keys().map(String::as_str).collect::<Vec<_>>(),
             vec!["granted_at"],
@@ -1437,14 +1437,16 @@ mod tests {
         save_conversation(temp.path(), &with_provenance).expect("save provenance");
 
         // 前端轮次终态保存：记录不携带出处字段 → 档案已有出处必须保全。
-        let frontend_rec = record("conv-p", Some("问题"), None, vec![
-            turn("assistant", "终态回答", "success"),
-        ]);
+        let frontend_rec = record(
+            "conv-p",
+            Some("问题"),
+            None,
+            vec![turn("assistant", "终态回答", "success")],
+        );
         save_conversation(temp.path(), &frontend_rec).expect("frontend save");
         let loaded = read_conversation(temp.path(), "conv-p").expect("read");
         assert_eq!(
-            loaded.on_demand_reading_provenance,
-            with_provenance.on_demand_reading_provenance,
+            loaded.on_demand_reading_provenance, with_provenance.on_demand_reading_provenance,
             "前端保存不得抹掉通道落档的补读出处"
         );
         assert_eq!(

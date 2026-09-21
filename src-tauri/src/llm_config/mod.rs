@@ -119,10 +119,9 @@ impl std::fmt::Display for LlmConfigError {
             LlmConfigError::InsecureRemoteApiUrl(url) => {
                 write!(f, "远程 API 地址必须使用 HTTPS: {}", url)
             }
-            LlmConfigError::InvalidMaxTokens => write!(
-                f,
-                "max_tokens 必须是 1 到 {MAX_TOKENS_LIMIT} 之间的整数"
-            ),
+            LlmConfigError::InvalidMaxTokens => {
+                write!(f, "max_tokens 必须是 1 到 {MAX_TOKENS_LIMIT} 之间的整数")
+            }
             LlmConfigError::ReadError(msg) => write!(f, "读取配置失败: {}", msg),
             LlmConfigError::WriteError(msg) => write!(f, "保存配置失败: {}", msg),
             LlmConfigError::SecretStoreError(msg) => write!(f, "访问系统钥匙串失败: {}", msg),

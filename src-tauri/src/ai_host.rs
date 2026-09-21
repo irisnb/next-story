@@ -53,8 +53,11 @@ pub(crate) async fn ai_resolve_reading_request(
     granted: bool,
 ) -> Result<GenerateAiResult, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::story_tool_channel::global_story_tool_channel()
-            .resolve_reading_request(&session_id, &call_id, granted)
+        crate::story_tool_channel::global_story_tool_channel().resolve_reading_request(
+            &session_id,
+            &call_id,
+            granted,
+        )
     })
     .await;
     match result {
@@ -117,17 +120,13 @@ pub(crate) async fn ai_replay_done(
 /// `ai-tool-call` 轻量过程事件（呈现 UI 是任务组 7）。
 pub(crate) fn install_driver_event_bridge(app: &tauri::AppHandle) {
     let handle = app.clone();
-    crate::dsh_driver::global_driver_manager().set_sink(std::sync::Arc::new(
-        move |payload| {
-            let _ = handle.emit("ai-delta", &payload);
-        },
-    ));
+    crate::dsh_driver::global_driver_manager().set_sink(std::sync::Arc::new(move |payload| {
+        let _ = handle.emit("ai-delta", &payload);
+    }));
     let loss_handle = app.clone();
-    crate::dsh_driver::global_driver_manager().set_loss_sink(std::sync::Arc::new(
-        move || {
-            let _ = loss_handle.emit("ai-driver-lost", ());
-        },
-    ));
+    crate::dsh_driver::global_driver_manager().set_loss_sink(std::sync::Arc::new(move || {
+        let _ = loss_handle.emit("ai-driver-lost", ());
+    }));
 
     // 工具调用通道（任务 5.2）：驱动 tool_call → 通道路由（执行 / 授权挂起）；
     // 授权请求 → 前端 `ai-reading-request` 事件（授权卡 UI 是任务组 7）。

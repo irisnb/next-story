@@ -1401,8 +1401,8 @@ mod tests {
             .join("sidecar")
             .join("driver")
             .join("protocol.json");
-        let text =
-            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读取 protocol.json 失败：{e}"));
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("读取 protocol.json 失败：{e}"));
         let value: serde_json::Value =
             serde_json::from_str(&text).expect("protocol.json 必须是合法 JSON");
         assert_eq!(
@@ -2236,7 +2236,10 @@ mod tests {
         let outcome = manager
             .send_message_and_wait("s1", "m1", "问题", Duration::from_secs(15))
             .expect("回显（已配置）");
-        assert_eq!(outcome.text, "passed:4096", "配置值必须透传 --max-tokens 4096");
+        assert_eq!(
+            outcome.text, "passed:4096",
+            "配置值必须透传 --max-tokens 4096"
+        );
         manager.shutdown_best_effort();
 
         // 未配置：参数不出现——缺省行为与现状一致（驱动侧维持默认 131072）。

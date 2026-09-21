@@ -526,7 +526,10 @@ fn validation_bounds_optional_max_tokens() {
     let mut config = sample_config("https://api.example.com/v1".to_string());
 
     config.max_tokens = None;
-    assert!(validate_llm_config(&config).is_ok(), "缺省合法（默认 131072）");
+    assert!(
+        validate_llm_config(&config).is_ok(),
+        "缺省合法（默认 131072）"
+    );
     config.max_tokens = Some(1);
     assert!(validate_llm_config(&config).is_ok());
     config.max_tokens = Some(131072);
@@ -571,11 +574,9 @@ fn max_tokens_round_trips_and_default_keeps_file_shape() {
     let base_plain = TempDir::new().expect("temp dir 2");
     let plain = sample_config("https://api.example.com/v1".to_string());
     save_llm_config_with_store(base_plain.path(), &plain, &store).expect("save plain");
-    let raw = std::fs::read_to_string(
-        std::path::Path::new(base_plain.path())
-            .join("llm-config.json"),
-    )
-    .expect("read raw");
+    let raw =
+        std::fs::read_to_string(std::path::Path::new(base_plain.path()).join("llm-config.json"))
+            .expect("read raw");
     assert!(!raw.contains("max_tokens"), "未配置时文件不含该键: {raw}");
     let loaded_plain = load_llm_config_with_store(base_plain.path(), &store)
         .expect("load plain")

@@ -269,10 +269,7 @@ mod tests {
         {
             let map = locks.inner.lock().expect("锁注册表可用");
             if let Some(weak) = map.get(&canonical) {
-                assert!(
-                    weak.upgrade().is_none(),
-                    "无持有人后注册表不应持有活锁对象"
-                );
+                assert!(weak.upgrade().is_none(), "无持有人后注册表不应持有活锁对象");
             }
         }
 
@@ -308,7 +305,9 @@ mod tests {
         b_go_tx.send(()).expect("放行 B 取锁");
         // A 持锁期间 B 不应取得同一把锁（B 已受命取锁却未返回）。
         assert!(
-            b_acquired_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            b_acquired_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
             "A 持锁期间同路径的 B 不应取得锁"
         );
 

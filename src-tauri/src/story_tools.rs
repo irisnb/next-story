@@ -35,9 +35,9 @@ use crate::conversation_store::{
 };
 use crate::project::{
     compute_version, project_directory, read_and_validate_notebook, read_material_from_tree,
-    search_documents, strict_read_content_tree, ContentTree, ContentTreeNode,
-    DirectoryProjection, MaterialDenial, MaterialDenialReason, MaterialRange, NodeKind,
-    ProjectError, ProjectPaths, ProjectedNode, ReadMaterialRequest, SearchResult, StoryMaterial,
+    search_documents, strict_read_content_tree, ContentTree, ContentTreeNode, DirectoryProjection,
+    MaterialDenial, MaterialDenialReason, MaterialRange, NodeKind, ProjectError, ProjectPaths,
+    ProjectedNode, ReadMaterialRequest, SearchResult, StoryMaterial,
 };
 
 // ========== 授权状态（任务组 4 接讨论档案；执行器以参数注入） ==========
@@ -298,7 +298,9 @@ pub fn execute_story_tool(
                         reason: reason.clone(),
                     }
                 }
-                OnDemandReadingAuthorization::Authorized => ReadingRequestOutcome::AlreadyAuthorized,
+                OnDemandReadingAuthorization::Authorized => {
+                    ReadingRequestOutcome::AlreadyAuthorized
+                }
             };
             Ok(StoryToolOutcome::ReadingRequested(outcome))
         }
@@ -307,9 +309,7 @@ pub fn execute_story_tool(
         | StoryToolCall::Search { work_id, .. } => {
             // 设计 D13：未授权讨论的补读读取一律结构化拒绝，先于任何作品读取。
             if authorization != OnDemandReadingAuthorization::Authorized {
-                return Err(denial(
-                    StoryToolDenialReason::OnDemandReadingUnauthorized,
-                ));
+                return Err(denial(StoryToolDenialReason::OnDemandReadingUnauthorized));
             }
             if let Some(claimed) = work_id {
                 if claimed != reader.work_id() {
@@ -541,15 +541,14 @@ mod tests {
     use super::*;
     use crate::project::{
         create_document, create_folder, create_new_project, delete_node,
-        recover_then_read_content_tree, rename_node, save_document,
-        set_document_ai_visibility, CreateProjectParams, SearchStatus, MAX_RESULT_DOCS,
+        recover_then_read_content_tree, rename_node, save_document, set_document_ai_visibility,
+        CreateProjectParams, SearchStatus, MAX_RESULT_DOCS,
     };
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
     const AUTHORIZED: OnDemandReadingAuthorization = OnDemandReadingAuthorization::Authorized;
-    const UNAUTHORIZED: OnDemandReadingAuthorization =
-        OnDemandReadingAuthorization::Unauthorized;
+    const UNAUTHORIZED: OnDemandReadingAuthorization = OnDemandReadingAuthorization::Unauthorized;
 
     fn notebook_with_text(text: &str) -> String {
         serde_json::to_string(&serde_json::json!({
@@ -649,8 +648,9 @@ mod tests {
         let before = snapshot_project_dir(&root);
 
         // story-list：目录 + 当前版本。
-        let outcome = execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
-            .expect("list ok");
+        let outcome =
+            execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
+                .expect("list ok");
         let StoryToolOutcome::Listed(listing) = outcome else {
             panic!("应为 Listed，实际 {outcome:?}")
         };
@@ -783,8 +783,11 @@ mod tests {
     #[test]
     fn request_reading_returns_structured_waiting_without_story_data() {
         let temp = tempfile::TempDir::new().unwrap();
-        let (root, work_id, doc_id) =
-            setup_work_with_doc(&temp, "授权请求作品", &notebook_with_text("正文不进授权请求"));
+        let (root, work_id, doc_id) = setup_work_with_doc(
+            &temp,
+            "授权请求作品",
+            &notebook_with_text("正文不进授权请求"),
+        );
         let reader = DiskStoryReader::open(&root).expect("open reader");
         let before = snapshot_project_dir(&root);
 
@@ -806,7 +809,10 @@ mod tests {
         let json = serde_json::to_string(&outcome).unwrap();
         assert!(json.contains("时间线"), "reason 透传");
         for sensitive in ["正文不进授权请求", &doc_id, "未命名文档", &work_id] {
-            assert!(!json.contains(sensitive), "授权请求不得携带作品数据：{sensitive}");
+            assert!(
+                !json.contains(sensitive),
+                "授权请求不得携带作品数据：{sensitive}"
+            );
         }
 
         // 已授权：无需再请求。
@@ -888,21 +894,31 @@ mod tests {
         assert_eq!(denial.reason, StoryToolDenialReason::DocumentNotVisible);
         let json = serde_json::to_string(&denial).unwrap();
         for sensitive in ["绝密", &secret_id] {
-            assert!(!json.contains(sensitive), "拒绝不得泄露隐藏文档身份：{sensitive}");
+            assert!(
+                !json.contains(sensitive),
+                "拒绝不得泄露隐藏文档身份：{sensitive}"
+            );
         }
 
         // story-list：隐藏文档不进目录与版本清单，其余文档正常。
-        let outcome = execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
-            .expect("list ok");
+        let outcome =
+            execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
+                .expect("list ok");
         let StoryToolOutcome::Listed(listing) = outcome else {
             panic!("应为 Listed")
         };
         let json = serde_json::to_string(&listing).unwrap();
         for sensitive in ["绝密档案", &secret_id] {
-            assert!(!json.contains(sensitive), "目录不得泄露隐藏文档：{sensitive}");
+            assert!(
+                !json.contains(sensitive),
+                "目录不得泄露隐藏文档：{sensitive}"
+            );
         }
         assert_eq!(listing.directory.hidden_count, 1);
-        assert!(listing.documents.iter().any(|d| d.document_id == visible_id));
+        assert!(listing
+            .documents
+            .iter()
+            .any(|d| d.document_id == visible_id));
         assert!(listing.documents.iter().all(|d| d.document_id != secret_id));
 
         // story-search：命中词只在隐藏文档 → 跳过且不命中（不泄露存在性）。
@@ -940,11 +956,8 @@ mod tests {
     #[test]
     fn recycled_document_fails_closed_across_tools() {
         let temp = tempfile::TempDir::new().unwrap();
-        let (root, _work_id, doc_id) = setup_work_with_doc(
-            &temp,
-            "回收站作品",
-            &notebook_with_text("回收站正文内容"),
-        );
+        let (root, _work_id, doc_id) =
+            setup_work_with_doc(&temp, "回收站作品", &notebook_with_text("回收站正文内容"));
         delete_node(&root, &doc_id).expect("delete to recycle bin");
         let reader = DiskStoryReader::open(&root).expect("open reader");
         let before = snapshot_project_dir(&root);
@@ -953,8 +966,9 @@ mod tests {
             .expect_err("回收站文档必须被拒绝");
         assert_eq!(denial.reason, StoryToolDenialReason::DocumentRecycled);
 
-        let outcome = execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
-            .expect("list ok");
+        let outcome =
+            execute_story_tool(&reader, AUTHORIZED, StoryToolCall::List { work_id: None })
+                .expect("list ok");
         let StoryToolOutcome::Listed(listing) = outcome else {
             panic!("应为 Listed")
         };
@@ -1002,7 +1016,10 @@ mod tests {
         let missing = execute_story_tool(&reader, AUTHORIZED, read_call("no-such-document"))
             .expect_err("不存在文档必须被拒绝");
         assert_eq!(cross.reason, StoryToolDenialReason::DocumentMissing);
-        assert_eq!(cross, missing, "跨作品与不存在的拒绝必须完全一致（不泄露存在性）");
+        assert_eq!(
+            cross, missing,
+            "跨作品与不存在的拒绝必须完全一致（不泄露存在性）"
+        );
 
         // 序列化拒绝不泄露作品乙的路径 / 文档 ID / 正文。
         let json = serde_json::to_string(&cross).unwrap();
@@ -1047,11 +1064,8 @@ mod tests {
     #[test]
     fn pending_recovery_transaction_fails_closed_for_all_four_tools() {
         let temp = tempfile::TempDir::new().unwrap();
-        let (root, _work_id, doc_id) = setup_work_with_doc(
-            &temp,
-            "待恢复作品",
-            &notebook_with_text("待恢复作品正文"),
-        );
+        let (root, _work_id, doc_id) =
+            setup_work_with_doc(&temp, "待恢复作品", &notebook_with_text("待恢复作品正文"));
         // 沿用既有 fixture 惯例：save-transaction 目录存在（清单缺失形态）即视为
         // 待恢复事务现场（见 operations.rs strict_read_content_tree_fails_closed_without_manifest）。
         std::fs::create_dir_all(root.join("next-story-system").join("save-transaction"))
@@ -1096,32 +1110,25 @@ mod tests {
         // 防止将来有人往接口上加写入方法而不改测试。
         let methods: &[(&str, fn(&DiskStoryReader) -> bool)] = &[
             ("work_id", |r| !r.work_id().is_empty()),
-            (
-                "strict_content_tree",
-                |r| r.strict_content_tree().is_ok() || r.strict_content_tree().is_err(),
-            ),
-            (
-                "saved_document_body",
-                |r| {
-                    // 干净作品上读取默认文档正文必须成功（经校验的只读）。
-                    match r.strict_content_tree() {
-                        Ok(tree) => tree
-                            .nodes
-                            .values()
-                            .find(|n| n.kind == NodeKind::Document)
-                            .map(|n| r.saved_document_body(n).is_ok())
-                            .unwrap_or(false),
-                        Err(_) => false,
-                    }
-                },
-            ),
+            ("strict_content_tree", |r| {
+                r.strict_content_tree().is_ok() || r.strict_content_tree().is_err()
+            }),
+            ("saved_document_body", |r| {
+                // 干净作品上读取默认文档正文必须成功（经校验的只读）。
+                match r.strict_content_tree() {
+                    Ok(tree) => tree
+                        .nodes
+                        .values()
+                        .find(|n| n.kind == NodeKind::Document)
+                        .map(|n| r.saved_document_body(n).is_ok())
+                        .unwrap_or(false),
+                    Err(_) => false,
+                }
+            }),
         ];
         let temp = tempfile::TempDir::new().unwrap();
-        let (root, _work_id, _doc_id) = setup_work_with_doc(
-            &temp,
-            "窄化接口作品",
-            &notebook_with_text("接口形状正文"),
-        );
+        let (root, _work_id, _doc_id) =
+            setup_work_with_doc(&temp, "窄化接口作品", &notebook_with_text("接口形状正文"));
         let reader = DiskStoryReader::open(&root).expect("open reader");
         for (name, probe) in methods {
             assert!(probe(&reader), "只读接口方法 {name} 行为异常");
@@ -1317,7 +1324,9 @@ mod tests {
         .expect("request reading ok");
         assert!(matches!(
             outcome,
-            StoryToolOutcome::ReadingRequested(ReadingRequestOutcome::WaitingForAuthorization { .. })
+            StoryToolOutcome::ReadingRequested(
+                ReadingRequestOutcome::WaitingForAuthorization { .. }
+            )
         ));
         assert_eq!(
             std::fs::read(archive_path(&root, "conv-req")).unwrap(),
@@ -1390,7 +1399,9 @@ mod tests {
         .expect("request ok");
         assert!(matches!(
             outcome,
-            StoryToolOutcome::ReadingRequested(ReadingRequestOutcome::WaitingForAuthorization { .. })
+            StoryToolOutcome::ReadingRequested(
+                ReadingRequestOutcome::WaitingForAuthorization { .. }
+            )
         ));
     }
 

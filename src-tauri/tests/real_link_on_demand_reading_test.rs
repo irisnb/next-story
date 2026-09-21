@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use next_story_lib::conversation_store::{
     read_conversation, save_conversation, ConversationRecord, FirstRoundMaterial,
-    OnDemandReadingGrant, ReadingDepth,
+    OnDemandReadingGrant,
 };
 use next_story_lib::dsh_driver::{DriverParams, DshDriverManager};
 use next_story_lib::dsh_sidecar::resolve_paths;
@@ -81,6 +81,8 @@ fn archive_record(conversation_id: &str, granted: bool) -> ConversationRecord {
 
 /// 真实链路夹具：三篇文档（甲篇含唯一关键词）+ 三份讨论档案。
 struct RealLinkFixture {
+    /// TempDir 必须存活到 fixture 丢弃（Drop 时清理临时作品目录），字段本身不被读取。
+    #[allow(dead_code)]
     temp: tempfile::TempDir,
     root: PathBuf,
 }

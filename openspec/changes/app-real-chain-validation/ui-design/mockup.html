@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>等待计时导出入口 · 设计小样（app-real-chain-validation 任务 1.3）</title>
+<style>
+  /* ===== 真实设计 token（与 src/styles.css 同值） ===== */
+  :root {
+    --color-primary: #2743e0;
+    --color-on-primary: #ffffff;
+    --color-ink: #171717;
+    --color-surface: #ffffff;
+    --color-surface-subtle: #f5f5f5;
+    --color-surface-hover: #f0f0f0;
+    --color-text: #1a1a1a;
+    --color-text-body: #333333;
+    --color-muted: #8a8a8a;
+    --color-success: #1e9e5a;
+    --color-danger: #d6361e;
+    --color-warning: #c77800;
+    --border-control: 2px solid rgba(23, 23, 23, 0.9);
+    --shadow-control: 2px 2px 0 rgba(0, 0, 0, 0.28);
+    --shadow-control-sm: 1.5px 1.5px 0 rgba(0, 0, 0, 0.2);
+    --border-thin-strong: 1.5px solid rgba(23, 23, 23, 0.7);
+    --border-structural: 2px solid rgba(23, 23, 23, 0.8);
+    --border-hairline: 1px solid rgba(23, 23, 23, 0.42);
+    --border-window-sep: 1px solid rgba(23, 23, 23, 0.25);
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --color-warning-surface: #fffaf0;
+    --color-danger-surface: #fff5f3;
+    --border-danger: 1px solid rgba(214, 54, 30, 0.5);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--color-text-body);
+    background: #e9e9e6;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    align-items: flex-start;
+  }
+  h1 { font-size: 18px; color: var(--color-ink); }
+  .intro { font-size: 13px; color: var(--color-muted); max-width: 640px; line-height: 1.7; }
+
+  /* ===== 设计稿标注（非产品 UI） ===== */
+  .spec-block { display: flex; flex-direction: column; gap: 8px; }
+  .spec-label {
+    font-size: 12px; font-weight: 600; color: #7a5c00;
+    background: #ffefc2; border: 1px dashed #c77800;
+    padding: 4px 10px; border-radius: var(--radius-sm);
+    align-self: flex-start;
+  }
+
+  /* ===== 停靠区复刻（结构与 src/styles.css 一致） ===== */
+  .ai-dock {
+    width: 420px;
+    background: var(--color-surface);
+    border: var(--border-control);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-control);
+    position: relative;
+  }
+  .ai-dock-header {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--space, 8px);
+    padding: 0 10px;
+    border-bottom: var(--border-structural);
+    border-radius: 2px 2px 0 0;
+  }
+  .ai-dock-title { font-weight: 600; font-size: 0.95rem; color: var(--color-ink); }
+  .ai-dock-count { font-size: 0.75rem; color: var(--color-muted); }
+  .spacer { flex: 1; }
+  .ai-dock-header-actions { display: flex; align-items: center; gap: 6px; }
+  .ai-icon-btn {
+    width: 28px; height: 28px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: var(--border-thin-strong); border-radius: var(--radius-sm);
+    background: var(--color-surface); color: var(--color-text-body);
+    box-shadow: var(--shadow-control-sm); cursor: pointer;
+  }
+  .ai-icon-btn-primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-ink); }
+  .ai-icon-btn.demo-open { background: var(--color-surface-hover); }
+  .ai-ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; stroke-linejoin: miter; }
+
+  .ai-dock-body {
+    height: 120px;
+    padding: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted); font-size: 12px;
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 7px, rgba(23,23,23,0.03) 7px, rgba(23,23,23,0.03) 8px);
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* ===== 菜单（复刻 .ai-menu） ===== */
+  .ai-menu {
+    position: absolute;
+    min-width: 168px;
+    background: var(--color-surface);
+    border: var(--border-control);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-control);
+    padding: 3px;
+    z-index: 60;
+    /* 右对齐锚定：实现注意项——文字变长后菜单需按右缘定位，避免顶出屏幕 */
+  }
+  .ai-menu button {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; text-align: left;
+    font: inherit; font-size: 12.5px;
+    padding: 5px 9px;
+    border: none; background: transparent;
+    color: var(--color-text);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .ai-menu button:hover:not(:disabled) { background: var(--color-surface-hover); }
+  .ai-menu button[disabled] { opacity: 0.4; cursor: default; }
+  .ai-menu .ai-menu-sep { border-top: var(--border-window-sep); margin: 3px 0; }
+  .ai-menu .ai-menu-danger { color: var(--color-danger); }
+
+  /* ===== 停靠区提示条（复刻 .ai-dock-notice） ===== */
+  .ai-dock-notice {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    border-bottom: var(--border-hairline);
+    color: var(--color-text);
+    background: var(--color-surface-subtle);
+  }
+  .ai-dock-notice.ok { border-left: 3px solid var(--color-success); }
+  .ai-dock-notice.warn {
+    color: var(--color-warning);
+    background: var(--color-warning-surface);
+    border-left: 3px solid var(--color-warning);
+  }
+  .ai-cl-btn {
+    font: inherit; font-size: 0.75rem;
+    padding: 2px 10px;
+    border: 1px solid var(--border-danger-color, rgba(23,23,23,0.9));
+    border-radius: var(--radius-sm);
+    background: var(--color-surface); color: var(--color-text);
+    cursor: pointer;
+  }
+  .ai-cl-btn.danger { background: var(--color-danger); color: #fff; border-color: var(--color-ink); }
+  .ai-cl-btn.plain { border-color: rgba(23,23,23,0.6); }
+</style>
+</head>
+<body>
+
+<h1>等待计时导出入口 · 设计小样</h1>
+<p class="intro">
+  三个状态都是静态示意，没有逻辑。灰色斜纹区代表「讨论窗口区域」（本稿不改动那里）。
+  标注（黄色虚线框）是设计稿说明，不是产品界面。
+</p>
+
+<!-- ===== 状态 1 ===== -->
+<div class="spec-block">
+  <div class="spec-label">状态 ① · 停靠区头 ⋯ 菜单展开：新增分隔线 + 两个开发者项（本稿推荐长文案）</div>
+  <div class="ai-dock">
+    <div class="ai-dock-header">
+      <span class="ai-dock-title">AI 思考</span>
+      <span class="ai-dock-count">2 个讨论</span>
+      <span class="spacer"></span>
+      <div class="ai-dock-header-actions">
+        <button class="ai-icon-btn" type="button" title="会话列表"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2"/></svg></button>
+        <button class="ai-icon-btn ai-icon-btn-primary" type="button" title="新建对话"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button class="ai-icon-btn demo-open" type="button" title="更多"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.2"/></svg></button>
+        <button class="ai-icon-btn" type="button" title="收起停靠区"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+      </div>
+    </div>
+    <!-- 菜单：右对齐锚定在 ⋯ 按钮下 -->
+    <div class="ai-menu" style="top: 48px; right: 10px;">
+      <button type="button"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M2.5 5v8h11V5"/><path d="M8 10.5V2M5 4.5 8 1.8l3 2.7"/></svg><span>停靠所有浮动窗口</span></button>
+      <button type="button"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 1.8v3h-3"/></svg><span>恢复默认布局</span></button>
+      <div class="ai-menu-sep"></div>
+      <button type="button"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M2.5 9v4.5h11V9"/><path d="M8 1.5V10M4.8 7.2 8 10.4l3.2-3.2"/></svg><span>导出等待计时数据（开发者用）…</span></button>
+      <button type="button" class="ai-menu-danger"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5 5.2 13h5.6l.7-8.5"/></svg><span>清空等待计时数据…</span></button>
+    </div>
+    <div class="ai-dock-body">（讨论窗口区域，本稿不改动）</div>
+  </div>
+</div>
+
+<!-- ===== 状态 2 ===== -->
+<div class="spec-block">
+  <div class="spec-label">状态 ② · 导出成功：停靠区头下方轻提示条（成功样式），数秒后自动消失</div>
+  <div class="ai-dock">
+    <div class="ai-dock-header">
+      <span class="ai-dock-title">AI 思考</span>
+      <span class="ai-dock-count">2 个讨论</span>
+      <span class="spacer"></span>
+      <div class="ai-dock-header-actions">
+        <button class="ai-icon-btn" type="button" title="会话列表"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2"/></svg></button>
+        <button class="ai-icon-btn ai-icon-btn-primary" type="button" title="新建对话"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button class="ai-icon-btn" type="button" title="更多"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.2"/></svg></button>
+        <button class="ai-icon-btn" type="button" title="收起停靠区"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+      </div>
+    </div>
+    <div class="ai-dock-notice ok">已导出等待计时数据（123 条）</div>
+    <div class="ai-dock-body">（讨论窗口区域，本稿不改动）</div>
+  </div>
+</div>
+
+<!-- ===== 状态 3 ===== -->
+<div class="spec-block">
+  <div class="spec-label">状态 ③ · 清空确认：点「清空等待计时数据…」后菜单关、提示条变确认态；确认后再变成功提示</div>
+  <div class="ai-dock">
+    <div class="ai-dock-header">
+      <span class="ai-dock-title">AI 思考</span>
+      <span class="ai-dock-count">2 个讨论</span>
+      <span class="spacer"></span>
+      <div class="ai-dock-header-actions">
+        <button class="ai-icon-btn" type="button" title="会话列表"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2"/></svg></button>
+        <button class="ai-icon-btn ai-icon-btn-primary" type="button" title="新建对话"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button class="ai-icon-btn" type="button" title="更多"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.2"/></svg></button>
+        <button class="ai-icon-btn" type="button" title="收起停靠区"><svg class="ai-ic" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+      </div>
+    </div>
+    <div class="ai-dock-notice warn">
+      <span style="color: var(--color-text);">清空等待计时数据？已导出的文件不受影响。</span>
+      <span class="spacer"></span>
+      <button class="ai-cl-btn danger" type="button">清空</button>
+      <button class="ai-cl-btn plain" type="button">取消</button>
+    </div>
+    <div class="ai-dock-body">（讨论窗口区域，本稿不改动）</div>
+  </div>
+</div>
+
+</body>
+</html>

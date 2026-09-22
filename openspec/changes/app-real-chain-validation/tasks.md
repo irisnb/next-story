@@ -47,4 +47,4 @@
 - [x] 7.1 `AGENTS.md` 诚实边界收账（应用级真实材料链路／等待基线／并发上限数值改已完成并记录）；README 状态段同步——两者已更新（含按需补读应用级接线修复记录、冻结已知问题、定值 4 与实测依据、计时导出入口说明）
 - [x] 7.2 审计文档第八节 8b 行与处理进度回记——8b 行改 ✅ 实施完毕待归档，补充十三落盘（含开工前三笔暗账：fmt／clippy／不稳定测试）
 - [x] 7.3 全量回归（2026-09-22）：前端 959/0 失败、Rust 262/0（1 ignored 按设计）、typecheck、ESLint、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`openspec validate --all --strict` 56/56 全过
-- [ ] 7.4 提交推送并确认 CI 双平台绿灯
+- [x] 7.4 提交推送并确认 CI 双平台绿灯（`d195f21` 定值落地＋`e0c6a9a` 文档收账；CI linux 2m35s ✓ windows 4m1s ✓，2026-09-22）

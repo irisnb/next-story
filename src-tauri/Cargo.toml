@@ -25,8 +25,10 @@ tempfile = "3"
 reqwest = { version = "0.12", features = ["json"] }
 keyring = { version = "~3.6.3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "tokio"] }
 open = "5"
-# 生成真正的 Office Open XML `.docx`（MIT 许可，见 design.md 决策 1）。
-docx = "1.1.2"
+# 生成真正的 Office Open XML `.docx`（docx-rs 0.4.22，MIT；换自已停更的 docx 1.1.2，
+# 见 change swap-docx-and-split-js-bundle）。不嵌图：关默认 image feature，
+# XML 渲染与 zip 打包核心路径不依赖它；精确锁版，升级经 Dependabot 递单人工审。
+docx-rs = { version = "=0.4.22", default-features = false }
 # P2-12 锁回收：作品锁 guard 需自持锁所有权（`lock_arc` / `ArcMutexGuard`），
 # 须启用 `arc_lock` feature；parking_lot 0.12.5 已在依赖树内（tauri 生态传递引入），
 # 提为直接依赖不引入新的外部 crate 或新版本。
@@ -34,17 +36,9 @@ parking_lot = { version = "0.12", features = ["arc_lock"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# 测试中解包生成的 .docx（zip 容器）以校验内容；docx 依赖已引入同版本 zip。
-zip = "0.5"
-
-# docx 1.1.2 经 strong-xml 0.5.0 依赖 jetscii ^0.4.4；crates.io 上的 jetscii 0.4.4
-# 在 Rust ≥1.51 上因「generic parameters may not be used in const operations」无法
-# 编译，而 strong-xml 0.5.0 的 ^0.4.4 约束按 semver 排除了已修复的 0.5.x，无法用
-# 纯 crates.io 配置解决。此处用仓库内 vendored 副本打补丁：内容为 jetscii 0.5.3
-# （已修复且 API 与 strong-xml 用法兼容），仅把版本号标为 0.4.4 以满足要求。
-# 来源、许可证与维护说明见 vendor/jetscii-0.4.4-compat/README.md。
-[patch.crates-io]
-jetscii = { path = "vendor/jetscii-0.4.4-compat" }
+# 测试中解包生成的 .docx（zip 容器）以校验内容；与 docx-rs 内部 zip 同为 8.x 线，
+# 只开 deflate（关默认 features 顺带把 time 0.1 挡在 dev 树外）。
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

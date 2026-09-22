@@ -390,11 +390,12 @@ fn render_docx_preserves_chinese_emoji_and_marks() {
     assert!(xml.contains("下划线"));
     assert!(xml.contains("删除"));
     assert!(xml.contains("红字"));
-    // 粗体 / 斜体 / 下划线 / 删除线 / 颜色
-    assert!(xml.contains(r#"<w:b w:val="true"/>"#));
-    assert!(xml.contains(r#"<w:i w:val="true"/>"#));
+    // 粗体 / 斜体 / 下划线 / 删除线 / 颜色（docx-rs 输出为自闭合标记，
+    // 形态见 docx-rs 0.4.22 run/underline/color 元素单测）
+    assert!(xml.contains("<w:b />"));
+    assert!(xml.contains("<w:i />"));
     assert!(xml.contains("<w:u"));
-    assert!(xml.contains(r#"<w:strike w:val="true"/>"#));
+    assert!(xml.contains("<w:strike />"));
     assert!(xml.contains(r#"w:val="ff0000""#));
 }
 

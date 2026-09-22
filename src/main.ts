@@ -12,6 +12,7 @@ import { setupFileManagement } from "./file-management";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
 import { setupProjectFlow } from "./new-project-form";
+import { recordRecentWork } from "./project-api";
 import { setupAiFeature } from "./ai-feature";
 import { waitTiming } from "./ai-timing";
 import { canonicalNotebookJson } from "./structured-notebook";
@@ -111,12 +112,24 @@ window.addEventListener("DOMContentLoaded", () => {
   function openProject(projectState: ProjectTreeState): void {
     fileManagement.showProject(projectState);
     editor.showProject(projectState)
-      .then(() => setModule("writing"))
+      .then(() => {
+        setModule("writing");
+        // 作品成功落地后记录最近作品（打开与新建共用此落地处）；
+        // 记录失败只记日志，绝不打断已完成的打开流程。
+        recordRecentWork(projectState.projectName, projectState.projectPath).catch((error) => {
+          console.error("记录最近作品失败:", error);
+        });
+      })
       .catch((error) => {
         console.error("打开作品失败:", error);
         alert(`打开作品失败: ${String(error)}`);
       });
   }
+
+  const projectFlow = setupProjectFlow(dom, {
+    onProjectReady: openProject,
+    guardLeave: editor.guardLeave,
+  });
 
   dom.btnBackWelcome.addEventListener("click", async () => {
     if (await editor.guardLeave()) {
@@ -124,12 +137,9 @@ window.addEventListener("DOMContentLoaded", () => {
       editor.unload();
       fileManagement.unload();
       exportWord.unload();
+      // 返回欢迎页时刷新最近作品列表（刚打开/新建的作品应出现在列表最前）。
+      void projectFlow.refreshRecentWorks();
     }
-  });
-
-  setupProjectFlow(dom, {
-    onProjectReady: openProject,
-    guardLeave: editor.guardLeave,
   });
 
   const appWindow = getCurrentWindow();

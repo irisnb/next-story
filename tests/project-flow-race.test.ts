@@ -14,15 +14,26 @@ class FakeClassList {
 
   add(value: string): void { this.values.add(value); }
   remove(value: string): void { this.values.delete(value); }
+  toggle(value: string, force?: boolean): void {
+    const target = force ?? !this.values.has(value);
+    if (target) this.values.add(value); else this.values.delete(value);
+  }
   contains(value: string): boolean { return this.values.has(value); }
 }
 
 class FakeElement {
   readonly classList = new FakeClassList();
+  /** 子元素（最近作品条目渲染用）。 */
+  readonly children: FakeElement[] = [];
+  /** 内联样式占位（最近作品路径的 word-break 用）。 */
+  readonly style: Record<string, string> = {};
   private readonly listeners = new Map<string, Listener[]>();
   textContent = "";
   value = "";
   disabled = false;
+  type = "";
+  className = "";
+  title = "";
 
   addEventListener(type: string, listener: Listener): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -33,6 +44,10 @@ class FakeElement {
   click(): void {
     for (const listener of this.listeners.get("click") ?? []) listener();
   }
+
+  append(...nodes: FakeElement[]): void { this.children.push(...nodes); }
+
+  replaceChildren(): void { this.children.length = 0; }
 }
 
 const TREE: ContentTree = {
@@ -81,6 +96,8 @@ function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): 
   const previousDocument = globalThis.document;
   globalThis.document = {
     getElementById: (id: string) => elements.get(id) ?? null,
+    // setupProjectFlow 渲染欢迎页最近作品列表时创建条目元素。
+    createElement: () => new FakeElement(),
   } as unknown as Document;
 
   setupProjectFlow({
@@ -96,6 +113,8 @@ function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): 
     btnCreateProject: element("btn-create-project"),
     nameError: element("name-error"),
     locationError: element("location-error"),
+    recentWorksList: element("recent-works-list"),
+    recentWorksEmpty: element("recent-works-empty"),
   } as unknown as AppDom, {
     onProjectReady,
     guardLeave: async () => true,
@@ -115,6 +134,8 @@ function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): 
       btnCreateProject: elements.get("btn-create-project") as unknown as HTMLButtonElement,
       nameError: elements.get("name-error") as unknown as HTMLElement,
       locationError: elements.get("location-error") as unknown as HTMLElement,
+      recentWorksList: elements.get("recent-works-list") as unknown as HTMLElement,
+      recentWorksEmpty: elements.get("recent-works-empty") as unknown as HTMLElement,
     } as unknown as AppDom,
     restore: () => { globalThis.document = previousDocument; },
   };
@@ -153,6 +174,7 @@ test("open project is single-flight: a second click during an in-flight open is 
   installWindow();
   mockIPC((command, _payload) => {
     if (command === "plugin:dialog|open") return "候选作品路径";
+    if (command === "load_recent_works") return [];
     if (command === "open_project") {
       openCalls += 1;
       return openPromise;
@@ -194,6 +216,7 @@ test("a newer project operation supersedes a stale in-flight open result", async
   installWindow();
   mockIPC((command, _payload) => {
     if (command === "plugin:dialog|open") return "候选作品路径";
+    if (command === "load_recent_works") return [];
     if (command === "open_project") return openPromise;
     if (command === "create_project") return "D:\\新作品";
     if (command === "open_content_tree") return TREE;

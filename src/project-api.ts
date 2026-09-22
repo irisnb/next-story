@@ -34,11 +34,20 @@ export function notebookSizeError(content: string): string | null {
   return `${bytes} 字节超过 ${MAX_NOTEBOOK_BYTES} 字节上限，无法保存`;
 }
 
-export async function selectDirectory(title: string): Promise<string | null> {
+/**
+ * 弹出文件夹选择对话框，返回选中路径（取消返回 null）。
+ * 可选 `defaultPath` 作为对话框初始位置（如最近一条最近作品）；缺省不传，
+ * 对话框保持系统默认位置。
+ */
+export async function selectDirectory(
+  title: string,
+  defaultPath?: string,
+): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
     title,
+    ...(defaultPath === undefined ? {} : { defaultPath }),
   });
 
   return typeof selected === "string" ? selected : null;
@@ -252,6 +261,35 @@ export async function saveLlmConfig(config: LlmConfig): Promise<void> {
 
 export async function testLlmConnection(config: LlmConfig): Promise<void> {
   await tauriInvoke("test_llm_connection", { config });
+}
+
+// ========== 最近作品命令（change: batch-improvement-candidates 任务组 3④） ==========
+
+/** 最近作品条目（后端 `RecentWorkEntry` 的 serde 序列化，snake_case 对齐）。 */
+export interface RecentWorkEntry {
+  /** 作品名称（记录成功打开/新建时点的名称）。 */
+  name: string;
+  /** 作品根目录路径（去重键）。 */
+  path: string;
+  /** 最后打开时间（RFC3339 字符串）。 */
+  last_opened_at: string;
+}
+
+/**
+ * 读取最近作品列表：后端已完成有效性检查与自愈（失效条目不返回且顺手从存储
+ * 移除），文件缺失/损坏失败开放为空列表；命令本身失败时抛错，由调用方失败开放。
+ */
+export async function loadRecentWorks(call: InvokeFn = defaultInvoke): Promise<RecentWorkEntry[]> {
+  return call<RecentWorkEntry[]>("load_recent_works");
+}
+
+/** 记录一次成功的打开/新建：后端按路径去重移顶、上限 8 条、原子写回。 */
+export async function recordRecentWork(
+  name: string,
+  path: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call("record_recent_work", { name, path });
 }
 
 // ========== 常驻 AI 会话命令（change: resident-ai-session） ==========

@@ -120,6 +120,10 @@ export interface AppDom {
   btnCreateProject: HTMLButtonElement;
   nameError: HTMLElement;
   locationError: HTMLElement;
+  /** 欢迎页最近作品列表容器（batch-improvement-candidates 任务组 3④）。 */
+  recentWorksList: HTMLElement;
+  /** 最近作品空态文案（列表为空时显示「还没有打开过的作品」）。 */
+  recentWorksEmpty: HTMLElement;
   currentProjectName: HTMLElement;
   saveStatus: HTMLElement;
   btnSave: HTMLButtonElement;
@@ -333,6 +337,8 @@ export function getAppDom(): AppDom {
     btnCreateProject: requireElement("btn-create-project"),
     nameError: requireElement("name-error"),
     locationError: requireElement("location-error"),
+    recentWorksList: requireElement("recent-works-list"),
+    recentWorksEmpty: requireElement("recent-works-empty"),
     currentProjectName: requireElement("current-project-name"),
     saveStatus: requireElement("save-status"),
     btnSave: requireElement("btn-save"),

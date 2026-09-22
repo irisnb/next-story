@@ -7,6 +7,7 @@ pub mod dsh_sidecar;
 pub mod dsh_version;
 pub mod llm_config;
 pub mod project;
+pub mod recent_works;
 pub mod runtime_contract;
 pub mod story_tool_channel;
 pub mod story_tools;
@@ -672,6 +673,36 @@ async fn test_llm_connection(config: LlmConfig) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+// ========== 最近作品命令（batch-improvement-candidates 任务组 3④） ==========
+
+/// 读取最近作品列表：后端完成有效性检查与自愈（失效条目顺手从存储移除）；
+/// 文件缺失或损坏失败开放为空列表，不影响启动。同步文件操作放在阻塞线程。
+#[tauri::command]
+async fn load_recent_works(
+    app: tauri::AppHandle,
+) -> Result<Vec<recent_works::RecentWorkEntry>, String> {
+    let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || recent_works::load_recent_works(&dir))
+        .await
+        .map_err(|e| format!("读取最近作品任务执行失败: {e}"))
+}
+
+/// 记录一次成功的打开/新建：按路径去重移顶、至多保留 8 条、原子写回。
+#[tauri::command]
+async fn record_recent_work(
+    app: tauri::AppHandle,
+    name: String,
+    path: String,
+) -> Result<(), String> {
+    let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        recent_works::record_recent_work(&dir, &name, &path)
+    })
+    .await
+    .map_err(|e| format!("记录最近作品任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
 // ========== Application Entry Point ==========
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -736,6 +767,8 @@ pub fn run() {
             save_llm_config,
             load_llm_config,
             test_llm_connection,
+            load_recent_works,
+            record_recent_work,
             ai_orchestration::generate_ai_thinking,
             ai_host::ai_start_session,
             ai_orchestration::ai_send_message,

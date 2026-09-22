@@ -197,6 +197,29 @@ function cloneWindowRoot(template: HTMLTemplateElement): HTMLElement {
 }
 
 /**
+ * 讨论是否为及时召唤类（讨论维度判定）：及时召唤讨论的常规现场材料不自动
+ * 附带（快车道隔离），「切换关注文档」入口对它不提供——「从下一轮开始使用」
+ * 的承诺无法成立（automatic-story-context delta）。
+ *
+ * 同形判据与取材注入同源：ai-feature-request-materials.ts 的
+ * withFocusDocumentIdentity（首轮 request.kind === "summon"；追问看
+ * initialUserMaterial.kind）。停靠区不得反向依赖编排层内部模块（依赖方向
+ * 见 ai-module-boundaries 测试），故此处按同形判断实现，两处判据须同步修改。
+ * 首轮在途（对话尚未建立）时回退看 pendingFirstRequest.kind，与窗口模块
+ * 读取讨论首轮材料的回退次序一致。
+ */
+function isSummonDiscussion(
+  discussion: Readonly<{
+    conversation?: Readonly<{ initialUserMaterial?: Readonly<{ kind?: string }> }> | null;
+    pendingFirstRequest?: Readonly<{ kind?: string }> | null;
+  }> | null | undefined,
+): boolean {
+  const material =
+    discussion?.conversation?.initialUserMaterial ?? discussion?.pendingFirstRequest ?? null;
+  return material?.kind === "summon";
+}
+
+/**
  * 窗口管理器：把 `AiPanelState` 的窗口结构（打开窗口 + 停靠/浮动 + 聚焦）对账为 DOM。
  *
  * - 每个打开讨论对应一个窗口（一讨论至多一窗口，由状态层保证）；
@@ -234,7 +257,16 @@ export function setupAiDock(
       onStop: () => actions.onStop(conversationId),
       onClose: () => actions.onClose(conversationId),
       onNewConversation: () => actions.onNewConversation(),
-      onOpenFocusPicker: (anchor) => openFocusDocumentMenu(anchor, conversationId),
+      // 及时召唤讨论不提供「切换关注文档」入口（automatic-story-context delta）：
+      // 常规现场材料在这类讨论中不自动附带，「从下一轮开始使用」的承诺无法成立。
+      // 窗口头按钮的可见性以 `onOpenFocusPicker !== undefined` 为准（ai-window.ts
+      // 契约「缺省不显示入口」），故用 getter 按次求值：召唤讨论返回 undefined 即
+      // 隐藏；首轮在途时也能按 pendingFirstRequest 判定（判据与取材注入同源）。
+      get onOpenFocusPicker() {
+        return isSummonDiscussion(state.getDiscussion(conversationId))
+          ? undefined
+          : (anchor: HTMLElement) => openFocusDocumentMenu(anchor, conversationId);
+      },
       onResolveReadingRequest: (granted) => actions.onResolveReadingRequest(conversationId, granted),
       resolveDocumentTitle: actions.resolveDocumentTitle,
       isDocumentHidden: actions.isDocumentHidden,
@@ -647,7 +679,13 @@ export function setupAiDock(
     const current = windows.get(conversationId);
     const canSideBySide = windows.size >= 2;
     const discussion = state.getDiscussion(conversationId);
+    // 及时召唤讨论不提供「切换关注文档」（automatic-story-context delta）：常规
+    // 现场材料在这类讨论中不自动附带，「从下一轮开始使用」的承诺无法成立。
+    // 判据见上方模块级 isSummonDiscussion（与取材注入同源）。
+    // 菜单其余条目照常提供，仅本条目整体不渲染（不是置灰）。
+    const summonDiscussion = isSummonDiscussion(discussion);
     const canSwitchFocus =
+      !summonDiscussion &&
       discussion !== null &&
       discussion.focusDocumentId !== null &&
       discussion.conversation?.restricted !== true;
@@ -657,7 +695,15 @@ export function setupAiDock(
     menu = buildMenu([
       { icon: "i-float", label: current?.placement === "floating" ? "停靠窗口" : "浮动窗口", action: () => current && togglePlacement(conversationId, current) },
       { icon: "i-sbs", label: "与…并排对照", disabled: !canSideBySide, action: () => openSideBySideMenu(anchor, conversationId) },
-      { icon: "i-doc", label: "切换关注文档…", disabled: !canSwitchFocus, action: () => openFocusDocumentMenu(anchor, conversationId) },
+      // 非召唤讨论保留既有行为：无关注文档或受限时条目置灰（不消失）。
+      ...(summonDiscussion
+        ? []
+        : [{
+            icon: "i-doc",
+            label: "切换关注文档…",
+            disabled: !canSwitchFocus,
+            action: () => openFocusDocumentMenu(anchor, conversationId),
+          }]),
       { icon: "i-info", label: "本次参考了什么", action: () => windows.get(conversationId)?.controller.toggleMaterials() },
       {
         icon: "i-doc",

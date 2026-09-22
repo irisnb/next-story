@@ -287,3 +287,125 @@ test("及时召唤讨论的追问不携带常规关注文档材料（快车道�
     ui.restore();
   }
 });
+
+// ========== 召唤讨论隐藏「切换关注文档」入口（batch-improvement-candidates 任务组 4） ==========
+// 规格来源：automatic-story-context delta——及时召唤类讨论（首轮与既定追问）
+// 不提供「切换关注文档」入口：常规现场材料不自动附带，「从下一轮开始使用」
+// 的承诺无法成立。判据与取材注入同源（isSummonDiscussion）。
+
+test("及时召唤讨论（对话已建立）不显示窗口头切换入口，窗口菜单隐藏切换条目", async () => {
+  const ui = focusHarness();
+  try {
+    // 建立召唤讨论：首轮成功后 initialUserMaterial.kind === "summon"。
+    const snapshot: SelectionSnapshot = { documentId: "doc-1", selectedText: "选区", from: 0, to: 2 };
+    ui.controller.state.beginRequest(
+      snapshot,
+      { kind: "summon", selected_text: "选区" },
+      "doc-1",
+      "第一稿",
+    );
+    const conversationId = ui.controller.state.activeConversationId!;
+    ui.controller.state.succeed(snapshot, "首答", conversationId);
+    await flush();
+
+    const win = ui.windowRoots[0];
+    // 窗口头「切换关注文档」按钮隐藏。
+    const focusSwitch = win.queryResults.get('[data-role="focus-switch"]')!;
+    assert.ok(
+      focusSwitch.classList.contains("hidden"),
+      "召唤讨论不得显示窗口头切换入口",
+    );
+    // 入口不可达：点击也不得打开选择器。
+    focusSwitch.dispatch("click");
+    assert.ok(
+      !ui.body.children.some((el) => el.classList.contains("ai-menu")),
+      "召唤讨论点击切换按钮不得打开选择器",
+    );
+
+    // 窗口菜单：其余条目照常，「切换关注文档…」条目整体不渲染（不是置灰）。
+    win.queryResults.get('[data-role="more"]')!.dispatch("click");
+    const menu = ui.body.children.find((el) => el.classList.contains("ai-menu"));
+    assert.ok(menu, "窗口菜单应打开");
+    const labels = menu.children.map((child) => collectText(child));
+    assert.ok(
+      !labels.some((label) => label.includes("切换关注文档")),
+      "召唤讨论的窗口菜单不得提供切换条目",
+    );
+    assert.ok(
+      labels.some((label) => label.includes("本次参考了什么")),
+      "其余菜单条目照常提供",
+    );
+  } finally {
+    ui.restore();
+  }
+});
+
+test("及时召唤首轮在途也不显示切换入口（按待定首轮材料判定）", () => {
+  const ui = focusHarness();
+  try {
+    // 首轮在途：对话尚未建立，按 pendingFirstRequest.kind 判定召唤。
+    const snapshot: SelectionSnapshot = { documentId: "doc-1", selectedText: "选区", from: 0, to: 2 };
+    ui.controller.state.beginRequest(
+      snapshot,
+      { kind: "summon", selected_text: "选区" },
+      "doc-1",
+      "第一稿",
+    );
+
+    const win = ui.windowRoots[0];
+    const focusSwitch = win.queryResults.get('[data-role="focus-switch"]')!;
+    assert.ok(
+      focusSwitch.classList.contains("hidden"),
+      "召唤首轮在途（对话未建立）也不得显示切换入口",
+    );
+
+    // 窗口菜单同样不得提供切换条目。
+    win.queryResults.get('[data-role="more"]')!.dispatch("click");
+    const menu = ui.body.children.find((el) => el.classList.contains("ai-menu"));
+    assert.ok(menu, "窗口菜单应打开");
+    const labels = menu.children.map((child) => collectText(child));
+    assert.ok(
+      !labels.some((label) => label.includes("切换关注文档")),
+      "召唤首轮在途的窗口菜单不得提供切换条目",
+    );
+  } finally {
+    ui.restore();
+  }
+});
+
+test("常规讨论的窗口菜单照常提供切换关注文档条目并可打开选择器", async () => {
+  const ui = focusHarness();
+  try {
+    ui.submitDirectQuestion("问题一");
+    await flush();
+
+    const win = ui.windowRoots[0];
+    // 窗口头切换入口照常显示（既有行为，见上方选择器测试）。
+    const focusSwitch = win.queryResults.get('[data-role="focus-switch"]')!;
+    assert.ok(
+      !focusSwitch.classList.contains("hidden"),
+      "常规讨论窗口头切换入口照常显示",
+    );
+
+    // 窗口菜单包含可用（非置灰）的切换条目。
+    win.queryResults.get('[data-role="more"]')!.dispatch("click");
+    let menu = ui.body.children.find((el) => el.classList.contains("ai-menu"));
+    assert.ok(menu, "窗口菜单应打开");
+    const switchItem = menu.children.find((child) =>
+      collectText(child).includes("切换关注文档"),
+    );
+    assert.ok(switchItem, "常规讨论的窗口菜单应包含切换条目");
+    assert.ok(!switchItem!.disabled, "常规讨论的切换条目应可用");
+
+    // 点击条目打开选择器：列出可见文档。
+    switchItem!.dispatch("click");
+    menu = ui.body.children.find((el) => el.classList.contains("ai-menu"));
+    assert.ok(menu, "选择器应打开");
+    const labels = menu.children.map((child) => collectText(child));
+    assert.ok(labels.some((label) => label.includes("第一稿")), "选择器应列出可见文档");
+    assert.ok(labels.some((label) => label.includes("设定集")), "选择器应列出可见文档");
+    assert.ok(!labels.some((label) => label.includes("秘密")), "隐藏文档不得出现在选择器");
+  } finally {
+    ui.restore();
+  }
+});

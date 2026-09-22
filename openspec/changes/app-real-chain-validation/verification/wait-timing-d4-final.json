@@ -1,0 +1,134 @@
+﻿{
+  "records": [
+    {
+      "conversationId": "muc15wp6-6267ce8e65ff45b5a206b46d12a42872",
+      "kind": "direct_question",
+      "submittedAt": 565399.7999999821,
+      "queuedAt": null,
+      "startedAt": 565400.400000006,
+      "firstResponseAt": 570742,
+      "completedAt": 578634.7999999821
+    },
+    {
+      "conversationId": "muc1at40-24854dacbd6d4ebd8c6ca902ef89ea0d",
+      "kind": "summon",
+      "submittedAt": 584013.5,
+      "queuedAt": null,
+      "startedAt": 584014.900000006,
+      "firstResponseAt": 588861,
+      "completedAt": 599804.2999999821
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "submittedAt": 544884.099999994,
+      "queuedAt": null,
+      "startedAt": 544885,
+      "firstResponseAt": 639761.900000006,
+      "completedAt": 643118.599999994
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 494559,
+      "queuedAt": null,
+      "startedAt": 494560.1999999881,
+      "firstResponseAt": 639210,
+      "completedAt": 645879.6999999881
+    },
+    {
+      "conversationId": "muc46y9n-fa53c7ef0fd74ae889b9b4ce7731efdc",
+      "kind": "summon",
+      "submittedAt": 5442923.199999988,
+      "queuedAt": null,
+      "startedAt": 5442924.099999994,
+      "firstResponseAt": 5469777.799999982,
+      "completedAt": 5480506.599999994
+    },
+    {
+      "conversationId": "muc47f4u-25057a9165144ed0b5eeb28b7bd0b200",
+      "kind": "direct_question",
+      "submittedAt": 5549524.900000006,
+      "queuedAt": null,
+      "startedAt": 5549526.099999994,
+      "firstResponseAt": 5554034.400000006,
+      "completedAt": 5562254.299999982
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "submittedAt": 5285389.400000006,
+      "queuedAt": null,
+      "startedAt": 5285389.400000006,
+      "firstResponseAt": 5635952,
+      "completedAt": 5638889.199999988
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 5314738.799999982,
+      "queuedAt": null,
+      "startedAt": 5314738.900000006,
+      "firstResponseAt": 5632702.599999994,
+      "completedAt": 5642041.299999982
+    }
+  ],
+  "summary": [
+    {
+      "conversationId": "muc15wp6-6267ce8e65ff45b5a206b46d12a42872",
+      "kind": "direct_question",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 5341.5999999940395,
+      "totalDurationMs": 13235
+    },
+    {
+      "conversationId": "muc1at40-24854dacbd6d4ebd8c6ca902ef89ea0d",
+      "kind": "summon",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 4846.0999999940395,
+      "totalDurationMs": 15790.799999982119
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 94876.90000000596,
+      "totalDurationMs": 98234.5
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 144649.80000001192,
+      "totalDurationMs": 151320.69999998808
+    },
+    {
+      "conversationId": "muc46y9n-fa53c7ef0fd74ae889b9b4ce7731efdc",
+      "kind": "summon",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 26853.69999998808,
+      "totalDurationMs": 37583.40000000596
+    },
+    {
+      "conversationId": "muc47f4u-25057a9165144ed0b5eeb28b7bd0b200",
+      "kind": "direct_question",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 4508.300000011921,
+      "totalDurationMs": 12729.399999976158
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 350562.59999999404,
+      "totalDurationMs": 353499.7999999821
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 317963.6999999881,
+      "totalDurationMs": 327302.5
+    }
+  ]
+}

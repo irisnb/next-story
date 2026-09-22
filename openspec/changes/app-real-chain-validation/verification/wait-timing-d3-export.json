@@ -1,0 +1,70 @@
+{
+  "records": [
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "submittedAt": 2685413.400000006,
+      "queuedAt": null,
+      "startedAt": 2685414.200000018,
+      "firstResponseAt": 2833069.700000018,
+      "completedAt": 2835952
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "submittedAt": 3102802.200000018,
+      "queuedAt": null,
+      "startedAt": 3102803,
+      "firstResponseAt": null,
+      "completedAt": 3127549
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "submittedAt": 2986637.100000024,
+      "queuedAt": null,
+      "startedAt": 2986638,
+      "firstResponseAt": 3234924.300000012,
+      "completedAt": 3241285.600000024
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "submittedAt": 2928839.100000024,
+      "queuedAt": null,
+      "startedAt": 2928840.100000024,
+      "firstResponseAt": 3235503.800000012,
+      "completedAt": 3247820.100000024
+    }
+  ],
+  "summary": [
+    {
+      "conversationId": "mubg59u4-57bbed946868462c843bc391f039b0fe",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 147655.5,
+      "totalDurationMs": 150538.59999999404
+    },
+    {
+      "conversationId": "mubczsrk-3fa3ae57110640d3be88dd5d5ab01929",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": null,
+      "totalDurationMs": 24746.79999998212
+    },
+    {
+      "conversationId": "mubia9g8-2cf05ac2647b45718b03391215d06e24",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 248286.30000001192,
+      "totalDurationMs": 254648.5
+    },
+    {
+      "conversationId": "mubfmknp-e0cc86e0fe8240fd8a8dfa52c15f101e",
+      "kind": "follow_up",
+      "queuedDurationMs": null,
+      "firstResponseDurationMs": 306663.6999999881,
+      "totalDurationMs": 318981
+    }
+  ]
+}

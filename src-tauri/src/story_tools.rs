@@ -922,12 +922,14 @@ mod tests {
         assert!(listing.documents.iter().all(|d| d.document_id != secret_id));
 
         // story-search：命中词只在隐藏文档 → 跳过且不命中（不泄露存在性）。
+        // 查询词经二元组切分为 绝密 / 密内 / 内容，均不出现在可见文档正文「可见正文」
+        // 中，仍只在隐藏文档正文出现，保持不泄露性测试前提。
         let outcome = execute_story_tool(
             &reader,
             AUTHORIZED,
             StoryToolCall::Search {
                 work_id: None,
-                query: "绝密正文".to_string(),
+                query: "绝密内容".to_string(),
             },
         )
         .expect("search ok");

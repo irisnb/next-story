@@ -34,6 +34,8 @@ pub const MAX_RESULT_SNIPPETS: usize = 10;
 pub const SNIPPET_CONTEXT_CHARS: usize = 120;
 /// 候选词最少 Unicode 字符数。
 const MIN_TERM_CHARS: usize = 2;
+/// 中文连续段切分的二元组长度：段内每个起始位置产出该长度的子串（连续二元组）。
+const HAN_BIGRAM_CHARS: usize = 2;
 
 /// 检索结果状态：不是正文或材料内容，只用于记录本轮检索发生了什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,10 +133,19 @@ fn is_latin_alnum(ch: char) -> bool {
     ch.is_ascii_alphanumeric()
 }
 
-/// 从本轮用户新增问题文本确定性提取候选词：中文连续片段按原样抽取（不做中文
-/// 分词 / 实体识别，整段中文可能漏检，不承诺中文分词），拉丁字母 / 数字连续片段；
-/// 每个片段至少 [`MIN_TERM_CHARS`] 个 Unicode 字符；去重按首次出现顺序，至多
-/// [`MAX_CANDIDATE_TERMS`] 个。不调用模型、不从作品反向抽词。
+/// 候选词入表：按首次出现顺序去重；达到 [`MAX_CANDIDATE_TERMS`] 后仍向去重集合
+/// 登记（用于如实判定 `limited`），但不再追加到结果（溢出按出现顺序裁剪）。
+fn record_term(term: String, terms: &mut Vec<String>, seen: &mut HashSet<String>) {
+    if seen.insert(term.clone()) && terms.len() < MAX_CANDIDATE_TERMS {
+        terms.push(term);
+    }
+}
+
+/// 从本轮用户新增问题文本确定性提取候选词：中文连续片段确定性切分为连续二元组
+/// （段内每个起始位置产出长度恰为 [`HAN_BIGRAM_CHARS`] 的子串，长度恰为 2 的段即
+/// 其本身；无词典、无实体识别、不调用模型，窗口不跨越段边界），拉丁字母 / 数字
+/// 连续片段按原样抽取；每个候选至少 [`MIN_TERM_CHARS`] 个 Unicode 字符；去重按
+/// 首次出现顺序，至多 [`MAX_CANDIDATE_TERMS`] 个。不从作品反向抽词。
 pub fn extract_candidate_terms(question: &str) -> CandidateTerms {
     let norm = normalize_text(question);
     let chars = &norm.chars;
@@ -158,11 +169,18 @@ pub fn extract_candidate_terms(question: &str) -> CandidateTerms {
                 break;
             }
         }
-        if end - i >= MIN_TERM_CHARS {
-            let term: String = chars[i..end].iter().collect();
-            if seen.insert(term.clone()) && terms.len() < MAX_CANDIDATE_TERMS {
-                terms.push(term);
+        if is_han_run {
+            // 中文连续段：切分为连续二元组；长度 1 的段不足二元组长度，不产出候选。
+            let mut start = i;
+            while start + HAN_BIGRAM_CHARS <= end {
+                let term: String = chars[start..start + HAN_BIGRAM_CHARS].iter().collect();
+                record_term(term, &mut terms, &mut seen);
+                start += 1;
             }
+        } else if end - i >= MIN_TERM_CHARS {
+            // 拉丁字母 / 数字连续段：按原样整段抽取。
+            let term: String = chars[i..end].iter().collect();
+            record_term(term, &mut terms, &mut seen);
         }
         i = end;
     }
@@ -610,21 +628,61 @@ mod tests {
     #[test]
     fn candidate_extraction_extracts_chinese_and_latin_segments() {
         let result = extract_candidate_terms("角色 林晓 去了ABC城市");
-        // 中文连续片段："角色"、"林晓"、"去了"；拉丁字母数字："abc"、"城市"（城市是中文）。
-        // 实际序列：角色 / 林晓 / 去了 / ABC(->abc) / 城市
-        let terms: Vec<&str> = result.terms.iter().map(String::as_str).collect();
-        assert!(terms.contains(&"角色"));
-        assert!(terms.contains(&"林晓"));
-        assert!(terms.contains(&"abc"));
+        // 各段长度恰为 2：中文段即其本身，拉丁段 NFKC + 小写后原样保留。
+        assert_eq!(result.terms, vec!["角色", "林晓", "去了", "abc", "城市"]);
+        assert!(!result.limited);
+    }
+
+    #[test]
+    fn candidate_extraction_bigrams_chinese_segment() {
+        // 8 字中文连续段切分为连续二元组：每个起始位置产出长度恰为 2 的子串，
+        // 共 7 个，按出现顺序排列；无词典、不做整段抽取。
+        let result = extract_candidate_terms("林晓的性格怎么样");
+        assert_eq!(
+            result.terms,
+            vec!["林晓", "晓的", "的性", "性格", "格怎", "怎么", "么样"]
+        );
+        assert!(!result.limited);
+    }
+
+    #[test]
+    fn candidate_extraction_bigram_overflow_keeps_first_eight_in_order() {
+        // 10 字中文连续段产出 9 个二元组，超过上限：按出现顺序保留前 8 个并记录受限。
+        let result = extract_candidate_terms("林晓的性格怎么样啊呀");
+        assert_eq!(
+            result.terms,
+            vec!["林晓", "晓的", "的性", "性格", "格怎", "怎么", "么样", "样啊"]
+        );
+        assert!(result.limited, "去重后二元组超过 8 个必须记录受限");
+    }
+
+    #[test]
+    fn candidate_extraction_mixed_keeps_latin_segment_whole() {
+        // 中英混排：中文段切二元组（窗口不跨段边界），拉丁段按原样整段保留。
+        let result = extract_candidate_terms("林晓去了ABC城市");
+        assert_eq!(result.terms, vec!["林晓", "晓去", "去了", "abc", "城市"]);
+        assert!(!result.limited);
+    }
+
+    #[test]
+    fn candidate_extraction_single_han_char_yields_no_bigram() {
+        // 单字汉字段（长度 1 < 2）不产出候选，也不与后续段拼接。
+        let result = extract_candidate_terms("他，怎么样");
+        assert_eq!(result.terms, vec!["怎么", "么样"]);
+    }
+
+    #[test]
+    fn candidate_extraction_dedups_overlapping_bigrams() {
+        // 重叠二元组重复出现时按首次出现顺序去重。
+        let result = extract_candidate_terms("角色角色");
+        assert_eq!(result.terms, vec!["角色", "色角"]);
+        assert!(!result.limited);
     }
 
     #[test]
     fn candidate_extraction_skips_single_char_segments() {
         let result = extract_candidate_terms("a 林 b");
-        assert!(!result
-            .terms
-            .iter()
-            .any(|t| t == "a" || t == "b" || t == "林"));
+        assert!(result.terms.is_empty(), "单字符段（拉丁或汉字）不产出候选");
     }
 
     #[test]
@@ -639,6 +697,11 @@ mod tests {
         let question = "aa bb cc dd ee ff gg hh ii jj";
         let result = extract_candidate_terms(question);
         assert_eq!(result.terms.len(), MAX_CANDIDATE_TERMS);
+        // 溢出按出现顺序裁剪：保留先出现的前 8 个拉丁段。
+        assert_eq!(
+            result.terms,
+            vec!["aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh"]
+        );
         assert!(result.limited, "超过 8 个候选词必须记录受限");
     }
 

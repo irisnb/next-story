@@ -711,7 +711,7 @@ pub struct DshDriverManager {
 impl DshDriverManager {
     /// 与前端调度器一致的当前默认上限。这是**当前安全策略**，不是实测容量结论；
     /// 真实基线待阶段 7 实测后由前后端两个常量一起调整（前端调度器测试锚定 ≥2）。
-    const DEFAULT_MAX_CONCURRENT_GENERATIONS: usize = 2;
+    const DEFAULT_MAX_CONCURRENT_GENERATIONS: usize = 4;
 
     pub fn new() -> Self {
         Self::new_with_limit(Self::DEFAULT_MAX_CONCURRENT_GENERATIONS)

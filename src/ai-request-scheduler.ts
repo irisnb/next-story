@@ -23,7 +23,7 @@ export type ScheduleResult = "started" | "queued" | "busy";
  * 全局同时生成上限的默认值。保守但 ≥2：保证「常规生成进行中，及时召唤可并行发起」
  * 的快车道前提；真实接入实测后再据此调整（见 design D4 / D7）。
  */
-export const DEFAULT_MAX_CONCURRENT = 2;
+export const DEFAULT_MAX_CONCURRENT = 4;
 
 export class AiRequestScheduler {
   private readonly maxConcurrent: number;

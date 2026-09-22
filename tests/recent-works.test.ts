@@ -45,6 +45,12 @@ class FakeElement {
     this.listeners.set(type, listeners);
   }
 
+  // 渲染条目里的 SVG 图标用 setAttribute 设 class/aria-hidden/href；测试不读它，记录即可。
+  setAttribute(name: string, value: string): void {
+    (this.attributes ??= new Map<string, string>()).set(name, value);
+  }
+  attributes = new Map<string, string>();
+
   click(): void {
     for (const listener of this.listeners.get("click") ?? []) listener();
   }
@@ -110,6 +116,8 @@ function projectFlowFixture(hooks: FlowHooks): {
   globalThis.document = {
     getElementById: (id: string) => elements.get(id) ?? null,
     createElement: () => new FakeElement(),
+    // 最近作品条目的文档图标走 SVG 命名空间创建（与 index.html 精灵图配套）。
+    createElementNS: (_ns: string, _tag: string) => new FakeElement(),
   } as unknown as Document;
 
   // 与 index.html 一致：空态文案初始带 hidden 类且文本已内联。
@@ -234,11 +242,11 @@ test("welcome page renders recent works with name and path subtitle", async () =
       await flushUntil(() => renderedEntries(ui.dom.recentWorksList).length === 2);
 
       const items = renderedEntries(ui.dom.recentWorksList);
-      assert.equal(items[0]?.className, "action-btn recent-work-item");
-      assert.equal(items[0]?.children[0]?.textContent, "作品甲", "主文本是作品名");
+      assert.equal(items[0]?.className, "recent-work-item");
+      assert.equal(items[0]?.children[1]?.textContent, "作品甲", "主文本是作品名（0 号位是装饰图标）");
       assert.equal(items[0]?.children[2]?.textContent, "D:\\作品甲", "副文本是路径");
       assert.equal(items[0]?.title, "D:\\作品甲");
-      assert.equal(items[1]?.children[0]?.textContent, "作品乙");
+      assert.equal(items[1]?.children[1]?.textContent, "作品乙");
       assert.equal(
         (ui.dom.recentWorksEmpty as unknown as FakeElement).classList.contains("hidden"),
         true,
@@ -269,7 +277,7 @@ test("welcome page renders exactly the entries the backend returned", async () =
     });
     try {
       await flushUntil(() => renderedEntries(ui.dom.recentWorksList).length === 1);
-      assert.equal(renderedEntries(ui.dom.recentWorksList)[0]?.children[0]?.textContent, "唯一有效作品");
+      assert.equal(renderedEntries(ui.dom.recentWorksList)[0]?.children[1]?.textContent, "唯一有效作品");
     } finally {
       ui.restore();
       clearMocks();
@@ -342,6 +350,7 @@ test("renderRecentWorkEntries replaces previous entries on re-render", async () 
   const previousDocument = globalThis.document;
   globalThis.document = {
     createElement: () => new FakeElement(),
+    createElementNS: (_ns: string, _tag: string) => new FakeElement(),
   } as unknown as Document;
   try {
     const container = new FakeElement();
@@ -364,7 +373,7 @@ test("renderRecentWorkEntries replaces previous entries on re-render", async () 
       () => {},
     );
     assert.equal(container.children.length, 2);
-    assert.equal(container.children[0]?.children[0]?.textContent, "作品甲");
+    assert.equal(container.children[0]?.children[1]?.textContent, "作品甲");
     assert.equal(emptyState.classList.contains("hidden"), true, "非空列表空态隐藏");
   } finally {
     globalThis.document = previousDocument;

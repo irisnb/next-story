@@ -22,9 +22,10 @@ export interface ProjectFlowHandle {
 }
 
 /**
- * 渲染欢迎页最近作品列表：每个条目是「作品名＋路径副文本」的按钮；列表为空时
- * 显示空态文案。条目点击经 `onOpenEntry` 回调交给宿主走与「打开作品」相同的
- * 打开流程。失效条目由后端读取命令过滤，前端只渲染收到的条目。
+ * 渲染欢迎页最近作品列表：每个条目是「文档图标＋作品名＋路径副文本」的紧凑
+ * 列表行（视觉上次级于主操作按钮）；列表为空时显示空态文案。条目点击经
+ * `onOpenEntry` 回调交给宿主走与「打开作品」相同的打开流程。失效条目由后端
+ * 读取命令过滤，前端只渲染收到的条目。
  */
 export function renderRecentWorkEntries(
   container: HTMLElement,
@@ -37,18 +38,22 @@ export function renderRecentWorkEntries(
   for (const entry of entries) {
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "action-btn recent-work-item";
+    item.className = "recent-work-item";
     item.title = entry.path;
+    // 图标复用 index.html 顶部 SVG 精灵里的文档符号（与内容树文档同款）。
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "recent-work-ic");
+    icon.setAttribute("aria-hidden", "true");
+    const iconUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    iconUse.setAttribute("href", "#i-doc");
+    icon.append(iconUse);
     const name = document.createElement("span");
     name.className = "recent-work-name";
     name.textContent = entry.name;
-    const lineBreak = document.createElement("br");
     const path = document.createElement("span");
     path.className = "recent-work-path";
     path.textContent = entry.path;
-    // 路径常含长串无空格字符，允许在任意字符处换行，避免溢出按钮。
-    path.style.wordBreak = "break-all";
-    item.append(name, lineBreak, path);
+    item.append(icon, name, path);
     item.addEventListener("click", () => onOpenEntry(entry));
     container.append(item);
   }

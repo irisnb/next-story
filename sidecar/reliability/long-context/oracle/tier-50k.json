@@ -470,7 +470,12 @@
           ],
           "mustNegate": [
             "陈渡住在望山岗"
-          ]
+          ],
+          "negationEquivalents": {
+            "陈渡住在望山岗": [
+              "陈渡不住在望山岗"
+            ]
+          }
         },
         "wrongConclusions": [
           "陈渡住在望山岗"
@@ -501,7 +506,7 @@
       "expect": {
         "factBoundary": {
           "mustContain": [
-            "阿黎是老师"
+            "学校的老师"
           ],
           "mustNegate": []
         },
@@ -603,11 +608,16 @@
             "鹿角镇"
           ],
           "mustNegate": [
-            "陈渡还在城西的邮局工作"
-          ]
+            "陈渡在城西的邮局工作"
+          ],
+          "negationEquivalents": {
+            "陈渡在城西的邮局工作": [
+              "不在城西的邮局工作"
+            ]
+          }
         },
         "wrongConclusions": [
-          "陈渡还在城西的邮局工作"
+          "陈渡在城西的邮局工作"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -763,7 +773,13 @@
           ],
           "mustNegate": [
             "旧怀表是母亲留给陈渡的"
-          ]
+          ],
+          "negationEquivalents": {
+            "旧怀表是母亲留给陈渡的": [
+              "不是母亲留给他的",
+              "不是母亲陈桂芳留的"
+            ]
+          }
         },
         "wrongConclusions": [
           "旧怀表是母亲留给陈渡的"
@@ -798,7 +814,12 @@
           ],
           "mustNegate": [
             "陈渡在望山岗负责邮路"
-          ]
+          ],
+          "negationEquivalents": {
+            "陈渡在望山岗负责邮路": [
+              "而不是望山岗"
+            ]
+          }
         },
         "wrongConclusions": [
           "陈渡在望山岗负责邮路"
@@ -828,11 +849,16 @@
       "expect": {
         "factBoundary": {
           "mustContain": [
-            "信没有拆开"
+            "没有拆开"
           ],
           "mustNegate": [
             "陈渡拆开信看了"
-          ]
+          ],
+          "negationEquivalents": {
+            "陈渡拆开信看了": [
+              "没有拆开"
+            ]
+          }
         },
         "wrongConclusions": [
           "陈渡拆开信看了"

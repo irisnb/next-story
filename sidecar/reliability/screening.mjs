@@ -1,4 +1,5 @@
-// screening.mjs — 回答可靠性测试器的保守自动初筛（change: add-answer-reliability-tester-core 任务 4.x）
+// screening.mjs — 回答可靠性测试器的保守自动初筛（change: add-answer-reliability-tester-core 任务 4.x；
+//   fix-reliability-scorer-mislabels 任务 1/2：mustContain 有界间隙命中＋mustNegate 等价否定形式）
 //
 // 结果四态（design.md D3）：
 //   PASS_LIKELY    证据足够明确，倾向通过
@@ -19,7 +20,7 @@ export const ALL_RESULTS = [RESULT_PASS_LIKELY, RESULT_FAIL_LIKELY, RESULT_NEEDS
 // 显式"未知/未提及"标记：未知信息案例中，这些表达构成正确回答。
 const EXPLICIT_UNKNOWN_MARKERS = [
   "未知", "不确定", "无法确定", "不能确定", "无法判断", "不能判断", "不得而知", "无从得知",
-  "未提及", "没有提到", "并未提及", "没有说明", "未说明", "没有交代", "未交代", "不清楚", "材料中没有",
+  "未提及", "没有提到", "没有提及", "并未提及", "没有说明", "未说明", "没有交代", "未交代", "不清楚", "材料中没有",
   "无法得知", "没有提供", "没有出现", "文中没有", "未提供", "不存在",
 ];
 
@@ -32,6 +33,14 @@ const HEDGE_MARKERS = ["可能", "也许", "或许", "大概", "似乎", "推测
 const NEGATION_MARKERS = [
   "没有", "并未", "并非", "不是", "并不", "不曾", "从未", "否认", "否定", "没", "不", "非", "无", "未",
   "辞去", "辞职", "离职", "辞退", "离开", "放弃", "停止", "不再", "退出", "卸任", "终止", "中断",
+];
+
+// 间隙匹配（design D1）：单段间隙的最大字符数与阻断标记。
+// 间隙含否定/过去标记（子串包含即算）即视为不满足——宁可漏命中，也不把
+// 「前邮差」「曾是邮差」这类过去/否定表述当成命中（保守方向阻断）。
+export const GAP_CHAR_LIMIT = 8;
+export const GAP_BLOCKING_MARKERS = [
+  "不", "没", "非", "无", "未", "不曾", "不再是", "曾", "原来", "以前", "前", "已经", "已",
 ];
 
 // 引号对：短语出现在引号内，视为引用而非模型自己的断言。
@@ -157,12 +166,88 @@ function hasAssertedOccurrence(text, phrase) {
   return classifyPhraseOccurrences(text, phrase).some((c) => c === "asserted");
 }
 
+// ── mustContain 有界间隙命中（design D1，fix-reliability-scorer-mislabels 任务 1）────
+
+/** 间隙是否干净：非空、不超限、不含子句边界标点、不含否定/过去标记。 */
+function gapIsClean(haystack, from, to) {
+  const gap = haystack.slice(from, to);
+  if (gap.length === 0 || gap.length > GAP_CHAR_LIMIT) return false;
+  if (CLAUSE_BOUNDARIES.some((b) => gap.includes(b))) return false;
+  if (GAP_BLOCKING_MARKERS.some((m) => gap.includes(m))) return false;
+  return true;
+}
+
+/**
+ * 从 haystack[t] 起放一段与 needle[pi..] 连续匹配的段（长度 ≥2），再递归放后续段。
+ * 段长从最大连续可匹配长度往下试（末段也须 ≥2 字符，缩短前段有时是唯一拆法）。
+ * 返回段定位数组 [{start,end},...]；放不下返回 null。
+ */
+function placeSegmentsFrom(haystack, needle, pi, t, acc) {
+  let run = 0;
+  while (pi + run < needle.length && haystack[t + run] === needle[pi + run]) run++;
+  for (let len = run; len >= 2; len--) {
+    const end = t + len;
+    const next = [...acc, { start: t, end }];
+    if (pi + len === needle.length) return next;
+    let from = end;
+    while (true) {
+      const j = haystack.indexOf(needle[pi + len], from);
+      if (j < 0) break;
+      if (gapIsClean(haystack, end, j)) {
+        const res = placeSegmentsFrom(haystack, needle, pi + len, j, next);
+        if (res) return res;
+      }
+      from = j + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * 有界间隙子序列匹配（design D1，仅用于 mustContain 满足判定）：
+ * 连续匹配失败后，把短语按原字符顺序在归一化文本中定位为若干连续段（每段 ≥2 字符；
+ * 短语不足 4 字符时拆不出两段各 ≥2，只允许连续匹配）。段间间隙须同时满足：
+ *   ① 不含子句边界标点（与否定窗口同一套 CLAUSE_BOUNDARIES）；② 长度 ≤ GAP_CHAR_LIMIT；
+ *   ③ 不含 GAP_BLOCKING_MARKERS（否定/过去标记，子串包含即算，保守阻断）。
+ * 第一个段的起始位置仍要过 hasNegationBefore（整个出现的否定前窗检查沿用）；
+ * 整个跨度按首段位置用现有 isQuoted 判引用（引号内含否定的情况已被 ③ 与前窗检查挡住，
+ * 不会经间隙匹配变成 satisfied）。
+ * 返回首个满足约束的定位 { start, end, segments: [{ start, end }], quoted }；找不到返回 null。
+ */
+export function gapMatchOccurrence(text, phrase) {
+  if (!phrase || typeof phrase !== "string") return null;
+  const haystack = lower(stripMarkdown(String(text ?? "")));
+  const needle = lower(phrase);
+  if (needle.length < 4) return null;
+  const starts = [];
+  let from = 0;
+  while (true) {
+    const i = haystack.indexOf(needle[0], from);
+    if (i < 0) break;
+    starts.push(i);
+    from = i + 1;
+  }
+  for (const start of starts) {
+    if (hasNegationBefore(haystack, start)) continue;
+    const segments = placeSegmentsFrom(haystack, needle, 0, start, []);
+    if (segments) {
+      const last = segments[segments.length - 1];
+      const spanLen = last.end - start;
+      return { start, end: last.end, segments, quoted: isQuoted(haystack, start, spanLen) };
+    }
+  }
+  return null;
+}
+
 /**
  * mustContain 专用：是否存在未被否定的出现（直接断言或引用）（design D2）。
  * 引用正确事实作答 = 模型自己的结论，故引用也命中；只有被否定才不算命中。
+ * 连续匹配失败后再尝试有界间隙子序列匹配（design D1）：「陈渡是北境的一名邮差」
+ * 命中「陈渡是邮差」类修饰语插入可命中；间隙跨子句边界、超限或含否定/过去标记仍不命中。
  */
 function hasSatisfiedOccurrence(text, phrase) {
-  return classifyPhraseOccurrences(text, phrase).some((c) => c === "asserted" || c === "quoted");
+  if (classifyPhraseOccurrences(text, phrase).some((c) => c === "asserted" || c === "quoted")) return true;
+  return gapMatchOccurrence(text, phrase) !== null;
 }
 
 /**
@@ -174,6 +259,48 @@ function isNegationSatisfied(text, phrase) {
   const negated = occurrences.some((c) => c === "negated" || c === "quoted-negated");
   const affirmed = occurrences.some((c) => c === "asserted");
   return negated && !affirmed;
+}
+
+// ── mustNegate 等价否定形式（design D2，fix-reliability-scorer-mislabels 任务 2）────
+
+/** 读取 factBoundary.negationEquivalents：键 = 同查询 mustNegate 短语，值 = 转述等价短语数组。 */
+function readNegationEquivalents(fb) {
+  const eq = fb?.negationEquivalents;
+  if (!eq || typeof eq !== "object" || Array.isArray(eq)) return {};
+  return eq;
+}
+
+/**
+ * 等价否定短语是否出现并表达「旧事实已被否定」（design D2）：
+ *   - 短语自带否定/离开语义（如「辞去了盐镇中学的工作」「苏晚不住在盐城」）：
+ *     其未被直接否定的出现（asserted/quoted，引用判定按现有 classify 语义）即表达脱离旧状态；
+ *     被直接否定（「没有辞去…」）则是在肯定旧状态，不算。
+ *   - 短语为纯转述对象：其前窗口须含直接否定或离开动词（negated/quoted-negated，
+ *     复用 hasNegationBefore 与 NEGATION_MARKERS）。
+ */
+function isEquivalentNegationPresent(text, equiv) {
+  if (!equiv || typeof equiv !== "string") return false;
+  const classes = classifyPhraseOccurrences(text, equiv);
+  if (classes.length === 0) return false;
+  const selfCarried = NEGATION_MARKERS.some((m) => lower(equiv).includes(m));
+  return classes.some((c) =>
+    selfCarried
+      ? c === "asserted" || c === "quoted"
+      : c === "negated" || c === "quoted-negated"
+  );
+}
+
+/**
+ * 单条 mustNegate 的满足判定（design D2）：现行规则成立（原短语出现且被否定且无未引用肯定断言），
+ * 或任一声明等价短语出现并表达否定；且原短语无未被引用、未被否定的肯定断言
+ * （转述否定但正文又肯定旧事实 → 仍不满足）。无声明时与现行规则完全一致。
+ */
+export function isEntryNegationSatisfied(text, phrase, negationEquivalents = {}) {
+  if (isNegationSatisfied(text, phrase)) return true;
+  if (hasAssertedOccurrence(text, phrase)) return false;
+  const equivs = negationEquivalents[phrase];
+  if (!Array.isArray(equivs)) return false;
+  return equivs.some((e) => isEquivalentNegationPresent(text, e));
 }
 
 /**
@@ -236,7 +363,9 @@ export function screenAnswer(expect, answer) {
   const missing = mustContain.filter((f) => !hasSatisfiedOccurrence(text, f));
   if (missing.length > 0) reasons.push(`未明确命中预期事实：${missing.join("、")}`);
 
-  const unnegated = mustNegate.filter((f) => !isNegationSatisfied(text, f));
+  // mustNegate：现行连续否定规则，或声明的等价否定形式出现（design D2）。
+  const negationEquivalents = readNegationEquivalents(fb);
+  const unnegated = mustNegate.filter((f) => !isEntryNegationSatisfied(text, f, negationEquivalents));
   if (unnegated.length > 0) reasons.push(`未明确否定旧事实：${unnegated.join("、")}`);
 
   const quotedWrongs = wrongConclusions.filter((wc) => classifyPhraseOccurrences(text, wc).some((c) => c === "quoted"));

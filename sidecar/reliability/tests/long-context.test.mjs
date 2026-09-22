@@ -1,10 +1,18 @@
-// long-context.test.mjs — 长上下文夹具的离线测试（change: add-long-context-hallucination-fixtures 任务 3.2）
+// long-context.test.mjs — 长上下文夹具的离线测试（change: add-long-context-hallucination-fixtures 任务 3.2；
+//   fix-reliability-scorer-mislabels 任务 3.3：时态助词检查＋negationEquivalents 结构校验）
 // 不启动 DSH、无需 API key、不发网络请求。
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { materialHash, countChars, estimateTokens, mulberry32, generateTier } from "../long-context/generator.mjs";
-import { validateAll, validateTier, isBoundaryBadPhrase, loadFromDisk } from "../long-context/validate.mjs";
+import {
+  validateAll,
+  validateTier,
+  isBoundaryBadPhrase,
+  findNegationEquivalentsProblems,
+  TENSE_AUXILIARIES,
+  loadFromDisk,
+} from "../long-context/validate.mjs";
 import { buildTierCases } from "../long-context/build-cases.mjs";
 import { loadAndValidate } from "../schema.mjs";
 
@@ -168,4 +176,92 @@ test("validateTier 拒绝 mustNegate/wrongConclusions 中的裸亲属称谓、�
       }
     }
   }
+});
+
+// ── fix-reliability-scorer-mislabels 任务 3.3：时态助词检查（正反例）──────────────
+test("validateTier 拒绝 mustNegate/wrongConclusions 中的时态助词（还在/仍然/依旧/已经）", () => {
+  const { manifest, materials, oracles } = loadFromDisk();
+  const tierKey = manifest.tiers[0].tier;
+
+  for (const aux of TENSE_AUXILIARIES) {
+    for (const field of ["mustNegate", "wrongConclusions"]) {
+      const copy = structuredClone(oracles[tierKey]);
+      const q = copy.queries[0];
+      const phrase = `某人${aux}某处教书`;
+      if (field === "mustNegate") q.expect.factBoundary.mustNegate.push(phrase);
+      else q.expect.wrongConclusions.push(phrase);
+      const report = validateTier(tierKey, manifest, materials[tierKey], copy);
+      assert.equal(report.ok, false, `「${phrase}」进入 ${field} 应使 ok=false`);
+      assert.ok(
+        report.checks.some((c) => c.name === "no-tense-auxiliary-in-boundary" && c.ok === false),
+        `「${phrase}」应触发 no-tense-auxiliary-in-boundary 校验`
+      );
+    }
+  }
+});
+
+test("validateTier 接受不含时态助词的边界短语（磁盘档全过为正例基准）", () => {
+  const { manifest, materials, oracles } = loadFromDisk();
+  const tierKey = manifest.tiers[0].tier;
+  const report = validateTier(tierKey, manifest, materials[tierKey], oracles[tierKey]);
+  const check = report.checks.find((c) => c.name === "no-tense-auxiliary-in-boundary");
+  assert.ok(check, "应存在 no-tense-auxiliary-in-boundary 检查");
+  assert.equal(check.ok, true, "磁盘档（已去助词）应通过时态助词检查");
+});
+
+// ── fix-reliability-scorer-mislabels 任务 3.3：negationEquivalents 结构校验（正反例）──
+test("findNegationEquivalentsProblems：键不在同查询 mustNegate、裸实体、裸称谓、缺主语谓词均报问题", () => {
+  const names = new Set(["苏晚", "盐镇", "盐城", "陈屿"]);
+  const baseQuery = {
+    id: "q-x",
+    expect: {
+      factBoundary: { mustContain: ["盐镇"], mustNegate: ["苏晚住在盐城"], negationEquivalents: {} },
+      wrongConclusions: [],
+    },
+  };
+
+  // 键不在 mustNegate
+  const q1 = structuredClone(baseQuery);
+  q1.expect.factBoundary.negationEquivalents = { 苏晚住在雾港: ["搬离了雾港"] };
+  assert.ok(findNegationEquivalentsProblems(q1, names).some((p) => p.includes("不在同查询 mustNegate")));
+
+  // 等价短语是裸实体（人名/地名）
+  const q2 = structuredClone(baseQuery);
+  q2.expect.factBoundary.negationEquivalents = { 苏晚住在盐城: ["盐城"] };
+  assert.ok(findNegationEquivalentsProblems(q2, names).some((p) => p.includes("裸实体")));
+
+  // 等价短语是裸职业词 / 缺主语谓词
+  const q3 = structuredClone(baseQuery);
+  q3.expect.factBoundary.negationEquivalents = { 苏晚住在盐城: ["老师"] };
+  assert.ok(findNegationEquivalentsProblems(q3, names).some((p) => p.includes("裸称谓/缺主语谓词")));
+  const q4 = structuredClone(baseQuery);
+  q4.expect.factBoundary.negationEquivalents = { 苏晚住在盐城: ["住在盐城"] };
+  assert.ok(findNegationEquivalentsProblems(q4, names).some((p) => p.includes("裸称谓/缺主语谓词")));
+
+  // 值不是数组 / 声明不是对象
+  const q5 = structuredClone(baseQuery);
+  q5.expect.factBoundary.negationEquivalents = { 苏晚住在盐城: "不住在盐城" };
+  assert.ok(findNegationEquivalentsProblems(q5, names).some((p) => p.includes("不是数组")));
+  const q6 = structuredClone(baseQuery);
+  q6.expect.factBoundary.negationEquivalents = ["不住在盐城"];
+  assert.ok(findNegationEquivalentsProblems(q6, names).some((p) => p.includes("不是对象")));
+
+  // 未声明（字段缺省）合法
+  const q7 = structuredClone(baseQuery);
+  delete q7.expect.factBoundary.negationEquivalents;
+  assert.deepEqual(findNegationEquivalentsProblems(q7, names), []);
+});
+
+test("validateTier 接受合法的 negationEquivalents 声明（键绑定 mustNegate、等价短语为完整命题）", () => {
+  const { manifest, materials, oracles } = loadFromDisk();
+  const tierKey = manifest.tiers[0].tier;
+  const copy = structuredClone(oracles[tierKey]);
+  const q = copy.queries.find((x) => x.expect.factBoundary.mustNegate.length > 0);
+  const key = q.expect.factBoundary.mustNegate[0];
+  q.expect.factBoundary.negationEquivalents = { [key]: [`${key}的说法不成立`] };
+  const report = validateTier(tierKey, manifest, materials[tierKey], copy);
+  const check = report.checks.find((c) => c.name === "negation-equivalents-structure");
+  assert.ok(check, "应存在 negation-equivalents-structure 检查");
+  assert.equal(check.ok, true, "合法声明应通过");
+  assert.equal(report.ok, true, "整档应保持通过");
 });

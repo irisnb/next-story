@@ -215,6 +215,11 @@ export function generateTier(tierKey, manifest) {
       factBoundary: {
         mustContain: q.expect.factBoundary.mustContain ?? [],
         mustNegate: q.expect.factBoundary.mustNegate ?? [],
+        // 等价否定形式（可选，design D2）：键 = 同查询 mustNegate 短语，值 = 转述等价短语数组。
+        // 无声明时不输出该字段，生成形状与旧版逐字节一致（fix-reliability-scorer-mislabels 任务 2.1）。
+        ...(q.expect.factBoundary.negationEquivalents
+          ? { negationEquivalents: q.expect.factBoundary.negationEquivalents }
+          : {}),
       },
       wrongConclusions: q.expect.wrongConclusions ?? [],
       allowedUncertainty: q.expect.allowedUncertainty ?? [],

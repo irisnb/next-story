@@ -52,8 +52,11 @@ node sidecar/reliability/runner.mjs --api-base https://z30.top/v1 --model <model
   "question": "最终评分问题",
   "expect": {
     "factBoundary": {
-      "mustContain": ["答案应明确断言的事实"],   // 命中全部才可能 PASS
-      "mustNegate":  ["答案应明确否定的旧事实"]  // 被正向断言即 FAIL
+      "mustContain": ["答案应明确断言的事实"],   // 命中全部才可能 PASS（支持有界间隙命中）
+      "mustNegate":  ["答案应明确否定的旧事实"], // 被正向断言即 FAIL（须省略时态助词）
+      "negationEquivalents": {                   // 可选：旧事实的转述等价否定形式（键 = mustNegate 条目）
+        "苏晚在盐镇中学教书": ["辞去了盐镇中学的工作"]
+      }
     },
     "wrongConclusions": ["明确错误结论，被断言即 FAIL"],
     "allowedUncertainty": ["未知", "未提及"],   // 非空 = 接受“未知/不确定”为正确回答
@@ -106,11 +109,17 @@ node -e "const c=require('crypto');const t='<你的正文>';console.log('sha256:
 
 **保守立场**：只用关键词做「足够明确」的判定；复杂否定、错误结论引用和同义改写仍会落到 `NEEDS_REVIEW`，绝不把关键词匹配冒充绝对裁判。评分前会剥离常见 Markdown 标记；`mustContain` 的正确事实在引用中也算命中，但 `wrongConclusions` / `mustNegate` 的引用仍进入人工复核。
 
-否定识别覆盖两类：直接否定词（没有/不是/未/否认…）与「脱离旧状态」的语义否定词（辞去/辞职/离职/离开/放弃/停止/不再/退出/卸任/终止/中断），所以「辞去了盐镇中学的工作」会正确识别为否定「在盐镇中学教书」，而非断言。
+否定识别覆盖两类：直接否定词（没有/不是/未/否认…）与「脱离旧状态」的语义否定词（辞去/辞职/离职/离开/放弃/停止/不再/退出/卸任/终止/中断），所以「辞去了盐镇中学的工作」会正确识别为否定「在盐镇中学教书」，而非断言。未知同义表覆盖「未提及/没有提到/没有提及/无法得知/材料中没有/文中没有」等表达，未知信息案例的诚实回答不会被误报为无依据断言。
 
-**命题规范**：`mustNegate` / `wrongConclusions` 必须写含主体、动作或关系词的完整命题短语（如「苏晚住在盐城」「老式相机是母亲留下的」「在盐镇中学教书」），禁止写裸实体、裸亲属/职业词或缺主语谓词。校验器会在生成长上下文 oracle 时拒绝这些边界短语。`mustContain` 也应优先写完整事实；对材料未唯一确定的事实，应使用 `allowedUncertainty`，而不是强行指定唯一答案。
+`mustContain` 命中支持**有界间隙匹配**（`fix-reliability-scorer-mislabels`）：连续字面匹配失败后，允许短语成分间存在间隙——间隙不跨子句边界标点、单段不超过 8 字符、不含否定或过去标记（不/没/未/曾/原/前/已经…）。因此「陈渡是北境的一名邮差」能命中 `mustContain: ["陈渡是邮差"]`；「陈渡是渔民；邮差老王」因跨子句、「一位前邮差」因过去标记而不命中。间隙匹配**只**用于 `mustContain` 满足判定，`wrongConclusions` / `mustNegate` 保持连续匹配——不放松失败判定方向。
+
+`mustNegate` 支持**等价否定形式**：oracle 可在 `factBoundary.negationEquivalents` 为旧事实声明转述等价短语（键 = 同查询的 `mustNegate` 条目，值 = 等价短语数组）。等价短语自带否定/离开语义（如「辞去了盐镇中学的工作」）时，其未被直接否定的出现即满足否定边界；纯短语则要求前置窗口含否定或离开动词。原短语自身一旦被肯定断言，等价否定不生效。等价表只从真实证据生长，不预猜。
+
+**命题规范**：`mustNegate` / `wrongConclusions` 必须写含主体、动作或关系词的完整命题短语（如「苏晚住在盐城」「老式相机是母亲留下的」「在盐镇中学教书」），禁止写裸实体、裸亲属/职业词或缺主语谓词；还须**省略时态助词**（还在/仍然/依旧/已经），否则匹配不到自然否定措辞——校验器会在核心 fixtures 与长上下文 oracle 上强制拒绝这两类非法边界短语。`negationEquivalents` 的键必须是同查询的 `mustNegate` 条目，值同样受完整命题规范约束。`mustContain` 也应优先写完整事实；对材料未唯一确定的事实，应使用 `allowedUncertainty`，而不是强行指定唯一答案。
 
 人工复核结论独立存储（`MODEL_OK` / `MODEL_ERROR` / `SCORER_ERROR` / `UNRESOLVED`），不覆盖自动原始结果——用于区分「模型答错」与「评分器误读引用/否定」。
+
+**保守残留登记**（`fix-reliability-scorer-mislabels` 起）：人工裁决确认答案正确（`MODEL_OK`）但自动结果仍为 `NEEDS_REVIEW` 的记录，属评分器关键词立场的已知边界，不算误标，但须在对应 change 的验证记录中登记残留类别。现行三类：①**对比句式**（先否定、再以「朋友曾建议…但她选了…」式对比陈述——肯定正确项即隐含否定旧项）；②**同义/语序改写超出等价表**（如「母子关系」vs「…的儿子」、反向判断句「青梧医馆的医生是沈青梧」）；③**未知标记作用域**（「材料中没有…的依据」限定的是被否定侧，仍触发保守复核）。
 
 ## 测试与边界
 
@@ -126,4 +135,5 @@ node -e "const c=require('crypto');const t='<你的正文>';console.log('sha256:
 - 重新生成：`node sidecar/reliability/long-context/generator.mjs`
 - 离线校验：`node sidecar/reliability/long-context/validate.mjs`
 - 组装可运行案例：`node sidecar/reliability/long-context/build-cases.mjs`（产物在 `.generated/`，可经 `--cases` 喂给本测试器的 runner 分档执行；完整三试矩阵约 162 次调用）
-- 已保存证据离线重评：`node sidecar/reliability/rescore.mjs`（只读取 `response.text` 与当前 oracle，不发网络请求；支持 `--run <run-id>`、`--evidence`、`--fixtures`、`--oracle`）
+- 已保存证据离线重评：`node sidecar/reliability/rescore.mjs`（只读取 `response.text` 与当前 oracle，不发网络请求；支持 `--run <run-id>`、`--evidence`、`--fixtures`、`--oracle`）。加 `--write` 把刷新结果写回证据与 manifest：原自动结果推入 `result.automatic_history`（含时间戳）保留、`counts` 重算并记 `rescored_at`，响应正文与人工裁决字段一概不动；不带 `--write` 为干跑，零写入。
+- 人工裁决落档：`node sidecar/reliability/review.mjs <run-id> <case-id> <MODEL_OK|MODEL_ERROR|SCORER_ERROR|UNRESOLVED> [--notes "…"]`（只写 `result.human_review` / `reviewer_notes`，不触碰自动结果，重复执行幂等覆盖）。

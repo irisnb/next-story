@@ -1,11 +1,13 @@
-// rescore.test.mjs — 离线重评脚本的本地单元测试（change: fix-screener-residual-defects 任务 3.1）
+// rescore.test.mjs — 离线重评脚本的本地单元测试（change: fix-screener-residual-defects 任务 3.1；
+//   fix-reliability-scorer-mislabels 任务 4.3：干跑零写入、--write 历史保留与 manifest 重算）
 //
 // 覆盖：expect 索引构建（fixtures + long-context oracle）、单条证据重评、
-// RUNTIME_ERROR 保留、缺失 oracle 标记、证据目录扫描与每档/总体分布聚合。
+// RUNTIME_ERROR 保留、缺失 oracle 标记、证据目录扫描与每档/总体分布聚合、
+// 写回模式（refreshRecordResult / recomputeManifestCounts / writeBackRescore）。
 // 全部离线：临时目录内构造最小 fixtures/oracle/evidence，不发网络、不碰真实证据与生产数据。
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -15,6 +17,9 @@ import {
   rescoreRecord,
   scanEvidenceRuns,
   rescoreAll,
+  refreshRecordResult,
+  recomputeManifestCounts,
+  writeBackRescore,
 } from "../rescore.mjs";
 import {
   RESULT_PASS_LIKELY,
@@ -221,4 +226,125 @@ test("集成：默认 evidence/fixtures/oracle 目录可被重评并产出四态
     const c = run.counts;
     assert.equal(c.total, c.pass_likely + c.fail_likely + c.needs_review + c.runtime_error + c.missing_oracle);
   }
+});
+
+// ── fix-reliability-scorer-mislabels 任务 4.3：干跑零写入 / 写回历史保留 / manifest 重算 ──
+
+/** 构造最小可写回环境：一个 fixture、一档两条证据（一条漂移、一条未漂移）＋ manifest。 */
+function makeWriteBackFixture() {
+  const root = makeTmpDir();
+  const fixturesDir = join(root, "fixtures");
+  const evidenceDir = join(root, "evidence");
+  mkdirSync(fixturesDir, { recursive: true });
+  const expect = { factBoundary: { mustContain: ["摄影工作室"], mustNegate: ["在印刷厂工作"] }, wrongConclusions: ["还在印刷厂"], allowedUncertainty: [] };
+  writeJson(join(fixturesDir, "case-a.json"), { id: "case-a", expect });
+
+  const runDir = join(evidenceDir, "run-1");
+  mkdirSync(join(runDir, "cases"), { recursive: true });
+  // 漂移记录：旧评分器标 FAIL_LIKELY，当前评分器（markdown 剥离＋引用命中）应为 PASS_LIKELY
+  writeJson(join(runDir, "cases", "case-a.json"), {
+    case_id: "case-a",
+    response: { text: "陆遥现在**不在**印刷厂工作，辞职去了云峰山下的摄影工作室。" },
+    result: { automatic: RESULT_FAIL_LIKELY, reasons: ["断言了明确错误结论：在印刷厂工作"], human_review: null, reviewer_notes: null },
+    runtime_error: null,
+  });
+  // 未漂移记录：旧值与新值一致，写回时不应有任何变动
+  writeJson(join(runDir, "cases", "case-b.json"), {
+    case_id: "case-b",
+    response: { text: "某个无关回答" },
+    result: { automatic: RESULT_NEEDS_REVIEW, reasons: ["旧理由"], human_review: null, reviewer_notes: null },
+    runtime_error: null,
+  });
+  writeJson(join(runDir, "manifest.json"), {
+    run_id: "run-1",
+    counts: { total: 2, pass_likely: 0, fail_likely: 1, needs_review: 1, runtime_error: 0 },
+    cases: [
+      { case_id: "case-a", result: RESULT_FAIL_LIKELY, reasons: ["断言了明确错误结论：在印刷厂工作"] },
+      { case_id: "case-b", result: RESULT_NEEDS_REVIEW, reasons: ["旧理由"] },
+    ],
+  });
+  return { root, fixturesDir, evidenceDir };
+}
+
+test("干跑（rescoreAll）零写入：证据与 manifest 逐字节不变", () => {
+  const { root, fixturesDir, evidenceDir } = makeWriteBackFixture();
+  const caseFile = join(evidenceDir, "run-1", "cases", "case-a.json");
+  const manifestFile = join(evidenceDir, "run-1", "manifest.json");
+  const beforeCase = readFileSync(caseFile, "utf8");
+  const beforeManifest = readFileSync(manifestFile, "utf8");
+
+  const res = rescoreAll({ evidenceDir, fixturesDir, oracleDir: join(root, "no-oracle") });
+  assert.equal(res.runs[0].counts.changed, 1);
+
+  assert.equal(readFileSync(caseFile, "utf8"), beforeCase, "干跑不得改证据文件");
+  assert.equal(readFileSync(manifestFile, "utf8"), beforeManifest, "干跑不得改 manifest");
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("写回（writeBackRescore）：历史保留、human_review 不动、manifest counts 重算＋rescored_at", () => {
+  const { root, fixturesDir, evidenceDir } = makeWriteBackFixture();
+  const ts = "2026-09-22T00:00:00.000Z";
+  const { summary } = writeBackRescore({ evidenceDir, fixturesDir, oracleDir: join(root, "no-oracle"), timestamp: ts });
+
+  assert.equal(summary.length, 1);
+  assert.equal(summary[0].caseWrites, 1, "只有漂移记录被写");
+  assert.equal(summary[0].manifestWrites, 1);
+
+  const record = JSON.parse(readFileSync(join(evidenceDir, "run-1", "cases", "case-a.json"), "utf8"));
+  assert.equal(record.result.automatic, RESULT_PASS_LIKELY, "自动结果刷新为重评结果");
+  assert.ok(Array.isArray(record.result.automatic_history), "旧值进入 automatic_history");
+  assert.deepEqual(
+    record.result.automatic_history[0],
+    { automatic: RESULT_FAIL_LIKELY, reasons: ["断言了明确错误结论：在印刷厂工作"], rescored_at: ts },
+  );
+  assert.equal(record.result.human_review, null, "human_review 不动");
+  assert.equal(record.result.reviewer_notes, null, "reviewer_notes 不动");
+  assert.ok(record.response.text.includes("摄影工作室"), "response 正文不动");
+
+  const unchanged = JSON.parse(readFileSync(join(evidenceDir, "run-1", "cases", "case-b.json"), "utf8"));
+  assert.equal(unchanged.result.automatic, RESULT_NEEDS_REVIEW);
+  assert.equal(unchanged.result.automatic_history, undefined, "未漂移记录不产生噪音历史");
+
+  const manifest = JSON.parse(readFileSync(join(evidenceDir, "run-1", "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.counts, { total: 2, pass_likely: 1, fail_likely: 0, needs_review: 1, runtime_error: 0 });
+  assert.equal(manifest.rescored_at, ts);
+  assert.equal(manifest.cases.find((c) => c.case_id === "case-a").result, RESULT_PASS_LIKELY, "manifest per-case 同步刷新");
+
+  // 第二轮写回：全部一致 → 零案例写入、历史不再追加（幂等）
+  const second = writeBackRescore({ evidenceDir, fixturesDir, oracleDir: join(root, "no-oracle"), timestamp: "2026-09-22T01:00:00.000Z" });
+  assert.equal(second.summary[0].caseWrites, 0);
+  const record2 = JSON.parse(readFileSync(join(evidenceDir, "run-1", "cases", "case-a.json"), "utf8"));
+  assert.equal(record2.result.automatic_history.length, 1, "历史不重复追加");
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("refreshRecordResult：旧值与新值一致时返回 changed=false 且零变动", () => {
+  const record = { result: { automatic: RESULT_PASS_LIKELY, reasons: ["a"] } };
+  const { changed } = refreshRecordResult(record, { automatic: RESULT_PASS_LIKELY, reasons: ["a"] }, "ts");
+  assert.equal(changed, false);
+  assert.deepEqual(record, { result: { automatic: RESULT_PASS_LIKELY, reasons: ["a"] } });
+});
+
+test("refreshRecordResult：已存在 automatic_history 时追加而非覆盖", () => {
+  const record = {
+    result: {
+      automatic: RESULT_NEEDS_REVIEW,
+      reasons: ["新理由"],
+      automatic_history: [{ automatic: RESULT_FAIL_LIKELY, reasons: ["旧理由"], rescored_at: "t0" }],
+    },
+  };
+  const { changed } = refreshRecordResult(record, { automatic: RESULT_PASS_LIKELY, reasons: ["更新理由"] }, "t1");
+  assert.equal(changed, true);
+  assert.equal(record.result.automatic_history.length, 2);
+  assert.deepEqual(record.result.automatic_history[1], { automatic: RESULT_NEEDS_REVIEW, reasons: ["新理由"], rescored_at: "t1" });
+});
+
+test("recomputeManifestCounts：按重评后四态计数，缺 oracle 记录保留原结果", () => {
+  const entries = [
+    { old: { automatic: RESULT_FAIL_LIKELY }, next: { automatic: RESULT_PASS_LIKELY } },
+    { old: { automatic: RESULT_NEEDS_REVIEW }, next: { automatic: RESULT_NEEDS_REVIEW } },
+    { old: { automatic: RESULT_RUNTIME_ERROR, reasons: ["timeout"] }, next: { automatic: RESULT_RUNTIME_ERROR, reasons: ["timeout"] } },
+    { old: { automatic: RESULT_PASS_LIKELY }, next: null },
+  ];
+  assert.deepEqual(recomputeManifestCounts(entries), { total: 4, pass_likely: 2, fail_likely: 0, needs_review: 1, runtime_error: 1 });
 });

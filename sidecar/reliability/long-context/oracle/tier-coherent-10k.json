@@ -272,7 +272,12 @@
           ],
           "mustNegate": [
             "林晚住在盐城"
-          ]
+          ],
+          "negationEquivalents": {
+            "林晚住在盐城": [
+              "林晚不住在盐城"
+            ]
+          }
         },
         "wrongConclusions": [
           "林晚住在盐城"
@@ -338,11 +343,16 @@
             "出版社"
           ],
           "mustNegate": [
-            "林晚还在盐镇中学教书"
-          ]
+            "林晚在盐镇中学教书"
+          ],
+          "negationEquivalents": {
+            "林晚在盐镇中学教书": [
+              "辞去了盐镇中学的工作"
+            ]
+          }
         },
         "wrongConclusions": [
-          "林晚还在盐镇中学教书"
+          "林晚在盐镇中学教书"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [

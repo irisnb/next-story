@@ -456,7 +456,7 @@
           "mustNegate": []
         },
         "wrongConclusions": [
-          "陆遥还在城北的印刷厂工作"
+          "陆遥在城北的印刷厂工作"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -486,11 +486,16 @@
             "摄影工作室"
           ],
           "mustNegate": [
-            "陆遥还在城北的印刷厂工作"
-          ]
+            "陆遥在城北的印刷厂工作"
+          ],
+          "negationEquivalents": {
+            "陆遥在城北的印刷厂工作": [
+              "陆遥现在不在印刷厂工作"
+            ]
+          }
         },
         "wrongConclusions": [
-          "陆遥还在城北的印刷厂工作"
+          "陆遥在城北的印刷厂工作"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [
@@ -650,7 +655,12 @@
           ],
           "mustNegate": [
             "老式相机是母亲留下的"
-          ]
+          ],
+          "negationEquivalents": {
+            "老式相机是母亲留下的": [
+              "而不是母亲留给陆遥的"
+            ]
+          }
         },
         "wrongConclusions": [
           "老式相机是母亲留下的"

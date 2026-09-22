@@ -1,4 +1,5 @@
-// validate.mjs — 长上下文夹具校验（change: add-long-context-hallucination-fixtures 任务 3.1）
+// validate.mjs — 长上下文夹具校验（change: add-long-context-hallucination-fixtures 任务 3.1；
+//   fix-reliability-scorer-mislabels 任务 3.1/3.2：时态助词检查＋negationEquivalents 结构校验）
 //
 // 离线校验以下不变量（全部只读，不启动 DSH、不发网络请求）：
 //   1. 确定性：用已记录 seed 重新生成，材料哈希必须与检入文件一致；
@@ -9,6 +10,9 @@
 //   6. 锚点：每个锚点 statement 必须逐字出现在正文中；
 //   7. 查询矩阵：每档查询数达标、七类风险全覆盖、id 唯一、trial_count=3 且 trial id 稳定；
 //   8. 裁判与材料一致：oracle.material_hash 与 material.hash 一致。
+//   9./10. 裸实体词与裸称谓/缺主语谓词：mustNegate/wrongConclusions 不得使用会被正确回答合法提及的片段；
+//   11. 时态助词：mustNegate/wrongConclusions 不得含「还在/仍然/依旧/已经」；
+//   12. negationEquivalents 结构：键必须是同查询 mustNegate 条目，等价短语须为完整命题。
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -62,6 +66,42 @@ export function isBoundaryBadPhrase(phrase) {
     BARE_OCCUPATION_TERMS.has(phrase) ||
     SUBJECTLESS_PREDICATE_RES.some((re) => re.test(phrase))
   );
+}
+
+// 时态助词：mustNegate/wrongConclusions 应省略（如「在盐镇中学教书」而非「还在盐镇中学教书」），
+// 否则匹配不到常见的否定措辞（fix-reliability-scorer-mislabels 任务 3.1，规格《命题级边界短语》既有要求）。
+export const TENSE_AUXILIARIES = ["还在", "仍然", "依旧", "已经"];
+
+/**
+ * negationEquivalents 结构校验（fix-reliability-scorer-mislabels 任务 3.2）：
+ * 返回问题描述数组（空数组 = 合法）。规则：
+ *   - 声明必须是对象（未声明视为合法，该字段可选）；
+ *   - 每个键必须存在于同查询的 mustNegate；
+ *   - 每个等价短语必须过裸实体（entityNames）与 isBoundaryBadPhrase（裸称谓/缺主语谓词）检查。
+ */
+export function findNegationEquivalentsProblems(query, entityNames) {
+  const fb = query?.expect?.factBoundary ?? {};
+  const eq = fb.negationEquivalents;
+  if (eq === undefined || eq === null) return [];
+  if (typeof eq !== "object" || Array.isArray(eq)) return [`${query.id}: negationEquivalents 不是对象`];
+  const mustNegate = new Set(fb.mustNegate ?? []);
+  const problems = [];
+  for (const [key, values] of Object.entries(eq)) {
+    if (!mustNegate.has(key)) problems.push(`${query.id}: 键「${key}」不在同查询 mustNegate`);
+    if (!Array.isArray(values)) {
+      problems.push(`${query.id}:「${key}」的等价短语不是数组`);
+      continue;
+    }
+    for (const v of values) {
+      if (typeof v !== "string" || v === "") {
+        problems.push(`${query.id}:「${key}」含非法等价短语 ${JSON.stringify(v)}`);
+        continue;
+      }
+      if (entityNames.has(v)) problems.push(`${query.id}: 等价短语是裸实体：「${v}」`);
+      if (isBoundaryBadPhrase(v)) problems.push(`${query.id}: 等价短语是裸称谓/缺主语谓词：「${v}」`);
+    }
+  }
+  return problems;
 }
 
 function readJson(p) {
@@ -152,6 +192,18 @@ export function validateTier(tierKey, manifest, material, oracle) {
     return phrases.filter(isBoundaryBadPhrase).map((p) => `${q.id}:「${p}」`);
   });
   push("no-bare-kindred-occupation-predicate", badBoundaryPhrases.length === 0, badBoundaryPhrases.length ? `非法边界短语（裸亲属/职业/缺主语谓词）：${badBoundaryPhrases.join("、")}` : "mustNegate/wrongConclusions 无裸亲属/职业/缺主语谓词");
+
+  // 11. 时态助词：mustNegate/wrongConclusions 含「还在/仍然/依旧/已经」即 FAIL（fix-reliability-scorer-mislabels 任务 3.1）
+  const tenseAux = queries.flatMap((q) => {
+    const fb = q.expect?.factBoundary ?? {};
+    const phrases = [...(fb.mustNegate ?? []), ...(q.expect?.wrongConclusions ?? [])];
+    return phrases.filter((p) => TENSE_AUXILIARIES.some((a) => p.includes(a))).map((p) => `${q.id}:「${p}」`);
+  });
+  push("no-tense-auxiliary-in-boundary", tenseAux.length === 0, tenseAux.length ? `含时态助词的边界短语：${tenseAux.join("、")}` : "mustNegate/wrongConclusions 无时态助词");
+
+  // 12. negationEquivalents 结构：键绑定同查询 mustNegate，等价短语须为完整命题（fix-reliability-scorer-mislabels 任务 3.2）
+  const equivProblems = queries.flatMap((q) => findNegationEquivalentsProblems(q, entityNames));
+  push("negation-equivalents-structure", equivProblems.length === 0, equivProblems.length ? `非法等价否定声明：${equivProblems.join("、")}` : "negationEquivalents 结构合法");
 
   return { tier: tierKey, ok: checks.every((c) => c.ok), checks };
 }

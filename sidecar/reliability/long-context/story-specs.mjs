@@ -110,9 +110,14 @@ export const STORY_SPECS = {
         description: "跨章关系：沈砚是表哥（第一章）+ 苏梅是母亲（第四章），需拼接两章推出甥舅关系。",
         question: "沈砚和苏梅是什么关系？",
         expect: {
-          factBoundary: { mustContain: ["外甥"], mustNegate: [] },
-          wrongConclusions: ["沈砚是苏梅的侄子", "沈砚是苏梅的儿子"],
-          allowedUncertainty: [],
+          // A 类修正（fix-reliability-scorer-mislabels 裁决终审）：材料只写「沈砚是苏晚的表哥，
+          // 是母亲这边的亲戚」（tier-10k 材料原文，无「外甥」字样），母亲这边的表哥分不清舅表
+          // （侄子）还是姨表（外甥），关系不可判定；两遍证据模型均诚实回答「未明确/可能侄子或外甥」。
+          // 故 mustContain 置空、「侄子」与材料相容移出错判清单（「儿子」被表哥身份排除，保留），
+          // 本案例转为容许不确定表达的边界。
+          factBoundary: { mustContain: [], mustNegate: [] },
+          wrongConclusions: ["沈砚是苏梅的儿子"],
+          allowedUncertainty: ["未知"],
           evidenceLocations: ["第一章", "第四章"],
           riskTags: ["cross-chapter-relation"],
         },
@@ -149,7 +154,13 @@ export const STORY_SPECS = {
         description: "相似实体：盐镇与盐城易混，苏晚住盐镇而非盐城。",
         question: "苏晚住在盐城吗？",
         expect: {
-          factBoundary: { mustContain: ["盐镇"], mustNegate: ["苏晚住在盐城"] },
+          // 等价否定形式取自证据原文：pass2「苏晚不住在盐城」、pass1「苏晚不是住在盐城」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-10k-pass1/2 cases/lc-10k-06.json）
+          factBoundary: {
+            mustContain: ["盐镇"],
+            mustNegate: ["苏晚住在盐城"],
+            negationEquivalents: { 苏晚住在盐城: ["苏晚不住在盐城", "不是住在盐城"] },
+          },
           wrongConclusions: ["苏晚住在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第二章"],
@@ -175,8 +186,14 @@ export const STORY_SPECS = {
         description: "版本冲突：工作已从盐镇中学变为出版社，应否定旧工作。",
         question: "苏晚现在还在盐镇中学教书吗？",
         expect: {
-          factBoundary: { mustContain: ["出版社"], mustNegate: ["苏晚还在盐镇中学教书"] },
-          wrongConclusions: ["苏晚还在盐镇中学教书"],
+          // 去时态助词（仍在 spec 语义内）；等价否定形式取自证据原文「辞去了盐镇中学的工作」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-10k-pass1/2 cases/lc-10k-08.json）
+          factBoundary: {
+            mustContain: ["出版社"],
+            mustNegate: ["苏晚在盐镇中学教书"],
+            negationEquivalents: { 苏晚在盐镇中学教书: ["辞去了盐镇中学的工作"] },
+          },
+          wrongConclusions: ["苏晚在盐镇中学教书"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章", "第六章"],
           riskTags: ["version-conflict"],
@@ -443,7 +460,8 @@ export const STORY_SPECS = {
         question: "陆遥现在在哪里工作？",
         expect: {
           factBoundary: { mustContain: ["摄影工作室"], mustNegate: [] },
-          wrongConclusions: ["陆遥还在城北的印刷厂工作"],
+          // 去时态助词「还在」（fix-reliability-scorer-mislabels 任务 3.4，校验器要求；证据中该短语零出现）
+          wrongConclusions: ["陆遥在城北的印刷厂工作"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["version-conflict"],
@@ -455,8 +473,14 @@ export const STORY_SPECS = {
         description: "版本冲突：已离开印刷厂，应否定旧工作。",
         question: "陆遥现在还在印刷厂工作吗？",
         expect: {
-          factBoundary: { mustContain: ["摄影工作室"], mustNegate: ["陆遥还在城北的印刷厂工作"] },
-          wrongConclusions: ["陆遥还在城北的印刷厂工作"],
+          // 去时态助词＋等价否定形式取自证据原文「陆遥现在不在印刷厂工作」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-30k-pass1/2 cases/lc-30k-11.json）
+          factBoundary: {
+            mustContain: ["摄影工作室"],
+            mustNegate: ["陆遥在城北的印刷厂工作"],
+            negationEquivalents: { 陆遥在城北的印刷厂工作: ["陆遥现在不在印刷厂工作"] },
+          },
+          wrongConclusions: ["陆遥在城北的印刷厂工作"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["version-conflict"],
@@ -520,7 +544,13 @@ export const STORY_SPECS = {
         description: "错误前提纠正：相机是父亲留下的，而非母亲。",
         question: "那台老式相机是母亲留给陆遥的吗？",
         expect: {
-          factBoundary: { mustContain: ["父亲"], mustNegate: ["老式相机是母亲留下的"] },
+          // 等价否定形式取自证据原文「而不是母亲留给陆遥的」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-30k-pass2 cases/lc-30k-16.json）
+          factBoundary: {
+            mustContain: ["父亲"],
+            mustNegate: ["老式相机是母亲留下的"],
+            negationEquivalents: { 老式相机是母亲留下的: ["而不是母亲留给陆遥的"] },
+          },
           wrongConclusions: ["老式相机是母亲留下的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章"],
@@ -794,7 +824,13 @@ export const STORY_SPECS = {
         description: "相似实体：望山集与望山岗易混，陈渡住望山集而非望山岗。",
         question: "陈渡住在望山岗吗？",
         expect: {
-          factBoundary: { mustContain: ["望山集"], mustNegate: ["陈渡住在望山岗"] },
+          // 等价否定形式取自证据原文「陈渡不住在望山岗」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-50k-pass1/2 cases/lc-50k-10.json）
+          factBoundary: {
+            mustContain: ["望山集"],
+            mustNegate: ["陈渡住在望山岗"],
+            negationEquivalents: { 陈渡住在望山岗: ["陈渡不住在望山岗"] },
+          },
           wrongConclusions: ["陈渡住在望山岗"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第八章"],
@@ -807,7 +843,11 @@ export const STORY_SPECS = {
         description: "相似实体：阿黎教书，与陈渡邮差不同，需区分兄妹二人。",
         question: "阿黎是做什么的？",
         expect: {
-          factBoundary: { mustContain: ["阿黎是老师"], mustNegate: [] },
+          // A 类修正（fix-reliability-scorer-mislabels 裁决终审）：mustContain「阿黎是老师」跨子句
+          // 主语省略（两遍答案实词均为「望山岗学校的老师」，主语在上一子句），连续与间隙匹配均
+          // 无法命中；改用两遍均出现且未被否定的「学校的老师」，「阿黎是邮差」继续兜底防假 PASS。
+          // 依据证据：lc-50k-pass1/2 cases/lc-50k-11.json。
+          factBoundary: { mustContain: ["学校的老师"], mustNegate: [] },
           wrongConclusions: ["阿黎是邮差"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第十一章"],
@@ -846,8 +886,15 @@ export const STORY_SPECS = {
         description: "版本冲突：已离开城西邮局，应否定旧岗位。",
         question: "陈渡现在还在城西的邮局工作吗？",
         expect: {
-          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["陈渡还在城西的邮局工作"] },
-          wrongConclusions: ["陈渡还在城西的邮局工作"],
+          // 去时态助词＋等价否定形式取自证据原文（pass1「陈渡已经不在城西的邮局工作」、
+          // pass2「陈渡现在不在城西的邮局工作」的公共子串「不在城西的邮局工作」）
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-50k-pass1/2 cases/lc-50k-14.json）
+          factBoundary: {
+            mustContain: ["鹿角镇"],
+            mustNegate: ["陈渡在城西的邮局工作"],
+            negationEquivalents: { 陈渡在城西的邮局工作: ["不在城西的邮局工作"] },
+          },
+          wrongConclusions: ["陈渡在城西的邮局工作"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章"],
           riskTags: ["version-conflict"],
@@ -911,7 +958,13 @@ export const STORY_SPECS = {
         description: "错误前提纠正：怀表是父亲留下的，而非母亲。",
         question: "陈渡的旧怀表是母亲留给他的吗？",
         expect: {
-          factBoundary: { mustContain: ["父亲"], mustNegate: ["旧怀表是母亲留给陈渡的"] },
+          // 等价否定形式取自证据原文（pass2「不是母亲留给他的」、pass1「不是母亲陈桂芳留的」）
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-50k-pass1/2 cases/lc-50k-19.json）
+          factBoundary: {
+            mustContain: ["父亲"],
+            mustNegate: ["旧怀表是母亲留给陈渡的"],
+            negationEquivalents: { 旧怀表是母亲留给陈渡的: ["不是母亲留给他的", "不是母亲陈桂芳留的"] },
+          },
           wrongConclusions: ["旧怀表是母亲留给陈渡的"],
           allowedUncertainty: [],
           evidenceLocations: ["第三章", "第四章"],
@@ -924,7 +977,13 @@ export const STORY_SPECS = {
         description: "错误前提纠正：问题误以为陈渡在望山岗负责邮路，实际是鹿角镇。",
         question: "陈渡是在望山岗负责邮路的吗？",
         expect: {
-          factBoundary: { mustContain: ["鹿角镇"], mustNegate: ["陈渡在望山岗负责邮路"] },
+          // 等价否定形式取自证据原文「而不是望山岗」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-50k-pass2 cases/lc-50k-20.json）
+          factBoundary: {
+            mustContain: ["鹿角镇"],
+            mustNegate: ["陈渡在望山岗负责邮路"],
+            negationEquivalents: { 陈渡在望山岗负责邮路: ["而不是望山岗"] },
+          },
           wrongConclusions: ["陈渡在望山岗负责邮路"],
           allowedUncertainty: [],
           evidenceLocations: ["第二章"],
@@ -937,7 +996,17 @@ export const STORY_SPECS = {
         description: "错误前提纠正：信从未拆开。",
         question: "陈渡把父亲留下的信拆开看了吗？",
         expect: {
-          factBoundary: { mustContain: ["信没有拆开"], mustNegate: ["陈渡拆开信看了"] },
+          // A 类修正（fix-reliability-scorer-mislabels 裁决终审）：mustContain「信没有拆开」语序与
+          // 自然答案不符（两遍答案实词均为「陈渡没有拆开父亲留下的信」，信在句末），连续与间隙匹配
+          // 均无法命中；改用「没有拆开」——两遍均以未被否定形式出现（「陈渡没有拆开」中「没有」在
+          // 短语内部，短语起始前的否定前窗为空）。mustNegate「陈渡拆开信看了」及其等价表继续兜底。
+          // 等价否定形式取自证据原文「没有拆开」。依据证据：lc-50k-pass1/2 cases/lc-50k-21.json
+          // （fix-reliability-scorer-mislabels 任务 3.4＋裁决终审）。
+          factBoundary: {
+            mustContain: ["没有拆开"],
+            mustNegate: ["陈渡拆开信看了"],
+            negationEquivalents: { 陈渡拆开信看了: ["没有拆开"] },
+          },
           wrongConclusions: ["陈渡拆开信看了"],
           allowedUncertainty: [],
           evidenceLocations: ["第六章"],
@@ -1127,7 +1196,13 @@ export const STORY_SPECS = {
         description: "相似实体：盐镇与盐城易混，林晚住盐镇而非盐城。",
         question: "林晚住在盐城吗？",
         expect: {
-          factBoundary: { mustContain: ["盐镇"], mustNegate: ["林晚住在盐城"] },
+          // 等价否定形式取自证据原文「林晚不住在盐城」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-coherent-pass2 cases/lc-coherent-06.json）
+          factBoundary: {
+            mustContain: ["盐镇"],
+            mustNegate: ["林晚住在盐城"],
+            negationEquivalents: { 林晚住在盐城: ["林晚不住在盐城"] },
+          },
           wrongConclusions: ["林晚住在盐城"],
           allowedUncertainty: [],
           evidenceLocations: ["第一章", "第三章"],
@@ -1153,8 +1228,14 @@ export const STORY_SPECS = {
         description: "版本冲突：工作已从盐镇中学变为出版社，应否定旧工作。",
         question: "林晚现在还在盐镇中学教书吗？",
         expect: {
-          factBoundary: { mustContain: ["出版社"], mustNegate: ["林晚还在盐镇中学教书"] },
-          wrongConclusions: ["林晚还在盐镇中学教书"],
+          // 去时态助词＋等价否定形式取自证据原文「辞去了盐镇中学的工作」
+          // （fix-reliability-scorer-mislabels 任务 3.4；证据 lc-coherent-pass1/2 cases/lc-coherent-08.json）
+          factBoundary: {
+            mustContain: ["出版社"],
+            mustNegate: ["林晚在盐镇中学教书"],
+            negationEquivalents: { 林晚在盐镇中学教书: ["辞去了盐镇中学的工作"] },
+          },
+          wrongConclusions: ["林晚在盐镇中学教书"],
           allowedUncertainty: [],
           evidenceLocations: ["第五章", "第六章"],
           riskTags: ["version-conflict"],

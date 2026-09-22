@@ -169,16 +169,15 @@
       "steps": [],
       "expect": {
         "factBoundary": {
-          "mustContain": [
-            "外甥"
-          ],
+          "mustContain": [],
           "mustNegate": []
         },
         "wrongConclusions": [
-          "沈砚是苏梅的侄子",
           "沈砚是苏梅的儿子"
         ],
-        "allowedUncertainty": [],
+        "allowedUncertainty": [
+          "未知"
+        ],
         "evidenceLocations": [
           "第一章",
           "第四章"
@@ -274,7 +273,13 @@
           ],
           "mustNegate": [
             "苏晚住在盐城"
-          ]
+          ],
+          "negationEquivalents": {
+            "苏晚住在盐城": [
+              "苏晚不住在盐城",
+              "不是住在盐城"
+            ]
+          }
         },
         "wrongConclusions": [
           "苏晚住在盐城"
@@ -340,11 +345,16 @@
             "出版社"
           ],
           "mustNegate": [
-            "苏晚还在盐镇中学教书"
-          ]
+            "苏晚在盐镇中学教书"
+          ],
+          "negationEquivalents": {
+            "苏晚在盐镇中学教书": [
+              "辞去了盐镇中学的工作"
+            ]
+          }
         },
         "wrongConclusions": [
-          "苏晚还在盐镇中学教书"
+          "苏晚在盐镇中学教书"
         ],
         "allowedUncertainty": [],
         "evidenceLocations": [

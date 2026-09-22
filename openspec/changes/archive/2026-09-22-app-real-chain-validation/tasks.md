@@ -16,8 +16,8 @@
 
 ## 3. 验证准备
 
-- [ ] 3.1 本地 release 测试版构建（devtools 可用）
-- [ ] 3.2 验证用作品准备：多文档＋唯一关键词分布、隐藏文档、跨文档命中词、讨论档案；场景判据表按 design D6 逐条落成可勾选清单
+- [x] 3.1 本地 release 测试版构建（devtools 可用）——共建三次（09-21 21:20 基线／09-22 02:04 三档／09-22 09:57 四档终版，均带 `--remote-debugging-port`）
+- [x] 3.2 验证用作品准备：多文档＋唯一关键词分布、隐藏文档、跨文档命中词、讨论档案；场景判据表按 design D6 逐条落成可勾选清单——P1/P2/P3 全部勾账（session-checklist.md 准备节）；四篇文档＋隐藏篇＋未保存行就位
 - [x] 3.3 CDP 驱动仪器（`verification/driver.mjs`：eval／click／clickText／type／key／shot／wait），供代理驱动验证会话与 D 组重建复用（design D1 2026-09-21 修订：代理驱动＋用户抽查）
 
 ## 4. 应用级验证会话（用户在场；智谱 coding 端点 glm-5.3）

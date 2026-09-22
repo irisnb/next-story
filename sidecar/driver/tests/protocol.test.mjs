@@ -89,6 +89,35 @@ test("driver.mjs 注册四件套工具面且只桥接：不读取作品文件、
   assert.ok(DRIVER_SRC.includes("settlePendingToolCall"), "必须有挂起调用的落定路径（取消/迟到丢弃）");
 });
 
+// ── batch-improvement-candidates ②（design D5）：拒绝载荷可选 recovery 契约 ──
+// 真相源记录 error.recovery 与授权拒绝结果内的 recovery；生产 driver.mjs 的拒绝
+// 落定必须透传宿主提供的 recovery（有则携带、无则不造），Rust 侧序列化契约由
+// dsh_driver.rs 的 tool_result_error_recovery_is_opt_in_and_documented_in_protocol 钉死。
+test("tool_result 拒绝落定透传可选 recovery：真相源已记录，缺失不造", () => {
+  const protocol = loadProtocol();
+  const toolResult = protocol.commands.find((c) => c.name === "tool_result");
+  assert.ok(toolResult, "protocol.json 必须记录 tool_result 命令");
+  assert.match(
+    toolResult.fields.error,
+    /recovery/,
+    "error 字段说明必须记录可选 recovery（结构化拒绝 {reason, recovery?}）",
+  );
+  assert.match(
+    toolResult.fields.result,
+    /recovery/,
+    "授权拒绝结果 {granted:false} 内的 recovery 也必须在 result 字段说明中记录",
+  );
+  // 生产驱动透传锚点：拒绝落定读取 cmd.error?.recovery 且按存在性携带（非无条件展开）。
+  assert.ok(
+    DRIVER_SRC.includes("cmd.error?.recovery"),
+    "driver.mjs 拒绝落定必须读取并透传宿主提供的 recovery",
+  );
+  assert.ok(
+    DRIVER_SRC.includes('denial.recovery = cmd.error.recovery'),
+    "recovery 只在宿主提供非空字符串时携带（缺失不造）",
+  );
+});
+
 // ── 任务 8.1（设计 D10）：max_tokens 命令行配置链的驱动侧锚点 ─────────────────
 test("driver.mjs 解析 --max-tokens，缺省维持 131072（透传来自宿主的可选配置）", () => {
   assert.ok(

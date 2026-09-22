@@ -12,6 +12,10 @@
 //!   事件与命令接口，且全部可在无 UI 情况下被 Rust 测试直接调用。
 //! - 及时召唤首轮硬门禁（设计 D13，任务 5.5）：路由上下文携带 `hard_gate` 时，
 //!   全部补读工具调用（含授权请求）一律结构化拒绝（`on_demand_reading_unauthorized`）。
+//! - 拒绝恢复提示（batch-improvement-candidates ②，design D5）：未授权系与补读
+//!   停止两类拒绝回填携带稳定英文恢复路径提示（协议 `error.recovery`，指向
+//!   `story-request-reading` 与讨论面板授权，不指向不存在的开关）；用户「本次
+//!   不允许」的 `{granted:false}` 结果内附同一恢复串。
 //! - 迟到丢弃（任务 5.3）：讨论 / 会话身份失效或轮次已取消时，迟到的授权决定由
 //!   驱动侧拒绝（`tool_call_not_found`），不污染其他讨论；宿主侧待决表只认
 //!   call_id + 会话身份双重匹配。
@@ -474,6 +478,7 @@ impl StoryToolChannel {
                     false,
                     None,
                     Some("on_demand_reading_unauthorized".to_string()),
+                    Some(RECOVERY_READING_UNAUTHORIZED),
                 );
                 return;
             };
@@ -487,6 +492,7 @@ impl StoryToolChannel {
                     false,
                     None,
                     Some("on_demand_reading_unauthorized".to_string()),
+                    Some(RECOVERY_READING_UNAUTHORIZED),
                 );
                 return;
             }
@@ -494,6 +500,7 @@ impl StoryToolChannel {
             let call = match parse_story_tool_call(&payload.tool, &payload.args) {
                 Ok(call) => call,
                 Err(reason) => {
+                    // 参数非法没有恢复路径提示（改参数重试是模型本来就会做的）。
                     let _ = driver.send_tool_result(
                         &payload.session_id,
                         &payload.message_id,
@@ -501,6 +508,7 @@ impl StoryToolChannel {
                         false,
                         None,
                         Some(reason),
+                        None,
                     );
                     return;
                 }
@@ -520,6 +528,7 @@ impl StoryToolChannel {
                         false,
                         None,
                         Some("work_mismatch".to_string()),
+                        None,
                     );
                     return;
                 }
@@ -539,7 +548,8 @@ impl StoryToolChannel {
                 let mut rounds = lock(&this.rounds);
                 let state = rounds.entry(context.conversation_id.clone()).or_default();
                 if state.fused {
-                    // D5：保险丝已触发，该轮后续补读一律结构化「补读已停止」。
+                    // D5：保险丝已触发，该轮后续补读一律结构化「补读已停止」，
+                    // 附稳定恢复路径提示（基于已收集材料回答，用户可重新开启）。
                     let _ = driver.send_tool_result(
                         &payload.session_id,
                         &payload.message_id,
@@ -547,6 +557,7 @@ impl StoryToolChannel {
                         false,
                         None,
                         Some("reading_stopped".to_string()),
+                        Some(RECOVERY_READING_STOPPED),
                     );
                     return;
                 }
@@ -578,13 +589,19 @@ impl StoryToolChannel {
             ) {
                 Ok(authorization) => authorization,
                 Err(denial) => {
+                    // 授权解析失败：未授权系拒绝（含硬门禁 ForceUnauthorized 与
+                    // 档案无授权）携带恢复路径提示；其余原因（如待恢复事务现场）
+                    // 无既定恢复常量，不携带。
+                    let reason = denial_reason_label(denial.reason);
+                    let recovery = recovery_hint_for_reason(&reason);
                     let _ = driver.send_tool_result(
                         &payload.session_id,
                         &payload.message_id,
                         &payload.call_id,
                         false,
                         None,
-                        Some(denial_reason_label(denial.reason)),
+                        Some(reason),
+                        recovery,
                     );
                     return;
                 }
@@ -598,13 +615,18 @@ impl StoryToolChannel {
                             .or_default()
                             .note_reading_arrival_completed(Duration::ZERO, &this.fuse_config);
                     }
+                    // 前置决策拒绝（版本失配停读）：恢复动作是下一轮读最新版，
+                    // 不属于既定恢复常量，不携带提示。
+                    let reason = denial_reason_label(reason);
+                    let recovery = recovery_hint_for_reason(&reason);
                     let _ = driver.send_tool_result(
                         &payload.session_id,
                         &payload.message_id,
                         &payload.call_id,
                         false,
                         None,
-                        Some(denial_reason_label(reason)),
+                        Some(reason),
+                        recovery,
                     );
                     return;
                 }
@@ -622,6 +644,7 @@ impl StoryToolChannel {
                         &payload.call_id,
                         true,
                         result,
+                        None,
                         None,
                     );
                     return;
@@ -748,16 +771,22 @@ impl StoryToolChannel {
                         true,
                         result,
                         None,
+                        None,
                     );
                 }
                 Err(denial) => {
+                    // 执行器拒绝：按标签映射恢复提示（未授权系 / 补读停止有既定
+                    // 常量；版本失配、参数非法等不携带）。
+                    let reason = denial_reason_label(denial.reason);
+                    let recovery = recovery_hint_for_reason(&reason);
                     let _ = driver.send_tool_result(
                         &payload.session_id,
                         &payload.message_id,
                         &payload.call_id,
                         false,
                         None,
-                        Some(denial_reason_label(denial.reason)),
+                        Some(reason),
+                        recovery,
                     );
                 }
             }
@@ -778,7 +807,9 @@ impl StoryToolChannel {
 
     /// 用户对授权请求的决定（任务 5.2；前端命令 `ai_resolve_reading_request`
     /// 或测试注入）。granted → 写授权档案 + 回填 `{granted: true}`；
-    /// denied → 回填 `{granted: false}`（拒绝是合法结果，模型继续有限回答）。
+    /// denied → 回填 `{granted: false, recovery}`（拒绝是合法结果，模型继续有限
+    /// 回答；恢复路径提示与未授权系拒绝同一常量，design D5——用户可在讨论面板
+    /// 主动开启，新问题可再请求）。
     ///
     /// 迟到 / 未知 call_id、会话身份不符：失败关闭，不动档案。
     /// 授权属于讨论：即使原轮已被取消，granted 仍写入档案（后续轮次生效），
@@ -809,13 +840,21 @@ impl StoryToolChannel {
             grant_on_demand_reading(&request.project_root, &request.conversation_id)
                 .map_err(|e| e.to_string())?;
         }
+        // 拒绝结果是工具结果内容（ok=true 的 result），不是 error 载荷；恢复提示
+        // 放在结果对象内，与 error.recovery 同一常量、同一语义。
+        let result = if granted {
+            serde_json::json!({ "granted": true })
+        } else {
+            serde_json::json!({ "granted": false, "recovery": RECOVERY_READING_UNAUTHORIZED })
+        };
         driver
             .send_tool_result(
                 &request.session_id,
                 &request.message_id,
                 call_id,
                 true,
-                Some(serde_json::json!({ "granted": granted })),
+                Some(result),
+                None,
                 None,
             )
             .map_err(|e| e.message.clone())
@@ -850,6 +889,24 @@ fn denial_reason_label(reason: StoryToolDenialReason) -> String {
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_else(|| "tool_failed".to_string())
+}
+
+/// 未授权系拒绝的稳定恢复路径提示（design D5，batch-improvement-candidates ②，
+/// 逐字使用）：面向模型的英文常量，与 reason 同理不做自由文本。
+const RECOVERY_READING_UNAUTHORIZED: &str = "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.";
+
+/// 补读停止（保险丝）拒绝的稳定恢复路径提示（design D5，逐字使用）。
+const RECOVERY_READING_STOPPED: &str = "Reading was stopped. Answer from materials already collected; the user may re-enable reading in the discussion panel.";
+
+/// 拒绝标签 → 稳定恢复路径提示：只对有既定恢复路径的两类拒绝（未授权系 /
+/// 补读停止）给提示；其余拒绝（参数非法、版本失配、作品现场待恢复等）没有
+/// 可执行的自救动作，不携带提示（协议 `error.recovery` 为 opt-in）。
+fn recovery_hint_for_reason(reason: &str) -> Option<&'static str> {
+    match reason {
+        "on_demand_reading_unauthorized" => Some(RECOVERY_READING_UNAUTHORIZED),
+        "reading_stopped" => Some(RECOVERY_READING_STOPPED),
+        _ => None,
+    }
 }
 
 /// 出处按轮累计 upsert（设计 D12，任务 6.2）：同一（轮, 文档）只保留一条最小
@@ -1013,7 +1070,8 @@ setInterval(() => {}, 1000);
 "#;
 
     // 假驱动：send_message → message_sent → tool_call(story-read)；tool_result →
-    // message_done（成功回显 result JSON / 拒绝回显 reason）。doc_id 注入真实文档身份。
+    // message_done（成功回显 result JSON / 拒绝回显 reason 与可选 recovery）。
+    // doc_id 注入真实文档身份。
     fn read_bridge_driver(doc_id: &str) -> String {
         let head = r#"
 import readline from 'node:readline';
@@ -1030,7 +1088,9 @@ rl.on('line', (line) => {
     console.log(JSON.stringify({ type: 'tool_call', session_id: cmd.session_id, message_id: cmd.message_id, call_id: 'call-1', tool: 'story-read', args: { document_id: "__DOC_ID__" } }));
   } else if (cmd.type === 'tool_result') {
     const mid = currentMsg.get(cmd.session_id);
-    const text = cmd.ok === true ? JSON.stringify(cmd.result ?? {}) : 'denied:' + (cmd.error?.reason ?? 'tool_failed');
+    const text = cmd.ok === true
+      ? JSON.stringify(cmd.result ?? {})
+      : 'denied:' + (cmd.error?.reason ?? 'tool_failed') + (cmd.error?.recovery ? '|recovery:' + cmd.error.recovery : '');
     console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: mid, text }));
 "#;
         head.replace("__DOC_ID__", doc_id) + DRIVER_TAIL
@@ -1057,7 +1117,9 @@ rl.on('line', (line) => {
     console.log(JSON.stringify({ type: 'message_failed', session_id: cmd.session_id, message_id: mid, code: 'cancelled', message: '已取消' }));
   } else if (cmd.type === 'tool_result') {
     const mid = currentMsg.get(cmd.session_id);
-    const text = cmd.result?.granted === true ? '授权通过，继续回答' : '未获授权，有限回答';
+    const text = cmd.result?.granted === true
+      ? '授权通过，继续回答'
+      : '未获授权，有限回答' + (cmd.result?.recovery ? '|recovery:' + cmd.result.recovery : '');
     console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: mid, text }));
 "#;
         head.to_string() + DRIVER_TAIL
@@ -1158,7 +1220,9 @@ rl.on('line', (line) => {
   } else if (cmd.type === 'tool_result') {
     const q = queues.get(cmd.session_id);
     if (!q) { emit({ type: 'error', session_id: cmd.session_id, message_id: currentMsg.get(cmd.session_id), code: 'tool_call_not_found', message: 'no pending call' }); return; }
-    q.acc.push(cmd.ok === true ? (cmd.result ?? {}) : { denied: cmd.error?.reason ?? 'tool_failed' });
+    q.acc.push(cmd.ok === true
+      ? (cmd.result ?? {})
+      : { denied: cmd.error?.reason ?? 'tool_failed', ...(cmd.error?.recovery !== undefined ? { recovery: cmd.error.recovery } : {}) });
     step(cmd.session_id);
   } else if (cmd.type === 'cancel_message') {
     queues.delete(cmd.session_id);
@@ -1306,6 +1370,11 @@ setInterval(() => {}, 1000);
             "未授权拒绝应回到模型: {}",
             outcome.text
         );
+        assert!(
+            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "未授权拒绝应携带稳定恢复路径提示: {}",
+            outcome.text
+        );
 
         // 拒绝不落出处、不写授权。
         let record = read_conversation(&root, "conv-2").expect("read archive");
@@ -1395,7 +1464,16 @@ setInterval(() => {}, 1000);
             .resolve_reading_request("s2", &call2, false)
             .expect("resolve denied");
         let outcome2 = send2.join().expect("send 线程二").expect("拒绝后有限回答");
-        assert_eq!(outcome2.text, "未获授权，有限回答");
+        assert!(
+            outcome2.text.starts_with("未获授权，有限回答"),
+            "拒绝是合法结果，模型转有限回答: {}",
+            outcome2.text
+        );
+        assert!(
+            outcome2.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "用户拒绝的回填结果应携带恢复路径提示（可在讨论面板开启、新问题可再请求）: {}",
+            outcome2.text
+        );
         let record_b = read_conversation(&root, "conv-3b").expect("read archive b");
         assert!(record_b.on_demand_reading_grant.is_none(), "拒绝不写授权");
 
@@ -1488,6 +1566,11 @@ setInterval(() => {}, 1000);
             "硬门禁拒绝应回到模型: {}",
             outcome.text
         );
+        assert!(
+            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "硬门禁拒绝应携带恢复路径提示（后续追问可再申请授权）: {}",
+            outcome.text
+        );
 
         // 授权请求也被硬门禁拒绝（不发起面向用户的提示）。
         let request = tool_call(
@@ -1531,6 +1614,11 @@ setInterval(() => {}, 1000);
         assert!(
             outcome.text.contains("on_demand_reading_unauthorized"),
             "无路由上下文必须失败关闭: {}",
+            outcome.text
+        );
+        assert!(
+            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "无路由上下文的失败关闭拒绝同样携带恢复路径提示: {}",
             outcome.text
         );
         assert!(
@@ -1915,6 +2003,10 @@ setInterval(() => {}, 1000);
                 result["denied"], "story_version_changed",
                 "第 {index} 次读取应因版本失配停读: {result}"
             );
+            assert!(
+                result.get("recovery").is_none(),
+                "版本失配没有既定恢复常量，不得携带提示: {result}"
+            );
         }
         manager.shutdown_best_effort();
     }
@@ -2127,6 +2219,16 @@ setInterval(() => {}, 1000);
         assert_eq!(
             acc[3]["denied"], "reading_stopped",
             "后续一律停: {}",
+            acc[3]
+        );
+        assert_eq!(
+            acc[2]["recovery"], RECOVERY_READING_STOPPED,
+            "保险丝拒绝应携带稳定恢复路径提示: {}",
+            acc[2]
+        );
+        assert_eq!(
+            acc[3]["recovery"], RECOVERY_READING_STOPPED,
+            "该轮后续补读停止同样携带提示: {}",
             acc[3]
         );
         manager.shutdown_best_effort();

@@ -77,11 +77,16 @@ pub enum DriverCommand {
     },
 }
 
-/// 工具结果的结构化拒绝负载（协议 `tool_result.error`）：只携带稳定 reason，
-/// 绝不携带作品内容。
+/// 工具结果的结构化拒绝负载（协议 `tool_result.error`）：只携带稳定 reason 与
+/// 可选的稳定恢复路径提示（`recovery`，面向模型；batch-improvement-candidates
+/// ②，design D5），绝不携带作品内容。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ToolResultErrorPayload {
     pub reason: String,
+    /// 可选稳定恢复路径提示（英文常量，由宿主通道按 reason 填充）：无既定
+    /// 恢复路径的拒绝不携带；序列化时无值不出现该字段。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<String>,
 }
 
 /// 崩溃恢复的历史轮次（前端显示历史的增量投影，不含任何作品文件内容）。
@@ -786,6 +791,9 @@ impl DshDriverManager {
 
     /// 回填工具结果并解除该消息的挂起（任务 5.2；D8：恢复 = 工具结果返回）。
     /// 驱动侧对未知 / 已取消的 call_id 回 `tool_call_not_found` 错误（迟到丢弃）。
+    /// `recovery` 是拒绝的可选稳定恢复路径提示（协议 `error.recovery`，design
+    /// D5）：随 error 载荷一起透传给模型，无恢复路径的拒绝传 `None`。
+    #[allow(clippy::too_many_arguments)]
     pub fn send_tool_result(
         &self,
         session_id: &str,
@@ -794,13 +802,17 @@ impl DshDriverManager {
         ok: bool,
         result: Option<serde_json::Value>,
         error_reason: Option<String>,
+        recovery: Option<&str>,
     ) -> Result<(), GenerateAiError> {
         let cmd = DriverCommand::ToolResult {
             session_id: session_id.to_string(),
             call_id: call_id.to_string(),
             ok,
             result,
-            error: error_reason.map(|reason| ToolResultErrorPayload { reason }),
+            error: error_reason.map(|reason| ToolResultErrorPayload {
+                reason,
+                recovery: recovery.map(str::to_string),
+            }),
         };
         self.write_command(&cmd)?;
         self.inner.resume(message_id);
@@ -1640,7 +1652,7 @@ mod tests {
     }
 
     /// 任务 5.2：tool_result 命令的协议形状——成功携带 result；拒绝跳过 result、
-    /// 携带 error.reason 且不含任何作品内容。
+    /// 携带 error.reason 且不含任何作品内容；无恢复路径的拒绝不出现 recovery 字段。
     #[test]
     fn tool_result_command_serializes_to_protocol_shapes() {
         let ok = serde_json::to_value(DriverCommand::ToolResult {
@@ -1664,16 +1676,89 @@ mod tests {
             result: None,
             error: Some(ToolResultErrorPayload {
                 reason: "on_demand_reading_unauthorized".into(),
+                recovery: None,
             }),
         })
         .unwrap();
         assert_eq!(denied["ok"], false);
         assert_eq!(denied["error"]["reason"], "on_demand_reading_unauthorized");
+        assert!(
+            denied["error"].get("recovery").is_none(),
+            "无恢复路径的拒绝不得出现 recovery 字段"
+        );
         assert!(denied.get("result").is_none(), "拒绝不得携带结果字段");
         let text = denied.to_string();
         for forbidden in ["content", "body", "正文"] {
             assert!(!text.contains(forbidden), "拒绝帧不得携带作品内容: {text}");
         }
+    }
+
+    /// batch-improvement-candidates ②（design D5）：`error.recovery` 是可选字段——
+    /// 含时逐字透传、不含时不出现；旧形态（无 recovery）仍可反序列化；真相源
+    /// protocol.json 对 `error.recovery` 与授权拒绝结果内的 recovery 都有记录。
+    #[test]
+    fn tool_result_error_recovery_is_opt_in_and_documented_in_protocol() {
+        const UNAUTHORIZED_RECOVERY: &str = "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.";
+
+        // 含 recovery：字段出现且逐字透传（不翻译、不改写）。
+        let with_recovery = serde_json::to_value(DriverCommand::ToolResult {
+            session_id: "s1".into(),
+            call_id: "call-1".into(),
+            ok: false,
+            result: None,
+            error: Some(ToolResultErrorPayload {
+                reason: "on_demand_reading_unauthorized".into(),
+                recovery: Some(UNAUTHORIZED_RECOVERY.into()),
+            }),
+        })
+        .unwrap();
+        assert_eq!(
+            with_recovery["error"]["reason"],
+            "on_demand_reading_unauthorized"
+        );
+        assert_eq!(with_recovery["error"]["recovery"], UNAUTHORIZED_RECOVERY);
+
+        // 不含 recovery：opt-in，不造空值。
+        let without_recovery = serde_json::to_value(ToolResultErrorPayload {
+            reason: "invalid_parameters".into(),
+            recovery: None,
+        })
+        .unwrap();
+        assert_eq!(without_recovery["reason"], "invalid_parameters");
+        assert!(without_recovery.get("recovery").is_none());
+
+        // 旧形态（无 recovery 的拒绝帧）仍可解析：双端灰度期不破协议。
+        let legacy: ToolResultErrorPayload =
+            serde_json::from_str(r#"{"reason":"reading_stopped"}"#).unwrap();
+        assert_eq!(legacy.reason, "reading_stopped");
+        assert_eq!(legacy.recovery, None);
+
+        // 真相源 protocol.json：tool_result 的 error 与 result 字段说明都记录 recovery。
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("sidecar")
+            .join("driver")
+            .join("protocol.json");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("读取 protocol.json 失败：{e}"));
+        let value: serde_json::Value =
+            serde_json::from_str(&text).expect("protocol.json 必须是合法 JSON");
+        let tool_result = value["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["name"] == "tool_result")
+            .expect("protocol.json 必须记录 tool_result 命令");
+        let error_doc = tool_result["fields"]["error"].as_str().unwrap_or_default();
+        assert!(
+            error_doc.contains("recovery"),
+            "error 字段说明必须记录可选 recovery：{error_doc}"
+        );
+        let result_doc = tool_result["fields"]["result"].as_str().unwrap_or_default();
+        assert!(
+            result_doc.contains("recovery"),
+            "授权拒绝结果内的 recovery 也必须在 result 字段说明中记录：{result_doc}"
+        );
     }
 
     /// provider 发送回执（add-automatic-story-context）：`message_sent` 帧可解析；

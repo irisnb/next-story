@@ -81,8 +81,8 @@
         "session_id": "必填，string。",
         "call_id": "必填，string。所回应的 tool_call 身份。",
         "ok": "必填，boolean。宿主侧执行是否成功。",
-        "result": "ok=true 时出现，object。宿主执行出的结构化结果（如目录列表、正文材料、授权决定 granted/denied）。",
-        "error": "ok=false 时出现，object。结构化拒绝 {reason, ...}；拒绝时不得携带作品内容。"
+        "result": "ok=true 时出现，object。宿主执行出的结构化结果（如目录列表、正文材料、授权决定 granted/denied）。授权拒绝结果 {granted:false} 可在对象内携带可选 recovery（string，面向模型的稳定恢复路径提示，语义同 error.recovery；batch-improvement-candidates ②/design D5）。",
+        "error": "ok=false 时出现，object。结构化拒绝 {reason, recovery?}；拒绝时不得携带作品内容。recovery 可选，string：面向模型的稳定恢复路径提示（如可通过 story-request-reading 重新申请授权、用户可在讨论面板开启），只有存在既定恢复路径的拒绝（未授权系 / 补读停止）才携带，无则不出现。"
       },
       "description": "宿主回填工具执行结果（设计 D2）；驱动把结果喂回模型会话并继续挂起轮次。生产桥接已随 add-agent-on-demand-reading 任务组 5 落地；迟到 / 未知 / 已取消的 call_id 被驱动拒绝（tool_call_not_found），不重开调用。"
     }

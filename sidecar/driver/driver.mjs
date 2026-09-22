@@ -436,12 +436,18 @@ async function handleCommand(cmd) {
     case "tool_result": {
       // 宿主回填工具结果（任务 5.2）：成功/拒绝都作为工具结果喂回模型并继续原轮。
       // 迟到 / 未知 / 已取消的 call_id 一律拒绝，不重开调用（5.3 迟到丢弃）。
+      // 拒绝落定透传宿主提供的可选 recovery（协议 tool_result.error.recovery，
+      // batch-improvement-candidates ②/design D5）：有则携带、无则不造。
       const session = sessions.get(sid);
       if (!session) return emit({ type: "error", session_id: sid, code: "session_not_found", message: "会话不存在" });
       const callId = typeof cmd.call_id === "string" ? cmd.call_id : "";
+      const denial = { denied: true, reason: cmd.error?.reason ?? "tool_failed" };
+      if (typeof cmd.error?.recovery === "string" && cmd.error.recovery !== "") {
+        denial.recovery = cmd.error.recovery;
+      }
       if (!callId || !settlePendingToolCall(session, callId, cmd.ok === true
         ? (cmd.result ?? {})
-        : { denied: true, reason: cmd.error?.reason ?? "tool_failed" })) {
+        : denial)) {
         return emit({
           type: "error", session_id: sid, message_id: session.currentMessageId,
           code: "tool_call_not_found", message: "没有该身份的挂起工具调用",

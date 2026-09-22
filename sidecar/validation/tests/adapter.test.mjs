@@ -168,6 +168,66 @@ test("9.1 熔断触发后：补读调用收到 reading_stopped，模型基于已
   assert.ok(!res2.some((m) => m.material || m.documents), "熔断拒绝不得携带材料");
 });
 
+// ── batch-improvement-candidates ②（design D5）：拒绝载荷可选 recovery 契约 ──
+// 真相源记录该字段；替身对含 / 不含 recovery 的拒绝与授权拒绝结果都照常收束
+// （新字段不破坏协议面）。Rust 侧序列化双形态契约由 dsh_driver.rs 测试钉死。
+test("tool_result.error 可选 recovery：真相源已记录，含/不含都照常收束", () => {
+  const protocol = loadProtocol();
+  const toolResultEntry = protocol.commands.find((c) => c.name === "tool_result");
+  assert.ok(toolResultEntry, "protocol.json 必须记录 tool_result 命令");
+  assert.match(toolResultEntry.fields.error, /recovery/, "error 字段说明必须记录可选 recovery");
+
+  const a = createDeterministicAdapter();
+  start(a);
+  // 含 recovery 的结构化拒绝：轮次照常继续，回应引用拒绝原因。
+  const first = toolRound(a, { messageId: "m1", callId: "call-1", tool: "story-read", args: { workId: "work-wuzhen", documentId: "doc-01" } });
+  const res1 = toolResult(a, first.call, {
+    ok: false,
+    error: {
+      reason: "on_demand_reading_unauthorized",
+      recovery: "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.",
+    },
+  });
+  const done1 = res1.find((m) => m.type === "message_done");
+  assert.ok(done1, "携带 recovery 的拒绝照常继续同一轮（不表现为系统故障）");
+  assert.match(done1.text, /on_demand_reading_unauthorized/, "回应引用拒绝原因");
+
+  // 不含 recovery 的旧形态拒绝：向后兼容，同样照常收束。
+  const second = toolRound(a, { messageId: "m2", callId: "call-2", tool: "story-read", args: { workId: "work-wuzhen", documentId: "doc-01" } });
+  const res2 = toolResult(a, second.call, { ok: false, error: { reason: "reading_stopped" } });
+  const done2 = res2.find((m) => m.type === "message_done");
+  assert.ok(done2, "无 recovery 的旧形态拒绝不破协议");
+  assert.match(done2.text, /reading_stopped/, "回应引用补读停止原因");
+});
+
+test("授权拒绝结果 {granted:false, recovery}：恢复提示随结果透传，替身照常转有限回答", () => {
+  const protocol = loadProtocol();
+  const toolResultEntry = protocol.commands.find((c) => c.name === "tool_result");
+  assert.match(
+    toolResultEntry.fields.result,
+    /recovery/,
+    "授权拒绝结果内的 recovery 必须在 result 字段说明中记录",
+  );
+
+  const a = createDeterministicAdapter();
+  start(a);
+  const { call } = toolRound(a, {
+    tool: "story-request-reading",
+    args: { workId: "work-wuzhen", reason: "需要参考第一幕的伏笔" },
+  });
+  const res = toolResult(a, call, {
+    ok: true,
+    result: {
+      granted: false,
+      recovery: "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.",
+    },
+  });
+  const done = res.find((m) => m.type === "message_done");
+  assert.ok(done, "携带 recovery 的授权拒绝结果照常转有限回答");
+  assert.match(done.text, /未获得/, "回应明确转有限回答");
+  assert.ok(!res.some((m) => m.material || m.documents), "拒绝结果不得携带材料内容");
+});
+
 // ── story-list：目录回填后继续生成 ───────────────────────────────────────────
 test("story-list 成功：目录结果回到同一轮，回应引用数量", () => {
   const a = createDeterministicAdapter();

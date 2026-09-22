@@ -1,7 +1,7 @@
 # automatic-story-context Specification
 
 ## Purpose
-TBD - created by archiving change add-automatic-story-context. Update Purpose after archive.
+规定常规讨论的自动现场材料：首轮与追问按发送时刻冻结关注文档现场（已保存正文或经校验的未保存快照），自动附带允许目录投影，并由后端做确定性的跨文档字面检索（候选词、文档数与片段数有输出硬上限）。材料出处与限制可查看，发送确认仅凭 message_sent 回执，取材零写回、讨论间隔离，及时召唤不经过常规取材。
 ## Requirements
 ### Requirement: 常规讨论按发送时刻冻结关注文档现场材料
 系统 SHALL 在常规直接提问首轮和常规追问发送时，按讨论明确绑定的关注文档取得发送时刻的允许材料，并 SHALL 将该材料随本轮请求一起进入模型上下文。查看其他文档 MUST NOT 改变讨论的关注对象；只有明确的切换操作才改变关注文档，且切换 MUST 在下一轮生效。

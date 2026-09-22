@@ -1,7 +1,7 @@
 # conversation-management Specification
 
 ## Purpose
-TBD - created by archiving change add-conversation-persistence-and-isolation. Update Purpose after archive.
+规定讨论的管理身份与隔离规则：每个讨论有全局唯一身份、归属一部作品并绑定发起时的关注文档，新召唤、直接提问与新建对话都开启新讨论并保留旧讨论。同一讨论至多一轮请求进行中，取消、停止与迟到结果按讨论隔离；删除是独立动作，重开不自动重发。
 ## Requirements
 ### Requirement: 每个讨论拥有全局唯一身份
 

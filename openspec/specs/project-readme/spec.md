@@ -1,7 +1,7 @@
 # project-readme Specification
 
 ## Purpose
-TBD - created by archiving change refresh-project-readme. Update Purpose after archive.
+规定 README 的内容契约：按读者理解路径组织，区分已实现事实、未来方向与永久边界，说明各类数据的位置、单向架构与数据流、命令分组与文件索引。README 公开使命但不把使命冒充当前能力，使用使命级统一语言与权威链接。
 ## Requirements
 ### Requirement: README follows the reader's understanding path
 项目 README SHALL 面向项目所有者和开发初学者，先说明项目身份与当前里程碑，再说明能力边界、数据位置、技术路径、运行方式和文件入口。

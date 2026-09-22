@@ -1,7 +1,7 @@
 # ai-request-scheduling Specification
 
 ## Purpose
-TBD - created by archiving change add-multi-window-and-fast-lane. Update Purpose after archive.
+规定常规生成与及时召唤的请求调度：不同讨论的请求独立发起，全局同时生成上限内先到先服务、超限排队且排队请求可被停止或关闭取消，绕过前端调度或同一讨论重复生成都会被后端拒绝。服务能力不足时如实提示，等待分段如实记录。
 ## Requirements
 ### Requirement: 不同讨论的请求独立发起
 

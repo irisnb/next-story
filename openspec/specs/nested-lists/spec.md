@@ -1,7 +1,7 @@
 # nested-lists Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定多级嵌套列表：列表项可升降级形成多级嵌套，保存重开保持层级；嵌套有序列表保留各层实际编号、拆分保留未触及编号，工具栏列表状态适配嵌套结构。
 ## Requirements
 ### Requirement: 列表项可升降级形成多级嵌套
 系统 SHALL 让无序列表与有序列表的项目通过 `Tab` 升为父级列表项的子级、通过 `Shift+Tab` 回到父级，从而形成多级嵌套列表。嵌套列表 MUST 作为 `listItem` 内的子 `bulletList` 或 `orderedList` 保存，并 MUST 在保存、关闭、重开后保持层级一致。升降级 MUST 作为可撤销编辑处理。

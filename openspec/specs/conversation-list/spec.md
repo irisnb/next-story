@@ -1,7 +1,7 @@
 # conversation-list Specification
 
 ## Purpose
-TBD - created by archiving change add-multi-window-and-fast-lane. Update Purpose after archive.
+规定讨论列表 UI：按最后活动时间分组呈现（置顶独立展开、更早不截断），行状态与窗口一致，支持就地重命名、置顶、需确认且限时可撤销的删除与按标题或文档名过滤。列表入口常驻，打开列表时编辑区保持可见。
 ## Requirements
 ### Requirement: 讨论列表按最后活动时间分组呈现
 

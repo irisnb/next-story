@@ -1,7 +1,7 @@
 # persistent-ai-panel-entry Specification
 
 ## Purpose
-TBD - created by archiving change persistent-ai-panel-entry. Update Purpose after archive.
+规定常驻 AI 面板的直接提问首轮入口：无选区也可直接提问、停靠区可收起恢复，与及时召唤共享同一讨论事实源；编辑器选区作为可选重点提示自动附带、可替换可移除，发送时冻结问题与选区材料，输出保持临时只读。直接提问进入当前讨论、每轮只发增量，作品边界清理直接提问状态。
 ## Requirements
 ### Requirement: 常驻 AI 面板提供统一直接提问入口
 系统 SHALL 在现有 AI 停靠区与讨论窗口中提供默认可用的直接提问输入。每个讨论窗口 SHALL 承载直接提问与及时召唤两个首轮入口，二者进入同一统一临时对话、共享同一事实源；系统 SHALL 允许同一作品下存在多个讨论窗口，但 MUST NOT 创建第二套临时对话事实源。

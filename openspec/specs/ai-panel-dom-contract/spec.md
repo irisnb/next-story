@@ -1,7 +1,7 @@
 # ai-panel-dom-contract Specification
 
 ## Purpose
-TBD - created by archiving change unify-ai-panel-dom-contract. Update Purpose after archive.
+规定 AI 面板接线的显式 DOM 契约：每个窗口实例从自己的根节点组装全部所需节点（直接提问、统一讨论与追问、新建对话控件、流式增量与恢复占位），缺少必需节点时明确失败。契约重构必须保持既有面板行为，AI 输出不写入作品文档。
 ## Requirements
 ### Requirement: AI 面板必须通过显式 DOM 契约接线
 

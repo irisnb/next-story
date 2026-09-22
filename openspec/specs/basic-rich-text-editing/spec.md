@@ -1,7 +1,7 @@
 # basic-rich-text-editing Specification
 
 ## Purpose
-TBD - created by archiving change add-basic-rich-text-storage. Update Purpose after archive.
+规定写作区的基础富文本排版：标题、粗体斜体、列表、清除格式等命令要求非空文字选区、按段落完整作用并统一处理混合状态，左侧工具栏与格式抽屉、快捷键与撤销历史都只作用于当前本子，窄窗口下保持可用。
 ## Requirements
 ### Requirement: 当前本子提供基础富文本工具栏
 系统 SHALL 在编辑器左侧提供竖排工具栏与格式抽屉，并 SHALL 让工具栏与抽屉只操作当前本子。左侧竖排工具栏 MUST 提供段落样式、粗体、斜体、下划线、删除线、无序列表、有序列表、撤销、重做、查找入口和格式抽屉开关；段落样式 MUST 包含正文与一到六级标题。格式抽屉 MUST 收纳扩展的字符格式与段落格式控件，并按字符格式、段落格式两节可折叠。

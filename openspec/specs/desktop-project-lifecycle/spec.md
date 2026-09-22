@@ -1,7 +1,7 @@
 # desktop-project-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change establish-desktop-project-foundation. Update Purpose after archive.
+规定作品文件的生命周期：欢迎页入口、作品创建与打开校验（结构版本、元数据与正文上限、损坏与超限拒绝）、手动保存走暂存提交事务且关键文件持久刷新、中断事务可安全恢复，结构版本变化经带备份回滚的迁移框架处理。同一作品的操作必须串行化，读取一律有界。
 ## Requirements
 ### Requirement: Welcome page provides project entry points
 系统 SHALL 在启动后显示简单欢迎页，并提供新建作品、打开作品两个作品入口，以及一个进入 LLM 配置的入口。

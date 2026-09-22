@@ -1,6 +1,6 @@
 ## Purpose
 
-规定 AI 功能编排拆分后的公开组合入口、行为保持要求，以及 AI 输出不得写回草稿本和正文本的边界。
+规定 AI 功能编排拆分后的公开组合入口与行为保持要求：拆分不改变直接提问、及时召唤与追问的既有行为，且 AI 输出不得写回用户文档。
 ## Requirements
 ### Requirement: AI feature orchestration remains behavior-preserving after decomposition
 The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of direct-question submission, summon submission, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation. The retired `思维扩展` entry MUST NOT be part of the composed orchestration. The restored `AI 及时召唤` entry (see `selection-ai-summon`) SHALL be part of the composed orchestration as a second first-round entry into the unified temporary conversation.

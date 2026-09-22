@@ -1,7 +1,7 @@
 # selection-ai-summon Specification
 
 ## Purpose
-TBD - created by archiving change restore-selection-summon-entry. Update Purpose after archive.
+规定选区旁的 AI 及时召唤入口：有意义的选区旁浮出、点击即以冻结选区为材料、无需打字发起常驻会话首轮，隐藏文档的选区不能召唤。召唤复用首轮预检与失败语义、输出保持临时只读、开启新讨论并保留旧讨论，思维扩展保持退场。
 ## Requirements
 ### Requirement: 浮动入口在有意义的选区旁出现且点击即召唤
 系统 SHALL 在用户于草稿本或正本形成有意义的编辑器选区时，在该选区旁浮出「AI」浮动入口按钮；按钮为单动作入口，不提供菜单。用户点击按钮 SHALL 立即以当前选区为材料发起及时召唤。选区消失或失效时入口 SHALL 收起。浮动入口的出现、定位与避让行为沿用既有选区入口控制器的时机规则。

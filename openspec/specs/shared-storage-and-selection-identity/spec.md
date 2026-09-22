@@ -1,7 +1,7 @@
 # shared-storage-and-selection-identity Specification
 
 ## Purpose
-TBD - created by archiving change unify-storage-and-snapshot-equality. Update Purpose after archive.
+规定两个前端共享契约：浏览器存储适配器统一处理存储可用与不可用两种情形，选区快照相等判断有唯一的身份语义，避免重复实现导致入口状态、面板滚动与文档记忆行为分叉。
 ## Requirements
 ### Requirement: Shared browser storage adapter
 前端 SHALL 通过一个共享的最小存储接口访问可选的浏览器持久化存储，该接口 MUST 支持读取、写入和删除键值；当浏览器存储不存在或访问被拒绝时，解析函数 MUST 返回 `null` 而不是抛出异常。

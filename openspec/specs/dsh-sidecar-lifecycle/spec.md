@@ -1,7 +1,7 @@
 # dsh-sidecar-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change migrate-core-backend-to-dsh. Update Purpose after archive.
+规定 DSH sidecar 的宿主边界：sidecar 从应用资源打包解析、由宿主拥有并限界——懒启动就绪、请求级超时、意外退出自动重启、应用退出清理、启动闸门只认版本正确的 ready。运行时状态按 DSH 版本隔离，升级先验证、失败回滚，崩溃恢复如实不伪造。
 ## Requirements
 ### Requirement: Sidecar is packaged and resolved from application resources
 系统 SHALL 将精确锁定的 DSH、所需 Node runtime 和 Next Story adapter/patch 作为应用受控资源打包，并在运行时从 resource directory 解析入口路径，不依赖源码目录或用户当前工作目录。

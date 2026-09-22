@@ -1,7 +1,7 @@
 # clear-current-ai-conversation Specification
 
 ## Purpose
-Document the user-initiated "新建对话" (new conversation) capability in the AI panel, which clears the current temporary conversation and returns the panel to a blank, directly-askable state without creating any persisted history.
+规定 AI 面板的"新建对话"入口：用户可随时在当前作品中开启新讨论，首轮或追问仍在进行时亦可。新建对话保留旧讨论及其档案、可经会话列表重开；删除讨论是独立动作，不由新建对话触发。
 ## Requirements
 ### Requirement: 用户可以在当前作品中开始新的讨论
 系统 SHALL 在当前存在讨论或首轮请求时提供"新建对话"操作。用户触发后，系统 MUST 开启一个新讨论，保留旧讨论及其档案（可重开），并在停靠区打开新讨论自己的窗口、进入可直接提问的新讨论空状态；删除讨论是独立动作，不由新建对话触发。

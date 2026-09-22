@@ -1,7 +1,7 @@
 # discussion-windows Specification
 
 ## Purpose
-TBD - created by archiving change add-multi-window-and-fast-lane. Update Purpose after archive.
+规定讨论窗口层：多个讨论窗口同时显示、各自呈现自己的讨论与关注文档，默认停靠、可拖出为应用内浮动窗口、移动缩放并排对照。关闭生成中的窗口先停止该轮、重开不自动重发、删除是独立动作；窗口布局仅运行期保留、不写入档案。
 ## Requirements
 ### Requirement: 多个讨论窗口同时显示
 

@@ -51,7 +51,7 @@ Expected: 所有 `story_material` 测试通过。
 ### Task 2: 真实链路走查与 change 收口
 
 **Files:**
-- Modify after evidence succeeds: `openspec/changes/controlled-story-read-visibility/tasks.md:45`
+- Modify after evidence succeeds: `openspec/changes/controlled-story-read-visibility/tasks.md:45`（已归档至 `openspec/changes/archive/2026-09-13-controlled-story-read-visibility/tasks.md`）
 
 - [ ] **Step 1: 创建临时作品并记录正文哈希**
 

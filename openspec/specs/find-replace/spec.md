@@ -1,7 +1,7 @@
 # find-replace Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定查找替换：在当前本子可见文字上字面匹配并高亮，支持大小写开关与上一个／下一个导航，查找本身不改变文档。替换当前项与替换全部是可撤销的单事务编辑，提供可见入口与快捷键。
 ## Requirements
 ### Requirement: 查找在当前本子可见文字上字面匹配并高亮
 系统 SHALL 在当前本子的可见文字上进行字面查找，支持区分大小写开关，并 MUST 高亮全部命中、显示命中总数与当前序号，提供上一个与下一个的导航。查找高亮是装饰，MUST NOT 改变文档内容、结构或保存结果。查找范围 MUST 只包含当前本子，不跨到另一本子。

@@ -1,7 +1,7 @@
 # controlled-story-read-visibility Specification
 
 ## Purpose
-TBD - created by archiving change controlled-story-read-visibility. Update Purpose after archive.
+规定作品内容的受控只读边界：文档级 AI 可见性开关是唯一事实源，所有作品读取——已保存正文、经校验的未保存快照、跨文档检索与补读工具——都经统一后端授权，隐藏与回收站文档不可达，读取全程零写回。权限关闭后的旧讨论诚实隔离且旧出处脱敏，重新打开不解除受限。
 ## Requirements
 ### Requirement: 文档 AI 可见性是文档级二元开关
 系统 SHALL 为每篇文档保存一个“允许 AI 查看 / 不允许 AI 查看”的二元状态，旧文档和新建文档默认允许。文件夹 SHALL NOT 拥有独立 AI 可见性、继承、覆盖或优先级状态。

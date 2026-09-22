@@ -1,7 +1,7 @@
 # long-context-hallucination-fixtures Specification
 
 ## Purpose
-TBD - created by archiving change add-long-context-hallucination-fixtures. Update Purpose after archive.
+规定长上下文可靠性夹具：确定性生成的分级合成材料、独立的事实答案源、风险分层查询矩阵、可独立重复运行的试验计划与分阶段安全执行，并含手工撰写的连贯叙事对照层；让中文长材料下的事实丢失、混淆与编造退化可观测。
 ## Requirements
 ### Requirement: Deterministic long materials
 The fixture set SHALL provide deterministic synthetic Chinese materials at approximately 10,000, 30,000, and 50,000 characters, each with a stable identity, version, actual character count, estimated token count, and content hash.

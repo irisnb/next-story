@@ -693,9 +693,16 @@ pub fn run() {
                         use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
                         use windows_core::Interface;
                         let controller = webview.controller();
+                        // SAFETY: 窗口附加完成后 controller 已初始化非空；
+                        // CoreWebView2() 是同步 COM getter，调用期间对象存活。
                         if let Ok(core) = unsafe { controller.CoreWebView2() } {
+                            // SAFETY: core 在上一步 getter 成功后存活；Settings()
+                            // 是同步 COM getter，返回指针仅在当前块内解引用。
                             if let Ok(settings) = unsafe { core.Settings() } {
                                 if let Ok(settings3) = settings.cast::<ICoreWebView2Settings3>() {
+                                    // SAFETY: settings3 由 Settings() cast 而来，
+                                    // 仅在 WebView2 环境下触达该路径（非 WebView2
+                                    // 平台不进入此分支）。
                                     let _ = unsafe {
                                         settings3.SetAreBrowserAcceleratorKeysEnabled(false)
                                     };

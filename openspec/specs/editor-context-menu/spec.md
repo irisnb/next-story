@@ -1,7 +1,7 @@
 # editor-context-menu Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定编辑器右键菜单：按有无选区与是否位于链接上提供上下文相关命令（剪贴板、创建链接、链接操作），并提供粘贴为纯文本入口。
 ## Requirements
 ### Requirement: 编辑器右键菜单提供上下文相关命令
 系统 SHALL 在草稿本与正文本的编辑区提供右键菜单，菜单项 MUST 根据当前上下文显示并正确禁用：剪切、复制、粘贴、粘贴为纯文本；选区存在且不在链接上时提供创建链接；光标落在链接上时提供链接的打开、编辑与移除。菜单 MUST NOT 提供字符或段落格式命令（格式命令的唯一图形化入口是左侧格式抽屉）。菜单命令 MUST 只作用于当前本子。

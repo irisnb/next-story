@@ -1,7 +1,7 @@
 # paragraph-formatting Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定段落级格式：对齐、行距与段间距、首行缩进与左右缩进都作用于选区触及的完整段落并支持混合状态显示。清除段落格式只移除段落属性并恢复正文、保留字符标记。
 ## Requirements
 ### Requirement: 对齐作用于选区触及的完整段落
 系统 SHALL 提供左对齐、居中、右对齐、两端对齐四种对齐，并 MUST 将所选对齐应用到选区触及的每个完整段落，即使选区只覆盖段落中的部分文字。全部相关段落对齐一致时控件显示该对齐，否则显示混合状态。对齐是段落属性，MUST 与文字颜色、字符标记无关。

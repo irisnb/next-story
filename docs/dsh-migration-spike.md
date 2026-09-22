@@ -378,4 +378,4 @@ cargo test dsh_sidecar                  # 错误映射单测（不联网）
 | `src-tauri/src/dsh_sidecar.rs` | 新增，`generate_via_dsh`（spawn+超时+排空管道）+ `map_dsh_failure` + 单测 |
 | `src-tauri/src/lib.rs` | 加一行 `pub mod dsh_sidecar;` |
 | `~/.dsh/profiles/headless/cordis.patch.yml` | 本机配置（不在 git 仓库里）：挂 keyring + 禁工具 |
-| `openspec/changes/spike-dsh-headless-generation/` | spike 的 proposal/design/specs/tasks |
+| `openspec/changes/spike-dsh-headless-generation/`（已归档至 `openspec/changes/archive/2026-08-17-spike-dsh-headless-generation/`） | spike 的 proposal/design/specs/tasks |

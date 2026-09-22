@@ -1,7 +1,7 @@
 # llm-configuration Specification
 
 ## Purpose
-TBD - created by archiving change add-llm-configuration. Update Purpose after archive.
+规定唯一 LLM 配置：字段编辑、安全可解析的 API 地址校验、保存重载与连接测试；配置与用户笔记本分离、配置页如实告知模型服务会收到哪些数据，未保存修改在离开与关窗前受确认保护，异步操作不互相覆盖。API Key 只存操作系统凭据存储、不落盘、不回明文，保存原子串行，配置驱动受限 AI 生成且不改变用户文档。
 ## Requirements
 ### Requirement: 用户可以编辑唯一 LLM 配置
 系统 SHALL 提供一个 LLM 配置界面，让用户手动填写并修改一个模型调用配置。

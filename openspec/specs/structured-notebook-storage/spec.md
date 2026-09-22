@@ -1,7 +1,7 @@
 # structured-notebook-storage Specification
 
 ## Purpose
-TBD - created by archiving change add-basic-rich-text-storage. Update Purpose after archive.
+规定文档的结构化事实源：每篇文档使用带版本外层的 Tiptap JSON，schema 只允许本轮支持的结构，前后端都在读写边界校验完整文档。非法或不支持的文档不得被当作空白打开，开发期纯文本本子不再读取。
 ## Requirements
 ### Requirement: 每篇文档使用带版本外层的 Tiptap JSON
 系统 SHALL 将每篇文档的磁盘事实源保存为一个 JSON 对象，其 `format` MUST 为 `next-story-tiptap`，`version` MUST 为整数 `2`，`document` MUST 为符合格式版本 2 grammar 的 Tiptap 文档。外层对象 MUST 恰好包含这三个字段且不得包含额外字段。打开时系统 MUST 接受 `version` 为 `1` 或 `2` 的文档：`version` 为 `1` 的文档 MUST 按格式版本 2 grammar 校验（版本 1 是版本 2 的严格子集），正文与格式一字不改，用户下次保存时 MUST 以 `version` 为 `2` 写回。该版本只描述单篇文档格式，不得用于表示作品的项目结构版本。

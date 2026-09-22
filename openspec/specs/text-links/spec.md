@@ -1,7 +1,7 @@
 # text-links Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定文字链接：链接是带地址的字符标记，可创建、编辑地址、移除后保留文字；普通点击不导航，打开只走弹层且仅限 http/https 地址。
 ## Requirements
 ### Requirement: 链接作为带地址的字符标记创建与编辑
 系统 SHALL 让用户选中文字后创建链接、编辑链接地址或移除链接，链接 MUST 作为带 `href` 的字符标记保存并可在重开后保持。创建或编辑链接 MUST 不改变选中文字的其它字符标记或段落属性。

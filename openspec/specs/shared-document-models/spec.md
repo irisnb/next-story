@@ -1,7 +1,7 @@
 # shared-document-models Specification
 
 ## Purpose
-TBD - created by archiving change extract-shared-document-models. Update Purpose after archive.
+规定结构化文档内部模型的共享实现：位置尺寸计算只有一份共享实现、块遍历被各文档消费方共享（嵌套列表范围稳定、空块一致计入）。共享模型不改变公开行为，模型计算不能改动文档。
 ## Requirements
 ### Requirement: Structured document position calculations have one shared implementation
 

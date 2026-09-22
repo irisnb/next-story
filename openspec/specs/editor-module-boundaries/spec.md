@@ -1,7 +1,7 @@
 # editor-module-boundaries Specification
 
 ## Purpose
-TBD - created by archiving change split-editor-controller-modules. Update Purpose after archive.
+规定编辑器前端模块边界：交互职责拆入以聚焦依赖初始化的窄模块，编辑器门面保持兼容、既有交互行为不变，重构不扩大产品范围（AI 集成仍是只读附加），并以前端全量验证保护抽取行为。
 ## Requirements
 ### Requirement: Editor interaction responsibilities use narrow module boundaries
 The writing editor SHALL isolate keyboard handling, toolbar and format-drawer behavior, find/replace behavior, link-popover behavior, and context-menu behavior behind focused modules whose dependencies are narrower than the complete editor controller.

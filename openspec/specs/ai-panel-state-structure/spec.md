@@ -1,7 +1,7 @@
 # ai-panel-state-structure Specification
 
 ## Purpose
-Document the internal AI panel state boundaries that keep panel visibility, request status, temporary conversation state, follow-up turn state, read-only views, and subscriber notifications separated while preserving the current selection summon and single linear temporary follow-up behavior.
+规定 AI 面板内部状态的职责分离：面板可见性、请求状态、讨论状态、追问轮次、只读视图与订阅通知各自独立，状态迁移经纯函数显式执行、非法迁移不生效，订阅可退订。重构不新增 AI 产品能力、不新增上下文源、不新增写入用户文档的路径，保持选区召唤与单线追问行为及既有 AI 边界。
 ## Requirements
 ### Requirement: AI panel state responsibilities remain separated
 The AI panel state implementation SHALL keep panel visibility, request status, temporary conversation state, follow-up turn state, read-only view construction, and subscriber notification as separable responsibilities while preserving the existing public AI panel behavior. It SHALL expose the user-initiated new-conversation transition through the facade and reducer without conflating it with project lifecycle reset.

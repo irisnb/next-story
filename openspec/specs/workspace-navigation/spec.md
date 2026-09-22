@@ -1,7 +1,7 @@
 # workspace-navigation Specification
 
 ## Purpose
-TBD - created by archiving change frontend-modular-ui. Update Purpose after archive.
+规定打开作品后的顶部三模块导航（写作／文件管理／设置）：默认落在写作页，写作页显示并经扁平列表切换当前文档、记住上次编辑的文档（已删除时回退、无文档显示空态），LLM 配置收纳在设置模块。
 ## Requirements
 ### Requirement: 顶部三模块导航
 系统 SHALL 在作品打开后提供顶部标签式导航，包含「写作」「文件管理」「设置」三个模块，供用户在模块间切换。当前激活模块 SHALL 有明确的选中状态。

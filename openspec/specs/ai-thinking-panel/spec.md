@@ -1,7 +1,7 @@
 # ai-thinking-panel Specification
 
 ## Purpose
-TBD - created by archiving change add-selection-ai-panel. Update Purpose after archive.
+规定 AI 面板在可收起停靠区与各讨论窗口中的呈现与交互：显式呈现请求与轮次状态（含排队未开始），统一讨论布局与空状态欢迎语、流式生成自动吸底、失败以原冻结材料原样重试、缺 LLM 配置先引导配置。AI 回复只是可复制的纯文本临时材料，面板绝不直接写入用户文档，迟到结果不污染其他作品或讨论。
 ## Requirements
 ### Requirement: 面板显式呈现请求与轮次状态
 系统 SHALL 分别管理停靠区的打开或收起状态、每个讨论窗口的讨论、一个可选待回答用户轮次，以及请求的排队、等待、生成中、成功、错误和缺少配置状态。生成中状态 SHALL 以流式增量逐字显示回复。首轮与后续轮次的请求状态 SHALL 一律渲染在该窗口统一对话流内对应轮次的位置：用户问题消息之后、该轮回复之前；MUST NOT 在输入区附近另设与对话流分离的请求状态或流式回复区块。

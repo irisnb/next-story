@@ -1,7 +1,7 @@
 # project-reliability-boundaries Specification
 
 ## Purpose
-TBD - created by archiving change harden-project-reliability-boundaries. Update Purpose after archive.
+规定一组直接影响用户输入与数据安全的可靠性边界：全局编辑快捷键尊重文本输入焦点、未保存当前文档的删除需显式确认、文档读取失败保持有效编辑器状态、内容树遍历有界、事务恢复保守。作品重开恢复编辑器交互模块，应用级前端控制器统一销毁、销毁后的迟到事件无副作用。
 ## Requirements
 ### Requirement: Global editor shortcuts respect text input focus
 编辑器全局快捷键处理器 SHALL 在非编辑器文本输入控件获得焦点时交还事件，不得执行编辑器保存、撤销、格式化、查找或链接命令。

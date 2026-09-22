@@ -1,7 +1,7 @@
 # production-editor-kernel Specification
 
 ## Purpose
-TBD - created by archiving change replace-production-editor-kernel. Update Purpose after archive.
+规定生产写作区的 Tiptap 基础富文本内核：中文组合输入与常用编辑稳定、两个本子的编辑状态与历史互相隔离、编辑器实例随作品生命周期释放、真实剧本长度下保持可用。结构化文档往返保持支持的内容与格式、外部粘贴只进入受控结构；内核依赖单一入口、精确锁版，升级以金样本锁定存量文档与粘贴行为。
 ## Requirements
 ### Requirement: 中文组合输入和常用编辑操作稳定
 系统 SHALL 在 Windows Tauri 2 / WebView2 中支持中文输入法组合输入、光标移动、鼠标与键盘选区、复制、剪切、受控粘贴、撤销和重做。组合输入 MUST NOT 丢字、重复、乱序或生成与一次实际编辑不相符的异常历史步骤。

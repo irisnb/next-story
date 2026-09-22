@@ -83,7 +83,7 @@ pub fn create_project(name: String, save_location: PathBuf) -> Result<PathBuf, P
     Ok(project_root)
 }
 
-/// 验证项目结构（版本 3 内容树布局）。
+/// 验证作品结构（版本 3 内容树布局）。
 pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectError> {
     validate_no_reparse_point(project_root, "作品根目录")?;
 
@@ -102,17 +102,17 @@ pub fn validate_project_structure(project_root: &Path) -> Result<(), ProjectErro
     validate_required_dir(&project_root, &paths.system_dir, "系统文件夹")?;
 
     // 先校验元信息与结构版本，再检查内容树文件存在性：这样旧版本作品（含旧
-    // `.txt` 本子）会得到「不支持的项目结构版本」而不是「缺少content-tree.json」。
+    // `.txt` 本子）会得到「不支持的作品结构版本」而不是「缺少content-tree.json」。
     validate_required_file(&project_root, &paths.metadata_file, "project.json")?;
 
     let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
     let metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {}", e)))?;
+        .map_err(|e| ProjectError::InvalidStructure(format!("作品元信息无法解析: {}", e)))?;
 
     if metadata.version != ProjectMetadata::CURRENT_VERSION {
         return Err(ProjectError::InvalidStructure(format!(
-            "不支持的项目结构版本: {}",
+            "不支持的作品结构版本: {}",
             metadata.version
         )));
     }
@@ -521,7 +521,7 @@ pub(crate) fn validate_migration_source_files(project_root: &Path) -> Result<(),
 }
 
 /// 保存事务的阶段边界。无故障路径会经过每个边界但不做任何事；
-/// 测试通过故障钩子在指定边界中断。此类型是项目领域内部私有，不暴露给 Tauri 或前端。
+/// 测试通过故障钩子在指定边界中断。此类型是作品领域内部私有，不暴露给 Tauri 或前端。
 /// 仅测试专用路径（`run_save_transaction`）使用。
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

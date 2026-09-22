@@ -1,7 +1,7 @@
 # dsh-headless-generation Specification
 
 ## Purpose
-TBD - created by archiving change spike-dsh-headless-generation. Update Purpose after archive.
+规定 DSH headless 生成链路：headless 首问与追问和现有链路等价并保持陪想姿态，DSH 版本精确锁定、错误契约稳定映射、API Key 经宿主注入不落磁盘。DSH 能力受 Next Story 安全边界控制，直接提问接受可选选区。
 ## Requirements
 ### Requirement: DSH headless 生成与现有链等价
 系统 SHALL 通过常驻 DSH 会话进程生成 AI 思考响应（本要求标题中的 headless 为历史能力名），其输入（用户问题 + 可选冻结选区重点材料）与输出语义与现有生成链一致：不代写正文、不评价故事、纯文本回答、流式输出。系统 MUST 要求模型区分"从提供材料中可见的内容"与"进一步提出的可能解释、问题或方向"，不把假设冒充作品事实。Runtime Contract MUST 保留任务、事件、结果、错误和能力声明的扩展位。

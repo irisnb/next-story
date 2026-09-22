@@ -39,7 +39,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 
-/// 项目元信息
+/// 作品元信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectMetadata {
     /// 作品名称
@@ -60,17 +60,17 @@ impl ProjectMetadata {
     pub const CURRENT_VERSION: u32 = 4;
 }
 
-/// 项目打开结果：元信息 + 整棵内容树。前端据此确定当前文档，再用
+/// 作品打开结果：元信息 + 整棵内容树。前端据此确定当前文档，再用
 /// `read_document` 按需读取正文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectOpenResult {
-    /// 项目元信息
+    /// 作品元信息
     pub metadata: ProjectMetadata,
     /// 整棵内容树结构
     pub tree: ContentTree,
 }
 
-/// 创建项目参数
+/// 创建作品参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProjectParams {
     /// 作品名称
@@ -79,7 +79,7 @@ pub struct CreateProjectParams {
     pub save_location: String,
 }
 
-/// 项目验证错误
+/// 作品验证错误
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProjectError {
     /// 作品名称为空
@@ -90,7 +90,7 @@ pub enum ProjectError {
     InaccessibleLocation(String),
     /// 目标文件夹已存在
     FolderExists(String),
-    /// 项目结构无效
+    /// 作品结构无效
     InvalidStructure(String),
     /// 读取失败
     ReadError(String),
@@ -113,7 +113,7 @@ impl std::fmt::Display for ProjectError {
                 write!(f, "保存位置不可访问，请选择其他文件夹")
             }
             ProjectError::FolderExists(_) => write!(f, "目标文件夹已存在，请更换名称或位置"),
-            ProjectError::InvalidStructure(msg) => write!(f, "项目结构无效: {}", msg),
+            ProjectError::InvalidStructure(msg) => write!(f, "作品结构无效: {}", msg),
             ProjectError::ReadError(msg) => write!(f, "读取失败: {}", msg),
             ProjectError::WriteError(_) => write!(f, "写入作品失败，请重试"),
             ProjectError::ContentTooLarge(_) => write!(f, "内容超过大小上限，请精简后重试"),

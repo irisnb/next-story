@@ -1,7 +1,7 @@
 # design-tokens Specification
 
 ## Purpose
-TBD - created by archiving change apply-neobrutalism-visual-style. Update Purpose after archive.
+规定集中式设计令牌与新粗野主义视觉方向：结构线边框、硬阴影、无彩色偏背景，主色承担选中与动作态、黑色不作选中语义，文本编辑区为最重视觉焦点。组件不得硬编码视觉值，配色成体系、无任意散配色。
 ## Requirements
 ### Requirement: 集中式设计令牌
 系统 SHALL 在 `:root` 中通过 CSS 自定义属性（设计令牌）定义全部视觉值，包括颜色、边框宽度与颜色、阴影、圆角；组件样式 SHALL 引用这些令牌，MUST NOT 散落硬编码的视觉字面值。修改某个令牌值 SHALL 自动作用于所有引用它的 UI 元素，无需逐个编辑组件规则。

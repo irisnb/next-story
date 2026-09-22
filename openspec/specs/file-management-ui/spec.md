@@ -1,7 +1,7 @@
 # file-management-ui Specification
 
 ## Purpose
-TBD - created by archiving change frontend-modular-ui. Update Purpose after archive.
+规定文件管理页 UI：展示文件树，提供新建、重命名、移动、删除进回收站与恢复（含回收站二级页），以及文档 AI 可见性开关。文件管理操作不得写用户文档正文。
 ## Requirements
 ### Requirement: 文件管理页展示文件树
 系统 SHALL 在文件管理页展示作品内容树的文件树视图，文件夹与文档在同一父级内按用户控制的顺序混合排列。节点 SHALL 显示名称，并区分文件夹与文档。

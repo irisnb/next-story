@@ -1,7 +1,7 @@
 # editor-margin-preference Specification
 
 ## Purpose
-TBD - created by archiving change consolidate-editor-formatting-ui. Update Purpose after archive.
+规定编辑器正文四周留白：按档位可调、只是显示偏好不进入文档内容。留白设置持久化，无设置回退默认，存储不可用时不影响编辑能力。
 ## Requirements
 ### Requirement: 编辑器正文四周留白可调节
 系统 SHALL 提供编辑器正文四周留白（显示边距）的调节入口，作用于编辑器内容区的显示留白。留白是界面显示偏好，MUST NOT 写入草稿本或正文本的文档结构，也 MUST NOT 进入 AI 的选区快照输入。

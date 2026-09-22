@@ -1,7 +1,7 @@
 # content-tree-commands Specification
 
 ## Purpose
-TBD - created by archiving change expose-content-tree-commands. Update Purpose after archive.
+规定内容树的前端命令层：读取整棵内容树、按文档 ID 读写单篇正文，以及创建、重命名、移动、重排、删除进回收站与恢复节点，非法结构一律拒绝。内容树命令不得暴露任何 AI 写文档能力。
 ## Requirements
 ### Requirement: 前端可读取整棵内容树结构
 系统 SHALL 提供一个读取整棵内容树的命令，返回作品内容树的完整结构，包括根级子节点顺序、每个节点的 ID / 名称 / 类型（文件夹或文档）/ 子节点顺序，以及回收站中被删除的子树。返回的结构 MUST 通过后端内容树校验，MUST NOT 返回未通过校验的树结构。

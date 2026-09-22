@@ -1,7 +1,7 @@
 # project-mission-governance Specification
 
 ## Purpose
-TBD - created by archiving change clarify-project-mission-and-boundaries. Update Purpose after archive.
+规定使命文档体系的治理：核心方向宪章完整定义长期使命、知识与创作者的关系，创作者永久保有作品定义权，方向文档分层引用、有限重复。AGENTS 将使命提炼为协作红线，其当前已实现摘要必须与主规格一致。
 ## Requirements
 ### Requirement: 核心方向宪章完整定义长期使命
 `方向/核心方向宪章.md` SHALL 作为使命与永久产品立场的完整真相源，说明 Next Story 降低开始创作和获得帮助的前置门槛，使每一个想创作的人都可以认真讲述自己的故事，并 MUST NOT 将该使命表述为专业能力转移或优秀作品保证。

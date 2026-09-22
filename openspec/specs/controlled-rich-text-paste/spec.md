@@ -1,7 +1,7 @@
 # controlled-rich-text-paste Specification
 
 ## Purpose
-TBD - created by archiving change add-basic-rich-text-storage. Update Purpose after archive.
+规定外部粘贴的受控通道：只保留当前支持的文字与格式结构，表格降级为普通文字段落，图片不得进入作品文档，无法保证文字完整时拒绝整次粘贴。本子内复制与剪切保持本轮支持的内容，粘贴提供保留允许格式与粘贴为纯文本两种方式。
 ## Requirements
 ### Requirement: 外部粘贴只保留支持的文字和格式
 系统 SHALL 从外部 HTML 或纯文本中保留可见文字、段落顺序、换行以及可识别的正文、一到六级标题、粗体、斜体、下划线、删除线、文字颜色、背景高亮、链接、无序列表和有序列表（含嵌套列表）。HTML 映射 MUST 将 `p`/`div` 映射为正文、`h1` 到 `h6` 映射为对应标题、`strong`/`b` 映射为粗体、`em`/`i` 映射为斜体、`u`/`ins` 映射为下划线、`s`/`del` 映射为删除线、带合法 `href` 的 `a` 映射为链接标记、内联 `color` 样式映射为文字颜色、`mark` 或内联 `background-color` 映射为背景高亮、`ul`/`ol`/`li` 映射为列表；正文或标题中的每个 `br` MUST 在该位置拆成前后两个同类型块，列表项中的每个 `br` MUST 拆成同一列表内前后两个同级列表项，连续 `br` MUST 产生对应数量的空中间块或空列表项。未知普通容器 MUST 透明保留后代文字；已知普通容器为 `div`、`section`、`article`、`blockquote`、`aside`、`main`、`header`、`footer`、`nav`、`figure`、`figcaption`、`span`、`pre`、`details`、`summary`、`caption`，其它未列入映射的流内容或分组元素 MUST 按普通容器处理。嵌入结构为 `iframe`、`object`、`embed`、`canvas`、`svg`、`video`、`audio`、`picture`、`math`；含可见文字的嵌入结构 MUST 整次拒绝。`img`、`script`、`style`、`meta`、`link`、`head`、`template` MUST 直接忽略。嵌套列表 MUST 按 HTML 的真实层级重建为 `listItem` 内的嵌套 `bulletList` 或 `orderedList`，各层保留其最近 `ul` 或 `ol` 祖先的列表类型；同一 `ol` 的项目被不同类型子列表打断时，打断前出现的同级项目形成一个 `orderedList` 段，打断后出现的同级项目形成一个新的 `orderedList` 段，其后段 `start` MUST 等于原 `ol.start` 加上该 `ol` 在打断前已输出的同级项目数量；`li` 中嵌套列表之后的尾随文字 MUST 追加到该 `li` 自身项目文字，不生成新列表项。合法正整数 `ol[start]`（浏览器解析后的 `ol.start` DOM 属性值，`1 ≤ value ≤ 2^53-1`）MUST 成为该段起始编号；`reversed`、`li[value]` 和非法或超出范围的 `start` MUST 被忽略并等同未指定（从 1 开始）。系统 MUST 丢弃字体、字号、对齐、行距、段间距、缩进、脚本、样式、元数据、样式属性和其它未支持格式或布局，且 MUST 在插入前用当前编辑器 schema 校验归一化结果。

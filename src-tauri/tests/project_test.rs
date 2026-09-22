@@ -364,7 +364,7 @@ fn save_and_reopen_preserves_document_through_production_api() {
 }
 
 // ---------------------------------------------------------------------------
-// 项目结构版本失败测试（任务 1.3）
+// 作品结构版本失败测试（任务 1.3）
 // ---------------------------------------------------------------------------
 
 fn reject_with_version_error(
@@ -373,7 +373,7 @@ fn reject_with_version_error(
     match result {
         Err(ProjectError::InvalidStructure(message)) => {
             assert!(
-                message.contains("不支持的项目结构版本"),
+                message.contains("不支持的作品结构版本"),
                 "期望版本错误，实际: {message}"
             );
         }
@@ -897,9 +897,9 @@ fn project_error_keeps_existing_user_understandable_prompts() {
         .to_string()
         .contains("作品名称包含非法字符"));
     assert!(
-        ProjectError::InvalidStructure("不支持的项目结构版本: 1".to_string())
+        ProjectError::InvalidStructure("不支持的作品结构版本: 1".to_string())
             .to_string()
-            .contains("不支持的项目结构版本")
+            .contains("不支持的作品结构版本")
     );
 }
 

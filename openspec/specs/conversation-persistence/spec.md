@@ -1,7 +1,7 @@
 # conversation-persistence Specification
 
 ## Purpose
-TBD - created by archiving change add-conversation-persistence-and-isolation. Update Purpose after archive.
+规定讨论档案的持久化：保存到作品文件夹内独立目录并版本化，用户轮接受即保存、终态原子更新、失败如实可见，重启后按作品提供会话列表与重开，损坏档案不拖垮列表。同一讨论的保存串行且删除具终局性；讨论档案不向 AI 提供写入口，也不是作品事实源。
 ## Requirements
 ### Requirement: 讨论记录保存到作品文件夹内独立目录
 系统 SHALL 将每个讨论的档案保存为作品文件夹内 `next-story-system/conversations/<conversation_id>.json` 的独立版本化 JSON 文件，并 SHALL 在档案中记录讨论身份、创建与更新时间、关注文档身份、轮次文本与生成终态、首轮材料来源，以及能够判定权限影响的最小材料出处元数据。材料出处 SHALL 记录文档身份、材料类型、版本、所属轮次和是否进入模型上下文等信息，并 SHALL 覆盖关注文档现场材料（已保存正文或未保存快照）、允许目录投影、跨文档字面检索命中片段（来源文档身份、版本、命中位置与匹配词）及本轮超限/限制状态，但 MUST NOT 因此保存完整作品正文副本。档案 SHALL 另行记录按需补读状态：授权状态（未授权 / 已授权及时间，授权属于讨论、跨重启保留）与按需补读读取出处（文档身份、版本、阅读程度——搜索片段 / 局部 / 完整、所属轮次、是否进入模型上下文）。旧档案缺少按需补读字段时 SHALL 视为未授权并正常打开，MUST NOT 自动重放给模型。自定义标题与置顶标记 SHALL 可由用户更新并持久化。

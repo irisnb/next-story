@@ -1,12 +1,12 @@
-//! 项目版本迁移框架。
+//! 作品版本迁移框架。
 //!
-//! 打开项目时若结构版本不是当前版本，会先走迁移框架：
+//! 打开作品时若结构版本不是当前版本，会先走迁移框架：
 //! - 等于当前版本：直接通过；
-//! - 大于当前版本（未来版本）：拒绝（「不支持的项目结构版本」）；
+//! - 大于当前版本（未来版本）：拒绝（「不支持的作品结构版本」）；
 //! - 小于当前版本：按注册的迁移步骤 `from_version`→`to_version` 逐级升级，
 //!   执行前先备份，任一步骤失败即回滚备份并返回错误。
 //!
-//! 回滚复用项目保存的事务式暂存/恢复机制（`operations::transactional_restore`）：
+//! 回滚复用作品保存的事务式暂存/恢复机制（`operations::transactional_restore`）：
 //! 先整体暂存到 `next-story-system/save-transaction/` 并写入 `MigrationRollback`
 //! 用途的 `Committing` 清单，再按 草稿 → 正文 → 元信息 顺序替换可见文件；
 //! 迁移中途崩溃留下的暂存会在下次打开时由框架优先恢复（见
@@ -35,7 +35,7 @@ use super::{ContentTree, NodeKind, ProjectError, ProjectMetadata, ProjectPaths};
 /// 备份目录所在的父目录（位于 `next-story-system/` 下，系统所有）。
 const MIGRATIONS_DIR: &str = "migrations";
 
-/// 一次迁移步骤：把项目结构从 `from_version` 升到 `to_version`。
+/// 一次迁移步骤：把作品结构从 `from_version` 升到 `to_version`。
 ///
 /// `migrate` 接收作品根目录，负责完成升级并让 `project.json` 的版本号变为
 /// `to_version`。框架会在每一步执行后校验版本是否确实到达 `to_version`。
@@ -81,7 +81,7 @@ fn migrate_v2_to_v3(project_root: &Path) -> Result<(), ProjectError> {
     let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
     let mut metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {e}")))?;
+        .map_err(|e| ProjectError::InvalidStructure(format!("作品元信息无法解析: {e}")))?;
 
     // 内容树根层两篇普通文档，名称保留「草稿本」「正文本」。
     let mut tree = ContentTree::new();
@@ -187,7 +187,7 @@ fn migrate_v3_to_v4(project_root: &Path) -> Result<(), ProjectError> {
     let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
     let mut metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {e}")))?;
+        .map_err(|e| ProjectError::InvalidStructure(format!("作品元信息无法解析: {e}")))?;
     metadata.version = 4;
     let metadata_json = serde_json::to_string_pretty(&metadata)
         .map_err(|e| ProjectError::WriteError(e.to_string()))?;
@@ -349,7 +349,7 @@ fn rollback_with_report(
     }
 }
 
-/// 读取项目当前结构版本；读取或解析失败返回结构错误。
+/// 读取作品当前结构版本；读取或解析失败返回结构错误。
 fn read_project_version(project_root: &Path) -> Result<u32, ProjectError> {
     let paths = ProjectPaths::new(project_root.to_path_buf());
 
@@ -362,14 +362,14 @@ fn read_project_version(project_root: &Path) -> Result<u32, ProjectError> {
     let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
         .map_err(|e| ProjectError::InvalidStructure(e.to_string()))?;
     let metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::InvalidStructure(format!("项目元信息无法解析: {e}")))?;
+        .map_err(|e| ProjectError::InvalidStructure(format!("作品元信息无法解析: {e}")))?;
 
     Ok(metadata.version)
 }
 
-/// 构造「不支持的项目结构版本」错误，文案与结构校验保持一致。
+/// 构造「不支持的作品结构版本」错误，文案与结构校验保持一致。
 fn unsupported_version(version: u32) -> ProjectError {
-    ProjectError::InvalidStructure(format!("不支持的项目结构版本: {version}"))
+    ProjectError::InvalidStructure(format!("不支持的作品结构版本: {version}"))
 }
 
 /// 把将被迁移改动的文件备份到 `next-story-system/migrations/backup-<from_version>-<时间戳>/`。
@@ -496,7 +496,7 @@ mod tests {
     use crate::project::{ContentTreeNode, NodeKind};
     use tempfile::TempDir;
 
-    /// 建一个带指定结构版本的完整项目骨架（project.json + 两个本子文件）。
+    /// 建一个带指定结构版本的完整作品骨架（project.json + 两个本子文件）。
     fn seed_project(root: &Path, version: u32) {
         fs::create_dir_all(root.join("作品文本")).expect("创建作品文本文件夹");
         fs::create_dir_all(root.join("next-story-system")).expect("创建系统文件夹");
@@ -606,7 +606,7 @@ mod tests {
 
         match result {
             Err(ProjectError::InvalidStructure(message)) => {
-                assert!(message.contains("不支持的项目结构版本"), "实际: {message}");
+                assert!(message.contains("不支持的作品结构版本"), "实际: {message}");
                 assert!(message.contains('5'), "实际: {message}");
             }
             other => panic!("期望版本拒绝，实际: {other:?}"),
@@ -630,7 +630,7 @@ mod tests {
 
         match result {
             Err(ProjectError::InvalidStructure(message)) => {
-                assert!(message.contains("不支持的项目结构版本"), "实际: {message}");
+                assert!(message.contains("不支持的作品结构版本"), "实际: {message}");
             }
             other => panic!("期望版本拒绝，实际: {other:?}"),
         }
@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn migrate_runs_synthetic_step_keeps_backup_and_upgrades_version() {
         let temp = TempDir::new().expect("创建临时目录");
-        let root = temp.path().join("可迁移项目");
+        let root = temp.path().join("可迁移作品");
         seed_project(&root, 1);
         let before = metadata_bytes(&root);
         let steps = [MigrationStep {
@@ -851,7 +851,7 @@ mod tests {
         let result = crate::project::open_existing_project(&root);
         match result {
             Err(ProjectError::InvalidStructure(message)) => {
-                assert!(message.contains("不支持的项目结构版本"), "实际: {message}");
+                assert!(message.contains("不支持的作品结构版本"), "实际: {message}");
             }
             other => panic!("期望版本拒绝，实际: {other:?}"),
         }
@@ -890,7 +890,7 @@ mod tests {
         serde_json::to_string_pretty(&value).expect("serialize notebook")
     }
 
-    /// 建一个版本 2 固定双本子项目（合法本子内容 + 版本 2 元信息）。
+    /// 建一个版本 2 固定双本子作品（合法本子内容 + 版本 2 元信息）。
     fn seed_v2_project_with_valid_notebooks(root: &Path, draft: &str, main: &str) {
         fs::create_dir_all(root.join("作品文本")).expect("创建作品文本文件夹");
         fs::create_dir_all(root.join("next-story-system")).expect("创建系统文件夹");

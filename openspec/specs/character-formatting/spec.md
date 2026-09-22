@@ -1,7 +1,7 @@
 # character-formatting Specification
 
 ## Purpose
-TBD - created by archiving change add-extended-text-formatting. Update Purpose after archive.
+规定字符级文字格式：下划线、删除线、文字颜色与背景高亮，以及固定档位的字体与字号，都只作用于非空选区的字符标记且可单独清除；清除字符格式只移除字符标记、不影响段落属性，写作背景板颜色与文字颜色互不干涉。
 ## Requirements
 ### Requirement: 下划线与删除线命令作用于非空选区
 系统 SHALL 在下划线与删除线命令上显示未启用、混合、完全启用三种状态，并 MUST 只在当前本子存在至少一个字符的非空选区时启用。未启用或混合状态下点击命令 MUST 向整个选区应用相应标记；完全启用状态下点击命令 MUST 从整个选区移除相应标记。下划线 MUST 支持 `Ctrl+U` 快捷键，且无选区时 MUST NOT 改变当前内容或后续输入格式。

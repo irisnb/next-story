@@ -1,7 +1,7 @@
 # writing-notebooks Specification
 
 ## Purpose
-TBD - created by archiving change establish-desktop-project-foundation. Update Purpose after archive.
+规定写作空间的双本子写作闭环：草稿本与正文本的编辑、手动保存与重开加载，切换本子保留未保存输入，离开作品与关闭应用前保护未保存修改、保存失败绝不丢弃当前输入。编辑器如实沟通保存状态；AI 与后台自动化绝不写用户本子。
 ## Requirements
 ### Requirement: Editor provides draft and main text notebooks
 系统 SHALL 在编辑器中提供草稿本和正文本两个文本区域，并以标签页方式切换。

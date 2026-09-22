@@ -52,7 +52,7 @@
 **旅程（两轮完整走通，作品4 / 作品5）**：欢迎页 → 新建作品（名称真实键入，保存位置程序回填）→ 点击创建 → 编辑器就绪 → 键入中文正文 → Ctrl+A/Ctrl+B 加粗 → 追加文字 → Ctrl+S 保存 → 点击「导出 Word」→ 用户点原生保存框 → .docx 落盘。
 
 **证据**：
-- 作品文档 JSON（磁盘）：正文与 old 标记均在（Ctrl+S 真实生效）
+- 作品文档 JSON（磁盘）：正文与 bold 标记均在（Ctrl+S 真实生效）
 - 两个导出 docx（用户桌面 test\8b 验证作品\）document.xml 断言全过：Heading1/Heading3 样式引用（w:pStyle）、两段键入文本、<w:b /> 加粗标记
 - 全程控制台零错误（favicon 404 为 dev server 无图标，装饰性）
 - 截图存 %TEMP%\opencode\8e-e2e\shots\（欢迎页/表单/编辑器/输入后/导出后五张）

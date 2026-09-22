@@ -130,9 +130,9 @@
 - **AND** 该硬上限只约束检索返回多少，不是模型上下文上限
 
 #### Scenario: 不手工截断历史
-- **WHEN** 长对话上下文超限
+- **WHEN** 长讨论上下文超限
 - **THEN** 系统仍由框架压缩承接历史
-- **AND** 不手工截断对话历史或本轮材料
+- **AND** 不手工截断讨论历史或本轮材料
 
 ### Requirement: 材料状态诚实记录且仅凭 message_sent 回执标记已发送
 系统 SHALL 区分本轮材料的生命周期状态：`prepared`（已组装待发送，想发送）/ `accepted`（DSH 已接收并进入处理）/ `omitted`（因限制未纳入）/ `rejected`（权限或校验拒绝）/ `failed`（明确失败）/ `unknown`（无法确认是否送达 provider）。检索结果 `not_found` 与 `no_query_terms` SHALL 作为检索结果状态，MUST NOT 作为正文或材料内容。`entered_model_context` SHALL 只表示材料已组装进提交的请求（想发送），MUST NOT 被解读为已实际发送。系统 SHALL 通过驱动协议事件 `message_sent` 提供 provider 发送回执：本轮范围内首次观测到 provider 侧回应证据（第一个 `assistant/chunk` 的 text-delta，或 `assistant/message`）时发出一次、先于终态；取消/失败于任何回应证据之前 MUST NOT 发出，仅组装未到 provider 也 MUST NOT 发出。宿主 SHALL 把回执折算为轮级 `sent_confirmed` 标记：只有收到 `message_sent` 才为 true；未观测到回执时保持未确认（不是「未发送」），MUST NOT 伪造。该状态模型 SHALL 只覆盖 A 部分材料（关注文档现场、目录投影、跨文档字面检索片段）。
@@ -164,7 +164,7 @@
 - **AND** 不作为正文或材料内容进入模型上下文
 
 ### Requirement: 材料出处与限制可查看
-系统 SHALL 记录每轮实际进入模型上下文的材料出处、版本和本轮限制状态，并提供不打断对话的轻量"本次参考了什么"说明。说明 MUST 只列出实际使用的文档、版本/未保存状态、检索来源与限制，不得把未读取内容列为已知内容。
+系统 SHALL 记录每轮实际进入模型上下文的材料出处、版本和本轮限制状态，并提供不打断讨论的轻量"本次参考了什么"说明。说明 MUST 只列出实际使用的文档、版本/未保存状态、检索来源与限制，不得把未读取内容列为已知内容。
 
 #### Scenario: 查看本轮参考范围
 - **WHEN** 用户打开参考说明

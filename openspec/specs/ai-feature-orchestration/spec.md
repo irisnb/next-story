@@ -3,7 +3,7 @@
 规定 AI 功能编排拆分后的公开组合入口与行为保持要求：拆分不改变直接提问、及时召唤与追问的既有行为，且 AI 输出不得写回用户文档。
 ## Requirements
 ### Requirement: AI feature orchestration remains behavior-preserving after decomposition
-The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of direct-question submission, summon submission, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation. The retired `思维扩展` entry MUST NOT be part of the composed orchestration. The restored `AI 及时召唤` entry (see `selection-ai-summon`) SHALL be part of the composed orchestration as a second first-round entry into the unified temporary conversation.
+The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the public AI feature composition entry while allowing its internal request, panel, follow-up, and project lifecycle orchestration responsibilities to be split into smaller modules. The decomposition MUST preserve the existing behavior of direct-question submission, summon submission, follow-up submission, retry/edit recovery, configuration-missing handling, and stale-result isolation. The retired `思维扩展` entry MUST NOT be part of the composed orchestration. The restored `AI 及时召唤` entry (see `selection-ai-summon`) SHALL be part of the composed orchestration as a second first-round entry into the unified discussion.
 
 #### Scenario: Direct question still starts from frozen materials
 - **WHEN** the user submits a direct question with an optional selection attachment
@@ -24,16 +24,16 @@ The system SHALL keep the editor-facing `setupAiFeature(...)` integration as the
 - **AND** the floating selection entry is registered as the single-action 及时召唤 entry
 
 ### Requirement: AI feature orchestration keeps zero write-back capability
-The decomposed AI feature orchestration MUST NOT receive, create, or expose any callback, command, state transition, or UI action that inserts, appends, replaces, rewrites, deletes, moves, organizes, or saves draft notebook or main notebook text using AI output. The controlled story-material assembly added for regular discussions (focus-document field material, allowed directory projection, and cross-document literal retrieval) SHALL be read-only and MUST NOT expand this zero write-back boundary.
+The decomposed AI feature orchestration MUST NOT receive, create, or expose any callback, command, state transition, or UI action that inserts, appends, replaces, rewrites, deletes, moves, organizes, or saves user document text using AI output. The controlled story-material assembly added for regular discussions (focus-document field material, allowed directory projection, and cross-document literal retrieval) SHALL be read-only and MUST NOT expand this zero write-back boundary.
 
-#### Scenario: Decomposed modules do not receive notebook write functions
+#### Scenario: Decomposed modules do not receive user document write functions
 - **WHEN** AI feature orchestration is composed for the editor
-- **THEN** the modules responsible for AI requests, panel state, follow-up handling, and thinking expansion do not receive draft notebook or main notebook write callbacks
+- **THEN** the modules responsible for AI requests, panel state, follow-up handling, and thinking expansion do not receive user document write callbacks
 - **AND** AI output remains display-only temporary panel material
 
 #### Scenario: Configuration preflight does not broaden AI context
 - **WHEN** the decomposed orchestration checks whether LLM configuration exists before a first request or follow-up request
-- **THEN** it does not add nearby text, full notebook text, summaries, project metadata, AI content library material, persistent history, or user-confirmed story information to the model request
+- **THEN** it does not add nearby text, full-document text, summaries, project metadata, AI content library material, persistent history, or user-confirmed story information to the model request
 - **AND** only the separate controlled story-material assembly step may add the allowed focus-document field material, directory projection, and retrieval candidates for regular discussions
 
 #### Scenario: 常规取材不扩展写回能力
@@ -56,7 +56,7 @@ AI feature orchestration SHALL 将直接提问问题和可选冻结选区编排�
 ### Requirement: 直接提问编排当前讨论增量请求
 AI feature orchestration SHALL 让直接提问首轮成功后进入当前讨论，每轮请求只携带增量内容，并保持每讨论单请求锁与失败恢复语义。常规直接提问首轮和追问 SHALL 附带该讨论发送时刻冻结的关注文档现场材料、允许目录投影与跨文档字面检索候选片段；及时召唤 MUST NOT 经过该常规取材流程。首轮预检 SHALL 按讨论进行，不同讨论的首轮请求 SHALL 可以并发发起；请求 SHALL 经调度器按全局同时生成上限发起或排队；停止生成 SHALL 只影响对应讨论的当前请求。
 
-#### Scenario: 直接提问首轮成功后进入统一对话
+#### Scenario: 直接提问首轮成功后进入统一讨论
 - **WHEN** 直接提问首轮成功
 - **THEN** 后续追问复用当前讨论身份与会话
 

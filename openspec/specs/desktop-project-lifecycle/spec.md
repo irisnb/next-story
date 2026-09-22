@@ -21,7 +21,7 @@
 - **AND** 系统创建一棵内容树，根级包含一篇默认文档
 - **AND** 系统按稳定文档 ID 在 `作品文本/documents/<id>.json` 保存该篇文档的正文（格式版本 2）
 - **AND** 系统在 `next-story-system/content-tree.json` 保存内容树元数据（节点身份、类型、父级、子级顺序、名称，不含正文）
-- **AND** 系统创建项目结构版本为整数 `3` 的 `next-story-system/project.json`
+- **AND** 系统创建作品结构版本为整数 `3` 的 `next-story-system/project.json`
 
 #### Scenario: Empty project name
 - **WHEN** 用户尝试使用空作品名创建作品
@@ -50,12 +50,12 @@
 - **AND** 系统 MAY remove only files or directories that the current create attempt created
 
 ### Requirement: User can open a valid project folder
-系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构和内容树。系统 MUST 先以只读方式校验 `project.json` 的项目结构版本为整数 3，只有版本受支持后才可运行可能写盘的事务恢复或迁移。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading document contents. 打开成功时系统 SHALL 返回整棵内容树结构，前端据此确定当前文档。
+系统 SHALL 允许用户选择作品文件夹打开作品，并 SHALL 在进入编辑器前校验作品结构和内容树。系统 MUST 先以只读方式校验 `project.json` 的作品结构版本为整数 3，只有版本受支持后才可运行可能写盘的事务恢复或迁移。系统 MUST reject project structures whose required project directories or files are symlinks, reparse points, or resolve outside the selected project folder, MUST reject required project files that exceed the supported read-size limit before reading them into memory, and MUST recover or reject interrupted manual-save transactions before loading document contents. 打开成功时系统 SHALL 返回整棵内容树结构，前端据此确定当前文档。
 
 #### Scenario: Open valid project folder
 - **WHEN** 用户选择包含内容树元数据文件、文档正文文件和 `next-story-system/project.json` 的文件夹
 - **AND** all required project directories and files are normal filesystem entries inside the selected project folder
-- **AND** `project.json` 的项目结构版本为整数 `3`
+- **AND** `project.json` 的作品结构版本为整数 `3`
 - **AND** required project files are within supported read-size limits and contain supported valid structures
 - **AND** no interrupted manual-save transaction is present or recovery completes successfully
 - **THEN** 系统打开该作品
@@ -84,18 +84,18 @@
 - **AND** 系统不把失败文档替换为空白内容
 
 #### Scenario: Reject old project structure version
-- **WHEN** 用户选择的作品使用项目结构版本 1 和旧 `.txt` 本子文件
+- **WHEN** 用户选择的作品使用作品结构版本 1 和旧 `.txt` 本子文件
 - **THEN** 系统拒绝打开该作品
-- **AND** 系统显示该项目结构版本不受支持的中文错误
+- **AND** 系统显示该作品结构版本不受支持的中文错误
 - **AND** 系统不迁移、重命名、删除或改写任何原文件
 
 #### Scenario: Reject unknown future project structure version
-- **WHEN** `project.json` 的项目结构版本不是整数 3
+- **WHEN** `project.json` 的作品结构版本不是整数 3
 - **THEN** 系统拒绝打开该作品 before reading document contents into the editor
 - **AND** 系统不把未知版本按版本 3 解释或写回
 
 #### Scenario: Unsupported version with interrupted transaction remains untouched
-- **WHEN** 项目结构版本不是整数 3 且作品目录同时包含中断事务文件
+- **WHEN** 作品结构版本不是整数 3 且作品目录同时包含中断事务文件
 - **THEN** 系统在运行任何事务恢复前拒绝打开
 - **AND** 原项目文件和事务文件的字节保持不变
 
@@ -186,20 +186,20 @@
 - **WHEN** 系统写入事务暂存文档正文或事务清单
 - **THEN** 系统在返回成功前把这些文件的内容刷新到持久介质
 
-### Requirement: 项目结构版本变化通过迁移框架处理
-系统 MUST 提供一个项目版本迁移框架：打开作品时识别项目结构版本，版本高于当前支持版本时拒绝；版本低于当前版本且存在已注册迁移步骤时，按版本逐级迁移，迁移前备份、迁移后校验、失败回滚；不存在迁移步骤的旧版本仍被拒绝。迁移回滚 MUST 使用事务式暂存与恢复，且回滚失败 MUST 显式上报（不得静默吞掉）；迁移步骤 MUST 幂等，并 MUST 支持「迁移中途崩溃后再次打开作品」时恢复到一致有效世代。当前生产环境注册了一个迁移步骤：`2 → 3`，把旧双本子作品（`作品文本/草稿本.json`、`作品文本/正文本.json`）自动迁移为内容树根层的两篇普通文档「草稿本」「正文本」，正文与格式保留，不保留特殊本子身份，不恢复双本子模型，不额外包裹迁移文件夹；版本 3 即当前版。
+### Requirement: 作品结构版本变化通过迁移框架处理
+系统 MUST 提供一个作品版本迁移框架：打开作品时识别作品结构版本，版本高于当前支持版本时拒绝；版本低于当前版本且存在已注册迁移步骤时，按版本逐级迁移，迁移前备份、迁移后校验、失败回滚；不存在迁移步骤的旧版本仍被拒绝。迁移回滚 MUST 使用事务式暂存与恢复，且回滚失败 MUST 显式上报（不得静默吞掉）；迁移步骤 MUST 幂等，并 MUST 支持「迁移中途崩溃后再次打开作品」时恢复到一致有效世代。当前生产环境注册了一个迁移步骤：`2 → 3`，把旧双本子作品（`作品文本/草稿本.json`、`作品文本/正文本.json`）自动迁移为内容树根层的两篇普通文档「草稿本」「正文本」，正文与格式保留，不保留特殊本子身份，不恢复双本子模型，不额外包裹迁移文件夹；版本 3 即当前版。
 
 #### Scenario: 未来版本被拒绝
-- **WHEN** 项目结构版本高于当前支持版本
-- **THEN** 系统拒绝打开并提示不支持的项目结构版本
+- **WHEN** 作品结构版本高于当前支持版本
+- **THEN** 系统拒绝打开并提示不支持的作品结构版本
 
 #### Scenario: 无迁移步骤的旧版本被拒绝
-- **WHEN** 项目结构版本低于当前版本且未注册对应迁移步骤
-- **THEN** 系统拒绝打开并提示不支持的项目结构版本
+- **WHEN** 作品结构版本低于当前版本且未注册对应迁移步骤
+- **THEN** 系统拒绝打开并提示不支持的作品结构版本
 - **AND** 系统不创建迁移目录或改写任何文件
 
 #### Scenario: 旧双本子作品自动迁移为两篇普通文档
-- **WHEN** 用户打开一个项目结构版本为 2 的旧双本子作品
+- **WHEN** 用户打开一个作品结构版本为 2 的旧双本子作品
 - **THEN** 系统通过 `2 → 3` 迁移步骤把草稿本与正文本自动迁移为内容树根层的两篇普通文档「草稿本」「正文本」
 - **AND** 两篇文档保留原有文字与格式
 - **AND** 两篇文档只是普通文档，不保留特殊本子身份，也不恢复双本子模型

@@ -85,9 +85,7 @@ fn render_node(docx: Docx, node: &ExportNode) -> Docx {
 
 fn render_block(docx: Docx, block: &ExportBlock) -> Docx {
     match block {
-        ExportBlock::Paragraph(content) => {
-            docx.add_paragraph(render_paragraph(content, None))
-        }
+        ExportBlock::Paragraph(content) => docx.add_paragraph(render_paragraph(content, None)),
         ExportBlock::Heading { level, content } => {
             let style = format!("Heading{level}");
             docx.add_paragraph(render_paragraph(content, Some(&style)))

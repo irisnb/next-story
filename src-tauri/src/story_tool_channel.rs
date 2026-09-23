@@ -451,6 +451,16 @@ impl StoryToolChannel {
         pending.retain(|_, request| request.session_id != session_id);
     }
 
+    /// 是否有该消息的待决按需补读授权（fix-long-context-freeze design D2）：
+    /// 驱动层停滞判定的授权等待豁免探针数据源——等待用户决定的轮次无期限。
+    /// pending 表按 call_id 键控，这里按消息身份比对（一轮串行，同一消息
+    /// 同一时刻至多一个待决调用）。
+    pub fn has_pending_authorization_for_message(&self, message_id: &str) -> bool {
+        lock(&self.pending)
+            .values()
+            .any(|request| request.message_id == message_id)
+    }
+
     /// 处理一次驱动 tool_call 事件（由 dsh_driver 的工具回调调用）。
     ///
     /// 轻量路由在调用线程完成；执行（文件 IO + 档案读改写）转独立线程，不阻塞

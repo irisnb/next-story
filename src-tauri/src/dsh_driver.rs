@@ -5,6 +5,10 @@
 //! - 懒启动：首次 AI 操作时拉起进程并等待 `ready`；进程存活且参数一致时复用。
 //! - 参数变化（模型/地址/Key）：优雅重启进程。
 //! - 请求级超时：超时先发 `cancel_message` 并给宽限期，再返回 Timeout。
+//! - 停滞看护（fix-long-context-freeze，design D2 / attribution.md H1·H3）：工具
+//!   挂起轮在 deadline 后不再无限裸等——授权等待（等用户决定）无期限豁免；
+//!   其余静默自上一条协议事件起超过停滞窗口（180 秒）判停滞，走既有取消路径
+//!   诚实报错并释放并发名额。
 //! - 崩溃检测：stdout EOF 视为驱动退出，所有等待中的请求立即失败；下次操作重新拉起。
 //! - 优雅退出：`shutdown` 命令 + 宽限等待 + 强杀进程树兜底；宿主意外死亡时
 //!   驱动侧因 stdin 关闭自行清理（防孤儿进程，驱动已实现）。
@@ -34,6 +38,16 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 pub const SESSION_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 /// 超时触发取消后，等待驱动回终态的宽限期。
 pub const CANCEL_GRACE: Duration = Duration::from_secs(10);
+/// 停滞窗口（fix-long-context-freeze design D2）：挂起轮自最近一次活动
+/// （任何携带 message_id 的协议事件 / 工具结果回填）起的静默上限，超过即判
+/// 停滞。180 秒＝事件间隔口径，与 REQUEST_TIMEOUT 数值一致（语义统一：
+/// 「180 秒什么都不发生＝停滞」）；基线依据见 attribution.md 第六节（常态
+/// 首字中位约 3 秒、最差总时长 5–40 秒，180 秒约为其 4.5 倍）。授权等待
+/// （等用户决定）豁免——那是用户驱动的等待，无期限。
+pub const STALL_WINDOW: Duration = Duration::from_secs(180);
+/// 挂起轮停滞看护的轮询片（design D2）：只决定授权探针与活动时钟的检查
+/// 粒度；事件到达仍立即唤醒 recv（手动停止的响应不受影响）。
+const STALL_POLL_SLICE: Duration = Duration::from_millis(250);
 const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 // ========== 协议类型（与 sidecar/driver/driver.mjs 的协议 v1 对应） ==========
@@ -178,6 +192,13 @@ pub struct ToolCallPayload {
 
 pub type ToolCallSink = Arc<dyn Fn(ToolCallPayload) + Send + Sync>;
 
+/// 授权等待探针（fix-long-context-freeze design D2）：参数 message_id，
+/// 返回该轮是否正在等待用户的按需补读授权决定。等待用户＝无期限豁免
+/// （既有规格语义：等待期间轮次挂起、不产生模型请求）；授权 pending 状态
+/// 在 story_tool_channel，dsh_driver 不拥有它，故由装配层经探针注入。
+/// 缺省不注册＝视为不等待（停滞照常判定）。
+pub type AuthorizationWaitProbe = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 /// 驱动进程的启动参数（来自用户保存的唯一 LLM 配置）。
 /// `max_tokens`（任务 8.1，设计 D10）参与相等比较：配置变化时 `ensure_started`
 /// 会退役旧代并按新参数重启驱动，新上限即生效。
@@ -253,6 +274,16 @@ pub fn map_driver_failure(code: &str, _raw_message: &str) -> GenerateAiError {
 
 fn timeout_error() -> GenerateAiError {
     GenerateAiError::new(GenerateAiErrorCode::Timeout, "生成超时，请稍后重试")
+}
+
+/// 停滞错误（fix-long-context-freeze design D2）：与请求级超时同一错误族
+/// （Timeout——前端只按 code 切换状态、message 用于展示，复用既有通道零前端
+/// 改动），文案区分「长时间无响应」并保留可重试指引。
+fn stall_error() -> GenerateAiError {
+    GenerateAiError::new(
+        GenerateAiErrorCode::Timeout,
+        "生成长时间无响应，已停止本轮；已完成内容保留，可重试",
+    )
 }
 
 fn service_error(message: impl Into<String>) -> GenerateAiError {
@@ -507,6 +538,16 @@ struct Inner {
     /// 工具挂起中的消息（任务 5.2/5.3，设计 D8）：挂起轮不适用请求级超时，
     /// 只由工具结果回填、终态或停止生成解除。
     suspended: Mutex<HashSet<String>>,
+    /// 轮次活动时钟（fix-long-context-freeze design D2 / attribution.md H1）：
+    /// message_id → 最近活动时刻。凡携带 message_id 的协议事件与工具结果回填
+    /// 都刷新；等待注册时登记、等待返回（全部出口）经 ActivityGuard 移除，
+    /// 迟到事件只更新已登记条目，杜绝泄漏。
+    activity: Mutex<HashMap<String, Instant>>,
+    /// 停滞窗口：生产取 STALL_WINDOW 常量，测试构造注入短窗口（design D2）。
+    stall_window: Duration,
+    /// 授权等待探针（design D2）：装配层从 story_tool_channel 的待决授权表
+    /// 接出；缺省 None＝视为不等待（停滞照常判定）。
+    authorization_wait_probe: Mutex<Option<AuthorizationWaitProbe>>,
     spawn_lock: Mutex<()>,
 }
 
@@ -532,8 +573,49 @@ impl Drop for GenerationPermit {
     }
 }
 
+/// 活动时钟清理凭据（fix-long-context-freeze design D2）：等待返回（全部
+/// 出口）时移除该轮的活动登记，防泄漏——与 PendingRegistration 同构的
+/// RAII 纪律。
+struct ActivityGuard {
+    inner: Arc<Inner>,
+    message_id: String,
+}
+
+impl ActivityGuard {
+    fn new(inner: &Arc<Inner>, message_id: &str) -> Self {
+        ActivityGuard {
+            inner: inner.clone(),
+            message_id: message_id.to_string(),
+        }
+    }
+}
+
+impl Drop for ActivityGuard {
+    fn drop(&mut self) {
+        lock_recover(&self.inner.activity).remove(&self.message_id);
+    }
+}
+
 /// 驱动进程丢失回调（崩溃或重启）：前端据此进入恢复流程（重放显示历史）。
 pub type LossSink = Arc<dyn Fn() + Send + Sync>;
+
+/// 事件携带的消息身份（活动时钟用，fix-long-context-freeze design D2）：
+/// Delta / MessageSent / MessageDone / MessageFailed / ToolCall 均带
+/// message_id，Error 为可选；其余变体（Ready / 会话控制确认）无消息身份。
+fn event_message_id(event: &DriverEvent) -> Option<&str> {
+    match event {
+        DriverEvent::Delta { message_id, .. }
+        | DriverEvent::MessageSent { message_id, .. }
+        | DriverEvent::MessageDone { message_id, .. }
+        | DriverEvent::MessageFailed { message_id, .. }
+        | DriverEvent::ToolCall { message_id, .. } => Some(message_id),
+        DriverEvent::Error { message_id, .. } => message_id.as_deref(),
+        DriverEvent::Ready { .. }
+        | DriverEvent::SessionStarted { .. }
+        | DriverEvent::ReplayOk { .. }
+        | DriverEvent::SessionEnded { .. } => None,
+    }
+}
 
 impl Inner {
     /// 事件路由（由 reader 携带自己的代际调用）。
@@ -559,6 +641,12 @@ impl Inner {
                 }
                 return;
             }
+        }
+        // 活动时钟（fix-long-context-freeze design D2 / attribution.md H1）：凡携带
+        // message_id 的协议事件都刷新该轮活动时刻——停滞判定只对「自上一条
+        // 事件起的静默」报警，流式增量、回执、工具调用、错误都是活动。
+        if let Some(message_id) = event_message_id(&event) {
+            self.touch_activity(message_id);
         }
         // 常规路由。等待表是代际局部的：旧代事件只会落进旧代（已失败清空的）表。
         match &event {
@@ -676,6 +764,31 @@ impl Inner {
         lock_recover(&self.suspended).contains(message_id)
     }
 
+    /// 登记轮次活动时钟（等待注册时调用；请求发出时刻＝初始活动时刻）。
+    fn register_activity(&self, message_id: &str) {
+        lock_recover(&self.activity).insert(message_id.to_string(), Instant::now());
+    }
+
+    /// 刷新轮次活动时刻：只更新已登记条目——等待已结束后的迟到事件不得
+    /// 重新插入（与 ActivityGuard 配合防泄漏）。
+    fn touch_activity(&self, message_id: &str) {
+        let mut activity = lock_recover(&self.activity);
+        if let Some(last) = activity.get_mut(message_id) {
+            *last = Instant::now();
+        }
+    }
+
+    /// 轮次最近活动时刻（未登记则 None——防御性视为不可判停滞，继续等待）。
+    fn last_activity(&self, message_id: &str) -> Option<Instant> {
+        lock_recover(&self.activity).get(message_id).copied()
+    }
+
+    /// 该轮是否正在等待用户授权决定（探针缺省视为不等待，design D2）。
+    fn is_waiting_for_authorization(&self, message_id: &str) -> bool {
+        let probe = lock_recover(&self.authorization_wait_probe).clone();
+        probe.is_some_and(|probe| probe(message_id))
+    }
+
     /// 标记死亡：只有指定代际仍是当前代时才回收进程；只有**已就绪**的当前代
     /// 意外退出才触发崩溃恢复通知（启动失败不伪装为驱动丢失）。
     fn mark_dead_if_current(&self, generation: GenerationId) {
@@ -719,11 +832,22 @@ impl DshDriverManager {
     const DEFAULT_MAX_CONCURRENT_GENERATIONS: usize = 4;
 
     pub fn new() -> Self {
-        Self::new_with_limit(Self::DEFAULT_MAX_CONCURRENT_GENERATIONS)
+        Self::new_inner(Self::DEFAULT_MAX_CONCURRENT_GENERATIONS, STALL_WINDOW)
     }
 
     /// 测试构造：注入全局同时生成上限。
     pub fn new_with_limit(max_concurrent_generations: usize) -> Self {
+        Self::new_inner(max_concurrent_generations, STALL_WINDOW)
+    }
+
+    /// 测试构造：注入停滞检测窗口（fix-long-context-freeze design D2：生产
+    /// 默认 STALL_WINDOW=180 秒事件间隔静默；测试用短窗口验证判定逻辑，
+    /// 不改窗口语义）。
+    pub fn new_with_stall_window(stall_window: Duration) -> Self {
+        Self::new_inner(Self::DEFAULT_MAX_CONCURRENT_GENERATIONS, stall_window)
+    }
+
+    fn new_inner(max_concurrent_generations: usize, stall_window: Duration) -> Self {
         DshDriverManager {
             inner: Arc::new(Inner {
                 lifecycle: Mutex::new(Lifecycle {
@@ -738,6 +862,9 @@ impl DshDriverManager {
                 loss_sink: Mutex::new(None),
                 tool_call_sink: Mutex::new(None),
                 suspended: Mutex::new(HashSet::new()),
+                activity: Mutex::new(HashMap::new()),
+                stall_window,
+                authorization_wait_probe: Mutex::new(None),
                 spawn_lock: Mutex::new(()),
             }),
         }
@@ -789,6 +916,13 @@ impl DshDriverManager {
         *lock_recover(&self.inner.tool_call_sink) = Some(sink);
     }
 
+    /// 注册授权等待探针（fix-long-context-freeze design D2）：装配层由
+    /// story_tool_channel 的待决授权表接出——等待用户授权决定的轮次无期限，
+    /// 停滞判定豁免。缺省不注册＝视为不等待（停滞照常判定）。
+    pub fn set_authorization_wait_probe(&self, probe: AuthorizationWaitProbe) {
+        *lock_recover(&self.inner.authorization_wait_probe) = Some(probe);
+    }
+
     /// 回填工具结果并解除该消息的挂起（任务 5.2；D8：恢复 = 工具结果返回）。
     /// 驱动侧对未知 / 已取消的 call_id 回 `tool_call_not_found` 错误（迟到丢弃）。
     /// `recovery` 是拒绝的可选稳定恢复路径提示（协议 `error.recovery`，design
@@ -815,6 +949,10 @@ impl DshDriverManager {
             }),
         };
         self.write_command(&cmd)?;
+        // 工具结果回填＝确定性进展（fix-long-context-freeze design D2）：刷新
+        // 活动时钟。否则长授权等待解除或工具执行耗时后，停滞判定会拿陈旧
+        // 时钟立刻误判——回填后应获得一个完整的新窗口。
+        self.inner.touch_activity(message_id);
         self.inner.resume(message_id);
         Ok(())
     }
@@ -1078,6 +1216,10 @@ impl DshDriverManager {
         let runtime = self.current_runtime()?;
         let key = PendingKey::Message(message_id.to_string());
         let (_registration, rx) = runtime.register(key.clone())?;
+        // 活动时钟登记（fix-long-context-freeze design D2）：请求发出时刻＝初始
+        // 活动时刻；等待返回（全部出口）经 guard 移除，防泄漏。
+        self.inner.register_activity(message_id);
+        let _activity_guard = ActivityGuard::new(&self.inner, message_id);
         let cmd = DriverCommand::SendMessage {
             session_id: session_id.to_string(),
             message_id: message_id.to_string(),
@@ -1090,27 +1232,20 @@ impl DshDriverManager {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 // 工具挂起中的轮次不适用请求级超时（任务 5.2/5.3，设计 D8：等待
-                // 授权期间轮次挂起、不产生模型请求，占用语义不变）：阻塞等待
-                // 工具结果回填 / 授权决定 / 停止生成带来的下一个事件。
+                // 授权期间轮次挂起、不产生模型请求，占用语义不变）：转入停滞
+                // 看护的有界轮询等待（fix-long-context-freeze design D2 /
+                // attribution.md H1——原裸 recv 无计时，工具回填后 DSH 停滞＝
+                // 无限「正在思考…」且许可被阻塞线程永久持有）。
                 if self.inner.is_suspended(message_id) {
-                    match rx.recv() {
-                        Ok(DriverEvent::MessageDone { text, .. }) => {
-                            return Ok(MessageOutcome {
-                                text,
-                                sent_confirmed,
-                            });
-                        }
-                        Ok(DriverEvent::MessageFailed { code, .. }) => {
-                            return Err(map_driver_failure(&code, ""));
-                        }
-                        Ok(DriverEvent::Error { code, message, .. }) => {
-                            return Err(map_driver_failure(&code, &message));
-                        }
-                        Ok(_) => continue,
-                        Err(_) => return Err(service_error("驱动应答通道关闭")),
-                    }
+                    return self.wait_suspended_with_stall_watch(
+                        &rx,
+                        session_id,
+                        message_id,
+                        sent_confirmed,
+                    );
                 }
-                // 请求级超时：先取消，给宽限期回收终态（design.md D9）
+                // 请求级超时：先取消，给宽限期回收终态（design.md D9）——
+                // 无工具轮行为保持不变。
                 let _ = self.cancel_message(session_id, message_id);
                 let outcome = rx.recv_timeout(CANCEL_GRACE);
                 return match outcome {
@@ -1141,6 +1276,75 @@ impl DshDriverManager {
                 }
                 Ok(_) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(service_error("驱动应答通道关闭"));
+                }
+            }
+        }
+    }
+
+    /// 挂起轮的有界等待（fix-long-context-freeze design D2 / attribution.md
+    /// H1·H3）：deadline 到期且工具挂起中时进入。短轮询片上有界等待——
+    /// - 事件到达按既有语义处理（Done/Failed/Error 返回，Sent 置标记，其余
+    ///   继续；事件唤醒仍是立即的，手动停止响应不受轮询片影响）；
+    /// - 轮询片静默：先问授权探针——等待用户授权决定＝无期限豁免（既有规格
+    ///   语义：等待期间轮次挂起、不产生模型请求），并把等待本身视为活动刷新
+    ///   时钟（授权解除后从完整新窗口起算，消除「解除与回填之间」的竞态误判）；
+    /// - 非授权静默自最近活动起超过停滞窗口：判停滞，走与请求级超时同构的
+    ///   取消回收路径——先取消、给宽限、返回停滞错误；有界返回自动释放生成
+    ///   许可（attribution.md H3：冻结轮烧伤全局名额的治愈点）。
+    fn wait_suspended_with_stall_watch(
+        &self,
+        rx: &std::sync::mpsc::Receiver<DriverEvent>,
+        session_id: &str,
+        message_id: &str,
+        mut sent_confirmed: bool,
+    ) -> Result<MessageOutcome, GenerateAiError> {
+        loop {
+            match rx.recv_timeout(STALL_POLL_SLICE) {
+                Ok(DriverEvent::MessageDone { text, .. }) => {
+                    return Ok(MessageOutcome {
+                        text,
+                        sent_confirmed,
+                    });
+                }
+                Ok(DriverEvent::MessageFailed { code, .. }) => {
+                    return Err(map_driver_failure(&code, ""));
+                }
+                Ok(DriverEvent::Error { code, message, .. }) => {
+                    return Err(map_driver_failure(&code, &message));
+                }
+                Ok(DriverEvent::MessageSent { .. }) => {
+                    // 发送回执：记录后继续等待终态（回执不满足等待条件）。
+                    sent_confirmed = true;
+                }
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    // 授权等待豁免：等待用户决定期间不判停滞（无期限），并
+                    // 刷新活动时钟（见方法注释的竞态说明）。
+                    if self.inner.is_waiting_for_authorization(message_id) {
+                        self.inner.touch_activity(message_id);
+                        continue;
+                    }
+                    let stalled = self
+                        .inner
+                        .last_activity(message_id)
+                        .is_some_and(|last| last.elapsed() >= self.inner.stall_window);
+                    if !stalled {
+                        continue;
+                    }
+                    // 停滞路径（与请求级超时路径同构）：先取消，给宽限期回收终态。
+                    let _ = self.cancel_message(session_id, message_id);
+                    let outcome = rx.recv_timeout(CANCEL_GRACE);
+                    return match outcome {
+                        // 取消前恰好完成：仍算成功（已完成内容保留）。
+                        Ok(DriverEvent::MessageDone { text, .. }) => Ok(MessageOutcome {
+                            text,
+                            sent_confirmed,
+                        }),
+                        _ => Err(stall_error()),
+                    };
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     return Err(service_error("驱动应答通道关闭"));
                 }
@@ -2260,6 +2464,398 @@ mod tests {
             retry_err.code,
             GenerateAiErrorCode::Timeout,
             "名额已释放：不得是 conversation_busy"
+        );
+
+        manager.shutdown_best_effort();
+    }
+
+    // ========== fix-long-context-freeze：挂起轮停滞看护（design D2 / attribution.md H1·H3） ==========
+
+    /// 停滞看护假驱动：`send_message`（text 以 "STALL" 开头）→ message_sent +
+    /// tool_call；其余 send_message 直接 message_done（「正常回复」）；
+    /// `tool_result` 后执行注入的 JS 片段（默认完全静默＝模拟 DSH/端点在长
+    /// 上下文续跑时停滞）；`cancel_message` 立即回 cancelled 终态（取消路径
+    /// 与停滞路径的宽限期快速收束）。消息 text 形如 `STALL|<标记路径>`：
+    /// `|` 之后是标记文件路径（作为 JSON 数据传输，不经脚本源码嵌入，无
+    /// 转义问题；无 `|` 时整段 text 充当标记值，静默变体不使用）。
+    fn stall_watchdog_driver(after_tool_result: &str) -> String {
+        format!(
+            r#"
+import fs from 'node:fs';
+import readline from 'node:readline';
+console.log(JSON.stringify({{ type: 'ready', protocol_version: 1 }}));
+const currentMsg = new Map();
+const markerOf = new Map();
+const rl = readline.createInterface({{ input: process.stdin }});
+rl.on('line', (line) => {{
+  let cmd; try {{ cmd = JSON.parse(line); }} catch {{ return; }}
+  if (cmd.type === 'send_message') {{
+    currentMsg.set(cmd.session_id, cmd.message_id);
+    const sep = cmd.text.indexOf('|');
+    markerOf.set(cmd.session_id, sep >= 0 ? cmd.text.slice(sep + 1) : cmd.text);
+    console.log(JSON.stringify({{ type: 'message_sent', session_id: cmd.session_id, message_id: cmd.message_id }}));
+    if (cmd.text.startsWith('STALL')) {{
+      console.log(JSON.stringify({{ type: 'tool_call', session_id: cmd.session_id, message_id: cmd.message_id, call_id: 'call-1', tool: 'story-read', args: {{}} }}));
+    }} else {{
+      console.log(JSON.stringify({{ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: '正常回复' }}));
+    }}
+  }} else if (cmd.type === 'tool_result') {{
+{after_tool_result}
+  }} else if (cmd.type === 'cancel_message') {{
+    console.log(JSON.stringify({{ type: 'message_failed', session_id: cmd.session_id, message_id: cmd.message_id, code: 'cancelled', message: '已取消' }}));
+  }} else if (cmd.type === 'shutdown') {{
+    process.exit(0);
+  }}
+}});
+rl.on('close', () => process.exit(0));
+setInterval(() => {{}}, 1000);
+"#
+        )
+    }
+
+    /// 工具结果回填后完全静默的注入片段（模拟 DSH/端点停滞）。
+    const SILENT_AFTER_RESULT: &str = "    // 工具结果回填后完全静默（模拟 DSH/端点停滞）。";
+
+    /// T1＋T2（design D2 / attribution.md H1·H3）：工具结果回填后零事件静默
+    /// 超过停滞窗口（测试注入短窗口）→ 等待有界返回停滞错误（非永久阻塞）；
+    /// 停滞回收后生成许可释放——同会话新请求不被 conversation_busy 拒绝。
+    #[test]
+    fn stall_after_tool_result_silence_reports_error_and_releases_permit() {
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(SILENT_AFTER_RESULT));
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_millis(600));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        // 工具调用经 sink 交给本测试线程（模拟宿主执行通道）。
+        let (tool_tx, tool_rx) = channel();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            let _ = tool_tx.send(payload);
+        }));
+
+        let manager_for_send = manager.clone();
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait(
+                "s1",
+                "m1",
+                "STALL 问题",
+                Duration::from_millis(200),
+            )
+        });
+        // 模拟工具执行：收到调用后，先等 deadline 过去（等待线程已转入挂起
+        // 停滞看护分支——真实冻结场景正是「deadline 到期时仍挂起中」），
+        // 再回填结果——回填刷新活动时钟，之后驱动完全静默。
+        let payload = tool_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("应收到工具调用");
+        assert_eq!(payload.call_id, "call-1");
+        std::thread::sleep(Duration::from_millis(500));
+        manager
+            .send_tool_result(
+                "s1",
+                "m1",
+                "call-1",
+                true,
+                Some(serde_json::json!({"ok": true})),
+                None,
+                None,
+            )
+            .expect("回填工具结果");
+
+        let stalled = send
+            .join()
+            .expect("send 线程")
+            .expect_err("静默超过窗口必须判停滞（有界返回，非永久阻塞）");
+        assert_eq!(
+            stalled.code,
+            GenerateAiErrorCode::Timeout,
+            "停滞复用既有超时错误族（前端零改动）"
+        );
+        assert!(
+            stalled.message.contains("长时间无响应"),
+            "停滞文案应可区分: {}",
+            stalled.message
+        );
+
+        // T2：许可已随停滞的有界返回释放——同会话新请求不被 busy 拒绝且正常完成。
+        let after = manager
+            .send_message_and_wait("s1", "m2", "普通问题", Duration::from_secs(15))
+            .expect("停滞回收后同会话新请求成功（许可已释放）");
+        assert_eq!(after.text, "正常回复");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// attribution.md H1 附注：「suspended 置位先于 sink 存在性检查」——工具被
+    /// 丢弃（sink 未接线）的挂起轮同样被停滞看护覆盖：静默超窗报停滞。
+    #[test]
+    fn dropped_tool_call_stall_is_also_covered() {
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(SILENT_AFTER_RESULT));
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_millis(500));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+        // 刻意不接 tool_call_sink：tool_call 事件被丢弃，但挂起标志已立起。
+
+        let stalled = manager
+            .send_message_and_wait("s1", "m1", "STALL 问题", Duration::from_millis(200))
+            .expect_err("工具被丢弃后的静默同样判停滞");
+        assert_eq!(stalled.code, GenerateAiErrorCode::Timeout);
+        assert!(
+            stalled.message.contains("长时间无响应"),
+            "停滞文案: {}",
+            stalled.message
+        );
+
+        manager.shutdown_best_effort();
+    }
+
+    /// T3（design D2：授权等待豁免）：ToolCall 后探针报告「等待用户决定」→
+    /// 静默超过窗口仍等待（不报停滞）；探针解除＋工具结果回填＋后续事件后
+    /// 正常收束。
+    #[test]
+    fn authorization_wait_exempts_stall_until_resolved() {
+        // 回填后轮询标记文件（消息 text 携带路径）——出现即收束，模拟授权
+        // 决定落地后 DSH 继续产出。
+        let after_result = r#"
+    const poll = () => {
+      if (fs.existsSync(markerOf.get(cmd.session_id))) {
+        console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: currentMsg.get(cmd.session_id), text: '授权后继续回答' }));
+      } else {
+        setTimeout(poll, 20);
+      }
+    };
+    poll();
+"#;
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(after_result));
+        let marker = _temp.path().join("authorization-decided.marker");
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_millis(700));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        // 测试自有探针（T3 按规格注入）：waiting 标志＝是否等待用户授权决定。
+        let waiting = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let waiting_for_probe = waiting.clone();
+        manager.set_authorization_wait_probe(Arc::new(move |message_id| {
+            message_id == "m1" && waiting_for_probe.load(Ordering::SeqCst)
+        }));
+
+        let (tool_tx, tool_rx) = channel();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            let _ = tool_tx.send(payload);
+        }));
+
+        // 消息 text = `STALL|<标记路径>`；授权决定落地前不回填工具结果
+        // （轮次挂起等待用户，与真实授权流一致）。
+        let manager_for_send = manager.clone();
+        let marker_text = format!("STALL|{}", marker.to_string_lossy());
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait(
+                "s1",
+                "m1",
+                &marker_text,
+                Duration::from_millis(200),
+            )
+        });
+        let _payload = tool_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("应收到工具调用");
+
+        // 静默远超窗口（等待用户决定＝无期限豁免）：不得报停滞。
+        std::thread::sleep(Duration::from_millis(1600));
+        assert!(
+            !send.is_finished(),
+            "等待用户授权决定的轮次不得判停滞（无期限豁免）"
+        );
+
+        // 探针解除（用户已决定）＋决定落地（标记）＋工具结果回填 → 正常收束。
+        waiting.store(false, Ordering::SeqCst);
+        std::fs::write(&marker, "").expect("写决定标记");
+        manager
+            .send_tool_result(
+                "s1",
+                "m1",
+                "call-1",
+                true,
+                Some(serde_json::json!({"granted": true})),
+                None,
+                None,
+            )
+            .expect("回填授权决定");
+        let outcome = send.join().expect("send 线程").expect("授权解除后正常收束");
+        assert_eq!(outcome.text, "授权后继续回答");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// T4（design D2：事件间隔口径）：工具结果回填后按小于窗口的间隔持续喂
+    /// Delta（Delta 不进等待通道、只刷新活动时钟）→ 不误判；最终 MessageDone
+    /// 正常成功。增量总时长超过窗口——没有「增量刷新时钟」必停滞，证明判据
+    /// 是事件间隔而非总时长。
+    #[test]
+    fn deltas_after_tool_result_refresh_stall_clock_and_complete() {
+        let after_result = r#"
+    const sid = cmd.session_id;
+    const mid = currentMsg.get(cmd.session_id);
+    let i = 0;
+    const tick = () => {
+      if (i < 6) {
+        console.log(JSON.stringify({ type: 'delta', session_id: sid, message_id: mid, seq: i, text: '段' }));
+        i += 1;
+        setTimeout(tick, 100);
+      } else {
+        console.log(JSON.stringify({ type: 'message_done', session_id: sid, message_id: mid, text: '回填后完成' }));
+      }
+    };
+    tick();
+"#;
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(after_result));
+        // 窗口 500ms < 增量总时长 600ms：无刷新必停滞；有刷新则成功。
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_millis(500));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let (tool_tx, tool_rx) = channel();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            let _ = tool_tx.send(payload);
+        }));
+
+        let manager_for_send = manager.clone();
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait(
+                "s1",
+                "m1",
+                "STALL 问题",
+                Duration::from_millis(200),
+            )
+        });
+        let _payload = tool_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("应收到工具调用");
+        // 先等 deadline 过去（等待线程已进入停滞看护分支），再回填——回填后
+        // 增量流以小于窗口的间隔持续到达。
+        std::thread::sleep(Duration::from_millis(500));
+        manager
+            .send_tool_result(
+                "s1",
+                "m1",
+                "call-1",
+                true,
+                Some(serde_json::json!({})),
+                None,
+                None,
+            )
+            .expect("回填工具结果");
+
+        let outcome = send
+            .join()
+            .expect("send 线程")
+            .expect("持续增量不得判停滞（Delta 刷新停滞时钟）");
+        assert_eq!(outcome.text, "回填后完成");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// T5（design D2：停滞态手动停止有效）：静默等待期间手动取消 → 返回既有
+    /// 取消错误（Timeout 族「生成已取消」），不等待停滞窗口。
+    #[test]
+    fn manual_cancel_during_silent_suspended_wait_returns_cancelled() {
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(SILENT_AFTER_RESULT));
+        // 窗口远大于测试时长：本测试只验证手动停止，不触发停滞。
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_secs(30));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let (tool_tx, tool_rx) = channel();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            let _ = tool_tx.send(payload);
+        }));
+
+        let manager_for_send = manager.clone();
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait(
+                "s1",
+                "m1",
+                "STALL 问题",
+                Duration::from_millis(200),
+            )
+        });
+        let _payload = tool_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("应收到工具调用");
+        // 先等 deadline 过去（等待线程已进入停滞看护分支）并回填结果进入
+        // 静默，再手动停止——验证停滞看护期间取消仍然有效。
+        std::thread::sleep(Duration::from_millis(500));
+        manager
+            .send_tool_result(
+                "s1",
+                "m1",
+                "call-1",
+                true,
+                Some(serde_json::json!({})),
+                None,
+                None,
+            )
+            .expect("回填工具结果");
+        manager.cancel_message("s1", "m1").expect("手动取消");
+        let cancelled = send
+            .join()
+            .expect("send 线程")
+            .expect_err("取消的轮次不得成功");
+        assert_eq!(
+            cancelled.code,
+            GenerateAiErrorCode::Timeout,
+            "取消映射既有取消错误族"
+        );
+        assert_eq!(cancelled.message, "生成已取消");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// T7（讨论级隔离）：讨论 A 停滞等待期间，讨论 B 的生成不受影响正常完成；
+    /// A 最终有界返回停滞错误。
+    #[test]
+    fn stall_in_one_session_does_not_affect_other_session() {
+        let (_temp, paths, params) = fake_driver_paths(&stall_watchdog_driver(SILENT_AFTER_RESULT));
+        let manager = DshDriverManager::new_with_stall_window(Duration::from_millis(600));
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        let (tool_tx, tool_rx) = channel();
+        manager.set_tool_call_sink(Arc::new(move |payload| {
+            let _ = tool_tx.send(payload);
+        }));
+
+        let manager_for_a = manager.clone();
+        let a = std::thread::spawn(move || {
+            manager_for_a.send_message_and_wait(
+                "s-a",
+                "m-a",
+                "STALL 问题",
+                Duration::from_millis(200),
+            )
+        });
+        let payload = tool_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("A 的工具调用");
+        assert_eq!(payload.session_id, "s-a");
+        // 先等 deadline 过去（A 已进入停滞看护分支）再回填——之后 A 静默停滞。
+        std::thread::sleep(Duration::from_millis(500));
+        manager
+            .send_tool_result(
+                "s-a",
+                "m-a",
+                "call-1",
+                true,
+                Some(serde_json::json!({})),
+                None,
+                None,
+            )
+            .expect("回填 A 的工具结果");
+
+        // A 静默停滞期间，B 正常完成。
+        let b = manager
+            .send_message_and_wait("s-b", "m-b", "普通问题", Duration::from_secs(15))
+            .expect("讨论 B 不受讨论 A 停滞影响");
+        assert_eq!(b.text, "正常回复");
+
+        let a_err = a.join().expect("A 线程").expect_err("A 应有界停滞报错");
+        assert!(
+            a_err.message.contains("长时间无响应"),
+            "A 的错误应是停滞: {}",
+            a_err.message
         );
 
         manager.shutdown_best_effort();

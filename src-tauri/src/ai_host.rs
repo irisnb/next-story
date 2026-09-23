@@ -132,6 +132,14 @@ pub(crate) fn install_driver_event_bridge(app: &tauri::AppHandle) {
     // 授权请求 → 前端 `ai-reading-request` 事件（授权卡 UI 是任务组 7）。
     let channel = crate::story_tool_channel::global_story_tool_channel();
     channel.attach_driver(crate::dsh_driver::global_driver_manager().clone());
+    // 停滞检测的授权等待探针（fix-long-context-freeze design D2）：等待用户
+    // 按需补读授权决定的轮次无期限，不判停滞——探针从待决授权表接出。
+    crate::dsh_driver::global_driver_manager().set_authorization_wait_probe(std::sync::Arc::new(
+        |message_id: &str| {
+            crate::story_tool_channel::global_story_tool_channel()
+                .has_pending_authorization_for_message(message_id)
+        },
+    ));
     let tool_handle = app.clone();
     crate::dsh_driver::global_driver_manager().set_tool_call_sink(std::sync::Arc::new(
         move |payload| {

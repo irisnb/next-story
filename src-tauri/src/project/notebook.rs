@@ -456,18 +456,18 @@ fn validate_doc_node(value: &Value) -> Result<(), String> {
 /// 校验完整本子文档（外层 + document grammar），失败返回中文错误。
 /// 版本 1 是版本 2 的严格子集，打开时按版本 2 grammar 接受。
 pub fn validate_notebook_document(value: &Value) -> Result<(), String> {
-    let obj = object_keys(value, "本子")?;
+    let obj = object_keys(value, "文档")?;
     check_keys(obj, &["format", "version", "document"], &[])?;
     if obj.get("format").and_then(|v| v.as_str()) != Some(NOTEBOOK_FORMAT) {
-        return Err("本子格式不受支持".to_string());
+        return Err("文档格式不受支持".to_string());
     }
     match obj.get("version").and_then(|v| v.as_u64()) {
         Some(1) | Some(2) => {}
-        _ => return Err("本子文档版本不受支持".to_string()),
+        _ => return Err("文档版本不受支持".to_string()),
     }
     let document = obj
         .get("document")
-        .ok_or_else(|| "本子缺少 document".to_string())?;
+        .ok_or_else(|| "文档缺少 document".to_string())?;
     validate_doc_node(document)
 }
 

@@ -379,7 +379,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
 
     // 纯图片粘贴（截图后 Ctrl+V）：既无文字也无 HTML，只有图片文件
     if (hasImageFile && plain.trim() === "" && html.trim() === "") {
-      alert("无法将图片加入本子");
+      alert("无法将图片加入文档");
       return true;
     }
 
@@ -394,7 +394,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
     } else if (action.kind === "reject") {
       alert(action.reason);
     } else {
-      alert("无法将图片加入本子");
+      alert("无法将图片加入文档");
     }
     return true;
   }
@@ -402,7 +402,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   private handleDrop(event: DragEvent): boolean {
     const files = Array.from(event.dataTransfer?.files ?? []);
     if (files.some((file) => file.type.startsWith("image/"))) {
-      alert("无法将图片加入本子");
+      alert("无法将图片加入文档");
       return true;
     }
     return false;

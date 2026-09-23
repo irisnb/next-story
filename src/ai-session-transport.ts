@@ -25,7 +25,7 @@ export type { AiReplayOrigin, AiReplayTurn } from "./project-api.ts";
  * 追问只发新增问题；流式增量经 `"ai-delta"` 事件路由到订阅者，`done`（命令返回的全文）是
  * 最终事实。消息编号由全局计数器生成并拼成 `{conversation_id}:msg-{n}`，保证跨讨论唯一。
  *
- * 本层不接触面板状态与 DOM，也不持有任何写入草稿本或正本文的入口（零写回边界）；
+ * 本层不接触面板状态与 DOM，也不持有任何写入用户文档的入口（零写回边界）；
  * 所有依赖可注入，便于测试。
  */
 

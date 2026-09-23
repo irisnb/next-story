@@ -232,7 +232,7 @@ export interface SelectionEntryOptions {
  *
  * 以 selectionEnd 焦点端为锚点：选区至少含一个非空白字符且焦点端在内容视口内时显示；
  * 默认放在焦点端字符右侧，右侧空间不足时避让到该行下方靠右。点击触发器展开小菜单时
- * 锁定触发器锚点，不因菜单展开跳位。空白/空选区、点击别处、切换本子、焦点端滚出视区时隐藏。
+ * 锁定触发器锚点，不因菜单展开跳位。空白/空选区、点击别处、切换文档、焦点端滚出视区时隐藏。
  */
 export function setupSelectionEntry(options: SelectionEntryOptions): SelectionEntryController {
   const {

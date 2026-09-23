@@ -906,7 +906,7 @@ mod tests {
             &doc_id,
             &version,
             Some("林站在天台边。"),
-            Some("不是合法本子 JSON"),
+            Some("不是合法文档 JSON"),
             None,
         )
         .expect_err("非法快照必须拒绝");

@@ -808,7 +808,7 @@ mod tests {
             work_id: work_id.clone(),
             document_id: doc_id.clone(),
             version: "snapshot-v1".to_string(),
-            content: "不是合法本子 JSON".to_string(),
+            content: "不是合法文档 JSON".to_string(),
         });
 
         let denial = read_material(&root, &req).expect_err("invalid-content snapshot denied");

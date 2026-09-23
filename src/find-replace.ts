@@ -1,4 +1,4 @@
-// 查找与替换：在当前本子可见文字上做字面匹配，返回 ProseMirror 文档坐标，
+// 查找与替换：在当前文档可见文字上做字面匹配，返回 ProseMirror 文档坐标，
 // 并通过装饰插件高亮全部命中与当前命中。
 
 import { Extension } from "@tiptap/core";

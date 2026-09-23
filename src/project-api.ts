@@ -17,7 +17,7 @@ export type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promi
 const defaultInvoke: InvokeFn = tauriInvoke as InvokeFn;
 
 /**
- * 单个本子 JSON 字符串的字节上限（与后端 `MAX_NOTEBOOK_BYTES` 一致，UTF-8 字节数）。
+ * 单个文档 JSON 字符串的字节上限（与后端 `MAX_NOTEBOOK_BYTES` 一致，UTF-8 字节数）。
  * 前端在调用保存前先做同一上限检查，作为纵深防御。
  */
 export const MAX_NOTEBOOK_BYTES = 10 * 1024 * 1024;
@@ -27,7 +27,7 @@ export function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
-/** 校验本子 JSON 是否超过保存字节上限，超限返回中文说明；未超限返回 null。 */
+/** 校验文档 JSON 是否超过保存字节上限，超限返回中文说明；未超限返回 null。 */
 export function notebookSizeError(content: string): string | null {
   const bytes = utf8ByteLength(content);
   if (bytes <= MAX_NOTEBOOK_BYTES) return null;

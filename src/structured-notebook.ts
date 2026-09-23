@@ -1,6 +1,6 @@
-// 结构化本子文档：格式版本 2 的精确外层、grammar、严格校验与规范输出。
+// 结构化文档：格式版本 2 的精确外层、grammar、严格校验与规范输出。
 //
-// 这是草稿本与正文本在磁盘上的唯一事实源契约。前端与 Rust 后端共享同一份
+// 这是每篇文档在磁盘上的唯一事实源契约。前端与 Rust 后端共享同一份
 // 规范 / 非规范 JSON 样例（见 tests/fixtures/notebook-samples.json），确保
 // 两侧对额外字段、空数组、marks、列表结构、孤立代理项和整数域范围的判定一致。
 //
@@ -503,13 +503,13 @@ function validateDocNode(value: unknown): string | null {
 }
 
 export function validateNotebookDocument(value: unknown): ValidationResult {
-  if (!isPlainObject(value)) return fail("本子不是 JSON 对象");
+  if (!isPlainObject(value)) return fail("文档不是 JSON 对象");
   if (!checkKeys(value, ["format", "version", "document"])) {
-    return fail("本子外层字段不正确");
+    return fail("文档外层字段不正确");
   }
-  if (value.format !== NOTEBOOK_FORMAT) return fail("本子格式不受支持");
+  if (value.format !== NOTEBOOK_FORMAT) return fail("文档格式不受支持");
   if (value.version !== 1 && value.version !== 2) {
-    return fail("本子文档版本不受支持");
+    return fail("文档版本不受支持");
   }
   const docError = validateDocNode(value.document);
   if (docError) return fail(docError);
@@ -748,7 +748,7 @@ export function parseNotebookDocumentJson(json: string): NotebookDocument {
   try {
     value = JSON.parse(json);
   } catch {
-    throw new Error("本子文件不是合法 JSON");
+    throw new Error("文档文件不是合法 JSON");
   }
   const result = validateNotebookDocument(value);
   if (!result.ok) throw new Error(result.error);

@@ -168,6 +168,6 @@ README SHALL 使用“帮助用户重新看见故事”等面向创作者的语�
 
 #### Scenario: README 说明永久 AI 边界
 - **WHEN** README 简述 AI 与作品的关系
-- **THEN** README 说明 AI 输出是临时材料且永远不直接改动草稿本和正文本
+- **THEN** README 说明 AI 输出是临时材料且永远不直接改动内容树中的任何作品文档
 - **AND** README 不复制核心方向宪章中的完整四项权力论证
 

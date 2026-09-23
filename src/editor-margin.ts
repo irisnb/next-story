@@ -1,5 +1,5 @@
 // 编辑器「留白」：正文四周显示留白的预设档位与持久化。
-// 纯显示偏好：只影响内容区 padding，不写入草稿本/正文本 JSON，也不进入 AI 选区快照。
+// 纯显示偏好：只影响内容区 padding，不写入文档 JSON，也不进入 AI 选区快照。
 
 import type { StorageLike } from "./shared-storage-and-selection-identity.ts";
 

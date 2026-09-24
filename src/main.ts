@@ -11,13 +11,13 @@ import { setupExportWord } from "./export-word";
 import { setupFileManagement } from "./file-management";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
-import { setupProjectFlow } from "./new-project-form";
-import { recordRecentWork } from "./project-api";
+import { setupWorkspaceProjectFlow } from "./workspace-project-flow";
+import { createWorkspaceTreeReceiver } from "./workspace-tree-flow";
 import { setupAiFeature } from "./ai-feature";
 import { waitTiming } from "./ai-timing";
 import { canonicalNotebookJson } from "./structured-notebook";
-import { showModule, showPage, type ModuleId, type ModuleViews } from "./views";
-import { hiddenDocumentIdsFromTree, type ProjectTreeState } from "./types";
+import { showModule, type ModuleId, type ModuleViews } from "./views";
+import { hiddenDocumentIdsFromTree } from "./types";
 
 function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string | null {
   const current = editor.getCurrentEditor();
@@ -35,7 +35,6 @@ function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string 
 
 window.addEventListener("DOMContentLoaded", () => {
   const dom = getAppDom();
-  const pages = [dom.welcomePage, dom.newProjectPage, dom.editorPage];
   const moduleViews: ModuleViews = {
     writing: dom.moduleWriting,
     files: dom.moduleFiles,
@@ -57,10 +56,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // 延迟绑定：文件树结构变化（含 AI 可见性切换）后，同步重算已打开讨论的材料限制。
   let ai: ReturnType<typeof setupAiFeature> | null = null;
   const fileManagement = setupFileManagement(dom, {
-    onTreeChanged: (tree) => {
-      editor.applyTree(tree);
-      ai?.recomputeRestrictions();
-    },
+    onTreeChanged: createWorkspaceTreeReceiver(editor, () => { ai?.recomputeRestrictions(); }),
   });
 
   const exportWord = setupExportWord(dom, {
@@ -74,8 +70,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const llmConfig = setupLlmConfigForm(dom, {
     chooseLeave: leaveDialog.choose,
-    showSettings: () => setModule("settings"),
-    backToWriting: () => setModule("writing"),
+    showSettings: () => { if (!projectFlow.isBusy()) setModule("settings"); },
+    backToWriting: () => { if (!projectFlow.isBusy()) setModule("writing"); },
   });
 
   ai = setupAiFeature(dom, {
@@ -99,47 +95,21 @@ window.addEventListener("DOMContentLoaded", () => {
 
   /** 切换模块：离开设置模块前先守卫未保存的 LLM 配置修改。 */
   async function requestModule(moduleId: ModuleId): Promise<void> {
+    if (projectFlow.isBusy()) return;
     if (activeModule === "settings" && moduleId !== "settings") {
       if (!await llmConfig.guardLeave()) return;
     }
-    setModule(moduleId);
+    if (!projectFlow.isBusy()) setModule(moduleId);
   }
 
   dom.tabWriting.addEventListener("click", () => { void requestModule("writing"); });
   dom.tabFiles.addEventListener("click", () => { void requestModule("files"); });
-  dom.tabSettings.addEventListener("click", () => llmConfig.open());
+  dom.tabSettings.addEventListener("click", () => { if (!projectFlow.isBusy()) llmConfig.open(); });
 
-  function openProject(projectState: ProjectTreeState): void {
-    fileManagement.showProject(projectState);
-    editor.showProject(projectState)
-      .then(() => {
-        setModule("writing");
-        // 作品成功落地后记录最近作品（打开与新建共用此落地处）；
-        // 记录失败只记日志，绝不打断已完成的打开流程。
-        recordRecentWork(projectState.projectName, projectState.projectPath).catch((error) => {
-          console.error("记录最近作品失败:", error);
-        });
-      })
-      .catch((error) => {
-        console.error("打开作品失败:", error);
-        alert(`打开作品失败: ${String(error)}`);
-      });
-  }
-
-  const projectFlow = setupProjectFlow(dom, {
-    onProjectReady: openProject,
-    guardLeave: editor.guardLeave,
-  });
-
-  dom.btnBackWelcome.addEventListener("click", async () => {
-    if (await editor.guardLeave()) {
-      showPage(pages, "welcome-page");
-      editor.unload();
-      fileManagement.unload();
-      exportWord.unload();
-      // 返回欢迎页时刷新最近作品列表（刚打开/新建的作品应出现在列表最前）。
-      void projectFlow.refreshRecentWorks();
-    }
+  const projectFlow = setupWorkspaceProjectFlow(dom, {
+    editor, files: fileManagement,
+    showWriting: () => setModule("writing"),
+    unloadExport: () => exportWord.unload(),
   });
 
   const appWindow = getCurrentWindow();
@@ -153,7 +123,7 @@ window.addEventListener("DOMContentLoaded", () => {
   ]);
   const destroyApplication = createApplicationDestroyer({
     destroyAi: () => ai?.destroy(),
-    destroyEditor: () => editor.destroy(),
+    destroyEditor: () => { projectFlow.destroy(); editor.destroy(); },
     destroyWindow: () => appWindow.destroy(),
   });
   const close = new CloseCoordinator({

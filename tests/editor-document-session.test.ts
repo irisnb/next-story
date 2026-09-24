@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Window } from "happy-dom";
 
 import { createEditorDocumentSession } from "../src/editor-document-session.ts";
 import { emptyNotebookDocument, canonicalNotebookJson } from "../src/structured-notebook.ts";
 import type { ProjectTreeState } from "../src/types.ts";
+
+function textarea(): HTMLElement {
+  return new Window().document.createElement("div") as unknown as HTMLElement;
+}
+
+function editorStub() {
+  return { destroy() {}, onEdit: () => () => {}, onSelectionChange: () => () => {} };
+}
 
 function project(): ProjectTreeState {
   return {
@@ -23,9 +32,9 @@ test("session ignores a stale document load", async () => {
   let loaded = 0;
   let projectLoads = 0;
   const session = createEditorDocumentSession({
-    dom: { editorTextarea: {} as HTMLElement },
+    dom: { editorTextarea: textarea() },
     readDocument: async () => new Promise((resolve) => resolvers.push(resolve)),
-    createEditor: () => ({ onEdit: () => () => {}, onSelectionChange: () => () => {} }),
+    createEditor: editorStub,
     getProject: () => current,
     getDocumentId: () => "doc-a",
     setProject: (value) => { current = value; },
@@ -45,14 +54,14 @@ test("session ignores a stale document load", async () => {
   assert.equal(projectLoads, 0, "loadDocument 不应触发作品级回调");
 });
 
-test("session applies deleted document fallback to empty state", () => {
+test("session applies deleted document fallback to empty state", async () => {
   let current = project();
   let documentId: string | null = "doc-a";
   let editor: unknown = {};
   let loadedId: string | null | undefined;
   const session = createEditorDocumentSession({
-    dom: { editorTextarea: {} as HTMLElement }, readDocument: async () => "",
-    createEditor: () => ({ onEdit: () => () => {}, onSelectionChange: () => () => {} }),
+    dom: { editorTextarea: textarea() }, readDocument: async () => "",
+    createEditor: editorStub,
     getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
     setDocumentId: (value) => { documentId = value; }, setEditor: (value) => { editor = value; },
     disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},
@@ -61,7 +70,7 @@ test("session applies deleted document fallback to empty state", () => {
     isDocumentInTree: () => false, firstDocument: () => null, hasUnsavedChanges: () => false,
     confirmDiscard: () => true, clearRememberedDocument: () => {},
   });
-  session.applyTree({ root_children: [], nodes: {}, recycle_bin: [] });
+  assert.equal((await session.applyTree({ root_children: [], nodes: {}, recycle_bin: [] })).status, "committed");
   assert.equal(documentId, null);
   assert.equal(editor, null);
   assert.equal(loadedId, null);
@@ -74,8 +83,8 @@ test("applyTree with the same document refreshes the tree without a full load", 
   let loaded = 0;
   let refreshed = 0;
   const session = createEditorDocumentSession({
-    dom: { editorTextarea: {} as HTMLElement }, readDocument: async () => "",
-    createEditor: () => ({ onEdit: () => () => {}, onSelectionChange: () => () => {} }),
+    dom: { editorTextarea: textarea() }, readDocument: async () => "",
+    createEditor: editorStub,
     getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
     setDocumentId: (value) => { documentId = value; }, setEditor: () => {},
     disposeEditor: () => {}, setBaseline: () => {}, clearBaseline: () => {}, onEdit: () => () => {}, onSelectionChange: () => () => {},

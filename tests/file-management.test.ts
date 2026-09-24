@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { setupFileManagement, type FileManagementServices } from "../src/file-management.ts";
 import type { AppDom } from "../src/dom.ts";
-import type { ContentTree, ProjectTreeState } from "../src/types.ts";
+import type { ContentTree, ProjectLoadIdentity, ProjectTreeState } from "../src/types.ts";
 
 type Listener = () => void;
 
@@ -109,6 +109,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   elements: Map<string, FakeElement>;
   calls: string[];
   treeChanges: ContentTree[];
+  treeIdentities: ProjectLoadIdentity[];
   restore(): void;
 } {
   const ids = [
@@ -124,6 +125,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
 
   const calls: string[] = [];
   const treeChanges: ContentTree[] = [];
+  const treeIdentities: ProjectLoadIdentity[] = [];
   let currentTree = tree;
 
   const dom = {
@@ -165,7 +167,11 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   };
 
   const controller = setupFileManagement(dom, {
-    onTreeChanged: (next) => { treeChanges.push(next); },
+    onTreeChanged: (next, identity, acceptance) => {
+      acceptance.installPeer();
+      treeChanges.push(next); treeIdentities.push(identity);
+      return { status: "committed" };
+    },
     services,
   });
 
@@ -181,8 +187,23 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     elements,
     calls,
     treeChanges,
+    treeIdentities,
     restore: () => { globalThis.document = previousDocument; },
   };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void } {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function settle(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 function collectButtons(root: FakeElement, label: string): FakeElement[] {
@@ -321,9 +342,7 @@ test("toggle failure keeps the original state and shows a Chinese message", asyn
     const toggle = collectButtons(fileTree, "允许 AI 查看")[0];
     assert.ok(toggle);
     toggle.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await settle();
 
     const status = h.elements.get("fm-status")!;
     assert.match(status.textContent, /AI 可见性保存失败/);
@@ -332,5 +351,155 @@ test("toggle failure keeps the original state and shows a Chinese message", asyn
     assert.equal(collectButtons(fileTree, "不允许 AI 查看").length, 1);
   } finally {
     h.restore();
+  }
+});
+
+test("late refresh from A is discarded after switching to B", async () => {
+  const pending = deferred<ContentTree>();
+  const h = makeHarness(TREE, {
+    openContentTree: async () => pending.promise,
+  });
+  try {
+    h.elements.get("fm-new-document")!.click();
+    await settle();
+    h.controller.showProject({ projectPath: "D:\\作品B", projectName: "B", tree: VISIBILITY_TREE });
+    pending.resolve(TREE);
+    await settle();
+    assert.equal(h.treeChanges.length, 0, "A 的迟到树不能通知当前作品");
+    assert.equal(h.treeIdentities.length, 0);
+    assert.equal(collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看").length, 1);
+  } finally {
+    h.restore();
+  }
+});
+
+test("same path reopened gets a new load generation", async () => {
+  const first = deferred<ContentTree>();
+  let reads = 0;
+  const h = makeHarness(TREE, {
+    openContentTree: async () => {
+      reads += 1;
+      return reads === 1 ? first.promise : VISIBILITY_TREE;
+    },
+  });
+  try {
+    h.elements.get("fm-new-document")!.click();
+    await settle();
+    h.controller.showProject({ projectPath: "D:\\同一路径", projectName: "A（二次）", tree: VISIBILITY_TREE });
+    first.resolve(TREE);
+    await settle();
+    assert.equal(h.treeChanges.length, 0);
+    assert.equal(h.treeIdentities.length, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test("visibility usage query does not confirm or write after unload", async () => {
+  const usage = deferred<[]>();
+  const previousWindow = globalThis.window;
+  let confirms = 0;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    confirm: () => { confirms += 1; return true; },
+    prompt: () => null,
+  } });
+  const h = makeHarness(VISIBILITY_TREE, {
+    conversationsUsingDocument: async () => usage.promise,
+    setDocumentAiVisibility: async () => { throw new Error("不应写入"); },
+  });
+  try {
+    const toggle = collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看")[0];
+    assert.ok(toggle);
+    toggle.click();
+    await Promise.resolve();
+    h.controller.unload();
+    usage.resolve([]);
+    await settle();
+    assert.equal(confirms, 0);
+    assert.equal(h.calls.includes("set_document_ai_visibility:false"), false);
+  } finally {
+    h.restore();
+    if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
+  }
+});
+
+test("refresh 2 wins when refresh 1 returns later", async () => {
+  const first = deferred<ContentTree>();
+  const second = deferred<ContentTree>();
+  let reads = 0;
+  const h = makeHarness(TREE, {
+    openContentTree: async () => {
+      reads += 1;
+      return reads === 1 ? first.promise : second.promise;
+    },
+  });
+  try {
+    h.elements.get("fm-new-document")!.click();
+    await settle();
+    h.elements.get("fm-new-folder")!.click();
+    await settle();
+    second.resolve(VISIBILITY_TREE);
+    await settle();
+    first.resolve(TREE);
+    await settle();
+    assert.equal(h.treeChanges.length, 1);
+    assert.equal(h.treeChanges[0], VISIBILITY_TREE);
+  } finally {
+    h.restore();
+  }
+});
+
+test("latest refresh failure keeps its error and does not accept old success", async () => {
+  const first = deferred<ContentTree>();
+  const second = deferred<ContentTree>();
+  let reads = 0;
+  const h = makeHarness(TREE, {
+    openContentTree: async () => {
+      reads += 1;
+      return reads === 1 ? first.promise : second.promise;
+    },
+  });
+  try {
+    h.elements.get("fm-new-document")!.click();
+    await settle();
+    h.elements.get("fm-new-folder")!.click();
+    await settle();
+    second.reject(new Error("最新刷新失败"));
+    await settle();
+    first.resolve(VISIBILITY_TREE);
+    await settle();
+    assert.match(h.elements.get("fm-status")!.textContent, /最新刷新失败/);
+    assert.equal(h.treeChanges.length, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test("a delayed row operation keeps its original project path", async () => {
+  const write = deferred<void>();
+  const paths: string[] = [];
+  const h = makeHarness(TREE, {
+    renameNode: async (path) => { paths.push(path); await write.promise; },
+    openContentTree: async () => TREE,
+  });
+  const previousPrompt = globalThis.window?.prompt;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    ...(globalThis.window ?? {}), prompt: () => "新名字",
+  } });
+  try {
+    const rename = findButton(h.elements.get("fm-file-tree")!, "重命名");
+    assert.ok(rename);
+    rename.click();
+    await settle();
+    h.controller.showProject({ projectPath: "D:\\作品B", projectName: "B", tree: VISIBILITY_TREE });
+    write.resolve();
+    await settle();
+    assert.deepEqual(paths, ["D:\\作品"]);
+    assert.equal(h.treeChanges.length, 0);
+  } finally {
+    h.restore();
+    if (previousPrompt === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", { configurable: true, value: previousPrompt });
   }
 });

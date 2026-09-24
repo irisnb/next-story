@@ -2,7 +2,7 @@ import type { AppDom } from "./dom";
 import type { LeaveChoice } from "./leave-guard";
 
 export interface LeaveDialogController {
-  choose(): Promise<LeaveChoice>;
+  choose(options?: { restoreFocusExternally?: boolean }): Promise<LeaveChoice>;
 }
 
 export interface FocusTarget {
@@ -29,6 +29,7 @@ export function createFocusRestorer(getActive: () => FocusTarget | null): {
 
 export function setupLeaveDialog(dom: AppDom): LeaveDialogController {
   let pending: ((choice: LeaveChoice) => void) | null = null;
+  let restoreFocusExternally = false;
   const focus = createFocusRestorer(() => {
     const active = document.activeElement;
     return active instanceof HTMLElement ? active : null;
@@ -39,7 +40,7 @@ export function setupLeaveDialog(dom: AppDom): LeaveDialogController {
     const resolve = pending;
     pending = null;
     dom.leaveDialog.close();
-    focus.restore();
+    if (!restoreFocusExternally) focus.restore();
     resolve(choice);
   }
 
@@ -52,9 +53,10 @@ export function setupLeaveDialog(dom: AppDom): LeaveDialogController {
   });
 
   return {
-    choose(): Promise<LeaveChoice> {
+    choose(options = {}): Promise<LeaveChoice> {
       if (pending) return Promise.resolve("cancel");
-      focus.capture();
+      restoreFocusExternally = options.restoreFocusExternally ?? false;
+      if (!restoreFocusExternally) focus.capture();
       dom.leaveDialog.showModal();
       dom.btnCancelLeave.focus();
       return new Promise((resolve) => { pending = resolve; });

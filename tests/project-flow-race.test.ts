@@ -23,9 +23,7 @@ class FakeClassList {
 
 class FakeElement {
   readonly classList = new FakeClassList();
-  /** 子元素（最近作品条目渲染用）。 */
   readonly children: FakeElement[] = [];
-  /** 内联样式占位（最近作品路径的 word-break 用）。 */
   readonly style: Record<string, string> = {};
   private readonly listeners = new Map<string, Listener[]>();
   textContent = "";
@@ -46,7 +44,6 @@ class FakeElement {
   }
 
   append(...nodes: FakeElement[]): void { this.children.push(...nodes); }
-
   replaceChildren(): void { this.children.length = 0; }
 }
 
@@ -71,7 +68,6 @@ function openResult(name: string): ProjectOpenResult {
   return { metadata: metadata(name), tree: TREE };
 }
 
-/** 等待可观察状态出现；async 链的微任务数量不固定，不能靠固定次数的硬等。 */
 async function flushUntil(predicate: () => boolean, maxTicks = 60): Promise<void> {
   for (let i = 0; i < maxTicks; i += 1) {
     if (predicate()) return;
@@ -96,7 +92,6 @@ function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): 
   const previousDocument = globalThis.document;
   globalThis.document = {
     getElementById: (id: string) => elements.get(id) ?? null,
-    // setupProjectFlow 渲染欢迎页最近作品列表时创建条目元素。
     createElement: () => new FakeElement(),
   } as unknown as Document;
 
@@ -143,21 +138,14 @@ function projectFlowFixture(onProjectReady: (state: ProjectTreeState) => void): 
 
 let previousWindow: PropertyDescriptor | undefined;
 
-/** mockIPC 需要全局 `window`；node 测试环境默认没有，这里临时补上（与 editor.test.ts 同法）。 */
 function installWindow(): void {
   previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: globalThis,
-  });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: globalThis });
 }
 
 function restoreWindow(): void {
-  if (previousWindow) {
-    Object.defineProperty(globalThis, "window", previousWindow);
-  } else {
-    Reflect.deleteProperty(globalThis, "window");
-  }
+  if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+  else Reflect.deleteProperty(globalThis, "window");
   previousWindow = undefined;
 }
 
@@ -165,38 +153,28 @@ test("open project is single-flight: a second click during an in-flight open is 
   const openDeferred: { resolve: (result: ProjectOpenResult) => void } = {
     resolve: () => { throw new Error("unused"); },
   };
-  const openPromise = new Promise<ProjectOpenResult>((resolve) => {
-    openDeferred.resolve = resolve;
-  });
+  const openPromise = new Promise<ProjectOpenResult>((resolve) => { openDeferred.resolve = resolve; });
   let openCalls = 0;
   const ready: ProjectTreeState[] = [];
 
   installWindow();
-  mockIPC((command, _payload) => {
+  mockIPC((command) => {
     if (command === "plugin:dialog|open") return "候选作品路径";
     if (command === "load_recent_works") return [];
-    if (command === "open_project") {
-      openCalls += 1;
-      return openPromise;
-    }
+    if (command === "open_project") { openCalls += 1; return openPromise; }
     throw new Error(`Unexpected IPC command: ${command}`);
   });
 
   const ui = projectFlowFixture((state) => ready.push(state));
   try {
     ui.dom.btnOpenProject.click();
-    // 打开流程进行中再次点击：忙碌锁应忽略，不产生第二个打开调用。
     ui.dom.btnOpenProject.click();
     await flushUntil(() => openCalls === 1);
-
     assert.equal(openCalls, 1, "忙碌锁只允许一个打开流程");
-
     openDeferred.resolve(openResult("候选作品"));
     await flushUntil(() => ready.length === 1);
     assert.equal(ready[0]?.projectName, "候选作品");
     assert.deepEqual(ready[0]?.tree, TREE);
-    // 让 handleOpenProject 的 finally（释放忙碌锁）跑完，避免测试结束后残留异步活动。
-    await flushUntil(() => openCalls === 1 && ready.length === 1);
   } finally {
     ui.restore();
     clearMocks();
@@ -204,17 +182,15 @@ test("open project is single-flight: a second click during an in-flight open is 
   }
 });
 
-test("a newer project operation supersedes a stale in-flight open result", async () => {
+test("a new project operation is rejected while an open is in flight", async () => {
   const openDeferred: { resolve: (result: ProjectOpenResult) => void } = {
     resolve: () => { throw new Error("unused"); },
   };
-  const openPromise = new Promise<ProjectOpenResult>((resolve) => {
-    openDeferred.resolve = resolve;
-  });
+  const openPromise = new Promise<ProjectOpenResult>((resolve) => { openDeferred.resolve = resolve; });
   const ready: ProjectTreeState[] = [];
 
   installWindow();
-  mockIPC((command, _payload) => {
+  mockIPC((command) => {
     if (command === "plugin:dialog|open") return "候选作品路径";
     if (command === "load_recent_works") return [];
     if (command === "open_project") return openPromise;
@@ -226,28 +202,16 @@ test("a newer project operation supersedes a stale in-flight open result", async
   const ui = projectFlowFixture((state) => ready.push(state));
   try {
     ui.dom.btnOpenProject.click();
-    // 打开流程到达“正在读取候选作品”状态。
     await flushUntil(() => true);
     await flushUntil(() => true);
-
-    // 打开还在读取候选作品时，用户完成了一次新建并提交。
     ui.dom.projectNameInput.value = "新作品";
     ui.dom.saveLocationInput.value = "D:\\新位置";
     ui.dom.btnCreateProject.click();
-    await flushUntil(() => ready.length === 1);
-    assert.equal(ready[0]?.projectName, "新作品");
-
-    // 迟到的打开结果到达：操作序号已过期，不得覆盖新建的作品。
+    await Promise.resolve();
+    assert.equal(ready.length, 0);
     openDeferred.resolve(openResult("候选作品"));
-    await flushUntil(() => true);
-    await flushUntil(() => true);
-    await flushUntil(() => true);
-
-    assert.equal(ready.length, 1, "迟到的旧打开结果不得覆盖更新的操作");
-    assert.equal(ready[0]?.projectName, "新作品");
-    // 让打开流程的剩余 await（授权、stale 提交、finally）全部收尾。
-    await flushUntil(() => true);
-    await flushUntil(() => true);
+    await flushUntil(() => ready.length === 1);
+    assert.equal(ready[0]?.projectName, "候选作品");
   } finally {
     ui.restore();
     clearMocks();

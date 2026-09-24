@@ -1,5 +1,5 @@
 import { Editor, findParentNode, getHTMLFromFragment, type JSONContent } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { Plugin, TextSelection } from "@tiptap/pm/state";
 import Document from "@tiptap/extension-document";
 import Heading from "@tiptap/extension-heading";
 import Bold from "@tiptap/extension-bold";
@@ -71,7 +71,21 @@ export function buildRichTextExtensions() {
   ];
 }
 
+export interface EditingPauseHandle {
+  /** Restore the previous editable state once, without focusing or restoring selection. */
+  resume(): void;
+  /**
+   * Restore the captured kernel selection only while this permit and document remain valid.
+   * syncDOM explicitly opts into synchronous view.focus() (and thus browser selection sync).
+   * That opt-in requires resume() first; the default never requests focus.
+   * Returns false for a destroyed/stale/changed document or a premature syncDOM request.
+   */
+  restoreSelection(options?: { syncDOM?: boolean }): boolean;
+}
+
 export interface RichTextEditorEngine {
+  /** Wait for the active IME cycle, then revoke all document mutation permits. */
+  pauseEditing(): Promise<EditingPauseHandle>;
   getDocument(): JSONContent;
   onUpdate(listener: () => void): void;
   offUpdate(listener: () => void): void;
@@ -95,6 +109,14 @@ export interface RichTextEditorEngine {
 
 class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   private readonly editor: Editor;
+  private paused = false;
+  private pausePending = false;
+  private permit = 0;
+  private readonly pauseWaiters = new Set<() => void>();
+
+  private canEdit(): boolean {
+    return !this.paused && !this.pausePending && !this.editor.isDestroyed && this.editor.isEditable;
+  }
 
   constructor(element: HTMLElement, initialDocument: JSONContent) {
     this.editor = new Editor({
@@ -102,10 +124,93 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
       extensions: buildRichTextExtensions(),
       content: initialDocument,
       editorProps: {
+        handleDOMEvents: {
+          beforeinput: (_view, event) => {
+            if (!this.paused) return false;
+            event.preventDefault();
+            return true;
+          },
+          cut: (_view, event) => {
+            if (!this.paused) return false;
+            event.preventDefault();
+            return true;
+          },
+        },
         clipboardTextSerializer: (slice) => sliceToPlainText(slice),
         handlePaste: (_view, event) => this.handlePaste(event),
         handleDrop: (_view, event) => this.handleDrop(event),
       },
+    });
+    // setEditable alone does not stop programmatic commands or history transactions.
+    this.editor.registerPlugin(new Plugin({
+      filterTransaction: (transaction) => !this.paused ||
+        (!transaction.docChanged && !transaction.storedMarksSet),
+    }));
+  }
+
+  pauseEditing(): Promise<EditingPauseHandle> {
+    if (this.editor.isDestroyed) return Promise.resolve({ resume() {}, restoreSelection: () => false });
+    if (this.paused || this.pausePending) return Promise.reject(new Error("编辑器已处于切换保护中"));
+    this.pausePending = true;
+    const permit = ++this.permit;
+    return new Promise((resolve, reject) => {
+      const view = this.editor.view;
+      let frame: number | null = null;
+      const finish = () => {
+        if (!this.editor.isDestroyed && view.composing) return;
+        view.dom.removeEventListener("compositionend", ended);
+        if (frame !== null) cancelAnimationFrame(frame);
+        this.pauseWaiters.delete(finish);
+        if (this.editor.isDestroyed) {
+          this.pausePending = false;
+          resolve({ resume() {}, restoreSelection: () => false });
+          return;
+        }
+        // Flush the native observer only AFTER composition has naturally ended.
+        // This is the pinned ProseMirror view's observer, not an IME timeout.
+        const wasEditable = this.editor.isEditable;
+        try {
+          (view as typeof view & { domObserver: { flush(): void } }).domObserver.flush();
+          const capturedDocument = this.editor.state.doc;
+          const capturedSelection = this.editor.state.selection.getBookmark();
+          this.paused = true;
+          this.pausePending = false;
+          this.editor.setEditable(false, false);
+          let released = false;
+          resolve({
+            resume: () => {
+              if (released || this.editor.isDestroyed || permit !== this.permit) return;
+              released = true;
+              this.paused = false;
+              this.editor.setEditable(wasEditable, false);
+            },
+            restoreSelection: ({ syncDOM = false } = {}) => {
+              if (this.editor.isDestroyed || permit !== this.permit) return false;
+              if (syncDOM && !released) return false;
+              const state = this.editor.state;
+              if (!state.doc.eq(capturedDocument)) return false;
+              const selection = capturedSelection.resolve(state.doc);
+              if (!selection.eq(state.selection)) {
+                view.dispatch(state.tr.setSelection(selection).setMeta("addToHistory", false));
+              }
+              if (syncDOM) view.focus();
+              return true;
+            },
+          });
+        } catch (error) {
+          this.pausePending = false;
+          this.paused = false;
+          reject(error);
+        }
+      };
+      const ended = () => {
+        // Let the compositionend/input event cycle and native observer finish.
+        // Re-check the actual kernel composition flag; never blur or force-end IME.
+        if (frame === null) frame = requestAnimationFrame(() => { frame = null; finish(); });
+      };
+      this.pauseWaiters.add(finish);
+      if (view.composing) view.dom.addEventListener("compositionend", ended);
+      else finish();
     });
   }
 
@@ -143,6 +248,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   }
 
   runCommand(command: FormatCommand): boolean {
+    if (!this.canEdit()) return false;
     const chain = this.editor.chain().focus();
     switch (command.kind) {
       case "paragraph":
@@ -292,6 +398,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   replaceCurrent(replacement: string): boolean {
     const findState = findPluginKey.getState(this.editor.state);
     if (!findState || findState.activeIndex < 0) return false;
+    if (!this.canEdit()) return false;
     const match = findState.matches[findState.activeIndex];
     const tr = this.editor.state.tr.insertText(replacement, match.from, match.to);
     const matches = findMatchesInDoc(tr.doc, findState.query, findState.caseSensitive);
@@ -307,6 +414,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   replaceAll(replacement: string): number {
     const findState = findPluginKey.getState(this.editor.state);
     if (!findState || findState.matches.length === 0) return 0;
+    if (!this.canEdit()) return 0;
     const { matches } = findState;
     const tr = this.editor.state.tr;
     for (let i = matches.length - 1; i >= 0; i--) {
@@ -319,9 +427,11 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   }
 
   async pastePlainText(): Promise<boolean> {
+    if (!this.canEdit()) return false;
+    const permit = this.permit;
     try {
       const text = await navigator.clipboard.readText();
-      if (!text) return false;
+      if (!text || !this.canEdit() || permit !== this.permit) return false;
       this.editor.commands.insertContent(plainTextToDocument(text).content);
       return true;
     } catch {
@@ -355,21 +465,25 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   }
 
   async cutSelection(): Promise<void> {
+    if (!this.canEdit()) return;
+    const permit = this.permit;
+    const state = this.editor.state;
     const copied = await this.copySelection();
-    if (copied) {
+    if (copied && this.canEdit() && permit === this.permit && state === this.editor.state) {
       this.editor.commands.deleteSelection();
     }
   }
 
   canUndo(): boolean {
-    return this.editor.can().undo();
+    return this.canEdit() && this.editor.can().undo();
   }
 
   canRedo(): boolean {
-    return this.editor.can().redo();
+    return this.canEdit() && this.editor.can().redo();
   }
 
   private handlePaste(event: ClipboardEvent): boolean {
+    if (!this.canEdit()) return true;
     const data = event.clipboardData;
     if (!data) return false;
     const plain = data.getData("text/plain");
@@ -400,6 +514,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   }
 
   private handleDrop(event: DragEvent): boolean {
+    if (!this.canEdit()) return true;
     const files = Array.from(event.dataTransfer?.files ?? []);
     if (files.some((file) => file.type.startsWith("image/"))) {
       alert("无法将图片加入文档");
@@ -409,7 +524,9 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
   }
 
   destroy(): void {
+    this.permit += 1;
     this.editor.destroy();
+    for (const finish of this.pauseWaiters) finish();
   }
 }
 
@@ -424,6 +541,10 @@ export class RichTextEditorAdapter {
 
   constructor(engine: RichTextEditorEngine) {
     this.engine = engine;
+  }
+
+  pauseEditing(): Promise<EditingPauseHandle> {
+    return this.engine.pauseEditing();
   }
 
   getDocument(): JSONContent {

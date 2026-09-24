@@ -31,6 +31,8 @@ export function createEditorDocumentView(options: EditorDocumentViewOptions): Ed
       item.className = "document-list-item";
       if (documentNode.id === currentDocumentId) item.classList.add("active");
       item.textContent = documentNode.name;
+      // Keep an active IME cycle in the editor until the user confirms/cancels it.
+      item.addEventListener("mousedown", (event) => event.preventDefault());
       item.addEventListener("click", () => options.onSwitchDocument(documentNode.id));
       options.dom.documentList.appendChild(item);
     }

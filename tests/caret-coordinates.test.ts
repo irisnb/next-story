@@ -6,6 +6,7 @@ import {
   RichTextEditorAdapter,
   type RichTextEditorCoordinates,
   type RichTextEditorEngine,
+  type EditingPauseHandle,
 } from "../src/rich-text-editor.ts";
 import type { FormatCommand } from "../src/format-commands.ts";
 
@@ -16,6 +17,7 @@ test("legacy textarea mirror coordinate module is absent from production", () =>
 });
 
 class CoordinateEngine implements RichTextEditorEngine {
+  async pauseEditing(): Promise<EditingPauseHandle> { return { resume() {}, restoreSelection: () => false }; }
   readonly coordinateReads: number[] = [];
 
   getDocument() {

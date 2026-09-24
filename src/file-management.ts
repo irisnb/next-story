@@ -17,7 +17,8 @@ import {
   restoreNode,
   setDocumentAiVisibility,
 } from "./project-api.ts";
-import type { ContentTree, ProjectTreeState } from "./types.ts";
+import type { ContentTree, ProjectLoadIdentity, ProjectTreeState, TreeRefreshAcceptance } from "./types.ts";
+import type { SessionResult } from "./editor-document-session.ts";
 import { isDocumentAiVisible } from "./types.ts";
 
 export interface FileManagementServices {
@@ -41,6 +42,10 @@ export interface FileManagementServices {
 
 export interface FileManagementController {
   showProject(projectState: ProjectTreeState): void;
+  commitProject(projectState: ProjectTreeState): void;
+  prepareProject(projectState: ProjectTreeState): { project: ProjectTreeState; commit(): void };
+  setWorkspacePaused(paused: boolean): void;
+  waitForPendingWrites(): Promise<void>;
   unload(): void;
 }
 
@@ -65,40 +70,101 @@ type FileManagementDom = Pick<
 export function setupFileManagement(
   dom: FileManagementDom,
   options: {
-    /** 结构操作后通知宿主（编辑器）刷新其持有的树。 */
-    onTreeChanged(tree: ContentTree): void;
+    /** 结构操作后通知宿主（编辑器）刷新其持有的树及其装载身份。 */
+    onTreeChanged(tree: ContentTree, identity: ProjectLoadIdentity, acceptance: TreeRefreshAcceptance): Promise<SessionResult> | SessionResult | void;
     services?: Partial<FileManagementServices>;
   },
 ): FileManagementController {
   const services: FileManagementServices = { ...defaultServices, ...options.services };
   let projectPath: string | null = null;
+  let loadGeneration = 0;
+  let allocatedLoadGeneration = 0;
+  let refreshSequence = 0;
+  let operationSequence = 0;
+  let statusOwner = 0;
   let tree: ContentTree | null = null;
   let view: "tree" | "recycle" = "tree";
   /** 展开中的文件夹 ID 集合（主文件树）。 */
   const expanded = new Set<string>();
+  const pendingWrites = new Set<Promise<unknown>>();
+  let workspacePaused = false;
+  type TreeCandidate = { identity: ProjectLoadIdentity; request: number; tree: ContentTree; owner?: number };
+  let deferredTree: TreeCandidate | null = null;
 
-  function setStatus(message: string, kind: "idle" | "busy" | "error" = "idle"): void {
+  async function trackWrite<T>(promise: Promise<T>): Promise<T> {
+    pendingWrites.add(promise);
+    try { return await promise; } finally { pendingWrites.delete(promise); }
+  }
+
+  function currentIdentity(): ProjectLoadIdentity | null {
+    return projectPath === null ? null : { projectPath, loadGeneration };
+  }
+
+  function owns(identity: ProjectLoadIdentity, operation?: number): boolean {
+    return projectPath === identity.projectPath && loadGeneration === identity.loadGeneration &&
+      (operation === undefined || operation === operationSequence);
+  }
+
+  function setStatus(message: string, kind: "idle" | "busy" | "error" = "idle", owner?: number): void {
+    if (owner !== undefined && owner !== statusOwner) return;
     dom.fmStatus.textContent = message;
     dom.fmStatus.className = "fm-status" + (kind === "error" ? " error" : kind === "busy" ? " busy" : "");
   }
 
-  async function refreshTree(): Promise<void> {
-    if (projectPath === null) return;
-    const next = await services.openContentTree(projectPath);
-    tree = next;
-    options.onTreeChanged(next);
-    render();
+  async function refreshTree(owner?: number): Promise<boolean> {
+    const identity = currentIdentity();
+    if (identity === null) return false;
+    const request = ++refreshSequence;
+    let next: ContentTree;
+    try {
+      next = await services.openContentTree(identity.projectPath);
+    } catch (error) {
+      if (owns(identity, owner) && request === refreshSequence) setStatus(String(error), "error", owner);
+      return false;
+    }
+    if (!owns(identity, owner) || request !== refreshSequence) return false;
+    return acceptTree({ identity, request, tree: next, owner });
   }
 
-  async function runOperation(op: () => Promise<unknown>): Promise<void> {
-    if (projectPath === null) return;
-    setStatus("正在处理...", "busy");
+  async function acceptTree(candidate: TreeCandidate): Promise<boolean> {
+    const { identity, request, owner } = candidate;
+    const isCurrent = () => owns(identity, owner) && request === refreshSequence;
+    if (!isCurrent()) return false;
+    if (workspacePaused) { deferredTree = candidate; return false; }
+    let committed = false;
     try {
-      await op();
-      await refreshTree();
-      setStatus("", "idle");
+      const result = await options.onTreeChanged(candidate.tree, identity, {
+        isCurrent,
+        installPeer() {
+          if (!isCurrent() || committed) throw new Error("文件树刷新已失效");
+          tree = candidate.tree;
+          committed = true;
+          render();
+        },
+      });
+      if (!isCurrent()) return false;
+      if (result?.status === "failed") throw result.error;
+      // 取消只结束这次操作；不接受树，也不宣称撤销已完成的磁盘写入。
+      if (committed || result?.status === "cancelled") setStatus("", "idle", owner);
+      return committed;
     } catch (error) {
-      setStatus(String(error), "error");
+      if (isCurrent()) setStatus(String(error), "error", owner);
+      return false;
+    }
+  }
+
+  async function runOperation(identity: ProjectLoadIdentity, op: () => Promise<unknown>): Promise<void> {
+    if (!owns(identity) || workspacePaused) return;
+    const operation = ++operationSequence;
+    statusOwner = operation;
+    setStatus("正在处理...", "busy", operation);
+    try {
+      await trackWrite(op());
+      if (!owns(identity, operation)) return;
+      const refreshed = await refreshTree(operation);
+      if (refreshed && owns(identity, operation)) setStatus("", "idle", operation);
+    } catch (error) {
+      if (owns(identity, operation)) setStatus(String(error), "error", operation);
     }
   }
 
@@ -129,16 +195,18 @@ export function setupFileManagement(
     if (input === null) return;
     const name = input.trim();
     if (name === "" || name === currentName) return;
-    void runOperation(() => services.renameNode(projectPath as string, id, name));
+    const identity = currentIdentity();
+    if (identity !== null) void runOperation(identity, () => services.renameNode(identity.projectPath, id, name));
   }
 
   function startMove(id: string, currentParent: string | null): void {
-    if (tree === null) return;
+    const identity = currentIdentity();
+    if (tree === null || identity === null) return;
     const targets = moveTargets(tree, id);
     const select = makeSelect(targets, currentParent);
     const apply = makeButton("确定", () => {
       const value = select.value === "" ? null : select.value;
-      void runOperation(() => services.moveNode(projectPath as string, id, value));
+      void runOperation(identity, () => services.moveNode(identity.projectPath, id, value));
     });
     const cancel = makeButton("取消", () => render());
     const row = dom.fmFileTree.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
@@ -162,10 +230,11 @@ export function setupFileManagement(
   }
 
   /** 查询使用过指定文档的讨论；查询失败时按「有影响」保守处理（失败关闭）。 */
-  async function documentUsage(documentId: string): Promise<ConversationUsage[] | null> {
-    if (projectPath === null) return null;
+  async function documentUsage(documentId: string, identity: ProjectLoadIdentity): Promise<ConversationUsage[] | null> {
+    if (!owns(identity)) return null;
     try {
-      return await services.conversationsUsingDocument(projectPath, documentId);
+      const usage = await services.conversationsUsingDocument(identity.projectPath, documentId);
+      return owns(identity) ? usage : null;
     } catch {
       return null;
     }
@@ -177,28 +246,35 @@ export function setupFileManagement(
    * （任务 7.5）；开启不需要确认。
    */
   async function toggleVisibility(id: string, currentVisible: boolean): Promise<void> {
-    if (projectPath === null || tree === null) return;
+    const identity = currentIdentity();
+    if (identity === null || tree === null || workspacePaused) return;
+    const operation = ++operationSequence;
+    statusOwner = operation;
+    const path = identity.projectPath;
     const next = !currentVisible;
     if (!next) {
       const node = tree.nodes[id];
-      const usage = await documentUsage(id);
+      const usage = await documentUsage(id, identity);
+      if (!owns(identity, operation) || workspacePaused) return;
       // 查询失败（null）时保守拦截：宁可多一次确认，不悄悄关闭。
       if (usage === null || usage.length > 0) {
         const message =
           usage === null
             ? "无法确认有哪些讨论使用过这篇文档。关闭后相关讨论将永久只读、旧出处脱敏。\n确定要关闭吗？"
             : visibilityImpactMessage(node?.name ?? "这篇文档", usage);
-        if (!window.confirm(message)) return;
+        if (!owns(identity, operation) || !window.confirm(message) || !owns(identity, operation)) return;
       }
     }
-    setStatus("正在保存 AI 可见性...", "busy");
+    if (!owns(identity, operation) || workspacePaused) return;
+    setStatus("正在保存 AI 可见性...", "busy", operation);
     try {
-      await services.setDocumentAiVisibility(projectPath, id, next);
-      await refreshTree();
-      setStatus("", "idle");
+      await trackWrite(services.setDocumentAiVisibility(path, id, next));
+      if (!owns(identity, operation)) return;
+      const refreshed = await refreshTree(operation);
+      if (refreshed && owns(identity, operation)) setStatus("", "idle", operation);
     } catch {
       // 失败回滚：不改动本地树，保持原可见性状态，只给中文可读提示。
-      setStatus("AI 可见性保存失败，已保持原状态。", "error");
+      if (owns(identity, operation)) setStatus("AI 可见性保存失败，已保持原状态。", "error", operation);
     }
   }
 
@@ -216,6 +292,8 @@ export function setupFileManagement(
 
   function renderNodeRow(container: HTMLElement, id: string, depth: number): void {
     if (tree === null) return;
+    const rowIdentity = currentIdentity();
+    if (rowIdentity === null) return;
     const node = tree.nodes[id];
     if (!node) return;
 
@@ -254,11 +332,11 @@ export function setupFileManagement(
       actions.appendChild(makeButton("新建文档", () => {
         // 在折叠的文件夹内新建节点后自动展开该文件夹，让新节点立即可见。
         expanded.add(id);
-        void runOperation(() => services.createDocument(projectPath as string, id));
+        void runOperation(rowIdentity, () => services.createDocument(rowIdentity.projectPath, id));
       }));
       actions.appendChild(makeButton("新建文件夹", () => {
         expanded.add(id);
-        void runOperation(() => services.createFolder(projectPath as string, id));
+        void runOperation(rowIdentity, () => services.createFolder(rowIdentity.projectPath, id));
       }));
     } else {
       // 文档级 AI 可见性开关：只作用于当前文档，文件夹不显示。
@@ -267,7 +345,7 @@ export function setupFileManagement(
     actions.appendChild(makeButton("重命名", () => startRename(id, node.name)));
     actions.appendChild(makeButton("移动", () => startMove(id, parentOf(id))));
     actions.appendChild(makeButton("删除", () => {
-      void runOperation(() => services.deleteNode(projectPath as string, id));
+      void runOperation(rowIdentity, () => services.deleteNode(rowIdentity.projectPath, id));
     }));
     row.appendChild(actions);
 
@@ -326,7 +404,8 @@ export function setupFileManagement(
       const actions = document.createElement("span");
       actions.className = "file-actions";
       actions.appendChild(makeButton("恢复", () => {
-        void runOperation(() => services.restoreNode(projectPath as string, entry.root_id));
+        const identity = currentIdentity();
+        if (identity !== null) void runOperation(identity, () => services.restoreNode(identity.projectPath, entry.root_id));
       }));
       row.appendChild(actions);
       dom.fmRecycleList.appendChild(row);
@@ -356,26 +435,66 @@ export function setupFileManagement(
   }
 
   dom.fmNewDocument.addEventListener("click", () => {
-    void runOperation(() => services.createDocument(projectPath as string, null));
+    const identity = currentIdentity();
+    if (identity !== null) void runOperation(identity, () => services.createDocument(identity.projectPath, null));
   });
   dom.fmNewFolder.addEventListener("click", () => {
-    void runOperation(() => services.createFolder(projectPath as string, null));
+    const identity = currentIdentity();
+    if (identity !== null) void runOperation(identity, () => services.createFolder(identity.projectPath, null));
   });
   dom.fmOpenRecycleBin.addEventListener("click", openRecycleBin);
   dom.fmBackFromRecycle.addEventListener("click", backFromRecycle);
 
+  function commitProject(projectState: ProjectTreeState): void {
+    loadGeneration = projectState.loadIdentity?.loadGeneration ?? ++allocatedLoadGeneration;
+    refreshSequence += 1;
+    operationSequence += 1;
+    statusOwner = operationSequence;
+    projectPath = projectState.projectPath;
+    tree = projectState.tree;
+    deferredTree = null;
+    expanded.clear();
+    view = "tree";
+    render();
+    setStatus("", "idle");
+  }
+
   return {
+    prepareProject(projectState) {
+      // 候选期不构建带事件闭包的 DOM；事件必须捕获提交后的装载身份。
+      let consumed = false;
+      const project = { ...projectState, loadIdentity: { projectPath: projectState.projectPath, loadGeneration: ++allocatedLoadGeneration } };
+      return { project, commit() {
+        if (consumed) throw new Error("文件管理候选已提交");
+        consumed = true;
+        commitProject(project);
+      } };
+    },
+    setWorkspacePaused(paused) {
+      workspacePaused = paused;
+      dom.fmNewDocument.disabled = paused;
+      dom.fmNewFolder.disabled = paused;
+      // 退出通知先完成，再用原身份/刷新序号重新走同一接受协议，不另造刷新代次。
+      if (!paused && deferredTree) {
+        const pending = deferredTree; deferredTree = null;
+        queueMicrotask(() => { void acceptTree(pending); });
+      }
+    },
+    commitProject(projectState: ProjectTreeState): void {
+      commitProject(projectState);
+    },
+    async waitForPendingWrites(): Promise<void> { await Promise.all([...pendingWrites]); },
     showProject(projectState: ProjectTreeState): void {
-      projectPath = projectState.projectPath;
-      tree = projectState.tree;
-      expanded.clear();
-      view = "tree";
-      render();
-      setStatus("", "idle");
+      this.commitProject(projectState);
     },
     unload(): void {
+      loadGeneration = ++allocatedLoadGeneration;
+      refreshSequence += 1;
+      operationSequence += 1;
+      statusOwner = operationSequence;
       projectPath = null;
       tree = null;
+      deferredTree = null;
       expanded.clear();
       view = "tree";
       dom.fmFileTree.replaceChildren();

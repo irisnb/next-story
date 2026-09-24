@@ -6,6 +6,7 @@ import type { ProjectTreeState } from "./types.ts";
 import type { ContentTree } from "./types.ts";
 
 export interface EditorDocumentSessionEditor {
+  destroy(): void;
   onEdit(listener: () => void): () => void;
   onSelectionChange(listener: () => void): () => void;
 }
@@ -40,11 +41,18 @@ export interface EditorDocumentSessionOptions {
 }
 
 export interface EditorDocumentSession {
-  loadDocument(documentId: string): Promise<void>;
-  showProject(project: ProjectTreeState): Promise<void>;
-  applyTree(tree: ContentTree): void;
+  prepareDocument(documentId: string | null, tree?: ContentTree): Promise<PreparationResult>;
+  prepareProject(project: ProjectTreeState): Promise<PreparationResult>;
+  loadDocument(documentId: string): Promise<SessionResult>;
+  showProject(project: ProjectTreeState): Promise<SessionResult>;
+  applyTree(tree: ContentTree, canCommit?: () => boolean, installPeer?: () => void): Promise<SessionResult>;
   invalidate(): void;
 }
+
+export type SessionResult = { status: "committed" } | { status: "cancelled" } | { status: "stale" } | { status: "busy" }
+  | { status: "failed"; error: Error };
+export type PreparationResult = Exclude<SessionResult, { status: "committed" }>
+  | { status: "prepared"; commit(installPeer?: () => void): SessionResult; dispose(): void };
 
 export function createEditorDocumentSession(options: EditorDocumentSessionOptions): EditorDocumentSession {
   let generation = 0;
@@ -53,85 +61,105 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
     generation += 1;
   }
 
-  async function read(projectPath: string, documentId: string, token: number): Promise<JSONContent | null> {
+  async function read(projectPath: string, documentId: string): Promise<JSONContent> {
     let content: string;
     try {
       content = await options.readDocument(projectPath, documentId);
     } catch (error) {
-      if (token === generation) alert(`读取文档失败：${error instanceof Error ? error.message : String(error)}`);
-      return null;
+      throw Object.assign(new Error(`读取文档失败：${error instanceof Error ? error.message : String(error)}`), { cause: error });
     }
-    if (token !== generation) return null;
     try {
       return parseNotebookDocumentJson(content).document;
     } catch (error) {
-      if (token === generation) alert(`解析文档失败：${error instanceof Error ? error.message : String(error)}`);
-      return null;
+      throw Object.assign(new Error(`解析文档失败：${error instanceof Error ? error.message : String(error)}`), { cause: error });
     }
   }
 
-  async function loadDocument(documentId: string): Promise<void> {
+  async function prepare(project: ProjectTreeState, documentId: string | null, projectLoad: boolean): Promise<PreparationResult> {
+    const token = ++generation;
+    const original = options.getProject();
+    const originalId = options.getDocumentId();
+    const valid = () => token === generation && options.getProject() === original && options.getDocumentId() === originalId;
+    let next: EditorDocumentSessionEditor | null = null;
+    try {
+      const document = documentId === null ? emptyNotebookDocument().document : await read(project.projectPath, documentId);
+      if (!valid()) return { status: "stale" };
+      const container = options.dom.editorTextarea.ownerDocument.createElement("div");
+      // No visible DOM, identity, baseline, memory or interaction subscriptions change here.
+      next = documentId === null ? null : options.createEditor(container, document);
+      let consumed = false;
+      const dispose = () => {
+        if (consumed) return;
+        consumed = true;
+        next?.destroy();
+      };
+      return {
+        status: "prepared", dispose,
+        commit: (installPeer) => {
+          if (consumed || !valid()) { dispose(); return { status: "stale" }; }
+          // All fallible reads, parsing and construction have finished. No await in installation.
+          if (projectLoad) options.beforeLoadProject(project);
+          options.disposeEditor();
+          options.dom.editorTextarea.replaceChildren(...Array.from(container.childNodes));
+          consumed = true;
+          options.setProject(project);
+          options.setDocumentId(documentId);
+          options.setEditor(next);
+          installPeer?.();
+          if (documentId === null) options.clearBaseline();
+          else options.setBaseline(document);
+          if (next) { options.onEdit(next); options.onSelectionChange(next); }
+          if (documentId === null) options.clearRememberedDocument(project.projectPath);
+          if (projectLoad) options.onProjectLoaded(project, documentId);
+          else options.onDocumentLoaded(project, documentId);
+          return { status: "committed" };
+        },
+      };
+    } catch (error) {
+      next?.destroy();
+      return valid() ? { status: "failed", error: error instanceof Error ? error : new Error(String(error)) } : { status: "stale" };
+    }
+  }
+
+  async function prepareDocument(documentId: string | null, tree?: ContentTree): Promise<PreparationResult> {
     const project = options.getProject();
-    if (!project) return;
-    const token = ++generation;
-    const document = await read(project.projectPath, documentId, token);
-    if (!document || token !== generation || !options.getProject()) return;
-    const next = options.createEditor(options.dom.editorTextarea, document);
-    options.disposeEditor();
-    options.setEditor(next);
-    options.setDocumentId(documentId);
-    options.setBaseline(document);
-    options.onEdit(next);
-    options.onSelectionChange(next);
-    options.onDocumentLoaded(project, documentId);
+    if (!project) return { status: "stale" };
+    return prepare(tree ? { ...project, tree } : project, documentId, false);
   }
 
-  async function showProject(project: ProjectTreeState): Promise<void> {
-    const token = ++generation;
-    options.beforeLoadProject(project);
-    const documentId = options.resolveDocumentId(project);
-    const document = documentId === null
-      ? emptyNotebookDocument().document
-      : await read(project.projectPath, documentId, token);
-    if (!document || token !== generation) return;
-    const next = documentId === null ? null : options.createEditor(options.dom.editorTextarea, document);
-    options.disposeEditor();
-    options.setProject(project);
-    options.setDocumentId(documentId);
-    options.setEditor(next);
-    if (documentId === null) options.clearBaseline();
-    else options.setBaseline(document);
-    if (next) {
-      options.onEdit(next);
-      options.onSelectionChange(next);
-    }
-    options.onProjectLoaded(project, documentId);
+  function prepareProject(project: ProjectTreeState): Promise<PreparationResult> {
+    return prepare(project, options.resolveDocumentId(project), true);
   }
 
-  function applyTree(tree: ContentTree): void {
+  async function loadDocument(documentId: string): Promise<SessionResult> {
+    const candidate = await prepareDocument(documentId);
+    return candidate.status === "prepared" ? candidate.commit() : candidate;
+  }
+
+  async function showProject(project: ProjectTreeState): Promise<SessionResult> {
+    const candidate = await prepareProject(project);
+    return candidate.status === "prepared" ? candidate.commit() : candidate;
+  }
+
+  async function applyTree(tree: ContentTree, canCommit = () => true, installPeer?: () => void): Promise<SessionResult> {
     const project = options.getProject();
     const currentDocumentId = options.getDocumentId();
-    if (!project) return;
-    if (currentDocumentId !== null && !options.isDocumentInTree(tree, currentDocumentId)) {
-      if (options.hasUnsavedChanges() && !options.confirmDiscard()) return;
-      project.tree = tree;
-      options.clearRememberedDocument(project.projectPath);
+    if (!project) return { status: "stale" };
+    if (currentDocumentId === null || !options.isDocumentInTree(tree, currentDocumentId)) {
+      if (options.hasUnsavedChanges() && !options.confirmDiscard()) return { status: "cancelled" };
       const first = options.firstDocument(tree);
-      if (first) {
-        void loadDocument(first.id);
-      } else {
-        invalidate();
-        options.disposeEditor();
-        options.setDocumentId(null);
-        options.setEditor(null);
-        options.clearBaseline();
-        options.onDocumentLoaded(project, null);
-      }
-      return;
+      const candidate = await prepareDocument(first?.id ?? null, tree);
+      if (candidate.status !== "prepared") return candidate;
+      if (!canCommit()) { candidate.dispose(); return { status: "cancelled" }; }
+      return candidate.commit(installPeer);
     }
-    project.tree = tree;
-    options.onTreeRefreshed(project, currentDocumentId);
+    if (!canCommit()) return { status: "cancelled" };
+    const next = { ...project, tree };
+    options.setProject(next);
+    installPeer?.();
+    options.onTreeRefreshed(next, currentDocumentId);
+    return { status: "committed" };
   }
 
-  return { loadDocument, showProject, applyTree, invalidate };
+  return { prepareDocument, prepareProject, loadDocument, showProject, applyTree, invalidate };
 }

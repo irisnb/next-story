@@ -7,6 +7,7 @@ import {
   buildRichTextExtensions,
   RichTextEditorAdapter,
   type RichTextEditorEngine,
+  type EditingPauseHandle,
 } from "../src/rich-text-editor.ts";
 import { canonicalDoc } from "../src/structured-notebook.ts";
 import type { FormatCommand } from "../src/format-commands.ts";
@@ -149,6 +150,7 @@ for (const { name, doc } of roundTripCases) {
 // ---------------------------------------------------------------------------
 
 class FakeRichTextEditorEngine implements RichTextEditorEngine {
+  async pauseEditing(): Promise<EditingPauseHandle> { return { resume() {}, restoreSelection: () => false }; }
   document: JSONContent = { type: "doc", content: [{ type: "paragraph" }] };
   readonly updateListeners = new Set<() => void>();
   focused = false;

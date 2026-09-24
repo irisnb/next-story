@@ -22,6 +22,7 @@ export interface EditorPersistenceOptions {
   saveButton: HTMLButtonElement;
   getEditor: () => EditorPersistenceEditor | null;
   getProject: () => EditorPersistenceProject | null;
+  isTransitioning?: () => boolean;
   write?: (projectPath: string, documentId: string, content: string) => Promise<void>;
   onStateChange?: () => void;
 }
@@ -51,6 +52,7 @@ export function createEditorPersistence(options: EditorPersistenceOptions): Edit
     else if (saveState.statusText.startsWith("保存失败")) options.saveStatus.classList.add("error");
     else if (saveState.hasUnsavedChanges) options.saveStatus.classList.add("unsaved");
     options.saveButton.disabled = saveState.isSaving || !saveState.hasUnsavedChanges;
+    if (options.isTransitioning?.()) options.saveButton.disabled = true;
   }
 
   function setBaseline(document: JSONContent): void {
@@ -81,11 +83,17 @@ export function createEditorPersistence(options: EditorPersistenceOptions): Edit
     const sizeError = notebookSizeError(JSON.stringify(document));
     if (sizeError) return rejectSave(`文档内容过大：${sizeError}`);
 
+    state.setCurrent(canonicalNotebookJson(editor.getDocument()));
     const writer = options.write ?? saveDocument;
-    const result = state.save((content) => writer(project.projectPath, project.documentId, content));
+    const result = state.save(async (content) => {
+      await writer(project.projectPath, project.documentId, content);
+      if (state !== saveState) return;
+      const currentEditor = options.getEditor();
+      if (currentEditor) state.setCurrent(canonicalNotebookJson(currentEditor.getDocument()));
+    });
     render();
     const succeeded = await result;
-    render();
+    if (state === saveState) render();
     return succeeded;
   }
 

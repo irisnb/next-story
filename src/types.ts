@@ -43,6 +43,21 @@ export interface ProjectTreeState {
   projectPath: string;
   projectName: string;
   tree: ContentTree;
+  /** 由文件管理候选分配，两侧共同安装；不持久化。 */
+  loadIdentity?: ProjectLoadIdentity;
+}
+
+/** Runtime identity of one project load; same path can have multiple loads. */
+export interface ProjectLoadIdentity {
+  projectPath: string;
+  loadGeneration: number;
+}
+
+/** 仅用于一棵刷新候选；准备结束后复核，安装段不得 await。 */
+export interface TreeRefreshAcceptance {
+  isCurrent(): boolean;
+  installPeer(): void;
+  onAccepted?(): void;
 }
 
 /** 内容树节点类型：文件夹只负责组织，文档只负责写作。 */

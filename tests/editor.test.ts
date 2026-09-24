@@ -59,10 +59,12 @@ class FakeClassList {
 }
 
 class FakeElement {
+  get ownerDocument(): Document { return globalThis.document; }
   readonly classList = new FakeClassList();
   private readonly listeners = new Map<string, Listener[]>();
   private readonly attributes = new Map<string, string>();
   readonly children: FakeElement[] = [];
+  get childNodes(): FakeElement[] { return this.children; }
   readonly style: Record<string, string> = {};
   readonly dataset: Record<string, string> = {};
   textContent = "";
@@ -128,6 +130,11 @@ class FakeElement {
 }
 
 class FakeRichTextEditor {
+  paused = false;
+  async pauseEditing() {
+    this.paused = true;
+    return { resume: () => { this.paused = false; }, restoreSelection: () => false };
+  }
   private readonly listeners = new Set<(document: JSONContent) => void>();
   private document: JSONContent;
   readonly element: HTMLElement;
@@ -207,6 +214,7 @@ class FakeRichTextEditor {
   }
 
   edit(document: JSONContent): void {
+    if (this.paused) return;
     this.document = document;
     for (const listener of this.listeners) listener(document);
   }
@@ -441,7 +449,7 @@ interface Fixture {
 
 function editorFixture(
   initialContents: Record<string, string> = {},
-  extra: { marginStorage?: StorageLike | null } = {},
+  extra: { marginStorage?: StorageLike | null; readDocument?: (path: string, id: string) => Promise<string> } = {},
 ): Fixture {
   const ui = fakeDom();
   const editors: FakeRichTextEditor[] = [];
@@ -470,6 +478,45 @@ function editorFixture(
     ...extra,
   });
   return { ui, editor, editors, contents, saved, saveCalls, memory };
+}
+
+for (const outcome of ["success", "failure"] as const) {
+  test(`applyTree rechecks refresh ownership after fallback body ${outcome}`, async () => {
+    let resolve!: (body: string) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
+    let reading = false;
+    const fixture = editorFixture({}, { readDocument: async (_path, id) => {
+      if (id === "doc-1") return notebookJson("原正文");
+      reading = true;
+      return pending;
+    } });
+    try {
+      const original = treeFrom([docNode("doc-1", "第一篇")]);
+      await fixture.editor.showProject(projectState("作品", original));
+      const old = fixture.editors[0];
+      let current = true;
+      let installed = 0;
+      let notified = 0;
+      const applying = fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]), {
+        isCurrent: () => current,
+        installPeer: () => { installed += 1; },
+        onAccepted: () => { notified += 1; },
+      });
+      await flushUntil(() => reading);
+      current = false;
+      if (outcome === "success") resolve(notebookJson("迟到替代正文"));
+      else reject(new Error("旧刷新失败"));
+      assert.deepEqual(await applying, { status: "stale" });
+      assert.equal(fixture.editor.getTree(), original);
+      assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
+      assert.equal(old.destroyed, false);
+      assert.equal(old.paused, false);
+      assert.equal(installed, 0);
+      assert.equal(notified, 0);
+      if (outcome === "success") assert.equal(fixture.editors[1].destroyed, true, "失效的离屏候选被回收");
+    } finally { fixture.editor.destroy(); fixture.ui.restore(); }
+  });
 }
 
 test("showProject begins the AI project and unload ends it", async () => {
@@ -581,7 +628,7 @@ test("creates a single editor for the current document without dirtying initiali
     await fixture.editor.showProject(projectState("作品一", tree));
 
     assert.equal(fixture.editors.length, 1);
-    assert.equal(fixture.editors[0]?.element, fixture.ui.dom.editorTextarea);
+    assert.notEqual(fixture.editors[0]?.element, fixture.ui.dom.editorTextarea, "candidate is constructed off-screen");
     assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("初稿"));
     assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
@@ -912,6 +959,7 @@ test("applyTree keeps the dirty editor when the user cancels deletion", async ()
     globalThis.confirm = () => false;
     try {
       fixture.editor.applyTree(treeFrom([]));
+      await flushUntil(() => !fixture.editor.isTransitioning());
     } finally {
       globalThis.confirm = previousConfirm;
     }
@@ -940,6 +988,7 @@ test("applyTree switches to the first remaining document when deletion is confir
     globalThis.confirm = () => true;
     try {
       fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]));
+      await flushUntil(() => !fixture.editor.isTransitioning());
     } finally {
       globalThis.confirm = previousConfirm;
     }
@@ -966,6 +1015,7 @@ test("applyTree shows the empty state when deletion is confirmed and no document
     globalThis.confirm = () => true;
     try {
       fixture.editor.applyTree(treeFrom([]));
+      await flushUntil(() => !fixture.editor.isTransitioning());
     } finally {
       globalThis.confirm = previousConfirm;
     }
@@ -1072,12 +1122,12 @@ test("first load read failure alerts in Chinese and does not open the document",
 
     const alerts = captureAlert();
     try {
-      await fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "未命名文档")])));
+      await assert.rejects(fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "未命名文档")]))), /读取文档失败/);
     } finally {
       alerts.restore();
     }
 
-    assert.match(alerts.messages[0] ?? "", /读取文档失败/);
+    assert.equal(alerts.messages.length, 0, "project failure is propagated to its owner, not alerted twice");
     assert.equal(fixture.editor.hasProject(), false);
     assert.equal(fixture.editor.getCurrentDocumentId(), null);
     assert.equal(fixture.editors.length, 0);
@@ -1091,12 +1141,12 @@ test("first load parse failure alerts in Chinese and does not open the document"
   try {
     const alerts = captureAlert();
     try {
-      await fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "未命名文档")])));
+      await assert.rejects(fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "未命名文档")]))), /解析文档失败/);
     } finally {
       alerts.restore();
     }
 
-    assert.match(alerts.messages[0] ?? "", /解析文档失败/);
+    assert.equal(alerts.messages.length, 0);
     assert.equal(fixture.editor.hasProject(), false);
     assert.equal(fixture.editor.getCurrentDocumentId(), null);
     assert.equal(fixture.editors.length, 0);

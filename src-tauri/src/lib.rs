@@ -141,7 +141,11 @@ async fn open_project(
 
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = locks.acquire(&project_root)?;
-        project::open_existing_project(&project_root)
+        let opened = project::open_existing_project(&project_root)?;
+        if let Err(error) = conversation_store::clear_conversation_trash(&project_root) {
+            eprintln!("打开作品时清理讨论回收区失败: {error}");
+        }
+        Ok::<_, project::ProjectError>(opened)
     })
     .await
     .map_err(|e| format!("打开作品任务执行失败: {e}"))?
@@ -446,6 +450,62 @@ async fn conversation_list(
     .map_err(|e| format!("读取讨论列表任务执行失败: {e}"))?
 }
 
+/// 打开讨论时按需读取完整正文；列表不再携带全文。
+#[tauri::command]
+async fn conversation_read(
+    app: tauri::AppHandle,
+    project_path: String,
+    conversation_id: String,
+) -> Result<conversation_store::ConversationRecord, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::read_conversation(&project_root, &conversation_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("读取讨论任务执行失败: {e}"))?
+}
+
+/// 标题 / 置顶窄更新；不让前端为列表操作传回整份旧正文。
+#[tauri::command]
+async fn conversation_update_meta(
+    app: tauri::AppHandle,
+    project_path: String,
+    conversation_id: String,
+    title: Option<String>,
+    pinned: Option<bool>,
+) -> Result<(), String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::conversation_update_meta(&project_root, &conversation_id, title, pinned)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("更新讨论标题或置顶任务执行失败: {e}"))?
+}
+
+/// 关闭文档可见性后锁存普通出处，不改变补读出处权限语义。
+#[tauri::command]
+async fn latch_conversation_restrictions(
+    app: tauri::AppHandle,
+    project_path: String,
+    document_id: String,
+) -> Result<Vec<String>, String> {
+    let project_root = PathBuf::from(&project_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root).map_err(|e| e.to_string())?;
+        conversation_store::latch_conversation_restrictions(&project_root, &document_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("锁存讨论限制任务执行失败: {e}"))?
+}
+
 /// 保存（原子写入）一份讨论档案到作品系统目录，与作品正文分开存放。
 #[tauri::command]
 async fn conversation_save(
@@ -483,7 +543,7 @@ async fn conversation_delete(
     .map_err(|e| format!("删除讨论任务执行失败: {e}"))?
 }
 
-/// 撤销删除：清除该讨论的删除墓碑（供前端在撤销期内恢复档案）。
+/// 撤销删除：从回收区恢复档案与索引，成功后清除删除墓碑。
 #[tauri::command]
 async fn conversation_restore(
     app: tauri::AppHandle,
@@ -778,6 +838,9 @@ pub fn run() {
             ai_host::ai_replay_history,
             ai_host::ai_replay_done,
             conversation_list,
+            conversation_read,
+            conversation_update_meta,
+            latch_conversation_restrictions,
             conversation_save,
             conversation_delete,
             conversation_restore,

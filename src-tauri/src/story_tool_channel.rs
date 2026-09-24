@@ -812,7 +812,11 @@ impl StoryToolChannel {
         updates: &[(String, String, ReadingDepth)],
     ) {
         let _guard = lock(&self.provenance_write_lock);
-        upsert_on_demand_provenance(project_root, conversation_id, turn_index, updates);
+        if let Err(error) =
+            upsert_on_demand_provenance(project_root, conversation_id, turn_index, updates)
+        {
+            eprintln!("讨论 {conversation_id} 第 {turn_index} 轮补读出处落档失败: {error}");
+        }
     }
 
     /// 用户对授权请求的决定（任务 5.2；前端命令 `ai_resolve_reading_request`
@@ -921,7 +925,7 @@ fn recovery_hint_for_reason(reason: &str) -> Option<&'static str> {
 
 /// 出处按轮累计 upsert（设计 D12，任务 6.2）：同一（轮, 文档）只保留一条最小
 /// 元数据，阅读程度随轮内累计升级（局部 → 完整）。沿用既有讨论档案原子保存；
-/// 档案缺失 / 已删除时静默跳过（授权只可能来自已存在的档案）。
+/// 读取 / 保存失败向调用方返回错误，由调用侧记录，不能静默丢弃出处。
 /// 读改写全程持 `provenance_write_lock`：同一讨论的并发工具调用线程串行落档，
 /// 后写者必基于最新档案（防丢失更新）。
 fn upsert_on_demand_provenance(
@@ -929,10 +933,8 @@ fn upsert_on_demand_provenance(
     conversation_id: &str,
     turn_index: u32,
     updates: &[(String, String, ReadingDepth)],
-) {
-    let Ok(mut record) = read_conversation(project_root, conversation_id) else {
-        return;
-    };
+) -> Result<(), crate::conversation_store::ConversationStoreError> {
+    let mut record = read_conversation(project_root, conversation_id)?;
     let entries = record
         .on_demand_reading_provenance
         .get_or_insert_with(Vec::new);
@@ -953,7 +955,7 @@ fn upsert_on_demand_provenance(
             });
         }
     }
-    let _ = save_conversation(project_root, &record);
+    save_conversation(project_root, &record)
 }
 
 /// 恢复式取锁（与 dsh_driver 一致：中毒后取内部数据，不连锁 panic）。

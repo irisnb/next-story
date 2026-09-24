@@ -2,7 +2,7 @@
 //!
 //! 职责：把每个讨论的档案保存为作品文件夹内
 //! `next-story-system/conversations/<conversation_id>.json` 的独立版本化 JSON 文件，
-//! 与作品正文分开存放。提供 list / save / delete 三个前端命令（命令层在 `lib.rs`），
+//! 与作品正文分开存放。正文是唯一真相源，轻量 `.meta.json` 索引可随时重建。
 //! 有界读取 + JSON 校验，损坏/超限档案跳过并如实提示，保存复用
 //! `write_file_atomically`（tempfile + persist），不重复造事务框架。
 //!
@@ -20,8 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::project::{ProjectError, ProjectPaths};
 
-/// 讨论档案文件的有界读取上限（1 MiB）。损坏或超限的档案在列表中跳过。
-pub const MAX_CONVERSATION_BYTES: u64 = 1024 * 1024;
+/// 正文读写共用上限（8 MiB），按最终 JSON 的 UTF-8 字节数校验。
+pub const MAX_CONVERSATION_BYTES: u64 = 8 * 1024 * 1024;
+/// 可重建元信息索引的有界读写上限（256 KiB）。
+pub const MAX_META_BYTES: u64 = 256 * 1024;
 /// 讨论档案当前格式版本。为未来格式演进预留迁移位。
 pub const CONVERSATION_VERSION: u32 = 1;
 /// 列表条目标题截断长度（按字符数）。
@@ -164,11 +166,30 @@ pub struct ConversationRecord {
     pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
 }
 
-/// 会话列表条目：除列表展示所需的身份 / 标题 / 时间 / 终态外，还携带重开所需的
-/// 完整轮次与首轮材料（本车道只有 list/save/delete 三个命令，无单独「读取一条」
-/// 命令，故列表必须一次带回重开所需全部内容）。
+/// 可重建的磁盘索引；引用集合不含出处细节或轮次正文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationMeta {
+    pub version: u32,
+    pub conversation_id: String,
+    pub title: String,
+    pub custom_title: Option<String>,
+    pub pinned: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_status: Option<String>,
+    pub focus_document_id: Option<String>,
+    pub focus_document_title: Option<String>,
+    pub body_bytes: u64,
+    pub provenance: Option<Vec<String>>,
+    pub provenance_has_revoked: bool,
+    pub on_demand_document_ids: Vec<String>,
+    pub references_incomplete: bool,
+}
+
+/// IPC 列表条目与 meta 同构，仅省去磁盘失效检测字段 body_bytes。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationSummary {
+    pub version: u32,
     pub conversation_id: String,
     /// 列表显示标题：用户自定义标题优先，否则回退到派生标题。
     pub title: String,
@@ -177,19 +198,15 @@ pub struct ConversationSummary {
     pub last_status: Option<String>,
     pub focus_document_id: Option<String>,
     pub focus_document_title: Option<String>,
-    pub first_round_material: FirstRoundMaterial,
-    pub turns: Vec<ConversationTurn>,
     /// 用户自定义标题原值：`None` 表示未重命名，前端据此区分「已重命名」与「派生标题」。
     pub custom_title: Option<String>,
     /// 置顶标记：`false` 表示未置顶。
     pub pinned: bool,
     /// 材料出处元数据：`None` 表示旧档案缺少该字段（保守：可查看但不可自动重放）。
-    pub provenance: Option<Vec<MaterialProvenance>>,
-    /// 按需补读授权状态：`None` 表示未授权（含旧档案缺字段缺省）。摘要携带它供
-    /// 前端授权开关与重开恢复使用（授权属于讨论、跨重启保留）。
-    pub on_demand_reading_grant: Option<OnDemandReadingGrant>,
-    /// 按需补读读取出处（最小元数据）：`None` 表示旧档案缺字段（视为无补读记录）。
-    pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
+    pub provenance: Option<Vec<String>>,
+    pub provenance_has_revoked: bool,
+    pub on_demand_document_ids: Vec<String>,
+    pub references_incomplete: bool,
 }
 
 /// 会话列表结果：正常条目 + 被跳过（损坏/超限等）的可见提示。
@@ -203,6 +220,7 @@ pub struct ListResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConversationStoreError {
+    TooLarge,
     InvalidConversationId(String),
     UnsupportedVersion(String),
     InvalidRecord(String),
@@ -215,6 +233,10 @@ pub enum ConversationStoreError {
 impl std::fmt::Display for ConversationStoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ConversationStoreError::TooLarge => write!(
+                f,
+                "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。"
+            ),
             ConversationStoreError::InvalidConversationId(msg) => {
                 write!(f, "讨论标识无效: {msg}")
             }
@@ -261,6 +283,14 @@ fn conversation_file(root: &Path, id: &str) -> PathBuf {
     conversations_dir(root).join(format!("{id}.json"))
 }
 
+fn meta_file(root: &Path, id: &str) -> PathBuf {
+    conversations_dir(root).join(format!("{id}.meta.json"))
+}
+
+fn trash_dir(root: &Path) -> PathBuf {
+    conversations_dir(root).join(".trash")
+}
+
 // ========== 校验 ==========
 
 /// 校验讨论标识是安全的文件名分量：非空、非 `.`/`..`、不含路径分隔符、
@@ -288,6 +318,7 @@ fn validate_conversation_id(id: &str) -> Result<(), ConversationStoreError> {
 }
 
 /// 单文件读取失败分类：列表据此区分「超限」与「损坏/不可读」给出不同提示。
+#[derive(Debug)]
 enum ReadFileFailure {
     TooLarge,
     Corrupt,
@@ -315,6 +346,17 @@ fn read_record_file(path: &Path) -> Result<ConversationRecord, ReadFileFailure> 
 
 /// 列出当前作品已保存的讨论摘要。损坏/超限档案被跳过并如实返回提示。
 pub fn list_conversations(root: &Path) -> Result<ListResult, ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    list_conversations_locked(root, &deleted)
+}
+
+/// 调用方持有存储锁；内部函数绝不再次获取同一把锁。
+fn list_conversations_locked(
+    root: &Path,
+    deleted: &HashSet<PathBuf>,
+) -> Result<ListResult, ConversationStoreError> {
     let dir = conversations_dir(root);
     if !dir.exists() {
         return Ok(ListResult::default());
@@ -338,19 +380,28 @@ pub fn list_conversations(root: &Path) -> Result<ListResult, ConversationStoreEr
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // sidecar 不是正文；孤儿索引仅清理，不计入 skipped。
+        if let Some(id) = name.strip_suffix(".meta.json") {
+            if matches!(conversation_file(root, id).try_exists(), Ok(false)) {
+                if let Err(error) = fs::remove_file(&path) {
+                    eprintln!("清理孤儿讨论索引失败: {error}");
+                }
+            }
+            continue;
+        }
+        if deleted.contains(&path) {
+            continue;
+        }
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
         let stem = stem.to_string();
 
-        match read_record_file(&path) {
-            Ok(record) => {
-                if record.conversation_id != stem {
-                    skipped.push(skip_entry(&stem, "讨论档案标识与文件名不一致，已跳过"));
-                    continue;
-                }
-                conversations.push(summarize(&record));
-            }
+        match load_or_rebuild_meta(root, &stem) {
+            Ok(meta) => conversations.push(summarize(meta)),
             Err(ReadFileFailure::TooLarge) => {
                 skipped.push(skip_entry(&stem, "讨论档案超过大小上限，已跳过"));
             }
@@ -379,6 +430,17 @@ pub fn save_conversation(
     root: &Path,
     record: &ConversationRecord,
 ) -> Result<(), ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    save_conversation_locked(root, record, &deleted)
+}
+
+fn save_conversation_locked(
+    root: &Path,
+    record: &ConversationRecord,
+    deleted: &HashSet<PathBuf>,
+) -> Result<(), ConversationStoreError> {
     validate_conversation_id(&record.conversation_id)?;
     if record.version != CONVERSATION_VERSION {
         return Err(ConversationStoreError::UnsupportedVersion(
@@ -392,9 +454,6 @@ pub fn save_conversation(
 
     // save / delete 串行化：全程持锁，同一讨论的 save 与 delete 不交错；
     // 删除墓碑命中即拒绝，避免「删除后迟到的保存」复活文件。
-    let deleted = CONVERSATION_STORE_LOCK
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, &stamped.conversation_id);
     if deleted.contains(&file) {
         return Err(ConversationStoreError::AlreadyDeleted(
@@ -413,45 +472,148 @@ pub fn save_conversation(
         }
     }
 
-    let dir = conversations_dir(root);
-    fs::create_dir_all(&dir).map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
-
     let json = serde_json::to_string_pretty(&stamped)
         .map_err(|e| ConversationStoreError::InvalidRecord(e.to_string()))?;
+    if json.len() as u64 > MAX_CONVERSATION_BYTES {
+        return Err(ConversationStoreError::TooLarge);
+    }
+    // 大小校验必须在保全补读出处之后，且在创建目录等任何写盘之前。
+    fs::create_dir_all(conversations_dir(root))
+        .map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
     crate::project::write_file_atomically(&file, &json)
-        .map_err(|e| ConversationStoreError::WriteError(e.to_string()))
+        .map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
+    // 正文先提交，索引失败不改变保存结果，下次列表从正文重建。
+    let meta_result = derive_meta(&stamped, json.len() as u64)
+        .and_then(|meta| write_meta(&meta_file(root, &stamped.conversation_id), &meta));
+    if let Err(error) = meta_result {
+        eprintln!("讨论正文已保存，更新索引失败: {error}");
+        // 避免同字节长度更新时继续使用已知失效的旧索引。
+        let path = meta_file(root, &stamped.conversation_id);
+        if path.is_file() {
+            if let Err(error) = fs::remove_file(path) {
+                eprintln!("清理失效讨论索引失败: {error}");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 删除一份讨论档案（幂等：目标不存在视为成功，不遗留孤儿档案）。
-/// 先记删除墓碑再移除文件：之后迟到的 save 被墓碑拒绝，不复活档案。
+/// 先记墓碑，再把正文移入回收区（提交点）；meta 移动失败可容忍。
 pub fn delete_conversation(root: &Path, id: &str) -> Result<(), ConversationStoreError> {
     validate_conversation_id(id)?;
     let mut deleted = CONVERSATION_STORE_LOCK
         .lock()
         .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, id);
-    deleted.insert(file.clone());
-    match fs::remove_file(&file) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(ConversationStoreError::WriteError(e.to_string())),
+    let newly_deleted = deleted.insert(file.clone());
+    let trash = trash_dir(root);
+    let move_body = (|| {
+        if !file
+            .try_exists()
+            .map_err(|e| ConversationStoreError::WriteError(e.to_string()))?
+        {
+            return Ok(());
+        }
+        fs::create_dir_all(&trash)
+            .map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
+        let target = trash.join(format!("{id}.json"));
+        if target.exists() {
+            return Err(ConversationStoreError::WriteError(
+                "回收区已有同名讨论，未覆盖原档案".to_string(),
+            ));
+        }
+        fs::rename(&file, target).map_err(|e| ConversationStoreError::WriteError(e.to_string()))
+    })();
+    if let Err(error) = move_body {
+        // 提交点之前失败：正文仍在原位，不让新墓碑把尚未删除的讨论隐藏或封死。
+        // 既有墓碑不能清除，否则一次失败的重复删除会复活先前已删除的讨论。
+        if newly_deleted {
+            deleted.remove(&file);
+        }
+        return Err(error);
     }
+    let meta = meta_file(root, id);
+    if meta.exists() {
+        if let Err(error) = fs::rename(meta, trash.join(format!("{id}.meta.json"))) {
+            eprintln!("讨论已移入回收区，移动索引失败: {error}");
+        }
+    }
+    Ok(())
 }
 
-/// 撤销删除：清除该讨论的删除墓碑，使随后的 save 可再次写入档案。
-/// 仅用于删除撤销路径；幂等（不存在墓碑时成功）。
+/// 从回收区恢复正文与索引，全部成功后才清墓碑；失败回滚正文，允许重试。
 pub fn restore_conversation(root: &Path, id: &str) -> Result<(), ConversationStoreError> {
     validate_conversation_id(id)?;
     let mut deleted = CONVERSATION_STORE_LOCK
         .lock()
         .unwrap_or_else(|p| p.into_inner());
     let file = conversation_file(root, id);
+    let trash = trash_dir(root);
+    let source = trash.join(format!("{id}.json"));
+    if !source
+        .try_exists()
+        .map_err(|e| ConversationStoreError::ReadError(e.to_string()))?
+    {
+        return Err(ConversationStoreError::NotFound(id.to_string()));
+    }
+    if file.exists() {
+        return Err(ConversationStoreError::WriteError(
+            "原位置已有同名讨论，未覆盖档案".to_string(),
+        ));
+    }
+    fs::rename(&source, &file).map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
+    let restore_meta = (|| {
+        let bytes = fs::metadata(&file)
+            .map_err(|e| ConversationStoreError::ReadError(e.to_string()))?
+            .len();
+        let trashed_meta = trash.join(format!("{id}.meta.json"));
+        if let Ok(meta) = read_meta(&trashed_meta) {
+            if meta.conversation_id == id
+                && meta.body_bytes == bytes
+                && fs::rename(&trashed_meta, meta_file(root, id)).is_ok()
+            {
+                return Ok(());
+            }
+        }
+        let record = read_conversation_locked(root, id)?;
+        let meta = derive_meta(&record, bytes)?;
+        write_meta(&meta_file(root, id), &meta)
+    })();
+    if let Err(error) = restore_meta {
+        if let Err(rollback) = fs::rename(&file, &source) {
+            eprintln!("恢复讨论失败且正文回移失败，档案仍在原位置: {rollback}");
+        }
+        return Err(error);
+    }
     deleted.remove(&file);
     Ok(())
 }
 
-/// 读取一份完整讨论档案（供重开查看与测试复用；当前不作为前端命令暴露）。
+/// 打开作品时尽力清空回收区；不得从 list 调用，否则会破坏运行期撤销。
+pub fn clear_conversation_trash(root: &Path) -> Result<(), ConversationStoreError> {
+    let _guard = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    match fs::remove_dir_all(trash_dir(root)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(ConversationStoreError::WriteError(error.to_string())),
+    }
+}
+
+/// 读取一份完整讨论档案（按需重开）。
 pub fn read_conversation(
+    root: &Path,
+    id: &str,
+) -> Result<ConversationRecord, ConversationStoreError> {
+    let _guard = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    read_conversation_locked(root, id)
+}
+
+fn read_conversation_locked(
     root: &Path,
     id: &str,
 ) -> Result<ConversationRecord, ConversationStoreError> {
@@ -505,7 +667,10 @@ pub fn set_on_demand_reading(
     id: &str,
     granted: bool,
 ) -> Result<(), ConversationStoreError> {
-    let mut record = read_conversation(root, id)?;
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut record = read_conversation_locked(root, id)?;
     if granted {
         record.on_demand_reading_grant = Some(OnDemandReadingGrant {
             granted_at: current_utc_timestamp(),
@@ -513,7 +678,64 @@ pub fn set_on_demand_reading(
     } else {
         record.on_demand_reading_grant = None;
     }
-    save_conversation(root, &record)
+    save_conversation_locked(root, &record, &deleted)
+}
+
+/// 窄更新：不依赖前端缓存全文，None 不改，空白标题清除自定义标题。
+pub fn conversation_update_meta(
+    root: &Path,
+    id: &str,
+    title: Option<String>,
+    pinned: Option<bool>,
+) -> Result<(), ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut record = read_conversation_locked(root, id)?;
+    if let Some(title) = title {
+        let title = title.trim();
+        record.title = (!title.is_empty()).then(|| title.to_string());
+    }
+    if let Some(pinned) = pinned {
+        record.pinned = pinned;
+    }
+    save_conversation_locked(root, &record, &deleted)
+}
+
+/// 只锁存普通出处；降级索引回退读正文，不提前改变补读权限语义。
+pub fn latch_conversation_restrictions(
+    root: &Path,
+    document_id: &str,
+) -> Result<Vec<String>, ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut latched = Vec::new();
+    for summary in list_conversations_locked(root, &deleted)?.conversations {
+        if !summary.references_incomplete
+            && !summary
+                .provenance
+                .as_ref()
+                .is_some_and(|ids| ids.iter().any(|id| id == document_id))
+        {
+            continue;
+        }
+        let mut record = read_conversation_locked(root, &summary.conversation_id)?;
+        let mut changed = false;
+        if let Some(entries) = record.provenance.as_mut() {
+            for entry in entries {
+                if entry.document_id == document_id && entry.material_type != "revoked" {
+                    entry.material_type = "revoked".to_string();
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            save_conversation_locked(root, &record, &deleted)?;
+            latched.push(record.conversation_id);
+        }
+    }
+    Ok(latched)
 }
 
 /// 查询使用过指定文档的讨论（任务 7.5：关闭 AI 可见性前的影响提示）。
@@ -523,16 +745,31 @@ pub fn conversations_using_document(
     root: &Path,
     document_id: &str,
 ) -> Result<Vec<ConversationUsage>, ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     let mut usage = Vec::new();
-    for summary in list_conversations(root)?.conversations {
-        let referenced = summary
-            .provenance
-            .as_ref()
-            .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id))
-            || summary
-                .on_demand_reading_provenance
+    for summary in list_conversations_locked(root, &deleted)?.conversations {
+        let referenced = if summary.references_incomplete {
+            let record = read_conversation_locked(root, &summary.conversation_id)?;
+            record
+                .provenance
                 .as_ref()
-                .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id));
+                .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id))
+                || record
+                    .on_demand_reading_provenance
+                    .as_ref()
+                    .is_some_and(|entries| entries.iter().any(|p| p.document_id == document_id))
+        } else {
+            summary
+                .provenance
+                .as_ref()
+                .is_some_and(|ids| ids.iter().any(|id| id == document_id))
+                || summary
+                    .on_demand_document_ids
+                    .iter()
+                    .any(|id| id == document_id)
+        };
         if referenced {
             usage.push(ConversationUsage {
                 conversation_id: summary.conversation_id,
@@ -555,10 +792,45 @@ pub fn on_demand_reading_state(
     })
 }
 
-// ========== 摘要派生 ==========
+// ========== 元信息读写、重建与摘要派生（内部调用方持存储锁） ==========
 
-fn summarize(record: &ConversationRecord) -> ConversationSummary {
-    ConversationSummary {
+fn read_meta(path: &Path) -> Result<ConversationMeta, ReadFileFailure> {
+    let content = crate::project::read_bounded_string(path, MAX_META_BYTES)
+        .map_err(|_| ReadFileFailure::Corrupt)?;
+    let meta: ConversationMeta =
+        serde_json::from_str(&content).map_err(|_| ReadFileFailure::Corrupt)?;
+    if meta.version != CONVERSATION_VERSION {
+        return Err(ReadFileFailure::Corrupt);
+    }
+    Ok(meta)
+}
+
+fn write_meta(path: &Path, meta: &ConversationMeta) -> Result<(), ConversationStoreError> {
+    let json = serde_json::to_string_pretty(meta)
+        .map_err(|error| ConversationStoreError::InvalidRecord(error.to_string()))?;
+    if json.len() as u64 > MAX_META_BYTES {
+        return Err(ConversationStoreError::WriteError(
+            "讨论索引超过 256 KiB 上限，未写入索引".to_string(),
+        ));
+    }
+    crate::project::write_file_atomically(path, &json)
+        .map_err(|error| ConversationStoreError::WriteError(error.to_string()))
+}
+
+fn unique_document_ids<'a>(ids: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut ids: Vec<String> = ids.cloned().collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// body_bytes 来自已序列化正文或磁盘实际长度，避免重复序列化大正文。
+fn derive_meta(
+    record: &ConversationRecord,
+    body_bytes: u64,
+) -> Result<ConversationMeta, ConversationStoreError> {
+    let mut meta = ConversationMeta {
+        version: CONVERSATION_VERSION,
         conversation_id: record.conversation_id.clone(),
         title: effective_title(record),
         created_at: record.created_at.clone(),
@@ -566,13 +838,80 @@ fn summarize(record: &ConversationRecord) -> ConversationSummary {
         last_status: record.turns.last().map(|t| t.status.clone()),
         focus_document_id: record.focus_document_id.clone(),
         focus_document_title: record.focus_document_title.clone(),
-        first_round_material: record.first_round_material.clone(),
-        turns: record.turns.clone(),
         custom_title: record.title.clone(),
         pinned: record.pinned,
-        provenance: record.provenance.clone(),
-        on_demand_reading_grant: record.on_demand_reading_grant.clone(),
-        on_demand_reading_provenance: record.on_demand_reading_provenance.clone(),
+        body_bytes,
+        provenance: record
+            .provenance
+            .as_ref()
+            .map(|entries| unique_document_ids(entries.iter().map(|entry| &entry.document_id))),
+        provenance_has_revoked: record
+            .provenance
+            .as_ref()
+            .is_some_and(|entries| entries.iter().any(|entry| entry.material_type == "revoked")),
+        on_demand_document_ids: unique_document_ids(
+            record
+                .on_demand_reading_provenance
+                .iter()
+                .flatten()
+                .map(|entry| &entry.document_id),
+        ),
+        references_incomplete: false,
+    };
+    let size = serde_json::to_vec_pretty(&meta)
+        .map_err(|error| ConversationStoreError::InvalidRecord(error.to_string()))?
+        .len();
+    if size as u64 > MAX_META_BYTES {
+        // 不截断引用集合：整体省略，用标记要求影响查询回退正文。
+        meta.provenance = None;
+        meta.on_demand_document_ids.clear();
+        meta.references_incomplete = true;
+    }
+    Ok(meta)
+}
+
+fn load_or_rebuild_meta(root: &Path, id: &str) -> Result<ConversationMeta, ReadFileFailure> {
+    validate_conversation_id(id).map_err(|_| ReadFileFailure::Corrupt)?;
+    let path = conversation_file(root, id);
+    let body_bytes = fs::metadata(&path)
+        .map_err(|error| ReadFileFailure::Io(error.to_string()))?
+        .len();
+    if body_bytes > MAX_CONVERSATION_BYTES {
+        return Err(ReadFileFailure::TooLarge);
+    }
+    let meta_path = meta_file(root, id);
+    if let Ok(meta) = read_meta(&meta_path) {
+        if meta.conversation_id == id && meta.body_bytes == body_bytes {
+            return Ok(meta);
+        }
+    }
+    let record = read_record_file(&path)?;
+    if record.conversation_id != id {
+        return Err(ReadFileFailure::Corrupt);
+    }
+    let meta = derive_meta(&record, body_bytes).map_err(|_| ReadFileFailure::Corrupt)?;
+    if let Err(error) = write_meta(&meta_path, &meta) {
+        eprintln!("重建讨论索引写回失败: {error}");
+    }
+    Ok(meta)
+}
+
+fn summarize(meta: ConversationMeta) -> ConversationSummary {
+    ConversationSummary {
+        version: meta.version,
+        conversation_id: meta.conversation_id,
+        title: meta.title,
+        custom_title: meta.custom_title,
+        pinned: meta.pinned,
+        created_at: meta.created_at,
+        updated_at: meta.updated_at,
+        last_status: meta.last_status,
+        focus_document_id: meta.focus_document_id,
+        focus_document_title: meta.focus_document_title,
+        provenance: meta.provenance,
+        provenance_has_revoked: meta.provenance_has_revoked,
+        on_demand_document_ids: meta.on_demand_document_ids,
+        references_incomplete: meta.references_incomplete,
     }
 }
 
@@ -659,6 +998,516 @@ mod tests {
     }
 
     // ========== 保存 → 读取 ==========
+
+    fn record_with_bytes(id: &str, bytes: usize) -> ConversationRecord {
+        let mut rec = record(
+            id,
+            Some("边界测试"),
+            None,
+            vec![turn("assistant", "", "success")],
+        );
+        // 与保存时的时间戳长度一致，以最终 pretty JSON 字节数定义边界。
+        rec.updated_at = current_utc_timestamp();
+        let overhead = serde_json::to_vec_pretty(&rec).expect("serialize").len();
+        rec.turns[0].text = "x".repeat(bytes - overhead);
+        assert_eq!(
+            serde_json::to_vec_pretty(&rec).expect("serialize").len(),
+            bytes
+        );
+        rec
+    }
+
+    fn on_demand(doc: &str) -> OnDemandReadingProvenance {
+        OnDemandReadingProvenance {
+            document_id: doc.to_string(),
+            version: "v1".to_string(),
+            depth: ReadingDepth::Full,
+            turn_index: 0,
+            entered_model_context: true,
+        }
+    }
+
+    #[test]
+    fn oversized_save_preserves_last_readable_archive_and_meta() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let small = record("boundary", Some("最后可重开内容"), None, vec![]);
+        save_conversation(temp.path(), &small).expect("save old");
+        let body_path = conversation_file(temp.path(), "boundary");
+        let meta_path = meta_file(temp.path(), "boundary");
+        let old_body = fs::read(&body_path).expect("body");
+        let old_meta = fs::read(&meta_path).expect("meta");
+        let big = record_with_bytes("boundary", MAX_CONVERSATION_BYTES as usize + 1);
+        let error = save_conversation(temp.path(), &big).expect_err("must reject");
+        assert_eq!(error, ConversationStoreError::TooLarge);
+        assert_eq!(
+            error.to_string(),
+            "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。"
+        );
+        assert_eq!(fs::read(body_path).expect("body"), old_body);
+        assert_eq!(fs::read(meta_path).expect("meta"), old_meta);
+        assert_eq!(
+            read_conversation(temp.path(), "boundary")
+                .expect("read")
+                .turns,
+            small.turns
+        );
+    }
+
+    #[test]
+    fn successful_save_is_readable_at_7_9_mib_and_exact_limit_but_8_1_is_rejected() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        for bytes in [79 * 1024 * 1024 / 10, MAX_CONVERSATION_BYTES as usize] {
+            let rec = record_with_bytes("boundary", bytes);
+            save_conversation(temp.path(), &rec).expect("save within limit");
+            assert_eq!(
+                read_conversation(temp.path(), "boundary")
+                    .expect("read")
+                    .turns,
+                rec.turns
+            );
+            let listed = list_conversations(temp.path()).expect("list");
+            assert_eq!(listed.conversations.len(), 1);
+            assert!(listed.skipped.is_empty());
+            assert_eq!(
+                read_meta(&meta_file(temp.path(), "boundary"))
+                    .expect("meta")
+                    .body_bytes,
+                bytes as u64
+            );
+        }
+        let big = record_with_bytes("boundary", 81 * 1024 * 1024 / 10);
+        assert_eq!(
+            save_conversation(temp.path(), &big),
+            Err(ConversationStoreError::TooLarge)
+        );
+    }
+
+    #[test]
+    fn size_check_runs_after_preserving_backend_provenance_and_before_any_write() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut old = record("merge", None, None, vec![]);
+        old.on_demand_reading_provenance = Some(vec![on_demand("doc")]);
+        save_conversation(temp.path(), &old).expect("save");
+        let old_bytes = fs::read(conversation_file(temp.path(), "merge")).expect("body");
+        let full = record_with_bytes("merge", MAX_CONVERSATION_BYTES as usize);
+        assert_eq!(
+            save_conversation(temp.path(), &full),
+            Err(ConversationStoreError::TooLarge)
+        );
+        assert_eq!(
+            fs::read(conversation_file(temp.path(), "merge")).expect("body"),
+            old_bytes
+        );
+
+        let new_root = temp.path().join("not-created");
+        let oversized = record_with_bytes("new", MAX_CONVERSATION_BYTES as usize + 1);
+        assert_eq!(
+            save_conversation(&new_root, &oversized),
+            Err(ConversationStoreError::TooLarge)
+        );
+        assert!(!new_root.exists(), "校验前不得创建目录");
+    }
+
+    #[test]
+    fn missing_corrupt_and_oversized_meta_are_rebuilt() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let rec = record("rebuild", Some("从正文重建"), None, vec![]);
+        save_conversation(temp.path(), &rec).expect("save");
+        let path = meta_file(temp.path(), "rebuild");
+        let expected = read_meta(&path).expect("meta");
+        for bad in [
+            None,
+            Some("not json".to_string()),
+            Some("x".repeat(MAX_META_BYTES as usize + 1)),
+        ] {
+            if let Some(content) = bad {
+                fs::write(&path, content).expect("damage meta");
+            } else {
+                fs::remove_file(&path).expect("remove meta");
+            }
+            let listed = list_conversations(temp.path()).expect("list");
+            assert!(listed.skipped.is_empty());
+            assert_eq!(listed.conversations.len(), 1);
+            assert_eq!(read_meta(&path).expect("rebuilt"), expected);
+        }
+    }
+
+    #[test]
+    fn stale_body_bytes_rebuilds_title_and_reference_index() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("stale", Some("旧标题"), None, vec![]);
+        save_conversation(temp.path(), &rec).expect("save");
+        rec.title = Some("正文已改变而索引尚未更新".to_string());
+        rec.provenance = Some(vec![provenance("new-doc", 0)]);
+        let json = serde_json::to_string_pretty(&rec).expect("serialize");
+        fs::write(conversation_file(temp.path(), "stale"), &json).expect("update body only");
+        let listed = list_conversations(temp.path()).expect("list");
+        assert_eq!(listed.conversations[0].title, rec.title.expect("title"));
+        assert_eq!(
+            listed.conversations[0].provenance,
+            Some(vec!["new-doc".to_string()])
+        );
+        assert_eq!(
+            read_meta(&meta_file(temp.path(), "stale"))
+                .expect("meta")
+                .body_bytes,
+            json.len() as u64
+        );
+    }
+
+    #[test]
+    fn valid_meta_list_and_impact_query_do_not_parse_body() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("cached", Some("缓存标题"), None, vec![]);
+        rec.provenance = Some(vec![provenance("doc", 0)]);
+        save_conversation(temp.path(), &rec).expect("save");
+        let path = conversation_file(temp.path(), "cached");
+        let len = fs::metadata(&path).expect("metadata").len();
+        // 同长变化是明确接受的失效检测边界，同时证明有效索引路径没有解析正文。
+        fs::write(&path, "x".repeat(len as usize)).expect("same size body");
+        assert!(read_conversation(temp.path(), "cached").is_err());
+        let listed = list_conversations(temp.path()).expect("list");
+        assert!(listed.skipped.is_empty());
+        assert_eq!(listed.conversations[0].title, "缓存标题");
+        assert_eq!(
+            conversations_using_document(temp.path(), "doc")
+                .expect("usage")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn reference_overflow_omits_whole_index_and_falls_back_for_usage_and_latching() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("many", Some("很多出处"), None, vec![]);
+        rec.provenance = Some(
+            (0..4500)
+                .map(|i| provenance(&format!("doc-{i:04}-{}", "x".repeat(64)), 0))
+                .collect(),
+        );
+        rec.provenance.as_mut().expect("entries")[0].material_type = "revoked".to_string();
+        rec.on_demand_reading_provenance = Some(vec![on_demand("on-demand-only")]);
+        let target = rec
+            .provenance
+            .as_ref()
+            .expect("entries")
+            .last()
+            .expect("last")
+            .document_id
+            .clone();
+        save_conversation(temp.path(), &rec).expect("save");
+        let path = meta_file(temp.path(), "many");
+        let meta = read_meta(&path).expect("meta");
+        assert!(meta.references_incomplete);
+        assert!(meta.provenance.is_none());
+        assert!(meta.on_demand_document_ids.is_empty());
+        assert!(meta.provenance_has_revoked);
+        assert_eq!(meta.title, "很多出处");
+        assert!(fs::metadata(path).expect("meta size").len() <= MAX_META_BYTES);
+        for doc in [&target, "on-demand-only"] {
+            assert_eq!(
+                conversations_using_document(temp.path(), doc).expect("fallback")[0]
+                    .conversation_id,
+                "many"
+            );
+        }
+        assert_eq!(
+            latch_conversation_restrictions(temp.path(), &target).expect("latch"),
+            vec!["many"]
+        );
+        let loaded = read_conversation(temp.path(), "many").expect("read");
+        let entries = loaded.provenance.expect("provenance");
+        assert_eq!(entries.len(), 4500, "正文出处绝不能截断");
+        assert_eq!(entries.last().expect("last").material_type, "revoked");
+        assert_eq!(
+            loaded.on_demand_reading_provenance,
+            rec.on_demand_reading_provenance
+        );
+    }
+
+    #[test]
+    fn meta_deduplicates_both_reference_sets_and_summary_matches_meta() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("sets", Some("集合"), None, vec![]);
+        rec.provenance = Some(vec![
+            provenance("b", 0),
+            provenance("a", 0),
+            provenance("b", 1),
+        ]);
+        rec.on_demand_reading_provenance = Some(vec![on_demand("b"), on_demand("b")]);
+        save_conversation(temp.path(), &rec).expect("save");
+        let meta = read_meta(&meta_file(temp.path(), "sets")).expect("meta");
+        assert_eq!(
+            meta.provenance,
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(meta.on_demand_document_ids, vec!["b"]);
+        let mut value = serde_json::to_value(&meta).expect("meta json");
+        value.as_object_mut().expect("object").remove("body_bytes");
+        assert_eq!(
+            value,
+            serde_json::to_value(&list_conversations(temp.path()).expect("list").conversations[0])
+                .expect("summary")
+        );
+    }
+
+    #[test]
+    fn orphan_meta_is_cleaned_and_meta_and_trash_are_not_body_entries() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        save_conversation(temp.path(), &record("live", Some("正常"), None, vec![])).expect("save");
+        let orphan = meta_file(temp.path(), "orphan");
+        fs::write(&orphan, "bad meta").expect("orphan");
+        fs::create_dir_all(trash_dir(temp.path())).expect("trash");
+        fs::write(trash_dir(temp.path()).join("bad.json"), "not json").expect("trash body");
+        let listed = list_conversations(temp.path()).expect("list");
+        assert_eq!(listed.conversations.len(), 1);
+        assert!(listed.skipped.is_empty());
+        assert!(!orphan.exists());
+        assert!(
+            trash_dir(temp.path()).join("bad.json").exists(),
+            "list 不能清回收区"
+        );
+    }
+
+    #[test]
+    fn meta_write_failure_does_not_fail_body_save_and_list_rebuilds() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let path = meta_file(temp.path(), "meta-fail");
+        fs::create_dir_all(&path).expect("block meta path with directory");
+        let rec = record("meta-fail", Some("正文可读"), None, vec![]);
+        save_conversation(temp.path(), &rec).expect("body committed");
+        assert_eq!(
+            read_conversation(temp.path(), "meta-fail")
+                .expect("read")
+                .turns,
+            rec.turns
+        );
+        fs::remove_dir(&path).expect("unblock");
+        assert_eq!(
+            list_conversations(temp.path())
+                .expect("list")
+                .conversations
+                .len(),
+            1
+        );
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn soft_delete_restore_preserves_body_and_allows_save_after_undo() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let rec = record(
+            "undo",
+            Some("保留全文"),
+            None,
+            vec![turn("assistant", "完整回答", "success")],
+        );
+        save_conversation(temp.path(), &rec).expect("save");
+        let path = conversation_file(temp.path(), "undo");
+        let original = fs::read(&path).expect("original");
+        delete_conversation(temp.path(), "undo").expect("delete");
+        assert_eq!(
+            fs::read(trash_dir(temp.path()).join("undo.json")).expect("trashed body"),
+            original
+        );
+        assert!(trash_dir(temp.path()).join("undo.meta.json").is_file());
+        assert!(!path.exists());
+        assert!(!meta_file(temp.path(), "undo").exists());
+        assert!(list_conversations(temp.path())
+            .expect("list")
+            .conversations
+            .is_empty());
+        assert!(matches!(
+            save_conversation(temp.path(), &rec),
+            Err(ConversationStoreError::AlreadyDeleted(_))
+        ));
+        restore_conversation(temp.path(), "undo").expect("restore");
+        assert_eq!(fs::read(&path).expect("restored"), original);
+        assert!(!trash_dir(temp.path()).join("undo.json").exists());
+        assert_eq!(
+            list_conversations(temp.path())
+                .expect("list")
+                .conversations
+                .len(),
+            1
+        );
+        save_conversation(temp.path(), &rec).expect("save after undo");
+    }
+
+    #[test]
+    fn restore_rebuilds_missing_meta_and_missing_body_returns_not_found() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let rec = record("undo", None, None, vec![]);
+        save_conversation(temp.path(), &rec).expect("save");
+        delete_conversation(temp.path(), "undo").expect("delete");
+        fs::remove_file(trash_dir(temp.path()).join("undo.meta.json")).expect("remove index");
+        restore_conversation(temp.path(), "undo").expect("restore");
+        assert!(meta_file(temp.path(), "undo").is_file());
+        assert!(matches!(
+            restore_conversation(temp.path(), "missing"),
+            Err(ConversationStoreError::NotFound(_))
+        ));
+        delete_conversation(temp.path(), "undo").expect("delete again");
+        clear_conversation_trash(temp.path()).expect("startup cleanup");
+        assert!(!trash_dir(temp.path()).exists());
+        assert!(matches!(
+            restore_conversation(temp.path(), "undo"),
+            Err(ConversationStoreError::NotFound(_))
+        ));
+        assert!(matches!(
+            save_conversation(temp.path(), &rec),
+            Err(ConversationStoreError::AlreadyDeleted(_))
+        ));
+        clear_conversation_trash(temp.path()).expect("cleanup idempotent");
+    }
+
+    #[test]
+    fn soft_delete_and_restore_failures_preserve_archive_and_undo() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let rec = record("failure", None, None, vec![]);
+        save_conversation(temp.path(), &rec).expect("save");
+        let body_path = conversation_file(temp.path(), "failure");
+        let original = fs::read(&body_path).expect("original");
+        fs::write(trash_dir(temp.path()), "block trash directory").expect("block");
+        assert!(delete_conversation(temp.path(), "failure").is_err());
+        assert_eq!(fs::read(&body_path).expect("body kept"), original);
+        assert_eq!(
+            list_conversations(temp.path())
+                .expect("failed delete remains visible")
+                .conversations
+                .len(),
+            1
+        );
+        fs::remove_file(trash_dir(temp.path())).expect("unblock");
+        delete_conversation(temp.path(), "failure").expect("retry delete");
+        // 正文移回成功但 meta 恢复失败：正文回滚至回收区，墓碑仍生效。
+        let meta_path = meta_file(temp.path(), "failure");
+        fs::create_dir(&meta_path).expect("block meta restore");
+        assert!(restore_conversation(temp.path(), "failure").is_err());
+        assert!(!body_path.exists());
+        assert_eq!(
+            fs::read(trash_dir(temp.path()).join("failure.json")).expect("undo remains"),
+            original
+        );
+        assert!(matches!(
+            save_conversation(temp.path(), &rec),
+            Err(ConversationStoreError::AlreadyDeleted(_))
+        ));
+        fs::remove_dir(meta_path).expect("unblock");
+        restore_conversation(temp.path(), "failure").expect("retry undo");
+        assert_eq!(fs::read(body_path).expect("restored"), original);
+    }
+
+    #[test]
+    fn delete_tolerates_meta_move_failure_and_restore_rebuilds() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        save_conversation(temp.path(), &record("undo", None, None, vec![])).expect("save");
+        fs::create_dir_all(trash_dir(temp.path()).join("undo.meta.json")).expect("block meta move");
+        delete_conversation(temp.path(), "undo").expect("body delete commits");
+        let listed = list_conversations(temp.path()).expect("list cleans orphan");
+        assert!(listed.conversations.is_empty());
+        assert!(listed.skipped.is_empty());
+        assert!(!meta_file(temp.path(), "undo").exists());
+        restore_conversation(temp.path(), "undo").expect("rebuild on undo");
+        assert!(meta_file(temp.path(), "undo").is_file());
+    }
+
+    #[test]
+    fn latch_restrictions_is_idempotent_and_preserves_other_and_on_demand_provenance() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("affected", None, None, vec![]);
+        rec.provenance = Some(vec![provenance("target", 0), provenance("other", 1)]);
+        rec.on_demand_reading_provenance = Some(vec![on_demand("target")]);
+        save_conversation(temp.path(), &rec).expect("save");
+        let mut only_on_demand = record("on-demand", None, None, vec![]);
+        only_on_demand.on_demand_reading_provenance = Some(vec![on_demand("target")]);
+        save_conversation(temp.path(), &only_on_demand).expect("save on-demand");
+        let mut legacy = record("legacy", None, None, vec![]);
+        legacy.provenance = None;
+        save_conversation(temp.path(), &legacy).expect("save legacy");
+        assert_eq!(
+            latch_conversation_restrictions(temp.path(), "target").expect("latch"),
+            vec!["affected"]
+        );
+        let loaded = read_conversation(temp.path(), "affected").expect("read");
+        let mut expected = rec.provenance.clone().expect("provenance");
+        expected[0].material_type = "revoked".to_string();
+        assert_eq!(loaded.provenance, Some(expected));
+        assert_eq!(
+            loaded.on_demand_reading_provenance,
+            rec.on_demand_reading_provenance
+        );
+        assert!(
+            read_meta(&meta_file(temp.path(), "affected"))
+                .expect("meta")
+                .provenance_has_revoked
+        );
+        let original = fs::read(conversation_file(temp.path(), "affected")).expect("body");
+        assert!(latch_conversation_restrictions(temp.path(), "target")
+            .expect("idempotent")
+            .is_empty());
+        assert_eq!(
+            fs::read(conversation_file(temp.path(), "affected")).expect("body"),
+            original
+        );
+        assert!(
+            !read_meta(&meta_file(temp.path(), "on-demand"))
+                .expect("meta")
+                .provenance_has_revoked
+        );
+        assert_eq!(
+            read_conversation(temp.path(), "legacy")
+                .expect("legacy")
+                .provenance,
+            None
+        );
+    }
+
+    #[test]
+    fn update_meta_sets_title_and_pinned_clears_title_and_none_keeps_fields() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record(
+            "edit",
+            Some("派生标题"),
+            None,
+            vec![turn("assistant", "保留正文", "success")],
+        );
+        rec.provenance = Some(vec![provenance("doc", 0)]);
+        rec.on_demand_reading_provenance = Some(vec![on_demand("doc")]);
+        save_conversation(temp.path(), &rec).expect("save");
+        conversation_update_meta(
+            temp.path(),
+            "edit",
+            Some("  自定义标题  ".to_string()),
+            Some(true),
+        )
+        .expect("update");
+        conversation_update_meta(temp.path(), "edit", None, None).expect("no fields");
+        let loaded = read_conversation(temp.path(), "edit").expect("read");
+        assert_eq!(loaded.title.as_deref(), Some("自定义标题"));
+        assert!(loaded.pinned);
+        assert_eq!(loaded.turns, rec.turns);
+        assert_eq!(loaded.provenance, rec.provenance);
+        assert_eq!(
+            loaded.on_demand_reading_provenance,
+            rec.on_demand_reading_provenance
+        );
+        let summary = list_conversations(temp.path())
+            .expect("list")
+            .conversations
+            .remove(0);
+        assert_eq!(summary.title, "自定义标题");
+        assert!(summary.pinned);
+        conversation_update_meta(temp.path(), "edit", Some(" \t\n ".to_string()), None)
+            .expect("clear title");
+        let meta = read_meta(&meta_file(temp.path(), "edit")).expect("meta");
+        assert_eq!(meta.title, "派生标题");
+        assert_eq!(meta.custom_title, None);
+        assert!(meta.pinned);
+        conversation_update_meta(temp.path(), "edit", None, Some(false)).expect("unpin");
+        assert!(!read_conversation(temp.path(), "edit").expect("read").pinned);
+    }
 
     #[test]
     fn save_then_read_round_trips_record() {
@@ -862,7 +1711,7 @@ mod tests {
     }
 
     #[test]
-    fn list_summary_carries_provenance_for_reopen() {
+    fn list_summary_carries_only_provenance_document_ids() {
         let temp = tempfile::TempDir::new().expect("temp dir");
         let mut rec = record("conv-1", Some("这个角色为什么犹豫？"), None, vec![]);
         rec.provenance = Some(vec![provenance("doc-9", 0)]);
@@ -872,8 +1721,8 @@ mod tests {
         assert_eq!(result.conversations.len(), 1);
         assert_eq!(
             result.conversations[0].provenance,
-            Some(vec![provenance("doc-9", 0)]),
-            "摘要必须携带材料出处供前端判定权限影响"
+            Some(vec!["doc-9".to_string()]),
+            "摘要只携带引用集合供前端判定权限影响"
         );
     }
 
@@ -1055,10 +1904,8 @@ mod tests {
             "缺新字段的旧出处不得视为损坏或跳过"
         );
         assert_eq!(result.conversations.len(), 1);
-        let entry = &result.conversations[0]
-            .provenance
-            .as_ref()
-            .expect("provenance")[0];
+        let loaded = read_conversation(temp.path(), "conv-old").expect("read old");
+        let entry = &loaded.provenance.as_ref().expect("provenance")[0];
         assert_eq!(entry.document_id, "doc-1");
         assert_eq!(entry.material_type, "selection");
         assert_eq!(entry.matched_term, None, "缺 matched_term 按 None 处理");
@@ -1163,14 +2010,13 @@ mod tests {
             "补读出处（含三档阅读程度）必须跨重启恢复"
         );
 
-        // 摘要携带两组字段：授权开关与「本次参考了什么」扩展的数据面。
+        // 摘要仅携带补读文档集合；授权及出处详情按需读正文。
         let result = list_conversations(temp.path()).expect("list");
         assert_eq!(result.conversations.len(), 1);
         let summary = &result.conversations[0];
-        assert_eq!(summary.on_demand_reading_grant, rec.on_demand_reading_grant);
         assert_eq!(
-            summary.on_demand_reading_provenance,
-            rec.on_demand_reading_provenance
+            summary.on_demand_document_ids,
+            vec!["doc-1", "doc-2", "doc-3"]
         );
 
         // 未授权档案：字段保持 None（未授权），保存往返不引入状态。
@@ -1306,14 +2152,7 @@ mod tests {
         assert!(result.skipped.is_empty(), "缺按需补读字段的旧档案不得跳过");
         assert_eq!(result.conversations.len(), 1);
         let summary = &result.conversations[0];
-        assert_eq!(
-            summary.on_demand_reading_grant, None,
-            "旧档案缺授权字段按未授权处理"
-        );
-        assert_eq!(
-            summary.on_demand_reading_provenance, None,
-            "旧档案缺补读出处按无记录处理"
-        );
+        assert!(summary.on_demand_document_ids.is_empty());
 
         // 正常读取查看。
         let loaded = read_conversation(temp.path(), "conv-old").expect("read old");
@@ -1502,14 +2341,15 @@ mod tests {
         save_conversation(temp.path(), &rec).expect("save");
 
         let dir = conversations_dir(temp.path());
-        let names: Vec<String> = fs::read_dir(&dir)
+        let mut names: Vec<String> = fs::read_dir(&dir)
             .expect("read dir")
             .map(|e| e.expect("entry").file_name().to_string_lossy().to_string())
             .collect();
+        names.sort();
         assert_eq!(
             names,
-            vec!["conv-1.json".to_string()],
-            "目录只应含档案文件，无临时文件残留"
+            vec!["conv-1.json".to_string(), "conv-1.meta.json".to_string()],
+            "目录只应含正文与索引，无临时文件残留"
         );
 
         // 档案内容完整可解析；除服务端盖时间戳的 updated_at 外，其余字段逐字段一致。
@@ -1720,10 +2560,10 @@ mod tests {
         assert!(matches!(result, Err(ConversationStoreError::NotFound(_))));
     }
 
-    // ========== 摘要携带完整记录（重开用） ==========
+    // ========== 摘要瘦身与按需重开 ==========
 
     #[test]
-    fn list_summary_carries_full_record_for_reopen() {
+    fn list_summary_omits_body_and_reopen_reads_full_record() {
         let temp = tempfile::TempDir::new().expect("temp dir");
         let rec = record(
             "conv-1",
@@ -1740,15 +2580,26 @@ mod tests {
         assert_eq!(result.conversations.len(), 1);
         let summary = &result.conversations[0];
 
-        // 摘要必须携带重开所需的完整字段（本车道无单独「读取一条」命令）。
+        // 摘要只有列表与权限索引字段，重开单独读正文。
         assert_eq!(summary.conversation_id, "conv-1");
         assert_eq!(summary.title, "这个角色为什么犹豫？");
         assert_eq!(summary.created_at, rec.created_at);
         assert_eq!(summary.last_status.as_deref(), Some("success"));
         assert_eq!(summary.focus_document_id.as_deref(), Some("doc-1"));
         assert_eq!(summary.focus_document_title.as_deref(), Some("未命名文档"));
-        assert_eq!(summary.first_round_material, rec.first_round_material);
-        assert_eq!(summary.turns, rec.turns);
+        let value = serde_json::to_value(summary).expect("serialize summary");
+        for field in [
+            "turns",
+            "first_round_material",
+            "body_bytes",
+            "on_demand_reading_grant",
+            "on_demand_reading_provenance",
+        ] {
+            assert!(value.get(field).is_none(), "摘要不应携带 {field}");
+        }
+        let reopened = read_conversation(temp.path(), "conv-1").expect("reopen");
+        assert_eq!(reopened.first_round_material, rec.first_round_material);
+        assert_eq!(reopened.turns, rec.turns);
         // updated_at 已被服务端覆盖，摘要应反映落盘后的值而非原始传入值。
         assert_ne!(summary.updated_at, rec.updated_at);
     }

@@ -25,6 +25,8 @@ import type {
   ConversationRecord,
   ConversationSummary,
 } from "../src/conversation-archive.ts";
+import { displayFocusDocumentTitle } from "../src/ai-panel-conversation-list.ts";
+import { initialAiPanelCoreState, reduceAiPanelState } from "../src/ai-panel-reducer.ts";
 import type { SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string, documentId = "doc-1"): SelectionSnapshot {
@@ -48,6 +50,56 @@ function recordWithProvenance(provenance: ConversationRecord["provenance"]): Con
     ...(provenance !== undefined ? { provenance } : {}),
   };
 }
+
+/** IPC 实际返回 version，但它不能用于区别摘要与完整档案。 */
+function backendSummary(overrides: Partial<ConversationSummary> = {}): ConversationSummary & { version: number } {
+  return {
+    version: 1, conversation_id: "c-1", title: "讨论", created_at: "t0", updated_at: "t0",
+    last_status: "done", focus_document_id: "doc-1", focus_document_title: "手记篇",
+    provenance: ["doc-1"], provenance_has_revoked: false,
+    on_demand_document_ids: [], references_incomplete: false, ...overrides,
+  };
+}
+
+test("IPC 摘要含 version：重启后空 hidden 集仍识别已锁存出处", () => {
+  const summary = backendSummary({ provenance_has_revoked: true });
+  assert.equal(isConversationMaterialRestricted(summary, new Set()), true);
+});
+
+test("IPC 摘要含 version：普通出处命中 hidden 时受限", () => {
+  assert.equal(isConversationMaterialRestricted(backendSummary(), new Set(["doc-1"])), true);
+});
+
+for (const provenance of [null, undefined]) {
+  test(`IPC 摘要含 version：provenance 为 ${provenance} 时保守受限`, () => {
+    const summary = backendSummary({ provenance });
+    assert.equal(isConversationMaterialRestricted(summary, new Set()), true);
+    assert.equal(restrictionReasonOf(summary, new Set()), "missing_provenance");
+  });
+}
+
+test("IPC 摘要含 version：未锁存且无普通出处命中时不受限", () => {
+  const summary = backendSummary({ on_demand_document_ids: ["doc-other"] });
+  assert.equal(isConversationMaterialRestricted(summary, new Set(["doc-other"])), false);
+});
+
+test("IPC 摘要含 version：列表对受限关注文档标题脱敏", () => {
+  const summary = backendSummary({ provenance_has_revoked: true });
+  const restricted = isConversationMaterialRestricted(summary, new Set());
+  assert.equal(displayFocusDocumentTitle({ ...summary, restricted }), "（已隐藏的文档）");
+  assert.equal(summary.focus_document_title, "手记篇", "只脱敏显示，不修改真实标题");
+});
+
+test("load_discussions：首次加载真实 IPC 摘要即锁存并脱敏，无需交互", () => {
+  const summary = backendSummary({ provenance_has_revoked: true });
+  const state = reduceAiPanelState(initialAiPanelCoreState(), {
+    type: "load_discussions", summaries: [summary], skipped: [], hiddenDocumentIds: new Set(),
+  });
+  const loaded = state.summaries.get("c-1")!;
+  assert.equal(loaded.restricted, true);
+  assert.equal(displayFocusDocumentTitle(loaded), "（已隐藏的文档）");
+  assert.equal(state.discussions.size, 0, "列表脱敏不依赖读入全文");
+});
 
 test("materialProvenanceFromAnchor records minimal provenance without body copy", () => {
   const anchor = snapshot("林站在天台边。", "doc-9");
@@ -125,12 +177,12 @@ test("provenance referencing only visible documents is not restricted", () => {
 });
 
 test("conversationFromRecord marks a hidden-document discussion restricted and blocks follow-up", () => {
-  const summary: ConversationSummary = {
+  const summary: ConversationRecord = {
+    version: 1,
     conversation_id: "c-1",
     title: "选区",
     created_at: "t0",
     updated_at: "t0",
-    last_status: "done",
     focus_document_id: "doc-1",
     focus_document_title: null,
     first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -147,12 +199,12 @@ test("conversationFromRecord marks a hidden-document discussion restricted and b
 });
 
 test("conversationFromRecord keeps a visible discussion continuable", () => {
-  const summary: ConversationSummary = {
+  const summary: ConversationRecord = {
+    version: 1,
     conversation_id: "c-1",
     title: "选区",
     created_at: "t0",
     updated_at: "t0",
-    last_status: "done",
     focus_document_id: "doc-1",
     focus_document_title: null,
     first_round_material: { kind: "summon", question: "", selection_text: "选区" },

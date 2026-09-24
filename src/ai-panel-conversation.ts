@@ -8,7 +8,7 @@ import type {
   OnDemandReadingGrant,
   OnDemandReadingProvenance,
 } from "./conversation-archive.ts";
-import { deriveConversationTitle } from "./conversation-archive.ts";
+import { deriveConversationSummary } from "./conversation-archive.ts";
 
 export interface SuccessfulFollowUpTurn {
   id: number;
@@ -196,6 +196,10 @@ export function isConversationMaterialRestricted(
   hiddenDocumentIds: ReadonlySet<string>,
 ): boolean {
   if (record.provenance === undefined || record.provenance === null) return true;
+  // IPC 摘要也携带 version；以摘要独有的锁存字段区分两种出处形状。
+  if ("provenance_has_revoked" in record) {
+    return record.provenance_has_revoked || record.provenance.some((id) => hiddenDocumentIds.has(id));
+  }
   return record.provenance.some(
     (p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id),
   );
@@ -207,9 +211,7 @@ export function restrictionReasonOf(
   hiddenDocumentIds: ReadonlySet<string>,
 ): RestrictionReason | undefined {
   if (record.provenance === undefined || record.provenance === null) return "missing_provenance";
-  return record.provenance.some(
-    (p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id),
-  )
+  return isConversationMaterialRestricted(record, hiddenDocumentIds)
     ? "hidden_material"
     : undefined;
 }
@@ -619,7 +621,7 @@ export function buildConversationRecord(
  * 直接提问时首轮 user 轮在前，assistant 回应为 turns[1]。
  */
 export function conversationFromRecord(
-  record: ConversationRecord | ConversationSummary,
+  record: ConversationRecord,
   options: { hiddenDocumentIds?: ReadonlySet<string> } = {},
 ): TemporaryConversation {
   const hiddenDocumentIds = options.hiddenDocumentIds ?? new Set<string>();
@@ -731,35 +733,11 @@ export function summaryOf(  conversation: TemporaryConversation,
   focusDocumentId: string | null,
   focusDocumentTitle: string | null,
 ): ConversationSummary {
-  const material = firstRoundMaterialToArchive(conversation.initialUserMaterial);
-  const lastStatus: ConversationSummary["last_status"] = conversation.pending
-    ? conversation.pending.error
-      ? "failed"
-      : "pending"
-    : conversation.firstRoundInterrupted && conversation.firstResponse === ""
-      ? "pending"
-      : "done";
   return {
-    conversation_id: conversation.id,
-    title: conversation.customTitle?.trim()
-      ? conversation.customTitle
-      : deriveConversationTitle(material, conversation.createdAt),
-    created_at: conversation.createdAt,
-    updated_at: conversation.createdAt,
-    last_status: lastStatus,
-    focus_document_id: focusDocumentId,
-    focus_document_title: focusDocumentTitle,
-    first_round_material: material,
-    turns: buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle).turns,
-    custom_title: conversation.customTitle ?? null,
-    pinned: conversation.pinned ?? false,
-    // 显示层脱敏依据：受限讨论的关注文档标题不得泄露（旧出处脱敏，任务 4.4）。
+    ...deriveConversationSummary({
+      ...buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle),
+      on_demand_reading_provenance: conversation.onDemandReadingProvenance,
+    }),
     restricted: conversation.restricted ?? false,
-    // 按需补读授权随摘要携带（重开恢复；授权属于讨论、跨重启保留）。
-    on_demand_reading_grant: conversation.onDemandReadingGrant ?? null,
-    ...(() => {
-      const provenance = conversationProvenanceForArchive(conversation);
-      return provenance !== undefined ? { provenance } : {};
-    })(),
   };
 }

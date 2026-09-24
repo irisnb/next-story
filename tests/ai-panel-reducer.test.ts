@@ -24,6 +24,15 @@ import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 const reduce = reduceAiPanelState;
 
+test("undo_notice_changed 只使渲染失效，不修改业务状态", () => {
+  const state = initialAiPanelCoreState();
+  const next = reduce(state, { type: "undo_notice_changed" });
+  assert.notEqual(next, state);
+  assert.deepEqual(next, state);
+  assert.equal(next.discussions, state.discussions);
+  assert.equal(next.summaries, state.summaries);
+});
+
 function snapshot(text: string, documentId = "draft"): SelectionSnapshot {
   return { documentId, selectedText: text, from: 0, to: text.length };
 }
@@ -110,11 +119,10 @@ function summaryOf(
     last_status: "done",
     focus_document_id: null,
     focus_document_title: null,
-    first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
-    turns: [{ role: "assistant", text: "回答", status: "done" }],
     provenance: [],
-    on_demand_reading_grant: null,
-    on_demand_reading_provenance: null,
+    provenance_has_revoked: false,
+    on_demand_document_ids: [],
+    references_incomplete: false,
     ...partial,
   };
 }
@@ -914,21 +922,20 @@ test("reset 清空讨论、窗口与草稿并推进代次", () => {
   assert.equal(next.generation, state.generation + 1);
 });
 
-test("load_discussions 以档案重建讨论集合并清空窗口与聚焦", () => {
-  const next = reduce(established(), {
+test("load_discussions 只刷新摘要，保留窗口与运行态", () => {
+  const state = established();
+  const next = reduce(state, {
     type: "load_discussions",
     summaries: [summaryOf({ conversation_id: "c-load" })],
     skipped: [],
     hiddenDocumentIds: new Set<string>(),
   });
-  assert.equal(next.visibility, "closed");
-  assert.equal(next.discussions.size, 1);
-  assert.equal(next.discussions.has("c-1"), false, "旧内存讨论被替换");
-  assert.equal(next.windows.size, 0);
-  assert.equal(next.focusedConversationId, null, "加载列表不自动打开任何讨论");
-  const discussion = next.discussions.get("c-load")!;
-  assert.equal(discussion.request.kind, "success");
-  assert.equal(discussion.conversation?.firstResponse, "回答");
+  assert.equal(next.discussions, state.discussions);
+  assert.equal(next.windows, state.windows);
+  assert.equal(next.focusedConversationId, state.focusedConversationId);
+  assert.equal(next.generation, state.generation);
+  assert.equal(next.summaries.has("c-load"), true);
+  assert.equal(next.discussions.has("c-load"), false);
 });
 
 test("load_discussions 按隐藏文档集合把出处受限的讨论标记为受限", () => {
@@ -937,13 +944,13 @@ test("load_discussions 按隐藏文档集合把出处受限的讨论标记为受
     summaries: [
       summaryOf({
         conversation_id: "c-r",
-        provenance: [provenanceOf("doc-hidden")],
+        provenance: ["doc-hidden"],
       }),
     ],
     skipped: [],
     hiddenDocumentIds: new Set(["doc-hidden"]),
   });
-  assert.equal(next.discussions.get("c-r")!.conversation?.restricted, true);
+  assert.equal(next.summaries.get("c-r")!.restricted, true);
 });
 
 test("recompute_restrictions 把出处引用新隐藏文档的讨论标记受限（单调锁存）", () => {

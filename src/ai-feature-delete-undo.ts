@@ -1,164 +1,116 @@
 import type { AiPanelState } from "./ai-panel-state.ts";
+import { conversationFromRecord } from "./ai-panel-conversation.ts";
+import { deriveConversationSummary } from "./conversation-archive.ts";
 import type {
-  ConversationRecord,
-  ConversationSummary,
   conversationDelete,
+  conversationRead,
   conversationRestore,
-  conversationSave,
 } from "./conversation-archive.ts";
 
-/** 把会话列表摘要还原为档案保存契约（删除撤销用内存副本重新写回）。 */
-export function summaryToRecord(summary: ConversationSummary): ConversationRecord {
-  return {
-    version: 1,
-    conversation_id: summary.conversation_id,
-    created_at: summary.created_at,
-    updated_at: summary.updated_at,
-    focus_document_id: summary.focus_document_id,
-    focus_document_title: summary.focus_document_title,
-    first_round_material: summary.first_round_material,
-    turns: summary.turns,
-    ...(summary.custom_title?.trim() ? { title: summary.custom_title } : {}),
-    ...(summary.pinned ? { pinned: true } : {}),
-    ...(summary.provenance !== undefined ? { provenance: summary.provenance } : {}),
-    on_demand_reading_grant: summary.on_demand_reading_grant ?? null,
-    // 补读出处随摘要携带：删除撤销重写以摘要快照为准（后端保存保全覆盖不到显式
-    // 携带的记录，这里不做读改写合并）。
-    ...(summary.on_demand_reading_provenance !== null && summary.on_demand_reading_provenance !== undefined
-      ? { on_demand_reading_provenance: summary.on_demand_reading_provenance }
-      : {}),
-  };
-}
-
-/**
- * 删除＋撤销机制（`pendingUndo` 计时器家族；change: extract-ai-logic-seams 第二刀）。
- *
- * 从 `setupAiFeature` 闭包宇宙中提取，遵循 editor-module-boundaries 惯例：
- * - 不引 DOM：不访问 `document` / `window`，只收显式依赖（状态外观 + 访问器 + 后端调用）；
- * - 访问器逐次求值：`getCurrentProjectPath` / `isDestroyed` 都在每次使用时现取，
- *   不做任何快照化（可见性红线，design D6）；
- * - 清理顺序是隐式契约：`clearUndo` 由编排层的 `resetProjectScopedAi` / `destroy`
- *   在原位置调用，步骤不重排。
- */
+/** 软删除撤销只记身份和提示，不保留全文、不重新写档。 */
 export interface DeleteUndoDependencies {
-  /** 面板状态外观（讨论集合、删除迁移、保存错误提示）。 */
   readonly state: AiPanelState;
-  /** 当前作品路径访问器；null 表示无作品（跳过档案操作）。 */
   readonly getCurrentProjectPath: () => string | null;
-  /** 编排层销毁标记访问器：迟到回调到达时现读。 */
+  readonly getProjectToken: () => number;
+  readonly hiddenDocumentIds: () => ReadonlySet<string>;
   readonly isDestroyed: () => boolean;
-  /** 停止该讨论的在途传输（删除即终止其生成会话）。 */
   readonly cancelMessage: (conversationId: string) => void;
-  /** 结束该讨论的常驻会话。 */
   readonly endSession: (conversationId: string) => void;
-  /** 取消该讨论的排队请求。 */
   readonly cancelQueued: (conversationId: string) => void;
-  /** 从档案恢复已删除讨论（撤销第一步）。 */
   readonly restoreConversation: typeof conversationRestore;
-  /** 把内存副本重新写回档案（撤销第二步）。 */
-  readonly saveConversation: typeof conversationSave;
-  /** 删除讨论档案。 */
+  readonly readConversation: typeof conversationRead;
   readonly deleteConversation: typeof conversationDelete;
-  /** 撤销完成后的列表重载入口（由编排层注入）。 */
-  readonly reloadDiscussions: () => void;
 }
 
-/** 删除撤销的交互入口（由 `setupAiFeature` 装配后接线）。 */
 export interface DeleteUndoController {
-  /** 清除待撤销副本并停掉其计时器（作品重置 / 销毁路径按原位置调用）。 */
   clearUndo(): void;
-  /** 撤销提示数据；无可撤销删除时为 null。 */
   getUndoNotice(): { title: string } | null;
   undoDelete(): Promise<void>;
   deleteDiscussion(conversationId: string): Promise<void>;
 }
 
-// 删除撤销：删除立即生效，前端保留内存副本，提示期内可撤销（约 6 秒）。
 const UNDO_TIMEOUT_MS = 6000;
 
 export function setupDeleteUndo(deps: DeleteUndoDependencies): DeleteUndoController {
-  const {
-    state,
-    getCurrentProjectPath,
-    isDestroyed,
-    cancelMessage,
-    endSession,
-    cancelQueued,
-    restoreConversation,
-    saveConversation,
-    deleteConversation,
-    reloadDiscussions,
-  } = deps;
-
   let pendingUndo: {
     conversationId: string;
-    summary: ConversationSummary;
-    timer: ReturnType<typeof setTimeout>;
+    title: string;
+    projectPath: string;
+    token: number;
+    restored: boolean;
+    restoring: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
   } | null = null;
+  let deleteSequence = 0;
 
   function clearUndo(): void {
-    if (pendingUndo) {
-      clearTimeout(pendingUndo.timer);
-      pendingUndo = null;
-    }
+    deleteSequence += 1;
+    if (!pendingUndo) return;
+    if (pendingUndo?.timer) clearTimeout(pendingUndo.timer);
+    pendingUndo = null;
+    deps.state.notifyUndoNoticeChanged();
   }
 
-  function getUndoNotice(): { title: string } | null {
-    return pendingUndo ? { title: pendingUndo.summary.title } : null;
+  function current(projectPath: string, token: number): boolean {
+    return !deps.isDestroyed() && deps.getProjectToken() === token && deps.getCurrentProjectPath() === projectPath;
   }
 
   async function undoDelete(): Promise<void> {
-    if (!pendingUndo) return;
-    const { conversationId, summary } = pendingUndo;
-    clearUndo();
-    const projectPath = getCurrentProjectPath();
-    if (projectPath === null) return;
+    const undo = pendingUndo;
+    if (!undo || undo.restoring || !current(undo.projectPath, undo.token)) return;
+    if (undo.timer) clearTimeout(undo.timer);
+    undo.timer = null;
+    undo.restoring = true;
     try {
-      await restoreConversation(projectPath, conversationId);
-      await saveConversation(projectPath, summaryToRecord(summary));
-    } catch {
-      if (isDestroyed()) return;
-      state.setSaveError("撤销删除失败");
-      return;
+      if (!undo.restored) {
+        await deps.restoreConversation(undo.projectPath, undo.conversationId);
+        undo.restored = true;
+      }
+      if (pendingUndo !== undo || !current(undo.projectPath, undo.token)) return;
+      const record = await deps.readConversation(undo.projectPath, undo.conversationId);
+      if (pendingUndo !== undo || !current(undo.projectPath, undo.token)) return;
+      const hidden = deps.hiddenDocumentIds();
+      deps.state.upsertSummary(deriveConversationSummary(record), hidden, true);
+      deps.state.openDiscussion(conversationFromRecord(record, { hiddenDocumentIds: hidden }),
+        record.focus_document_id, record.focus_document_title);
+      clearUndo();
+    } catch (error) {
+      if (pendingUndo !== undo || !current(undo.projectPath, undo.token)) return;
+      deps.state.setSaveError(`撤销删除失败：${error instanceof Error ? error.message : String(error)}`);
+      // 失败时保留提示，可重试；恢复已提交但读取失败时只重试读取。
+    } finally {
+      undo.restoring = false;
     }
-    if (isDestroyed()) return;
-    reloadDiscussions();
   }
 
   async function deleteDiscussion(conversationId: string): Promise<void> {
-    const summary = state.conversations.find((c) => c.conversation_id === conversationId);
-    cancelMessage(conversationId);
-    endSession(conversationId);
-    cancelQueued(conversationId);
-    state.deleteDiscussion(conversationId);
-    const projectPath = getCurrentProjectPath();
+    const summary = deps.state.conversations.find((c) => c.conversation_id === conversationId);
+    deps.cancelMessage(conversationId);
+    deps.endSession(conversationId);
+    deps.cancelQueued(conversationId);
+    deps.state.deleteDiscussion(conversationId);
+    const projectPath = deps.getCurrentProjectPath();
     if (projectPath === null) return;
+    const token = deps.getProjectToken();
+    clearUndo();
+    const sequence = deleteSequence;
     try {
-      await deleteConversation(projectPath, conversationId);
-    } catch {
-      if (isDestroyed()) return;
-      state.setSaveError("删除讨论失败");
+      await deps.deleteConversation(projectPath, conversationId);
+    } catch (error) {
+      if (!current(projectPath, token)) return;
+      // 删除失败不吞掉条目，让用户可重开确认或再次删除。
+      if (summary) deps.state.upsertSummary(summary, deps.hiddenDocumentIds(), true);
+      deps.state.setSaveError(`删除讨论失败：${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    if (isDestroyed()) return;
-    if (summary) {
-      clearUndo();
-      const timer = setTimeout(() => {
-        pendingUndo = null;
-      }, UNDO_TIMEOUT_MS);
-      timer.unref?.();
-      pendingUndo = {
-        conversationId,
-        summary,
-        timer,
-      };
-    }
+    if (!current(projectPath, token) || sequence !== deleteSequence) return;
+    const timer = setTimeout(clearUndo, UNDO_TIMEOUT_MS);
+    timer.unref?.();
+    pendingUndo = { conversationId, title: summary?.title ?? "讨论", projectPath, token,
+      restored: false, restoring: false, timer };
+    deps.state.notifyUndoNoticeChanged();
   }
 
-  return {
-    clearUndo,
-    getUndoNotice,
-    undoDelete,
-    deleteDiscussion,
-  };
+  return { clearUndo, getUndoNotice: () => pendingUndo ? { title: pendingUndo.title } : null,
+    undoDelete, deleteDiscussion };
 }

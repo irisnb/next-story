@@ -5,7 +5,7 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { setupAiFeature } from "../src/ai-feature.ts";
 import { setupAiWindow } from "../src/ai-window.ts";
-import { HIDDEN_MATERIAL_RESTRICTION_NOTICE } from "../src/ai-panel-conversation.ts";
+import { conversationFromRecord, HIDDEN_MATERIAL_RESTRICTION_NOTICE } from "../src/ai-panel-conversation.ts";
 import type { AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
@@ -128,14 +128,13 @@ test("restricted discussion window shows a notice, disables follow-up, and offer
   const doc = installDocument();
   try {
     const state = new AiPanelState();
-    state.loadDiscussions(
-      [
+    state.openDiscussion(conversationFromRecord(
         {
+          version: 1,
           conversation_id: "c-1",
           title: "选区",
           created_at: "t0",
           updated_at: "t0",
-          last_status: "done",
           focus_document_id: "doc-1",
           focus_document_title: null,
           first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -150,10 +149,7 @@ test("restricted discussion window shows a notice, disables follow-up, and offer
             },
           ],
         },
-      ],
-      [],
-      new Set(["doc-1"]),
-    );
+      { hiddenDocumentIds: new Set(["doc-1"]) }), "doc-1", null);
 
     const wa = windowActions(state);
     setupAiWindow(root as unknown as HTMLElement, state, "c-1", wa.actions);

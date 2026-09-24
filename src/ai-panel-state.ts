@@ -7,6 +7,7 @@ import {
   latchConversationRestriction,
   readonlyConversationView,
   retryFollowUpQuestionOf,
+  isConversationMaterialRestricted,
   summaryOf,
   type Discussion,
   type ReadonlyTemporaryConversation,
@@ -83,6 +84,11 @@ export class AiPanelState {
     };
   }
 
+  /** 撤销提示可用性变化的渲染失效信号；不在状态层复制提示业务数据。 */
+  notifyUndoNoticeChanged(): void {
+    this.dispatch({ type: "undo_notice_changed" });
+  }
+
   private emit(): void {
     this.onChange();
     for (const listener of this.listeners) {
@@ -107,7 +113,9 @@ export class AiPanelState {
       request: activeRequestOf(this.state),
       directQuestionDraft: this.draftOf(focused),
       pendingSelection: this.state.pendingSelection,
-      saveError: this.state.saveError,
+      saveError: (focused === null ? null : this.state.saveErrors.get(focused)) ?? this.state.saveError,
+      archiveOpening: focused !== null && this.state.opening.get(focused)?.error === null,
+      archiveOpenError: focused === null ? null : this.state.opening.get(focused)?.error ?? null,
       readingRequest: discussion?.pendingReadingRequest
         ? { reason: discussion.pendingReadingRequest.reason }
         : null,
@@ -138,7 +146,9 @@ export class AiPanelState {
       pendingSelection: this.state.focusedConversationId === conversationId
         ? this.state.pendingSelection
         : null,
-      saveError: this.state.saveError,
+      saveError: this.state.saveErrors.get(conversationId) ?? null,
+      archiveOpening: this.state.opening.get(conversationId)?.error === null,
+      archiveOpenError: this.state.opening.get(conversationId)?.error ?? null,
       readingRequest: discussion?.pendingReadingRequest
         ? { reason: discussion.pendingReadingRequest.reason }
         : null,
@@ -217,14 +227,14 @@ export class AiPanelState {
     return this.state.windows;
   }
 
-  /** 当前作品的讨论集合（轻量视图：身份、标题、时间、终态 + 重开所需完整轮次）。 */
+  /** 列表缓存与运行态分离；尚未保存的新讨论保留临时列表入口。 */
   get conversations(): ConversationSummary[] {
-    const summaries: ConversationSummary[] = [];
+    const summaries = new Map(this.state.summaries);
     for (const discussion of this.state.discussions.values()) {
-      if (discussion.conversation === null) continue;
-      summaries.push(summaryOf(discussion.conversation, discussion.focusDocumentId, discussion.focusDocumentTitle));
+      if (discussion.conversation === null || summaries.has(discussion.id)) continue;
+      summaries.set(discussion.id, summaryOf(discussion.conversation, discussion.focusDocumentId, discussion.focusDocumentTitle));
     }
-    return summaries;
+    return [...summaries.values()];
   }
 
   get saveError(): string | null {
@@ -453,10 +463,35 @@ export class AiPanelState {
         newlyRestricted.push(id);
       }
     }
-    if (newlyRestricted.length > 0) {
-      this.dispatch({ type: "recompute_restrictions", hiddenDocumentIds });
-    }
+    this.dispatch({ type: "recompute_restrictions", hiddenDocumentIds });
     return newlyRestricted;
+  }
+
+  upsertSummary(summary: ConversationSummary, hiddenDocumentIds: ReadonlySet<string> = new Set(), restored = false): void {
+    this.dispatch({ type: "upsert_summary", summary: {
+      ...summary, restricted: summary.restricted || isConversationMaterialRestricted(summary, hiddenDocumentIds),
+    }, restored });
+  }
+
+  isDeleted(conversationId: string): boolean {
+    return this.state.deletedIds.has(conversationId);
+  }
+
+  beginOpenDiscussion(conversationId: string): object | undefined {
+    this.dispatch({ type: "begin_open_discussion", conversationId });
+    return this.state.opening.get(conversationId);
+  }
+
+  openingToken(conversationId: string): object | undefined {
+    return this.state.opening.get(conversationId);
+  }
+
+  failOpenDiscussion(conversationId: string, message: string): void {
+    this.dispatch({ type: "fail_open_discussion", conversationId, message });
+  }
+
+  latchRestrictions(conversationIds: readonly string[]): void {
+    this.dispatch({ type: "latch_restrictions", conversationIds });
   }
 
   /** 从列表重开一个讨论：以已保存轮次重建显示数据。 */
@@ -473,12 +508,12 @@ export class AiPanelState {
     return this.dispatch({ type: "delete_discussion", conversationId });
   }
 
-  setSaveError(message: string): void {
-    this.dispatch({ type: "set_save_error", message });
+  setSaveError(message: string, conversationId?: string): void {
+    this.dispatch({ type: "set_save_error", message, conversationId });
   }
 
-  clearSaveError(): void {
-    this.dispatch({ type: "clear_save_error" });
+  clearSaveError(conversationId?: string): void {
+    this.dispatch({ type: "clear_save_error", conversationId });
   }
 
   /** 更新指定讨论的直接提问未发送草稿（逐窗口归属）。 */

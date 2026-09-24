@@ -17,9 +17,9 @@ import type {
 } from "../src/ai-session-transport.ts";
 import type {
   ConversationRecord,
-  ConversationSummary,
   OnDemandReadingState,
 } from "../src/conversation-archive.ts";
+import { deriveConversationSummary } from "../src/conversation-archive.ts";
 import { setupFileManagement } from "../src/file-management.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
@@ -57,12 +57,12 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   return { promise, resolve };
 }
 
-function summaryOf(partial: Partial<ConversationSummary> & { conversation_id: string }): ConversationSummary {
+function recordOf(partial: Partial<ConversationRecord> & { conversation_id: string }): ConversationRecord {
   return {
+    version: 1,
     title: partial.conversation_id,
     created_at: "t0",
     updated_at: "t0",
-    last_status: "done",
     focus_document_id: null,
     focus_document_title: null,
     first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
@@ -139,6 +139,7 @@ test("7.1b 措辞红线：授权卡不得表述为「现在才允许 AI 查看�
 });
 
 interface ReadingFeatureHarness {
+  openRecord(record: ConversationRecord): Promise<void>;
   controller: ReturnType<typeof setupAiFeature>;
   windowRoots: FakeElement[];
   body: FakeElement;
@@ -158,6 +159,7 @@ function readingHarness(overrides: {
   onDemandState?: (conversationId: string) => OnDemandReadingState;
 } = {}): ReadingFeatureHarness {
   const env = installAiFeatureEnvironment();
+  const archives = new Map<string, ConversationRecord>();
   const saves: ConversationRecord[] = [];
   const resolveCalls: Array<{ sessionId: string; callId: string; granted: boolean }> = [];
   const toggleCalls: Array<{ conversationId: string; granted: boolean }> = [];
@@ -203,6 +205,11 @@ function readingHarness(overrides: {
     transport,
     loadConfig: () => Promise.resolve(savedConfig),
     conversationList: () => Promise.resolve({ conversations: [], skipped: [] }),
+    conversationRead: async (_path, id) => {
+      const record = archives.get(id);
+      assert.ok(record);
+      return record;
+    },
     conversationSave: (_projectPath, record) => {
       saves.push(record);
       return Promise.resolve();
@@ -234,6 +241,11 @@ function readingHarness(overrides: {
 
   return {
     controller,
+    async openRecord(record) {
+      archives.set(record.conversation_id, record);
+      controller.openDiscussion(deriveConversationSummary(record));
+      await flush();
+    },
     windowRoots: env.windowRoots,
     body: env.body,
     saves,
@@ -387,7 +399,7 @@ function clickMenuItem(ui: ReadingFeatureHarness, textPattern: RegExp): FakeElem
 test("7.2a 窗口菜单开关：开启 / 关闭调用后端命令并更新状态，关闭文案明示不清除已读", async () => {
   const ui = readingHarness();
   try {
-    ui.controller.openDiscussion(summaryOf({ conversation_id: "c-2" }));
+    await ui.openRecord(recordOf({ conversation_id: "c-2" }));
     await flush();
 
     const enableItem = clickMenuItem(ui, /开启按需补读/);
@@ -418,7 +430,7 @@ test("7.2b 开关命令失败：授权状态不变并给出可见提示", async 
     toggleResult: () => Promise.reject(new Error("磁盘写入失败")),
   });
   try {
-    ui.controller.openDiscussion(summaryOf({ conversation_id: "c-2" }));
+    await ui.openRecord(recordOf({ conversation_id: "c-2" }));
     await flush();
     clickMenuItem(ui, /开启按需补读/).dispatch("click");
     await flush();
@@ -433,7 +445,7 @@ test("7.2b 开关命令失败：授权状态不变并给出可见提示", async 
 test("7.2c 停止生成只结束当前轮：清除等待中的授权卡，但不改变授权状态", async () => {
   const ui = readingHarness();
   try {
-    ui.controller.openDiscussion(summaryOf({
+    await ui.openRecord(recordOf({
       conversation_id: "c-3",
       on_demand_reading_grant: { granted_at: "t0" },
     }));
@@ -674,14 +686,13 @@ test("7.6 等待授权期间退出：重开后该轮显示中断，开启授权�
   try {
     // 模拟「等待授权中退出」后的档案：未完成追问轮为 pending（既有中断语义），
     // 不携带任何待决授权状态（等待授权不跨重启持久化，D8）。
-    ui.controller.openDiscussion(summaryOf({
+    await ui.openRecord(recordOf({
       conversation_id: "c-6",
       turns: [
         { role: "assistant", text: "首答", status: "done" },
         { role: "user", text: "等待中的问题", status: "done" },
         { role: "assistant", text: "", status: "pending" },
       ],
-      last_status: "pending",
       on_demand_reading_grant: null,
     }));
 

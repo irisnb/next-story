@@ -141,6 +141,10 @@ export type AiPanelEvent =
       readonly hiddenDocumentIds: ReadonlySet<string>;
     }
   | { readonly type: "recompute_restrictions"; readonly hiddenDocumentIds: ReadonlySet<string> }
+  | { readonly type: "upsert_summary"; readonly summary: ConversationSummary; readonly restored?: boolean }
+  | { readonly type: "begin_open_discussion"; readonly conversationId: string }
+  | { readonly type: "fail_open_discussion"; readonly conversationId: string; readonly message: string }
+  | { readonly type: "latch_restrictions"; readonly conversationIds: readonly string[] }
   | {
       readonly type: "open_discussion";
       readonly conversation: TemporaryConversation;
@@ -148,8 +152,10 @@ export type AiPanelEvent =
       readonly focusDocumentTitle: string | null;
     }
   | { readonly type: "delete_discussion"; readonly conversationId: string }
-  | { readonly type: "set_save_error"; readonly message: string }
-  | { readonly type: "clear_save_error" }
+  /** 撤销提示的渲染失效信号，不携带或复制业务状态。 */
+  | { readonly type: "undo_notice_changed" }
+  | { readonly type: "set_save_error"; readonly message: string; readonly conversationId?: string }
+  | { readonly type: "clear_save_error"; readonly conversationId?: string }
   | { readonly type: "stop_request"; readonly conversationId: string }
   | { readonly type: "focus_window"; readonly conversationId: string }
   | { readonly type: "close_window"; readonly conversationId: string }

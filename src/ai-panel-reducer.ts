@@ -3,7 +3,8 @@ import {
   acceptEditedConversationFollowUp,
   beginConversationFollowUp,
   cancelConversationFollowUp,
-  conversationFromRecord,
+  isConversationMaterialRestricted,
+  summaryOf,
   createConversationFromFirstSuccess,
   failConversationFollowUp,
   frozenSnapshot,
@@ -32,6 +33,7 @@ import {
   type PanelVisibility,
 } from "./ai-panel-request-state.ts";
 import type { SelectionSnapshot } from "./types.ts";
+import type { ConversationSummary } from "./conversation-archive.ts";
 import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.ts";
 import type {
   AiPanelEvent,
@@ -67,6 +69,10 @@ export interface AiPanelCoreState {
   readonly visibility: PanelVisibility;
   readonly previewRequest: PanelRequestState | null;
   readonly discussions: ReadonlyMap<string, Discussion>;
+  readonly summaries: ReadonlyMap<string, ConversationSummary>;
+  readonly deletedIds: ReadonlySet<string>;
+  readonly opening: ReadonlyMap<string, { readonly error: string | null }>;
+  readonly saveErrors: ReadonlyMap<string, string>;
   /** 当前打开的窗口（键为讨论 id，一讨论至多一个窗口）。 */
   readonly windows: ReadonlyMap<string, WindowPlacement>;
   /** 当前聚焦窗口的讨论；无窗口时为 null。 */
@@ -87,6 +93,10 @@ export function initialAiPanelCoreState(): AiPanelCoreState {
     visibility: "closed",
     previewRequest: null,
     discussions: new Map(),
+    summaries: new Map(),
+    deletedIds: new Set(),
+    opening: new Map(),
+    saveErrors: new Map(),
     windows: new Map(),
     focusedConversationId: null,
     generation: 1,
@@ -611,6 +621,10 @@ export function reduceAiPanelState(
         visibility: "closed",
         previewRequest: null,
         discussions: new Map(),
+        summaries: new Map(),
+        deletedIds: new Set(),
+        opening: new Map(),
+        saveErrors: new Map(),
         windows: new Map(),
         focusedConversationId: null,
         generation: state.generation + 1,
@@ -619,45 +633,73 @@ export function reduceAiPanelState(
         pendingSelection: null,
         ignoredSelection: null,
       };
+    // 提示数据仍由 getUndoNotice 拉取；新引用只用于触发订阅者重新渲染。
+    case "undo_notice_changed":
+      return { ...state };
     case "load_discussions": {
-      const discussions = new Map<string, Discussion>();
+      const summaries = new Map<string, ConversationSummary>();
       for (const summary of event.summaries) {
-        const conversation = conversationFromRecord(summary, {
-          hiddenDocumentIds: event.hiddenDocumentIds,
-        });
-        discussions.set(summary.conversation_id, {
-          id: summary.conversation_id,
-          createdAt: summary.created_at,
-          updatedAt: summary.updated_at,
-          focusDocumentId: summary.focus_document_id,
-          focusDocumentTitle: summary.focus_document_title,
-          request: firstSuccessRequest(conversation.anchor, conversation.firstResponse, conversation.id),
-          conversation,
-          anchor: null,
-          pendingFirstRequest: null,
-          onDemandReadingGrant: conversation.onDemandReadingGrant ?? null,
-          pendingReadingRequest: null,
-          readingProgress: null,
+        if (state.deletedIds.has(summary.conversation_id)) continue;
+        summaries.set(summary.conversation_id, {
+          ...summary,
+          restricted: state.summaries.get(summary.conversation_id)?.restricted ||
+            isConversationMaterialRestricted(summary, event.hiddenDocumentIds),
         });
       }
+      return { ...state, summaries };
+    }
+    case "upsert_summary": {
+      const id = event.summary.conversation_id;
+      if (state.deletedIds.has(id) && !event.restored) return state;
+      const deletedIds = new Set(state.deletedIds);
+      if (event.restored) deletedIds.delete(id);
+      const previous = state.summaries.get(id);
+      return { ...state, deletedIds, summaries: new Map(state.summaries).set(id, {
+        ...event.summary,
+        restricted: previous?.restricted || event.summary.restricted,
+        provenance_has_revoked: previous?.provenance_has_revoked || event.summary.provenance_has_revoked,
+      }) };
+    }
+    case "begin_open_discussion": {
+      if (state.deletedIds.has(event.conversationId)) return state;
       return {
         ...state,
-        visibility: "closed",
+        visibility: "open",
         previewRequest: null,
-        discussions,
-        windows: new Map(),
-        focusedConversationId: null,
-        generation: state.generation + 1,
-        saveError: null,
-        directQuestionDrafts: new Map(),
-        pendingSelection: null,
-        ignoredSelection: null,
+        opening: new Map(state.opening).set(event.conversationId, { error: null }),
+        windows: new Map(state.windows).set(event.conversationId, "docked"),
+        focusedConversationId: event.conversationId,
       };
+    }
+    case "fail_open_discussion": {
+      if (!state.opening.has(event.conversationId)) return state;
+      return { ...state, opening: new Map(state.opening).set(event.conversationId, { error: event.message }) };
+    }
+    case "latch_restrictions": {
+      const summaries = new Map(state.summaries);
+      const discussions = new Map(state.discussions);
+      for (const id of event.conversationIds) {
+        const summary = summaries.get(id);
+        if (summary) summaries.set(id, { ...summary, restricted: true, provenance_has_revoked: true });
+        const discussion = discussions.get(id);
+        if (discussion?.conversation) discussions.set(id, { ...discussion, conversation: {
+          ...discussion.conversation, restricted: true,
+          restrictionReason: discussion.conversation.restrictionReason ?? "hidden_material",
+        } });
+      }
+      return { ...state, summaries, discussions };
     }
     case "recompute_restrictions": {
       // 权限变更后重算各已打开讨论的材料限制并锁存（任务 5.2/5.4）：
       // 出处引用当前隐藏文档的讨论被标记受限；已受限讨论保持受限（单调）。
       let changed = false;
+      const summaries = new Map(state.summaries);
+      for (const [id, summary] of summaries) {
+        if (!summary.restricted && isConversationMaterialRestricted(summary, event.hiddenDocumentIds)) {
+          summaries.set(id, { ...summary, restricted: true });
+          changed = true;
+        }
+      }
       const discussions = new Map(state.discussions);
       for (const [id, discussion] of state.discussions) {
         const conversation = discussion.conversation;
@@ -668,10 +710,16 @@ export function reduceAiPanelState(
           changed = true;
         }
       }
-      return changed ? { ...state, discussions } : state;
+      return changed ? { ...state, discussions, summaries } : state;
     }
     case "open_discussion": {
       const conversation = event.conversation;
+      if (state.deletedIds.has(conversation.id)) return state;
+      if (state.windows.has(conversation.id) && !state.opening.has(conversation.id)) {
+        return { ...state, visibility: "open", focusedConversationId: conversation.id };
+      }
+      const opening = new Map(state.opening);
+      opening.delete(conversation.id);
       const discussion: Discussion = {
         id: conversation.id,
         createdAt: conversation.createdAt,
@@ -690,18 +738,25 @@ export function reduceAiPanelState(
         ...state,
         visibility: "open",
         previewRequest: null,
+        opening,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
         // 一讨论至多一个窗口：已打开则聚焦，不重复创建。
-        windows: new Map(state.windows).set(discussion.id, "docked"),
-        focusedConversationId: discussion.id,
+        windows: new Map(state.windows).set(discussion.id, state.windows.get(discussion.id) ?? "docked"),
+        focusedConversationId: state.opening.has(discussion.id) ? state.focusedConversationId : discussion.id,
         generation: state.generation + 1,
         saveError: null,
       };
     }
     case "delete_discussion": {
-      if (!state.discussions.has(event.conversationId)) return state;
+      if (!state.discussions.has(event.conversationId) && !state.summaries.has(event.conversationId) && !state.windows.has(event.conversationId)) return state;
       const discussions = new Map(state.discussions);
       discussions.delete(event.conversationId);
+      const summaries = new Map(state.summaries);
+      summaries.delete(event.conversationId);
+      const opening = new Map(state.opening);
+      opening.delete(event.conversationId);
+      const saveErrors = new Map(state.saveErrors);
+      saveErrors.delete(event.conversationId);
       const windows = new Map(state.windows);
       windows.delete(event.conversationId);
       const drafts = new Map(state.directQuestionDrafts);
@@ -711,6 +766,10 @@ export function reduceAiPanelState(
       return {
         ...state,
         discussions,
+        summaries,
+        opening,
+        saveErrors,
+        deletedIds: new Set(state.deletedIds).add(event.conversationId),
         windows,
         directQuestionDrafts: drafts,
         focusedConversationId,
@@ -718,9 +777,16 @@ export function reduceAiPanelState(
       };
     }
     case "set_save_error":
-      return { ...state, saveError: event.message };
-    case "clear_save_error":
-      return state.saveError === null ? state : { ...state, saveError: null };
+      return event.conversationId === undefined
+        ? { ...state, saveError: event.message }
+        : state.deletedIds.has(event.conversationId) ? state
+          : { ...state, saveErrors: new Map(state.saveErrors).set(event.conversationId, event.message) };
+    case "clear_save_error": {
+      if (event.conversationId === undefined) return state.saveError === null ? state : { ...state, saveError: null };
+      const saveErrors = new Map(state.saveErrors);
+      saveErrors.delete(event.conversationId);
+      return { ...state, saveErrors };
+    }
     case "stop_request": {
       const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;
@@ -784,11 +850,14 @@ export function reduceAiPanelState(
       if (!state.windows.has(event.conversationId)) return state;
       const windows = new Map(state.windows);
       windows.delete(event.conversationId);
+      const opening = new Map(state.opening);
+      opening.delete(event.conversationId);
       const focusedConversationId =
         state.focusedConversationId === event.conversationId ? null : state.focusedConversationId;
       return {
         ...state,
         windows,
+        opening,
         focusedConversationId,
         ...(focusedConversationId === null ? { previewRequest: null } : {}),
       };
@@ -913,21 +982,35 @@ export function reduceAiPanelState(
     }
     case "rename_discussion": {
       const discussion = discussionById(state, event.conversationId);
-      if (!discussion || !discussion.conversation) return state;
-      if (discussion.conversation.customTitle === event.title) return state;
-      return setDiscussion(state, {
+      const summary = state.summaries.get(event.conversationId);
+      if (!discussion?.conversation && !summary) return state;
+      if ((!discussion?.conversation || discussion.conversation.customTitle === event.title) &&
+          (!summary || (summary.custom_title ?? null) === (event.title.trim() || null))) return state;
+      const next = discussion?.conversation ? setDiscussion(state, {
         ...discussion,
         conversation: { ...discussion.conversation, customTitle: event.title },
-      });
+      }) : state;
+      if (!summary) return next;
+      const title = event.title.trim() || (discussion?.conversation
+        ? summaryOf({ ...discussion.conversation, customTitle: null }, discussion.focusDocumentId, discussion.focusDocumentTitle).title
+        : summary.title);
+      return { ...next, summaries: new Map(next.summaries).set(event.conversationId, {
+        ...summary, title, custom_title: event.title.trim() || null,
+      }) };
     }
     case "set_discussion_pinned": {
       const discussion = discussionById(state, event.conversationId);
-      if (!discussion || !discussion.conversation) return state;
-      if ((discussion.conversation.pinned ?? false) === event.pinned) return state;
-      return setDiscussion(state, {
+      const summary = state.summaries.get(event.conversationId);
+      if (!discussion?.conversation && !summary) return state;
+      if ((!discussion?.conversation || Boolean(discussion.conversation.pinned) === event.pinned) &&
+          (!summary || Boolean(summary.pinned) === event.pinned)) return state;
+      const next = discussion?.conversation ? setDiscussion(state, {
         ...discussion,
         conversation: { ...discussion.conversation, pinned: event.pinned },
-      });
+      }) : state;
+      return summary ? { ...next, summaries: new Map(next.summaries).set(event.conversationId, {
+        ...summary, pinned: event.pinned,
+      }) } : next;
     }
     case "record_round_provenance": {
       const discussion = discussionById(state, event.conversationId);

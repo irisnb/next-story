@@ -4,11 +4,28 @@ import test from "node:test";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import type { ReadonlyTemporaryConversation } from "../src/ai-panel-state.ts";
 import { buildDiscussionRecord, conversationFromRecord } from "../src/ai-panel-conversation.ts";
-import { summaryToRecord } from "../src/ai-feature-delete-undo.ts";
+import { deriveConversationSummary, type ConversationRecord } from "../src/conversation-archive.ts";
 import type { GenerateAiError, SelectionSnapshot } from "../src/types.ts";
 
 function snapshot(text: string): SelectionSnapshot {
   return { documentId: "draft", selectedText: text, from: 0, to: text.length };
+}
+
+function archiveWithSource(id = "c-1", documentId: string | null = "doc-1"): ConversationRecord {
+  return {
+    version: 1, conversation_id: id, created_at: "t0", updated_at: "t0",
+    focus_document_id: documentId, focus_document_title: "文档一",
+    first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
+    turns: [{ role: "assistant", text: "回答", status: "done" }],
+    provenance: documentId ? [{ document_id: documentId, material_type: "focus_document",
+      document_version: null, turn_index: 0, entered_model_context: true }] : [],
+  };
+}
+
+function openArchive(state: AiPanelState, record: ConversationRecord, hidden = new Set<string>()): void {
+  state.loadDiscussions([deriveConversationSummary(record)], [], hidden);
+  state.openDiscussion(conversationFromRecord(record, { hiddenDocumentIds: hidden }),
+    record.focus_document_id, record.focus_document_title);
 }
 
 const authError: GenerateAiError = {
@@ -937,8 +954,9 @@ test("loadDiscussions replaces the in-memory list without auto-opening a discuss
       last_status: "done",
       focus_document_id: null,
       focus_document_title: null,
-      first_round_material: { kind: "direct_question", question: "问题一", selection_text: null },
-      turns: [{ role: "assistant", text: "回答一", status: "done" }],
+      provenance_has_revoked: false,
+      on_demand_document_ids: [],
+      references_incomplete: false,
     },
   ], []);
 
@@ -1054,7 +1072,7 @@ test("window structure removes the window on delete and focuses nothing when it 
   assert.equal(state.activeConversationId, null);
 });
 
-test("window structure clears all windows on reset and loadDiscussions", () => {
+test("reset clears windows but list refresh preserves them", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题", null);
   state.succeedDirectQuestion("回答");
@@ -1067,8 +1085,8 @@ test("window structure clears all windows on reset and loadDiscussions", () => {
   state.beginDirectQuestion("问题二", null);
   state.succeedDirectQuestion("回答二");
   state.loadDiscussions([], []);
-  assert.equal(state.windows.size, 0);
-  assert.equal(state.focusedConversationId, null);
+  assert.equal(state.windows.size, 1);
+  assert.equal(state.focusedConversationId, "2");
 });
 
 test("window structure notifies once per transition and is silent on illegal transitions", () => {
@@ -1315,8 +1333,9 @@ test("custom title and pinned survive a record round-trip", () => {
   assert.equal(reopened.pinned, true);
 });
 
-test("summaryToRecord restores an archive record from a list summary", () => {
-  const summary = {
+test("deriveConversationSummary projects lightweight metadata from an archive", () => {
+  const record = {
+    version: 1 as const,
     conversation_id: "c-1",
     title: "我的标题",
     created_at: "t0",
@@ -1329,82 +1348,32 @@ test("summaryToRecord restores an archive record from a list summary", () => {
     custom_title: "我的标题",
     pinned: true,
   };
-  const record = summaryToRecord(summary);
-  assert.equal(record.conversation_id, "c-1");
-  assert.equal(record.title, "我的标题");
-  assert.equal(record.pinned, true);
-  assert.deepEqual(record.turns, summary.turns);
+  const summary = deriveConversationSummary(record);
+  assert.equal(summary.conversation_id, "c-1");
+  assert.equal(summary.title, "我的标题");
+  assert.equal(summary.pinned, true);
+  assert.equal("turns" in summary, false);
 });
 
 // ========== 材料权限变化隔离（controlled-story-read-visibility 任务 5） ==========
 
 test("loadDiscussions marks a discussion restricted when its provenance references a hidden document", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-1",
-      title: "标题一",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: "doc-1",
-      focus_document_title: null,
-      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [
-        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
-      ],
-    },
-  ], [], new Set(["doc-1"]));
-
-  const conversation = state.conversationOf("c-1");
-  assert.equal(conversation?.restricted, true);
-  assert.equal(state.restrictionNoticeOf("c-1") !== null, true);
-  // 受限讨论不可沿原上下文继续。
-  assert.equal(state.viewOf("c-1").request.kind, "success");
+  state.loadDiscussions([deriveConversationSummary(archiveWithSource())], [], new Set(["doc-1"]));
+  assert.equal(state.conversations[0].restricted, true);
+  assert.equal(state.conversationOf("c-1"), null, "列表不恢复全文");
 });
 
 test("loadDiscussions keeps a visible discussion unrestricted and continuable", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-1",
-      title: "标题一",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: "doc-1",
-      focus_document_title: null,
-      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [
-        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
-      ],
-    },
-  ], [], new Set());
-
+  openArchive(state, archiveWithSource());
   assert.equal(state.conversationOf("c-1")?.restricted, false);
   assert.equal(state.restrictionNoticeOf("c-1"), null);
 });
 
 test("recomputeRestrictions latches already-open discussions when a source document becomes hidden (5.2)", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-1",
-      title: "标题一",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: "doc-1",
-      focus_document_title: null,
-      first_round_material: { kind: "summon", question: "", selection_text: "选区" },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [
-        { document_id: "doc-1", material_type: "selection", document_version: null, turn_index: 0, entered_model_context: true },
-      ],
-    },
-  ], [], new Set());
+  openArchive(state, archiveWithSource());
   // 加载时可见：不受限。
   assert.equal(state.conversationOf("c-1")?.restricted, false);
 
@@ -1421,20 +1390,7 @@ test("recomputeRestrictions latches already-open discussions when a source docum
 
 test("recomputeRestrictions leaves no-material discussions unaffected", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-2",
-      title: "无材料",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: null,
-      focus_document_title: null,
-      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [],
-    },
-  ], [], new Set());
+  openArchive(state, archiveWithSource("c-2", null));
 
   assert.deepEqual(state.recomputeRestrictions(new Set(["doc-1"])), []);
   assert.equal(state.conversationOf("c-2")?.restricted, false);
@@ -1533,22 +1489,7 @@ test("switching focus does not disturb an in-flight request", () => {
 
 test("a restricted discussion rejects focus switching (permanent read-only)", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-1",
-      title: "受限",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: "doc-1",
-      focus_document_title: "文档一",
-      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [
-        { document_id: "doc-1", material_type: "focus_document", document_version: null, turn_index: 0, entered_model_context: true },
-      ],
-    },
-  ], [], new Set(["doc-1"]));
+  openArchive(state, archiveWithSource(), new Set(["doc-1"]));
   assert.equal(state.conversationOf("c-1")?.restricted, true);
   assert.equal(state.setFocusDocument("c-1", "doc-2", "文档二"), false);
   assert.equal(state.getDiscussion("c-1")!.focusDocumentId, "doc-1");
@@ -1556,22 +1497,7 @@ test("a restricted discussion rejects focus switching (permanent read-only)", ()
 
 test("summaryOf marks a restricted discussion so the list can mask the focus title", () => {
   const state = new AiPanelState();
-  state.loadDiscussions([
-    {
-      conversation_id: "c-1",
-      title: "受限",
-      created_at: "t0",
-      updated_at: "t0",
-      last_status: "done",
-      focus_document_id: "doc-1",
-      focus_document_title: "隐藏文档",
-      first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
-      turns: [{ role: "assistant", text: "回答", status: "done" }],
-      provenance: [
-        { document_id: "doc-1", material_type: "focus_document", document_version: null, turn_index: 0, entered_model_context: true },
-      ],
-    },
-  ], [], new Set(["doc-1"]));
+  state.loadDiscussions([deriveConversationSummary({ ...archiveWithSource(), focus_document_title: "隐藏文档" })], [], new Set(["doc-1"]));
   const summary = state.conversations.find((c) => c.conversation_id === "c-1")!;
   assert.equal(summary.restricted, true);
   // 档案真实标题仍保留在状态摘要中；脱敏只发生在显示层。

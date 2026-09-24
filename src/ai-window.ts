@@ -485,9 +485,9 @@ export function setupAiWindow(
     renderReadingRequest(view.readingRequest);
     renderReadingProgress(view.readingProgress);
 
-    dom.errorBlock.classList.toggle("hidden", view.errorBlock === null);
-    if (view.errorBlock) {
-      dom.errorMessage.textContent = view.errorBlock.message;
+    dom.errorBlock.classList.toggle("hidden", view.errorBlock === null && view.saveError === null);
+    if (view.errorBlock || view.saveError !== null) {
+      dom.errorMessage.textContent = [view.errorBlock?.message, view.saveError].filter(Boolean).join("\n");
     }
     dom.retryBtn.classList.toggle("hidden", !view.retryAvailable);
 

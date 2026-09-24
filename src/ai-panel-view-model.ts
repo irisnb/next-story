@@ -604,7 +604,8 @@ export function buildAiPanelView(
   // 材料权限已变化（隐藏材料 / 旧档案缺出处）：保留历史显示，但不可沿原上下文继续。
   const restrictionNotice = conversationRestrictionNotice(conversation);
   const isRestricted = restrictionNotice !== null;
-  const directQuestion = buildDirectQuestionView(panelState);
+  const archivePending = panelState.archiveOpening || panelState.archiveOpenError != null;
+  const directQuestion = archivePending ? null : buildDirectQuestionView(panelState);
 
   const pendingError = conversation?.pending?.error;
   const isFollowUpFailure = pendingError !== undefined;
@@ -634,7 +635,7 @@ export function buildAiPanelView(
     (facts.errorMessage !== null || facts.configRequired || stoppedFirstRequest !== null || stoppedDirect);
 
   // 空状态欢迎语（D5）：无任何对话轮次（含直接提问进行中的统一轮次）且无进行中请求。
-  const welcomeVisible = panelState.request.kind === "idle" && conversation === null;
+  const welcomeVisible = !archivePending && panelState.request.kind === "idle" && conversation === null;
 
   // “新建对话”仅在存在临时对话或存在任何非空闲请求（首轮预检/阻塞/加载/成功/失败/配置、
   // 追问或直接提问请求）时显示；空白直接提问 idle 状态隐藏。与 reducer 的
@@ -644,8 +645,8 @@ export function buildAiPanelView(
   return {
     panelVisible: panelState.visibility === "open",
     snapshot: facts.snapshot,
-    loadingVisible: facts.loadingVisible,
-    loadingMessage: facts.loadingVisible
+    loadingVisible: panelState.archiveOpening || facts.loadingVisible,
+    loadingMessage: panelState.archiveOpening ? "正在打开…" : facts.loadingVisible
       ? panelState.request.kind === "recovering"
         ? "恢复对话中"
         : "正在思考…"
@@ -653,7 +654,7 @@ export function buildAiPanelView(
     response,
     conversation: conversationView,
     welcomeVisible,
-    errorBlock,
+    errorBlock: panelState.archiveOpenError ? { message: panelState.archiveOpenError } : errorBlock,
     configBlock: facts.configRequired,
     followUpError,
     followUpStopped: stoppedFollowUp && !isRestricted,

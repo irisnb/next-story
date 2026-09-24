@@ -44,6 +44,10 @@ import {
   conversationDelete,
   conversationList,
   conversationOnDemandReading,
+  conversationRead,
+  conversationUpdateMeta,
+  deriveConversationSummary,
+  latchConversationRestrictions,
   conversationRestore,
   conversationSave,
   conversationSetOnDemandReading,
@@ -127,6 +131,9 @@ export interface AiFeatureDependencies {
   conversationSave?: typeof conversationSave;
   conversationDelete?: typeof conversationDelete;
   conversationRestore?: typeof conversationRestore;
+  conversationRead?: typeof conversationRead;
+  conversationUpdateMeta?: typeof conversationUpdateMeta;
+  latchConversationRestrictions?: typeof latchConversationRestrictions;
   newConversationId?: () => string;
   maxConcurrent?: number;
   /**
@@ -288,6 +295,10 @@ export function setupAiFeature(
   const saveConversation = dependencies.conversationSave ?? conversationSave;
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;
   const restoreConversation = dependencies.conversationRestore ?? conversationRestore;
+  const readConversation = dependencies.conversationRead ?? conversationRead;
+  const updateConversationMeta = dependencies.conversationUpdateMeta ?? conversationUpdateMeta;
+  const latchRestrictions = dependencies.latchConversationRestrictions ?? latchConversationRestrictions;
+  const metaVersions = new Map<string, number>();
   const resolveReadingRequestCall = dependencies.resolveReadingRequest ?? aiResolveReadingRequest;
   const setOnDemandReadingCall =
     dependencies.setOnDemandReading ?? conversationSetOnDemandReading;
@@ -341,14 +352,34 @@ export function setupAiFeature(
     if (discussion === null) return;
     if (discussion.conversation === null && discussion.pendingFirstRequest === null) return;
     const record = buildDiscussionRecord(discussion);
+    const summary = state.conversations.find((item) => item.conversation_id === conversationId);
+    if (summary) {
+      record.title = summary.custom_title ?? "";
+      record.pinned = summary.pinned ?? false;
+    }
     const token = context.getProjectToken();
+    const metaVersion = metaVersions.get(conversationId);
     void saveConversation(projectPath, record)
       .then(() => {
-        if (!context.isDestroyed() && context.getProjectToken() === token) context.state.clearSaveError();
+        if (context.isDestroyed() || context.getProjectToken() !== token || state.isDeleted(conversationId)) return;
+        const currentSummary = state.conversations.find((item) => item.conversation_id === conversationId);
+        if (metaVersion !== metaVersions.get(conversationId) && currentSummary) {
+          record.title = currentSummary.custom_title ?? "";
+          record.pinned = currentSummary.pinned ?? false;
+        }
+        const derived = deriveConversationSummary({ ...record,
+          on_demand_reading_provenance: state.getDiscussion(conversationId)?.conversation?.onDemandReadingProvenance,
+        });
+        derived.on_demand_document_ids = [...new Set([
+          ...derived.on_demand_document_ids, ...(currentSummary?.on_demand_document_ids ?? []),
+        ])];
+        state.upsertSummary(derived, context.hiddenDocumentIds());
+        state.clearSaveError(conversationId);
       })
-      .catch(() => {
-        if (!context.isDestroyed() && context.getProjectToken() === token) {
-          context.state.setSaveError("讨论保存失败，本次内容可能未落盘");
+      .catch((error: unknown) => {
+        if (!context.isDestroyed() && context.getProjectToken() === token && !state.isDeleted(conversationId)) {
+          context.state.setSaveError(error instanceof Error ? error.message : typeof error === "string"
+            ? error : "讨论保存失败，本次内容可能未落盘", conversationId);
         }
       });
   }
@@ -362,17 +393,49 @@ export function setupAiFeature(
    * 新被标记受限的讨论立即持久化，使锁存状态在重新开启可见性后重开也不被解除。
    */
   function recomputeRestrictions(): void {
-    const newlyRestricted = context.state.recomputeRestrictions(context.hiddenDocumentIds());
-    for (const conversationId of newlyRestricted) {
-      persistDiscussion(conversationId);
+    const hidden = context.hiddenDocumentIds();
+    context.state.recomputeRestrictions(hidden);
+    const projectPath = context.getCurrentProjectPath();
+    if (projectPath === null) return;
+    const token = context.getProjectToken();
+    for (const documentId of hidden) {
+      void latchRestrictions(projectPath, documentId).then((ids) => {
+        if (!context.isDestroyed() && token === context.getProjectToken()) state.latchRestrictions(ids);
+      }).catch((error: unknown) => {
+        if (!context.isDestroyed() && token === context.getProjectToken()) {
+          state.setSaveError(`讨论权限锁存失败：${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
     }
   }
 
   function openDiscussion(summary: ConversationSummary): void {
-    const conversation = conversationFromRecord(summary, {
-      hiddenDocumentIds: context.hiddenDocumentIds(),
+    const id = summary.conversation_id;
+    if (state.isDeleted(id)) return;
+    if (state.windows.has(id)) {
+      state.open();
+      state.focusWindow(id);
+      return;
+    }
+    const projectPath = context.getCurrentProjectPath();
+    if (projectPath === null) return;
+    const token = context.getProjectToken();
+    const opening = state.beginOpenDiscussion(id);
+    const current = (): boolean => !context.isDestroyed() && context.getProjectToken() === token &&
+      !state.isDeleted(id) && state.windows.has(id) && state.openingToken(id) === opening;
+    void readConversation(projectPath, id).then((record) => {
+      if (!current()) return;
+      const hidden = context.hiddenDocumentIds();
+      const conversation = conversationFromRecord(record, { hiddenDocumentIds: hidden });
+      const latest = state.conversations.find((item) => item.conversation_id === id);
+      if (latest?.restricted && !conversation.restricted) {
+        conversation.restricted = true;
+        conversation.restrictionReason = "hidden_material";
+      }
+      state.openDiscussion(conversation, record.focus_document_id, record.focus_document_title);
+    }).catch((error: unknown) => {
+      if (current()) state.failOpenDiscussion(id, `打开讨论失败：${error instanceof Error ? error.message : String(error)}`);
     });
-    context.state.openDiscussion(conversation, summary.focus_document_id, summary.focus_document_title);
   }
 
   /** 当前作品允许 AI 查看的文档（供「切换关注文档」选择器；隐藏与回收站文档不出现）。 */
@@ -435,32 +498,62 @@ export function setupAiFeature(
   } = setupDeleteUndo({
     state: context.state,
     getCurrentProjectPath: context.getCurrentProjectPath,
+    getProjectToken: context.getProjectToken,
+    hiddenDocumentIds: context.hiddenDocumentIds,
     isDestroyed: context.isDestroyed,
     cancelMessage: (conversationId) => context.getTransport().cancelMessage(conversationId),
     endSession: (conversationId) => context.getTransport().endSession(conversationId),
     cancelQueued: (conversationId) => context.getScheduler().cancelQueued(conversationId),
     restoreConversation,
-    saveConversation,
+    readConversation,
     deleteConversation,
-    reloadDiscussions: loadDiscussions,
   });
 
   /** 重命名讨论：更新内存标题并持久化到档案。 */
   async function renameDiscussion(conversationId: string, title: string): Promise<boolean> {
+    const projectPath = context.getCurrentProjectPath();
+    if (projectPath === null || state.isDeleted(conversationId)) return false;
+    const previous = state.conversations.find((item) => item.conversation_id === conversationId);
     if (!context.state.renameDiscussion(conversationId, title)) return false;
-    persistDiscussion(conversationId);
-    return true;
+    const version = (metaVersions.get(conversationId) ?? 0) + 1;
+    metaVersions.set(conversationId, version);
+    const token = context.getProjectToken();
+    try {
+      await updateConversationMeta(projectPath, conversationId, { title });
+      if (context.isDestroyed() || token !== context.getProjectToken() || state.isDeleted(conversationId)) return false;
+      // 未打开条目没有首轮材料，清除自定义标题后从轻量列表取回派生标题。
+      if (!title.trim() && !state.getDiscussion(conversationId)?.conversation) loadDiscussions();
+      return true;
+    } catch (error) {
+      if (context.isDestroyed() || token !== context.getProjectToken() || state.isDeleted(conversationId)) return false;
+      if (metaVersions.get(conversationId) === version && previous) {
+        state.renameDiscussion(conversationId, previous.custom_title ?? "");
+        state.upsertSummary(previous, context.hiddenDocumentIds());
+      }
+      state.setSaveError(`重命名失败：${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   }
 
   /** 置顶 / 取消置顶讨论：更新内存标记并持久化。 */
   async function togglePin(conversationId: string): Promise<boolean> {
-    const discussion = context.state.getDiscussion(conversationId);
-    if (!discussion?.conversation) return false;
-    if (!context.state.setDiscussionPinned(conversationId, !(discussion.conversation.pinned ?? false))) {
+    const projectPath = context.getCurrentProjectPath();
+    const summary = state.conversations.find((item) => item.conversation_id === conversationId);
+    if (projectPath === null || !summary || state.isDeleted(conversationId)) return false;
+    const pinned = !summary.pinned;
+    if (!state.setDiscussionPinned(conversationId, pinned)) return false;
+    const version = (metaVersions.get(conversationId) ?? 0) + 1;
+    metaVersions.set(conversationId, version);
+    const token = context.getProjectToken();
+    try {
+      await updateConversationMeta(projectPath, conversationId, { pinned });
+      return !context.isDestroyed() && token === context.getProjectToken() && !state.isDeleted(conversationId);
+    } catch (error) {
+      if (context.isDestroyed() || token !== context.getProjectToken() || state.isDeleted(conversationId)) return false;
+      if (metaVersions.get(conversationId) === version) state.setDiscussionPinned(conversationId, !pinned);
+      state.setSaveError(`置顶失败：${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
-    persistDiscussion(conversationId);
-    return true;
   }
 
   function loadDiscussions(): void {

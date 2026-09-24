@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { setupAiFeature } from "../src/ai-feature.ts";
+import { setupAiFeature, type AiFeatureDependencies } from "../src/ai-feature.ts";
 import type { AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
@@ -9,6 +9,7 @@ import type {
   ConversationSummary,
   FirstRoundMaterial,
 } from "../src/conversation-archive.ts";
+import { deriveConversationSummary } from "../src/conversation-archive.ts";
 import type {
   GenerateAiRequest,
   GenerateAiResult,
@@ -16,6 +17,7 @@ import type {
 } from "../src/types.ts";
 import {
   FakeElement,
+  collectText,
   installAiFeatureEnvironment,
 } from "./ai-panel-dom-fixture.ts";
 
@@ -30,6 +32,12 @@ const savedConfig: LlmConfigSummary = {
 };
 
 interface PersistenceHarness {
+  windowRoots: FakeElement[];
+  reads: string[];
+  listCalls: () => number;
+  openRecord(record: ConversationRecord): Promise<void>;
+  archives: Map<string, ConversationRecord>;
+  latchCalls: string[];
   controller: ReturnType<typeof setupAiFeature>;
   elements: Map<string, FakeElement>;
   saves: ConversationRecord[];
@@ -51,6 +59,7 @@ function persistenceHarness(overrides: {
   readonly replayError?: Error;
   readonly list?: { conversations: ConversationSummary[]; skipped: string[] };
   readonly getHiddenDocumentIds?: () => ReadonlySet<string>;
+  readonly dependencies?: Partial<AiFeatureDependencies>;
 } = {}): PersistenceHarness {
   const env = installAiFeatureEnvironment();
   const elements = env.elements;
@@ -58,6 +67,10 @@ function persistenceHarness(overrides: {
   const results = [...(overrides.results ?? [{ ok: true, content: "回答" }])];
   const saves: ConversationRecord[] = [];
   const deletes: string[] = [];
+  const archives = new Map<string, ConversationRecord>();
+  const latchCalls: string[] = [];
+  const reads: string[] = [];
+  let listCalls = 0;
   let endSessionCalls = 0;
   const requests: GenerateAiRequest[] = [];
   const driverLostHandlers: Array<() => void> = [];
@@ -103,10 +116,29 @@ function persistenceHarness(overrides: {
   }, {
     transport,
     loadConfig: () => Promise.resolve(savedConfig),
-    conversationList: () => Promise.resolve(listResult),
+    conversationList: () => { listCalls += 1; return Promise.resolve(listResult); },
+    conversationRead: async (_path, id) => {
+      reads.push(id);
+      if (overrides.dependencies?.conversationRead) return overrides.dependencies.conversationRead(_path, id);
+      const record = archives.get(id);
+      assert.ok(record, `missing archive ${id}`);
+      return record;
+    },
+    latchConversationRestrictions: async (_path, documentId) => {
+      latchCalls.push(documentId);
+      const affected: string[] = [];
+      for (const [id, record] of archives) {
+        if (!record.provenance?.some((entry) => entry.document_id === documentId)) continue;
+        archives.set(id, { ...record, provenance: record.provenance.map((entry) =>
+          entry.document_id === documentId ? { ...entry, material_type: "revoked" } : entry) });
+        affected.push(id);
+      }
+      return affected;
+    },
     conversationSave: (_projectPath, record) => {
       if (overrides.failSave) return Promise.reject(new Error("磁盘写入失败"));
       saves.push(record);
+      archives.set(record.conversation_id, record);
       return Promise.resolve();
     },
     conversationDelete: (_projectPath, conversationId) => {
@@ -117,16 +149,29 @@ function persistenceHarness(overrides: {
     ...(overrides.getHiddenDocumentIds
       ? { getHiddenDocumentIds: overrides.getHiddenDocumentIds }
       : {}),
+    ...Object.fromEntries(Object.entries(overrides.dependencies ?? {}).filter(([key]) => key !== "conversationRead")),
   });
 
   return {
+    windowRoots: env.windowRoots,
+    reads,
+    listCalls: () => listCalls,
+    archives,
+    latchCalls,
+    async openRecord(record) {
+      archives.set(record.conversation_id, record);
+      const item = deriveConversationSummary(record);
+      controller.state.upsertSummary(item, overrides.getHiddenDocumentIds?.() ?? new Set());
+      controller.openDiscussion(item);
+      await flush();
+    },
     controller,
     elements,
     saves,
     deletes,
     endSessionCalls: () => endSessionCalls,
     listResult,
-    saveError: () => controller.state.saveError,
+    saveError: () => controller.state.view.saveError,
     fireDriverLost(): void {
       for (const handler of driverLostHandlers) handler();
     },
@@ -140,7 +185,7 @@ function persistenceHarness(overrides: {
       input.dispatch("input");
       win.queryResults.get('[data-role="direct-question-form"]')!.dispatch("submit");
     },
-    restore: () => { env.restore(); },
+    restore: () => { controller.destroy(); env.restore(); },
   };
 }
 
@@ -152,12 +197,183 @@ function summary(partial: Partial<ConversationSummary> & { conversation_id: stri
     last_status: "done",
     focus_document_id: null,
     focus_document_title: null,
-    first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
-    turns: [{ role: "assistant", text: "回答", status: "done" }],
+    provenance_has_revoked: false,
+    on_demand_document_ids: [],
+    references_incomplete: false,
     provenance: [],
     ...partial,
   };
 }
+
+function savedRecord(id = "archive"): ConversationRecord {
+  return {
+    version: 1, conversation_id: id, title: "", created_at: "2026-09-24T00:00:00Z",
+    updated_at: "2026-09-24T00:00:00Z", focus_document_id: null, focus_document_title: null,
+    first_round_material: { kind: "direct_question", question: "原问题", selection_text: null },
+    turns: [{ role: "assistant", text: "已保存回答", status: "done" }], provenance: [],
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function descendants(root: FakeElement): FakeElement[] {
+  return [root, ...root.children.flatMap(descendants)];
+}
+
+test("2.4 列表不读全文；打开中有提示，成功显示回答，再次点击只聚焦", async () => {
+  const read = deferred<ConversationRecord>();
+  const record = savedRecord();
+  const item = deriveConversationSummary(record);
+  const ui = persistenceHarness({ list: { conversations: [item], skipped: [] },
+    dependencies: { conversationRead: () => read.promise } });
+  try {
+    ui.controller.beginProject();
+    await flush();
+    assert.deepEqual(ui.reads, []);
+    assert.equal(ui.controller.state.getDiscussion(record.conversation_id), null);
+    ui.controller.openDiscussion(item);
+    const root = ui.windowRoots[0];
+    assert.equal(ui.controller.state.view.archiveOpening, true);
+    assert.match(root.queryResults.get('[data-role="loading"]')!.textContent, /正在打开/);
+    assert.equal(root.queryResults.get('[data-role="loading"]')!.classList.contains("hidden"), false);
+    read.resolve(record);
+    await flush();
+    assert.equal(ui.controller.state.view.archiveOpening, false);
+    assert.equal(ui.controller.state.conversation?.firstResponse, "已保存回答");
+    assert.match(collectText(root), /已保存回答/);
+    const before = ui.controller.state.getDiscussion(record.conversation_id);
+    ui.controller.openDiscussion(item);
+    assert.equal(ui.controller.state.getDiscussion(record.conversation_id), before);
+    assert.equal(ui.windowRoots.length, 1);
+    assert.deepEqual(ui.reads, [record.conversation_id]);
+  } finally { ui.restore(); }
+});
+
+test("2.4 读档失败结束加载并保留具体错误，关闭后可重新打开", async () => {
+  const read = deferred<ConversationRecord>();
+  const ui = persistenceHarness({ dependencies: { conversationRead: () => read.promise } });
+  try {
+    const item = deriveConversationSummary(savedRecord());
+    ui.controller.openDiscussion(item);
+    read.reject(new Error("档案格式损坏"));
+    await flush();
+    assert.equal(ui.controller.state.view.archiveOpening, false);
+    assert.match(ui.controller.state.view.archiveOpenError!, /档案格式损坏/);
+    assert.match(collectText(ui.windowRoots[0]), /档案格式损坏/);
+    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    ui.controller.openDiscussion(item);
+    assert.equal(ui.reads.length, 2);
+    await flush();
+  } finally { ui.restore(); }
+});
+
+for (const action of ["switch", "delete", "close", "destroy"] as const) {
+  test(`2.4 ${action} 后丢弃迟到读档，不复活窗口`, async () => {
+    const read = deferred<ConversationRecord>();
+    const record = savedRecord();
+    const ui = persistenceHarness({ dependencies: { conversationRead: () => read.promise } });
+    try {
+      ui.controller.openDiscussion(deriveConversationSummary(record));
+      if (action === "switch") ui.controller.beginProject();
+      if (action === "delete") await ui.controller.deleteDiscussion(record.conversation_id);
+      if (action === "close") ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+      if (action === "destroy") ui.controller.destroy();
+      read.resolve(record);
+      await flush();
+      assert.equal(ui.controller.state.conversationOf(record.conversation_id), null);
+      assert.equal(ui.controller.state.windows.has(record.conversation_id), false);
+    } finally { ui.restore(); }
+  });
+}
+
+test("2.4 关闭并重开同一讨论，第一次读取不得覆盖第二次", async () => {
+  const first = deferred<ConversationRecord>();
+  const second = deferred<ConversationRecord>();
+  let count = 0;
+  const ui = persistenceHarness({ dependencies: { conversationRead: () => ++count === 1 ? first.promise : second.promise } });
+  try {
+    const record = savedRecord();
+    const item = deriveConversationSummary(record);
+    ui.controller.openDiscussion(item);
+    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    ui.controller.openDiscussion(item);
+    second.resolve({ ...record, turns: [{ role: "assistant", text: "新档案", status: "done" }] });
+    await flush();
+    first.resolve(record);
+    await flush();
+    assert.equal(ui.controller.state.conversation?.firstResponse, "新档案");
+    assert.equal(ui.reads.length, 2);
+  } finally { ui.restore(); }
+});
+
+test("2.5 超限原文只显示于保存失败的讨论窗口", async () => {
+  const message = "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。";
+  const ui = persistenceHarness({ dependencies: { conversationSave: () => Promise.reject(message) } });
+  try {
+    await ui.openRecord(savedRecord("other"));
+    ui.submitDirectQuestion("问题");
+    await flush();
+    assert.equal(ui.controller.state.viewOf("c-1").saveError, message);
+    assert.equal(ui.controller.state.viewOf("other").saveError, null);
+    assert.ok(collectText(ui.windowRoots[1]).includes(message));
+    assert.equal(collectText(ui.windowRoots[0]).includes(message), false);
+  } finally { ui.restore(); }
+});
+
+test("2.6 保存后更新轻量列表，不重新 list 或重建其他窗口", async () => {
+  const ui = persistenceHarness();
+  try {
+    ui.controller.beginProject();
+    await flush();
+    await ui.openRecord(savedRecord("other"));
+    const before = ui.controller.state.getDiscussion("other");
+    ui.submitDirectQuestion("新问题");
+    await flush();
+    assert.equal(ui.listCalls(), 1);
+    assert.equal(ui.controller.state.getDiscussion("other"), before);
+    assert.equal(ui.controller.state.windows.size, 2);
+    const item = ui.controller.getConversations().find((s) => s.conversation_id === "c-1")!;
+    assert.equal(item.title, "新问题");
+    assert.equal(item.last_status, "done");
+    assert.equal("turns" in item, false);
+  } finally { ui.restore(); }
+});
+
+test("2.7 未打开条目通过窄命令重命名和置顶，不读取或重存全文", async () => {
+  const updates: unknown[] = [];
+  const record = savedRecord();
+  const ui = persistenceHarness({ list: { conversations: [deriveConversationSummary(record)], skipped: [] },
+    dependencies: { conversationUpdateMeta: async (path, id, update) => { updates.push({ path, id, update }); } } });
+  try {
+    ui.controller.beginProject();
+    await flush();
+    ui.elements.get("ai-conversation-list-toggle")!.dispatch("click");
+    const rows = () => descendants(ui.elements.get("ai-conversation-list-items")!).filter((el) => el.classList.contains("ai-cl-row"));
+    const row = rows()[0];
+    assert.ok(row);
+    descendants(row).find((el) => el.classList.contains("ai-cl-actions"))!.children[0].dispatch("click");
+    const edit = descendants(rows()[0]).find((el) => el.classList.contains("ai-cl-edit"))!.children[0];
+    edit.value = "重命名";
+    edit.dispatch("keydown", { key: "Enter" });
+    await flush();
+    descendants(rows()[0]).find((el) => el.classList.contains("ai-cl-actions"))!.children[1].dispatch("click");
+    await flush();
+    assert.deepEqual(updates, [
+      { path: "作品路径", id: record.conversation_id, update: { title: "重命名" } },
+      { path: "作品路径", id: record.conversation_id, update: { pinned: true } },
+    ]);
+    assert.equal(ui.controller.getConversations()[0].title, "重命名");
+    assert.equal(ui.controller.getConversations()[0].pinned, true);
+    assert.deepEqual(ui.reads, []);
+    assert.deepEqual(ui.saves, []);
+    assert.equal(ui.controller.state.getDiscussion(record.conversation_id), null);
+  } finally { ui.restore(); }
+});
 
 test("4.1 user turn accepted saves a pending record, terminal result updates it", async () => {
   const ui = persistenceHarness();
@@ -189,7 +405,7 @@ test("4.2 save failure is visible and not faked as saved", async () => {
     await flush();
 
     assert.ok(ui.saveError(), "保存失败应有可见提示");
-    assert.match(ui.saveError()!, /保存失败/);
+    assert.equal(ui.saveError(), "磁盘写入失败");
   } finally {
     ui.restore();
   }
@@ -213,12 +429,12 @@ test("4.3 beginProject loads the conversation list for the project", async () =>
 
 test("4.4 reopening shows saved turns and an interrupted pending turn without auto-resend", async () => {
   const material: FirstRoundMaterial = { kind: "direct_question", question: "原问题", selection_text: null };
-  const interrupted: ConversationSummary = {
+  const interrupted: ConversationRecord = {
+    version: 1,
     conversation_id: "c-10",
     title: "原问题",
     created_at: "t0",
     updated_at: "t0",
-    last_status: "pending",
     focus_document_id: null,
     focus_document_title: null,
     first_round_material: material,
@@ -231,7 +447,7 @@ test("4.4 reopening shows saved turns and an interrupted pending turn without au
   };
   const ui = persistenceHarness();
   try {
-    ui.controller.openDiscussion(interrupted);
+    await ui.openRecord(interrupted);
 
     const conversation = ui.controller.state.conversation;
     assert.ok(conversation);
@@ -265,15 +481,15 @@ test("4.5 deleteDiscussion ends the session and removes the archive", async () =
 
 // ========== 材料权限变化隔离（controlled-story-read-visibility 任务 5） ==========
 
-test("5.1 reopening a discussion whose provenance references a hidden document is restricted and not continuable", () => {
+test("5.1 reopening a discussion whose provenance references a hidden document is restricted and not continuable", async () => {
   const ui = persistenceHarness({ getHiddenDocumentIds: () => new Set(["doc-1"]) });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-5",
       title: "选区",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: "doc-1",
       focus_document_title: null,
       first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -293,15 +509,15 @@ test("5.1 reopening a discussion whose provenance references a hidden document i
   }
 });
 
-test("5.2 reopening an archive missing provenance is conservatively restricted", () => {
+test("5.2 reopening an archive missing provenance is conservatively restricted", async () => {
   const ui = persistenceHarness();
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-6",
       title: "旧讨论",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: null,
       focus_document_title: null,
       first_round_material: { kind: "direct_question", question: "旧问题", selection_text: null },
@@ -316,15 +532,15 @@ test("5.2 reopening an archive missing provenance is conservatively restricted",
   }
 });
 
-test("5.3 reopening a discussion whose materials are still visible stays continuable", () => {
+test("5.3 reopening a discussion whose materials are still visible stays continuable", async () => {
   const ui = persistenceHarness({ getHiddenDocumentIds: () => new Set(["doc-other"]) });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-7",
       title: "选区",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: "doc-1",
       focus_document_title: null,
       first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -344,18 +560,18 @@ test("5.3 reopening a discussion whose materials are still visible stays continu
 
 // ========== 崩溃恢复按当前 provenance 重算材料限制（任务 5.5） ==========
 
-test("5.6 driverLost recovery re-checks current visibility before replay (hidden source is not replayed)", () => {
+test("5.6 driverLost recovery re-checks current visibility before replay (hidden source is not replayed)", async () => {
   // 打开讨论时 doc-1 可见（restricted=false），之后隐藏 doc-1，再触发驱动丢失：
   // 恢复过滤必须在重放前按当前 hiddenDocumentIds 重算，不能重放已隐藏材料。
   const hidden = new Set<string>();
   const ui = persistenceHarness({ getHiddenDocumentIds: () => hidden });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-8",
       title: "选区",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: "doc-1",
       focus_document_title: null,
       first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -380,15 +596,15 @@ test("5.6 driverLost recovery re-checks current visibility before replay (hidden
   }
 });
 
-test("5.7 driverLost recovery still replays a discussion whose material remains visible", () => {
+test("5.7 driverLost recovery still replays a discussion whose material remains visible", async () => {
   const ui = persistenceHarness({ getHiddenDocumentIds: () => new Set(["doc-other"]) });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-9",
       title: "选区",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: "doc-1",
       focus_document_title: null,
       first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -406,15 +622,15 @@ test("5.7 driverLost recovery still replays a discussion whose material remains 
   }
 });
 
-test("5.8 driverLost recovery replays a no-material direct question", () => {
+test("5.8 driverLost recovery replays a no-material direct question", async () => {
   const ui = persistenceHarness({ getHiddenDocumentIds: () => new Set(["doc-1"]) });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-10",
       title: "问题",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: null,
       focus_document_title: null,
       first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
@@ -433,12 +649,12 @@ test("5.8 driverLost recovery replays a no-material direct question", () => {
 test("5.8a replay transport failure enters recovery error instead of completing recovery", async () => {
   const ui = persistenceHarness({ replayError: new Error("历史重放失败") });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-11",
       title: "问题",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: null,
       focus_document_title: null,
       first_round_material: { kind: "direct_question", question: "问题", selection_text: null },
@@ -466,12 +682,12 @@ test("5.9 recomputeRestrictions latches an open discussion and persists it so re
   const hidden = new Set<string>();
   const ui = persistenceHarness({ getHiddenDocumentIds: () => hidden });
   try {
-    ui.controller.openDiscussion({
+    await ui.openRecord({
+      version: 1,
       conversation_id: "c-11",
       title: "选区",
       created_at: "t0",
       updated_at: "t0",
-      last_status: "done",
       focus_document_id: "doc-1",
       focus_document_title: null,
       first_round_material: { kind: "summon", question: "", selection_text: "选区" },
@@ -489,7 +705,10 @@ test("5.9 recomputeRestrictions latches an open discussion and persists it so re
     assert.equal(ui.controller.state.conversation?.restricted, true);
     assert.equal(ui.controller.state.followUpAvailable, false);
     // 锁存被持久化（revoked 出处，不泄露身份，只记录来源文档 ID）。
-    const persisted = ui.saves[ui.saves.length - 1];
+    await flush();
+    assert.deepEqual(ui.latchCalls, ["doc-1"]);
+    assert.equal(ui.saves.length, 0, "锁存不再由前端重存全文");
+    const persisted = ui.archives.get("c-11")!;
     assert.equal(persisted.provenance?.[0]?.material_type, "revoked");
 
     // 受限讨论不能追问。

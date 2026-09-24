@@ -5,6 +5,9 @@ import {
   conversationDelete,
   conversationList,
   conversationRestore,
+  conversationRead,
+  conversationUpdateMeta,
+  latchConversationRestrictions,
   conversationSave,
   deriveConversationTitle,
   generateConversationId,
@@ -12,6 +15,42 @@ import {
   type ConversationInvokeFn,
   type ConversationRecord,
 } from "../src/conversation-archive.ts";
+
+test("2.3 单档读取、窄更新、锁存按真实 IPC 顶层参数调用", async () => {
+  const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
+  const call = (async (cmd: string, args?: Record<string, unknown>) => {
+    calls.push({ cmd, args });
+    return cmd === "latch_conversation_restrictions" ? ["ipc"] : undefined;
+  }) as ConversationInvokeFn;
+  await conversationRead("作品", "ipc", call);
+  await conversationUpdateMeta("作品", "ipc", { title: "新标题" }, call);
+  await conversationUpdateMeta("作品", "ipc", { pinned: false }, call);
+  assert.deepEqual(await latchConversationRestrictions("作品", "doc", call), ["ipc"]);
+  assert.deepEqual(calls, [
+    { cmd: "conversation_read", args: { projectPath: "作品", conversationId: "ipc" } },
+    { cmd: "conversation_update_meta", args: { projectPath: "作品", conversationId: "ipc", title: "新标题" } },
+    { cmd: "conversation_update_meta", args: { projectPath: "作品", conversationId: "ipc", pinned: false } },
+    { cmd: "latch_conversation_restrictions", args: { projectPath: "作品", documentId: "doc" } },
+  ]);
+});
+
+test("2.8 恢复失败不能提前解除保存及窄更新的删除守卫", async () => {
+  const calls: string[] = [];
+  let failRestore = true;
+  const call = (async (cmd: string) => {
+    calls.push(cmd);
+    if (cmd === "conversation_restore" && failRestore) throw new Error("恢复失败");
+  }) as ConversationInvokeFn;
+  await conversationDelete("作品", "failed-restore", call);
+  await assert.rejects(conversationRestore("作品", "failed-restore", call), /恢复失败/);
+  await conversationUpdateMeta("作品", "failed-restore", { pinned: true }, call);
+  await conversationSave("作品", { conversation_id: "failed-restore" } as ConversationRecord, call);
+  assert.deepEqual(calls, ["conversation_delete", "conversation_restore"]);
+  failRestore = false;
+  await conversationRestore("作品", "failed-restore", call);
+  await conversationUpdateMeta("作品", "failed-restore", { pinned: true }, call);
+  assert.deepEqual(calls, ["conversation_delete", "conversation_restore", "conversation_restore", "conversation_update_meta"]);
+});
 
 test("roundProvenanceToMaterialProvenance maps backend entries to archive shape", () => {
   const entries = roundProvenanceToMaterialProvenance(

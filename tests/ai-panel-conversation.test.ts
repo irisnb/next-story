@@ -453,5 +453,5 @@ test("summaryOf reports an interrupted first round as pending with a pending fir
   };
   const summary = summaryOf(interrupted, null, null);
   assert.equal(summary.last_status, "pending");
-  assert.equal(summary.turns[0].status, "pending");
+  assert.equal("turns" in summary, false, "列表摘要不携带全文");
 });

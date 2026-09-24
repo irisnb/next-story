@@ -81,6 +81,8 @@ export interface PanelStateView {
   pendingSelection: SelectionSnapshot | null;
   /** 讨论档案保存失败时的可见提示；无错误时为 null。 */
   saveError: string | null;
+  archiveOpening?: boolean;
+  archiveOpenError?: string | null;
   /**
    * 待决的按需补读授权请求（add-agent-on-demand-reading 任务 7.1，授权卡显示
    * 数据）；无待决时为 null。由各讨论的显示输入（`viewOf`）携带。

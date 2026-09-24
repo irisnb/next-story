@@ -159,11 +159,7 @@ export interface OnDemandReadingProvenance {
   entered_model_context: boolean;
 }
 
-/**
- * 会话列表条目。除列表展示所需的身份 / 标题 / 时间 / 终态外，还携带重开所需的
- * 完整轮次与首轮材料（本车道只有 list/save/delete 三个命令，无单独“读取一条”
- * 命令，故列表必须一次带回重开所需全部内容）。
- */
+/** 列表仅携带轻量元信息；全文通过 conversationRead 按需读取。 */
 export interface ConversationSummary {
   conversation_id: string;
   title: string;
@@ -172,18 +168,15 @@ export interface ConversationSummary {
   last_status: ConversationTurnStatus;
   focus_document_id: string | null;
   focus_document_title: string | null;
-  first_round_material: FirstRoundMaterial;
-  turns: ConversationTurn[];
   /** 用户自定义标题原值；null 表示未重命名。 */
   custom_title?: string | null;
   /** 置顶标记；false 表示未置顶。 */
   pinned?: boolean;
   /** 材料出处元数据；缺失（旧档案）按保守策略处理。 */
-  provenance?: MaterialProvenance[];
-  /** 按需补读授权状态；null / 缺失表示未授权。 */
-  on_demand_reading_grant?: OnDemandReadingGrant | null;
-  /** 按需补读读取出处（最小元数据）；缺失表示旧档案（视为无补读记录）。 */
-  on_demand_reading_provenance?: OnDemandReadingProvenance[] | null;
+  provenance?: string[] | null;
+  provenance_has_revoked: boolean;
+  on_demand_document_ids: string[];
+  references_incomplete: boolean;
   /**
    * 前端派生的材料受限标记（不落盘）：为 true 时列表等显示层必须对关注文档标题脱敏。
    * 后端返回的摘要不带该字段。
@@ -258,6 +251,52 @@ export async function conversationList(
   return call<ConversationListResult>("conversation_list", { projectPath });
 }
 
+/** 与后端 meta 同构的列表投影；保存与撤销共用，不保留轮次全文。 */
+export function deriveConversationSummary(record: ConversationRecord): ConversationSummary {
+  return {
+    conversation_id: record.conversation_id,
+    title: record.title?.trim() || deriveConversationTitle(record.first_round_material, record.created_at),
+    custom_title: record.title?.trim() || null,
+    pinned: record.pinned ?? false,
+    created_at: record.created_at,
+    updated_at: record.updated_at,
+    last_status: record.turns[record.turns.length - 1]?.status ?? "pending",
+    focus_document_id: record.focus_document_id,
+    focus_document_title: record.focus_document_title,
+    provenance: record.provenance == null ? null : [...new Set(record.provenance.map((p) => p.document_id))],
+    provenance_has_revoked: record.provenance?.some((p) => p.material_type === "revoked") ?? false,
+    on_demand_document_ids: [...new Set(record.on_demand_reading_provenance?.map((p) => p.document_id) ?? [])],
+    references_incomplete: false,
+  };
+}
+
+export function conversationRead(
+  projectPath: string,
+  conversationId: string,
+  call: ConversationInvokeFn = tauriInvoke,
+): Promise<ConversationRecord> {
+  return call<ConversationRecord>("conversation_read", { projectPath, conversationId });
+}
+
+export function conversationUpdateMeta(
+  projectPath: string,
+  conversationId: string,
+  update: { title?: string; pinned?: boolean },
+  call: ConversationInvokeFn = tauriInvoke,
+): Promise<void> {
+  const key = conversationKey(projectPath, conversationId);
+  if (deletedConversations.has(key)) return Promise.resolve();
+  return enqueueArchiveOperation(key, () => call<void>("conversation_update_meta", { projectPath, conversationId, ...update }));
+}
+
+export function latchConversationRestrictions(
+  projectPath: string,
+  documentId: string,
+  call: ConversationInvokeFn = tauriInvoke,
+): Promise<string[]> {
+  return call<string[]>("latch_conversation_restrictions", { projectPath, documentId });
+}
+
 /**
  * 把一次档案写操作排入该讨论的串行链：链空闲时立即发起（与旧行为一致，首笔
  * 保存的 invoke 同步发出）；链忙时等前一环完成后按序发起。前一环的失败不阻断
@@ -310,8 +349,7 @@ export function conversationDelete(
 }
 
 /**
- * 撤销删除：清除前端的「已删除」守卫与后端的删除墓碑，使该讨论可被再次保存。
- * 调用后需重新 `conversationSave` 把内存副本写回档案。仅用于删除撤销路径。
+ * 撤销软删除：从回收区恢复成功后才清除前端守卫。无需内存全文或重新保存。
  */
 export async function conversationRestore(
   projectPath: string,
@@ -326,8 +364,8 @@ export async function conversationRestore(
       // 链上失败不阻断恢复。
     });
   }
-  deletedConversations.delete(key);
   await call("conversation_restore", { projectPath, conversationId });
+  deletedConversations.delete(key);
 }
 
 // ========== 按需补读授权（add-agent-on-demand-reading 任务 7；最小命令面） ==========

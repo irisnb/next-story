@@ -20,4 +20,4 @@
 - [x] 4.2 既有测试回归：相关测试文件的同步桩继续通过；`agent-on-demand-reading` 夹具的 confirm 桩由独立 `window` 对象改为 `globalThis.confirm`（统一入口读取位置），如实修复后全量通过
 - [x] 4.3 `npm run check` 全绿（前端 1134 / 可靠性 120 / 驱动 13 / 离线验证 78 / 构建 / Rust）
 - [x] 4.4 `verification/validation.md`：离线证据与如实边界；确认框真机可见性复核并入随后统一真机测试轮，不在本 change 冒充已验证
-- [ ] 4.5 归档前核对：规格 delta 完整；归档并核对报告/登记处（存储验证 C 项标记「已由 fix-native-dialog-prompts 修复」，真机复核待统一真机轮）
+- [x] 4.5 归档前核对：规格 delta 完整；归档并核对报告/登记处（存储验证 C 项标记「已由 fix-native-dialog-prompts 修复」，真机复核待统一真机轮）

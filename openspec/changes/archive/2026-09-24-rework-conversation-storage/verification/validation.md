@@ -45,6 +45,8 @@
 - **机理（源码级定位）**：`tauri-plugin-dialog 2.7.1` 向 WebView 注入 `init-iife.js`，把 `window.confirm` 覆写为**异步**实现（返回 Promise，调 `plugin:dialog|confirm`）、`window.alert` 覆写为调 `plugin:dialog|message`；而 `src-tauri/capabilities/default.json` 仅授权 `dialog:allow-open` / `dialog:allow-save`，**缺 `dialog:allow-confirm` / `dialog:allow-message`** → 命令被 ACL 拒绝（控制台未处理拒绝：`Command plugin:dialog|confirm not allowed by ACL` 实测捕获 2 条）；调用方（`file-management.ts:265`、`editor.ts:46-48`）按同步布尔使用 → `!Promise` 恒为假 → 守卫被跳过。引入时间不晚于 2026-08-25（Word 导出变更带入插件），与本次改造无关。
 - **建议**：单独立项——补齐 ACL 授权并把调用点改为 `await` 语义（或改走插件导出的 `confirm` API），恢复各确认路径并纳入真机验证。
 
+> **2026-09-26 更新**：已由 `openspec/changes/archive/2026-09-26-fix-native-dialog-prompts/` 修复（capabilities 补 `dialog:allow-confirm` / `dialog:allow-message`；新增统一异步语义入口 `src/app-dialog.ts` 并改造全部确认与提示调用点；离线回归与全量门禁通过）。真机可见性复核并入统一真机测试轮。
+
 ## 四、边界与未验事项
 
 - 未发起任何真实模型生成（无 AI 请求、无网络/密钥依赖）；补读授权流、生成轮次保存等 AI 路径不在本轮范围。

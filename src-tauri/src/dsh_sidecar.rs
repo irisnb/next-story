@@ -1,13 +1,15 @@
-//! DSH headless adapter：DSH 版本相关细节的唯一边界。
+//! DSH sidecar 路径解析与旧一次性 headless 适配器。
 //!
-//! 产品层（[`crate::llm_config`]）只通过 [`generate_via_dsh`] 与 DSH 交互，
-//! 不感知 `node` 路径、`bin.js` 入口、patch 生成、环境变量注入、退出码或
-//! stderr 关键词。这些全部关在本模块里，升级 DSH 只改这里。
+//! 两条路径分开维护：
+//! - 常驻驱动是生产主路径，由 [`crate::dsh_driver`] 管理，入口为
+//!   `sidecar/driver/driver.mjs`；本模块为其解析 Node 与驱动的本地路径。
+//! - [`generate_via_dsh`] 保留旧一次性路径，使用 DSH CLI 的 `bin.js`；
+//!   常驻链路不使用该入口，也不经过下述一次性任务与临时 patch 流程。
 //!
-//! 一次性任务模型：`node <bin.js> --profile headless --patch <临时patch> <task>`，
+//! 旧一次性任务：`node <bin.js> --profile headless --patch <临时patch> <task>`，
 //! 退出码 0 = 成功（stdout 为最终答案），非 0 = 失败（stderr 为错误）。
 //!
-//! 注入机制（每次 spawn 临时生成，不持久化）：
+//! 旧一次性路径的注入机制（每次 spawn 临时生成，不持久化）：
 //! - 模型名 → 临时 patch 覆盖 `agent-default-model` 行（DSH 无模型名 CLI/env 通道）。
 //! - API 地址 → 临时 patch 覆盖 `llm-deepseek` 行的 `baseURL`。
 //! - API Key → `DEEPSEEK_API_KEY` 环境变量（DSH 官方 per-run override，env 优先）。
@@ -75,6 +77,7 @@ pub fn build_runtime_patch(model: &str, api_base_url: &str) -> String {
 /// 若资源目录下没有 sidecar（裸 exe 直接运行）则回退到开发目录
 /// （`CARGO_MANIFEST_DIR/../sidecar`）。Node 运行时优先用 vendored 的
 /// `sidecar/node-runtime/<node>`，不存在时回退到系统 PATH 的 `node`。
+/// 发布产物由构建前资源校验（`package:check`）保证不依赖 PATH，回退仅服务开发链路。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；传 `None` 表示沿用 DSH 默认 home（仅测试用）。
 pub fn resolve_paths(
@@ -111,6 +114,7 @@ pub fn resolve_paths(
     let node_bin = if vendored_node.exists() {
         vendored_node
     } else {
+        // 发布产物由构建前资源校验（package:check）保证不依赖 PATH；此回退仅服务开发链路。
         PathBuf::from("node")
     };
 

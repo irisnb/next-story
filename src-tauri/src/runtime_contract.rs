@@ -2,34 +2,34 @@
 //!
 //! 产品内部类型，与前端 `GenerateAiRequest` / `GenerateAiResult` 契约解耦：
 //! 前端契约保持稳定；本模块定义「宿主如何向 AI 核心提交任务、声明能力、
-//! 收取结果」。首版只实现 one-shot 文本生成（含追问），但为流式、工具调用、
-//! 多 Agent、取消、能力发现等未来能力预留类型扩展位，不把核心压成 `String -> String`。
+//! 收取结果」。文本生成、常驻会话的流式输出与取消、按需补读的工具调用
+//! 已实现并由能力网关授权；多 Agent 仍为未来扩展位，不把核心压成 `String -> String`。
 
 use serde::{Deserialize, Serialize};
 
 use crate::llm_config::GenerateAiError;
 
-/// AI 核心可能具备的能力。首版只授予 [`CoreCapability::TextGeneration`]，
-/// 其余为未来扩展位，当前由能力网关拒绝。
+/// AI 核心能力。文本生成、流式输出、取消与工具调用已实现并由能力网关放行；
+/// 工具调用限于受控只读补读，多 Agent 仍为未来扩展位，当前由能力网关拒绝。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoreCapability {
-    /// 一次非流式文本生成（含首次召唤与临时追问）。
+    /// 文本生成（已实现并授权，支持常驻会话的首轮与追问）。
     TextGeneration,
-    /// 流式输出（未来扩展位）。
+    /// 流式输出（随常驻会话实现并授权）。
     Streaming,
-    /// 工具调用（未来扩展位）。
+    /// 工具调用（随按需补读实现并授权，限于受控只读工具）。
     ToolCall,
     /// 多 Agent / 子 Agent（未来扩展位）。
     MultiAgent,
-    /// 任务取消（未来扩展位）。
+    /// 任务取消（随常驻会话实现并授权）。
     Cancellation,
 }
 
 /// 提交给 AI 核心的一次任务。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeTask {
-    /// 任务标识，用于日志、诊断与未来的事件/取消关联。
+    /// 任务标识，用于日志、诊断与事件/取消关联。
     pub id: String,
     /// 本任务申请的能力。
     pub capability: CoreCapability,
@@ -56,7 +56,7 @@ pub enum RuntimeOutcome {
     Completed { content: String },
     /// 失败，携带稳定错误。
     Failed { error: GenerateAiError },
-    /// 被取消（未来扩展位，首版不产出）。
+    /// 被取消（常驻会话的取消路径已实现）。
     Cancelled,
 }
 

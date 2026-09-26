@@ -424,6 +424,40 @@ test("visibility usage query does not confirm or write after unload", async () =
   }
 });
 
+for (const decision of [false, true, "reject", "unload", "new-operation"] as const) {
+  test(`visibility change awaits confirmation and retains ownership: ${decision}`, async () => {
+    const confirmation = deferred<boolean>();
+    const previousConfirm = globalThis.confirm;
+    let prompted = false;
+    let writes = 0;
+    const h = makeHarness(VISIBILITY_TREE, {
+      conversationsUsingDocument: async () => { throw new Error("查询失败，保守确认"); },
+      setDocumentAiVisibility: async () => { writes += 1; },
+    });
+    try {
+      globalThis.confirm = ((message: string) => {
+        assert.match(message, /无法确认有哪些讨论使用过这篇文档/);
+        prompted = true;
+        return confirmation.promise;
+      }) as unknown as typeof globalThis.confirm;
+      collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看")[0]!.click();
+      await settle();
+      assert.equal(prompted, true);
+      assert.equal(writes, 0, "等待用户决定时不写入");
+
+      if (decision === "unload") h.controller.unload();
+      if (decision === "new-operation") h.elements.get("fm-new-document")!.click();
+      if (decision === "reject") confirmation.reject(new Error("授权被拒"));
+      else confirmation.resolve(decision !== false);
+      await settle();
+      assert.equal(writes, decision === true ? 1 : 0);
+    } finally {
+      globalThis.confirm = previousConfirm;
+      h.restore();
+    }
+  });
+}
+
 test("refresh 2 wins when refresh 1 returns later", async () => {
   const first = deferred<ContentTree>();
   const second = deferred<ContentTree>();

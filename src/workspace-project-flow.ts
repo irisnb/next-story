@@ -1,4 +1,5 @@
 import type { AppDom } from "./dom.ts";
+import { showMessage } from "./app-dialog.ts";
 import type { EditorController, WorkspaceTransition } from "./editor.ts";
 import type { FileManagementController } from "./file-management.ts";
 import { setupProjectFlow } from "./new-project-form.ts";
@@ -85,7 +86,7 @@ export function setupWorkspaceProjectFlow(dom: AppDom, options: {
       return { status: "committed" } as const;
     } catch (error) {
       if (!owner.isCurrent() || destroyed) return { status: "stale" } as const;
-      alert(`未能返回欢迎页：${String(error)}`);
+      showMessage(`未能返回欢迎页：${String(error)}`);
       return { status: "failed", error } as const;
     } finally { welcomeBusy = false; owner.release(); }
   }

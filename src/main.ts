@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { showMessage } from "./app-dialog.ts";
 
 import {
   CloseCoordinator,
@@ -115,7 +116,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const appWindow = getCurrentWindow();
   const reportCloseError = (error: unknown): void => {
     console.error("关闭窗口失败:", error);
-    alert(`关闭窗口失败：${String(error)}`);
+    showMessage(`关闭窗口失败：${String(error)}`);
   };
   const closeGuard = composeCloseGuards([
     { isDirty: editor.hasUnsavedChanges, guardLeave: editor.guardLeave },

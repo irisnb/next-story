@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 import type { AppDom } from "./dom.ts";
+import { showMessage } from "./app-dialog.ts";
 import { linkHrefAt, type LinkActions } from "./editor-link-actions.ts";
 
 export interface ContextMenuEditor {
@@ -51,8 +52,8 @@ export function createEditorContextMenu(deps: {
   }
   bind(deps.dom.editorTextarea, "contextmenu", open);
   bind(deps.dom.btnCtxCut, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); void e.cutSelection(); } });
-  bind(deps.dom.btnCtxCopy, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); void e.copySelection().then(ok => { if (!ok) alert("复制失败，请使用 Ctrl+C。"); }); } });
-  bind(deps.dom.btnCtxPaste, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); if (!document.execCommand("paste")) alert("无法直接读取剪贴板内容，请使用 Ctrl+V 粘贴。"); } });
+  bind(deps.dom.btnCtxCopy, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); void e.copySelection().then(ok => { if (!ok) showMessage("复制失败，请使用 Ctrl+C。"); }); } });
+  bind(deps.dom.btnCtxPaste, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); if (!document.execCommand("paste")) showMessage("无法直接读取剪贴板内容，请使用 Ctrl+V 粘贴。"); } });
   bind(deps.dom.btnCtxPastePlain, "click", () => { close(); const e = deps.getEditor(); if (e) { e.focus(); void e.pastePlainText(); } });
   bind(deps.dom.btnCtxLinkCreate, "click", () => { close(); deps.linkActions.createLinkHref(); });
   bind(deps.dom.btnCtxLinkOpen, "click", () => { const href = contextHref; close(); if (href) deps.linkActions.openLinkHref(href); });

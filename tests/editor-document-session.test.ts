@@ -77,6 +77,39 @@ test("session applies deleted document fallback to empty state", async () => {
   assert.deepEqual(current.tree.root_children, []);
 });
 
+for (const decision of [false, true]) {
+  test(`session awaits asynchronous discard decision: ${decision}`, async () => {
+    const original = project();
+    let current = original;
+    let documentId: string | null = "doc-a";
+    let disposed = false;
+    let resolve!: (value: boolean) => void;
+    const confirmation = new Promise<boolean>((res) => { resolve = res; });
+    const session = createEditorDocumentSession({
+      dom: { editorTextarea: textarea() }, readDocument: async () => "",
+      createEditor: editorStub,
+      getProject: () => current, getDocumentId: () => documentId, setProject: (value) => { current = value!; },
+      setDocumentId: (value) => { documentId = value; }, setEditor: () => {},
+      disposeEditor: () => { disposed = true; }, setBaseline: () => {}, clearBaseline: () => {},
+      onEdit: () => () => {}, onSelectionChange: () => () => {},
+      onDocumentLoaded: () => {}, onProjectLoaded: () => {}, beforeLoadProject: () => {},
+      resolveDocumentId: () => "doc-a", onTreeRefreshed: () => {},
+      isDocumentInTree: () => false, firstDocument: () => null, hasUnsavedChanges: () => true,
+      confirmDiscard: () => confirmation, clearRememberedDocument: () => {},
+    });
+    const applying = session.applyTree({ root_children: [], nodes: {}, recycle_bin: [] });
+    await new Promise<void>((res) => setImmediate(res));
+    assert.equal(current, original);
+    assert.equal(documentId, "doc-a");
+    assert.equal(disposed, false);
+    resolve(decision);
+    assert.equal((await applying).status, decision ? "committed" : "cancelled");
+    assert.equal(disposed, decision);
+    assert.equal(documentId, decision ? null : "doc-a");
+    if (!decision) assert.equal(current, original);
+  });
+}
+
 test("applyTree with the same document refreshes the tree without a full load", () => {
   let current = project();
   let documentId: string | null = "doc-a";

@@ -4,6 +4,7 @@
 import type { JSONContent } from "@tiptap/core";
 
 import { nodeSize } from "./shared-document-models.ts";
+import { showMessage } from "./app-dialog.ts";
 import type { FormatCommand } from "./format-commands.ts";
 
 /** 与 ProseMirror 一致的节点位置大小（和 format-commands 内部 nodeSize 同一位置模型）。 */
@@ -64,9 +65,9 @@ export function createLinkActions(deps: LinkActionsDeps): LinkActions {
   function openLinkHref(href: string): void {
     const lower = href.toLowerCase();
     if (lower.startsWith("http://") || lower.startsWith("https://")) {
-      void deps.openUrl(href).catch(() => alert("无法打开链接，请检查系统默认浏览器设置。"));
+      void deps.openUrl(href).catch(() => showMessage("无法打开链接，请检查系统默认浏览器设置。"));
     } else {
-      alert("此链接不是 http/https 地址，无法打开。");
+      showMessage("此链接不是 http/https 地址，无法打开。");
     }
   }
 

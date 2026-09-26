@@ -950,6 +950,42 @@ test("editor shortcuts still run when the editor surface has focus", async () =>
 
 // ---- 删除当前文档的确认边界 ----
 
+for (const decision of [false, true, "reject"] as const) {
+  test(`applyTree awaits asynchronous deletion confirmation: ${decision}`, async () => {
+    const fixture = editorFixture({ "doc-1": notebookJson("正文") });
+    const previousConfirm = globalThis.confirm;
+    let resolve!: (value: boolean) => void;
+    let reject!: (reason: Error) => void;
+    const confirmation = new Promise<boolean>((res, rej) => { resolve = res; reject = rej; });
+    let prompted = false;
+    try {
+      const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+      await fixture.editor.showProject(projectState("作品", tree));
+      fixture.editors[0]?.edit(paragraphDoc("未保存修改"));
+      globalThis.confirm = (() => { prompted = true; return confirmation; }) as unknown as typeof globalThis.confirm;
+      const applying = fixture.editor.applyTree(treeFrom([]));
+      await flushUntil(() => prompted);
+      assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
+      assert.equal(fixture.editors[0]?.destroyed, false);
+      assert.equal(fixture.editor.getTree(), tree);
+
+      if (decision === "reject") reject(new Error("授权被拒"));
+      else resolve(decision);
+      assert.equal((await applying).status, decision === true ? "committed" : "cancelled");
+      assert.equal(fixture.editor.getCurrentDocumentId(), decision === true ? null : "doc-1");
+      assert.equal(fixture.editors[0]?.destroyed, decision === true);
+      assert.equal(fixture.editor.hasUnsavedChanges(), decision !== true);
+      if (decision !== true) {
+        assert.equal(fixture.editor.getTree(), tree);
+        assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("未保存修改"));
+      }
+    } finally {
+      globalThis.confirm = previousConfirm;
+      fixture.ui.restore();
+    }
+  });
+}
+
 test("applyTree keeps the dirty editor when the user cancels deletion", async () => {
   const fixture = editorFixture({ "doc-1": notebookJson("正文") });
   try {

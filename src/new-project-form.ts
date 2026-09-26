@@ -1,4 +1,5 @@
 import type { AppDom } from "./dom.ts";
+import { showMessage } from "./app-dialog.ts";
 import {
   createProject,
   loadRecentWorks,
@@ -239,7 +240,7 @@ export function setupProjectFlow(dom: AppDom, options: ProjectFlowOptions): Proj
       return { status };
     } catch (error) {
       if (!isLatest(operation) || options.isCurrent?.() === false) return { status: "stale" };
-      alert(`打开作品失败：${String(error)}`);
+      showMessage(`打开作品失败：${String(error)}`);
       return { status: "failed", error };
     } finally {
       if (isLatest(operation)) {

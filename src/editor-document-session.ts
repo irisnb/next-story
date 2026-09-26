@@ -36,7 +36,7 @@ export interface EditorDocumentSessionOptions {
   isDocumentInTree: (tree: ContentTree, documentId: string) => boolean;
   firstDocument: (tree: ContentTree) => { id: string } | null;
   hasUnsavedChanges: () => boolean;
-  confirmDiscard: () => boolean;
+  confirmDiscard: () => boolean | Promise<boolean>;
   clearRememberedDocument: (projectPath: string) => void;
 }
 
@@ -146,7 +146,7 @@ export function createEditorDocumentSession(options: EditorDocumentSessionOption
     const currentDocumentId = options.getDocumentId();
     if (!project) return { status: "stale" };
     if (currentDocumentId === null || !options.isDocumentInTree(tree, currentDocumentId)) {
-      if (options.hasUnsavedChanges() && !options.confirmDiscard()) return { status: "cancelled" };
+      if (options.hasUnsavedChanges() && !(await options.confirmDiscard())) return { status: "cancelled" };
       const first = options.firstDocument(tree);
       const candidate = await prepareDocument(first?.id ?? null, tree);
       if (candidate.status !== "prepared") return candidate;

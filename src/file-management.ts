@@ -1,4 +1,5 @@
 import type { AppDom } from "./dom.ts";
+import { confirmDialog } from "./app-dialog.ts";
 import {
   moveTargets,
   type MoveTarget,
@@ -262,7 +263,7 @@ export function setupFileManagement(
           usage === null
             ? "无法确认有哪些讨论使用过这篇文档。关闭后相关讨论将永久只读、旧出处脱敏。\n确定要关闭吗？"
             : visibilityImpactMessage(node?.name ?? "这篇文档", usage);
-        if (!owns(identity, operation) || !window.confirm(message) || !owns(identity, operation)) return;
+        if (!owns(identity, operation) || !(await confirmDialog(message)) || !owns(identity, operation)) return;
       }
     }
     if (!owns(identity, operation) || workspacePaused) return;

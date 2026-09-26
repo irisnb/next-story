@@ -780,18 +780,13 @@ function visibilityHarness(options: {
     tree: VISIBILITY_TREE,
   });
 
-  const windowWithConfirm = {
-    ...(globalThis.window ?? {}),
-    confirm: (message?: unknown) => {
-      confirmMessages.push(String(message));
-      return options.confirmResult;
-    },
+  // 统一对话框入口读取 globalThis.confirm（app-dialog.ts）；桩必须打在同一对象上，
+  // 否则 window 与 globalThis 分离的测试环境会绕过桩。
+  const previousConfirm = globalThis.confirm;
+  globalThis.confirm = (message?: unknown) => {
+    confirmMessages.push(String(message));
+    return options.confirmResult;
   };
-  const previousWindow = globalThis.window;
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: windowWithConfirm,
-  });
 
   return {
     calls,
@@ -804,11 +799,7 @@ function visibilityHarness(options: {
       for (let i = 0; i < 8; i += 1) await Promise.resolve();
     },
     restore() {
-      if (previousWindow !== undefined) {
-        Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
-      } else {
-        Reflect.deleteProperty(globalThis, "window");
-      }
+      globalThis.confirm = previousConfirm;
       globalThis.document = previousDocument;
     },
   };

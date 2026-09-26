@@ -18,6 +18,7 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 
 import type { FormatCommand } from "./format-commands.ts";
+import { showMessage } from "./app-dialog.ts";
 import { FontSize, ParagraphStyle } from "./editor-extensions.ts";
 import { fixSplitOrderedListStart } from "./list-numbering.ts";
 import { decidePasteAction, parseHtmlToBlocks, plainTextToDocument } from "./controlled-paste.ts";
@@ -493,7 +494,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
 
     // 纯图片粘贴（截图后 Ctrl+V）：既无文字也无 HTML，只有图片文件
     if (hasImageFile && plain.trim() === "" && html.trim() === "") {
-      alert("无法将图片加入文档");
+      showMessage("无法将图片加入文档");
       return true;
     }
 
@@ -504,11 +505,11 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
 
     if (action.kind === "insert") {
       this.editor.commands.insertContent(action.document.content);
-      if (parsed.hasImage || hasImageFile) alert("图片未被加入");
+      if (parsed.hasImage || hasImageFile) showMessage("图片未被加入");
     } else if (action.kind === "reject") {
-      alert(action.reason);
+      showMessage(action.reason);
     } else {
-      alert("无法将图片加入文档");
+      showMessage("无法将图片加入文档");
     }
     return true;
   }
@@ -517,7 +518,7 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
     if (!this.canEdit()) return true;
     const files = Array.from(event.dataTransfer?.files ?? []);
     if (files.some((file) => file.type.startsWith("image/"))) {
-      alert("无法将图片加入文档");
+      showMessage("无法将图片加入文档");
       return true;
     }
     return false;

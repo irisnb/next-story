@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
+import { confirmDialog, showMessage } from "./app-dialog.ts";
 import { createEditorFind, type EditorFind } from "./editor-find.ts";
 import { createEditorDocumentView } from "./editor-document-view.ts";
 import { createEditorDocumentSession } from "./editor-document-session.ts";
@@ -43,9 +44,8 @@ import {
 
 const EMPTY_STATE_TEXT = "这里还没有文档，去文件管理新建一篇吧";
 
-function confirmDiscardingCurrentDocument(): boolean {
-  if (typeof globalThis.confirm !== "function") return true;
-  return globalThis.confirm("当前文档有未保存修改。删除后这些修改将丢失，确定继续吗？");
+async function confirmDiscardingCurrentDocument(): Promise<boolean> {
+  return await confirmDialog("当前文档有未保存修改。删除后这些修改将丢失，确定继续吗？");
 }
 
 export interface EditorController {
@@ -454,7 +454,7 @@ export function setupEditor(
       if (!current || !ownsTransition(token)) return;
       const snapshot = canonicalNotebookJson(current.getDocument());
       if (!await save()) {
-        if (ownsTransition(token)) alert("保存失败，未切换。当前内容已保留。");
+        if (ownsTransition(token)) showMessage("保存失败，未切换。当前内容已保留。");
         return;
       }
       if (!ownsTransition(token) || current !== currentEditor()) return;
@@ -464,7 +464,7 @@ export function setupEditor(
       }
       if (persistence.hasUnsavedChanges()) {
         if (!await save()) {
-          if (ownsTransition(token)) alert("保存失败，未切换。当前内容已保留。");
+          if (ownsTransition(token)) showMessage("保存失败，未切换。当前内容已保留。");
           return;
         }
       }
@@ -492,7 +492,7 @@ export function setupEditor(
         transition!.committed = true;
       } else if (result.status === "failed") throw result.error;
     } catch (error) {
-      if (ownsTransition(token)) alert(`未能打开《${target}》：${error instanceof Error ? error.message : String(error)}。仍保留当前文档，可继续编辑。`);
+      if (ownsTransition(token)) showMessage(`未能打开《${target}》：${error instanceof Error ? error.message : String(error)}。仍保留当前文档，可继续编辑。`);
     } finally {
       releaseTransition(token);
     }
@@ -618,7 +618,7 @@ export function setupEditor(
       try {
         const protectedEditor = await protectCurrentEditor(token, target);
         if (protectedEditor !== currentEditor() || !ownsTransition(token) || !isCurrent()) return { status: "stale" };
-        if (persistence.hasUnsavedChanges() && !confirmDiscardingCurrentDocument()) return { status: "cancelled" };
+        if (persistence.hasUnsavedChanges() && !(await confirmDiscardingCurrentDocument())) return { status: "cancelled" };
         if (!isCurrent()) return { status: "stale" };
         const snapshot = protectedEditor ? canonicalNotebookJson(protectedEditor.getDocument()) : null;
         setTransitionStatus(`正在打开《${target}》，暂时不能编辑，请稍候。`);
@@ -644,7 +644,7 @@ export function setupEditor(
       } catch (error) {
         if (!ownsTransition(token) || !isCurrent()) return { status: "stale" };
         const failure = error instanceof Error ? error : new Error(String(error));
-        if (!acceptance) alert(`未能打开《${target}》：${failure.message}。仍保留当前文档，可继续编辑。`);
+        if (!acceptance) showMessage(`未能打开《${target}》：${failure.message}。仍保留当前文档，可继续编辑。`);
         return { status: "failed", error: failure };
       } finally { releaseTransition(token); }
   }

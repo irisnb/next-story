@@ -1,4 +1,5 @@
 import type { AppDom } from "./dom.ts";
+import { showMessage } from "./app-dialog.ts";
 import { exportProjectToWord, type ExportWordResult } from "./project-api.ts";
 
 export interface ExportWordServices {
@@ -37,7 +38,7 @@ export function setupExportWord(
     if (projectPath === null || projectName === null) return;
 
     if (options.hasUnsavedChanges()) {
-      alert("当前有尚未保存的修改。导出使用后端已保存版本，不包含未保存内容。");
+      showMessage("当前有尚未保存的修改。导出使用后端已保存版本，不包含未保存内容。");
     }
 
     exporting = true;
@@ -51,12 +52,12 @@ export function setupExportWord(
         return;
       }
       if (result.ok && result.path) {
-        alert(`导出成功：${result.path}`);
+        showMessage(`导出成功：${result.path}`);
       } else {
-        alert(`导出失败：${result.message ?? "未知错误"}`);
+        showMessage(`导出失败：${result.message ?? "未知错误"}`);
       }
     } catch (error) {
-      alert(`导出失败：${String(error)}`);
+      showMessage(`导出失败：${String(error)}`);
     } finally {
       exporting = false;
       dom.btnExportWord.disabled = false;

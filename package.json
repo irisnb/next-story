@@ -16,8 +16,11 @@
     "test:reliability": "node --test sidecar/reliability/tests/*.test.mjs",
     "test:driver": "node --test sidecar/driver/tests/*.test.mjs",
     "test:validation": "node --test sidecar/validation/tests/*.test.mjs",
+    "fmt:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --check",
+    "clippy:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run typecheck && npm run lint && npm run test:frontend && npm run test:reliability && npm run test:driver && npm run build && npm run test:rust"
+    "package:check": "node scripts/check-package-resources.mjs",
+    "check": "npm run typecheck && npm run lint && npm run test:frontend && npm run test:reliability && npm run test:driver && npm run test:validation && npm run build && npm run fmt:rust && npm run clippy:rust && npm run test:rust"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.11.1",

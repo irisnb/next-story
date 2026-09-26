@@ -23,7 +23,8 @@ jobs:
       # tauri.conf.json 把 ../sidecar/node-runtime 声明为打包资源，Tauri 构建脚本
       # 在任何 cargo 编译前都校验该路径存在。该运行时有意不入库（.gitignore），
       # 由 scripts/vendor-node.ps1 在打包机上按需下载（仅支持 Windows）。
-      # CI 只跑测试与检查、不打包安装包，用占位目录满足存在性校验即可。
+      # CI 只跑测试与检查、不打包安装包，用占位目录满足 cargo 的存在性校验即可；
+      # 不伪造 node.exe，真实打包仍须通过 beforeBuildCommand 中的 package:check。
       - name: Placeholder for vendored node runtime
         run: |
           mkdir -p sidecar/node-runtime
@@ -51,27 +52,10 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Frontend tests
-        run: npm run test:frontend
-
-      # generate_context! 需要前端产物，必须在任何 cargo 编译前完成。
-      - name: Build frontend
-        run: npm run build
-
-      - name: Rust format check
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-
-      - name: Rust clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      # 本地与双平台 CI 共用唯一门禁集合，科目与顺序只在 package.json 维护。
+      # check 先构建前端再编译 Rust，满足 generate_context! 对前端产物的要求。
+      - name: Run unified checks
+        run: npm run check
 
   windows:
     runs-on: windows-latest
@@ -86,7 +70,8 @@ jobs:
             package-lock.json
             sidecar/package-lock.json
 
-      # 同 Linux 作业：node-runtime 占位 + 按锁文件安装 sidecar 依赖。
+      # 同 Linux 作业：占位目录仅满足 cargo 资源检查，不伪造 node.exe；
+      # CI 不打包，真实打包由 package:check 检查完整资源。sidecar 按锁文件安装。
       - name: Placeholder for vendored node runtime
         run: |
           New-Item -ItemType Directory -Force sidecar/node-runtime | Out-Null
@@ -107,21 +92,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Frontend tests
-        run: npm run test:frontend
-
-      # generate_context! 需要前端产物，必须在任何 cargo 编译前完成。
-      - name: Build frontend
-        run: npm run build
-
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
-      - name: Rust check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      # 本地与双平台 CI 共用唯一门禁集合，科目与顺序只在 package.json 维护。
+      # check 先构建前端再编译 Rust，满足 generate_context! 对前端产物的要求。
+      - name: Run unified checks
+        run: npm run check

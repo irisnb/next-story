@@ -21,4 +21,4 @@
 
 - [x] 4.1 门禁全绿：`npm run check`、`npm run test:validation`（含新增前端测试）
 - [x] 4.2 `verification/validation.md`：记录 F04/F07/F09 转正测试证据、门禁结果与如实边界（应用级真机场景是否执行；真实模型链路不在范围）
-- [ ] 4.3 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 4 行为 ✅（附归档 change 名与日期）；确认 Change 5 边界未被本 change 提前覆盖
+- [x] 4.3 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 4 行为 ✅（附归档 change 名与日期）；确认 Change 5 边界未被本 change 提前覆盖

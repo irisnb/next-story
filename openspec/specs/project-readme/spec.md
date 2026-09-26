@@ -34,9 +34,10 @@
 - **AND** README 可以将"讨论保存到作品文件夹、重启后按作品提供会话列表并可重开"写为已实现
 - **AND** README 可以将"文档级 AI 可见性：可单独设置文档是否允许 AI 查看，受控读取统一校验作品、文档、版本与快照身份"写为已实现
 - **AND** README 可以将"常规讨论自动现场材料：首轮与追问自动附带关注文档现场（已保存正文或经校验的未保存快照）、允许目录投影与跨文档字面检索片段，材料出处轻量可查看"写为已实现
+- **AND** README 可以将"按需补读：材料不足时模型发起授权请求，用户允许后围绕问题经受控只读工具补读，授权属于讨论、可随时关闭、跨重启保留"写为已实现
 - **AND** README 说明新召唤或新建对话开启新讨论并保留旧讨论，讨论不跨重启丢失
 - **AND** README 如实说明思维扩展已退场（经用户确认），及时召唤与选区浮动入口已恢复为正式功能
-- **AND** README 不得把附近文本、整本摘要、Agent 按需补读、语义或向量检索、AI 内容库、作品信息、自动摘要、多 provider 或多模型支持写成已实现
+- **AND** README 不得把附近文本、整本摘要、语义或向量检索、AI 内容库、作品信息、自动摘要、多 provider 或多模型支持写成已实现
 
 #### Scenario: README refers to future direction
 
@@ -86,10 +87,11 @@
 
 #### Scenario: Reader follows project lifecycle data
 
-- **WHEN** 读者查看新建、打开或手动保存作品的流程
+- **WHEN** 读者查看新建、打开、手动保存或切换文档的作品流程
 - **THEN** README 说明前端动作经 bridge 和对应 Tauri command 进入 Rust project domain
 - **AND** README 说明 project domain 负责校验并读写作品目录
 - **AND** README 说明处理结果返回界面
+- **AND** README 说明切换文档前会先保存当前文档；保存失败时保留当前内容并提示，不执行切换
 
 #### Scenario: Reader follows LLM configuration and test data
 
@@ -109,23 +111,29 @@
 - **AND** README 说明 AI 返回内容只显示在 AI 面板中，不能写回作品文档
 
 ### Requirement: README separates setup, terminating checks, and long-running development commands
-项目 README SHALL 说明经核对的开发前置条件和依赖安装步骤，并 MUST 区分会执行完并返回的命令与需要用户主动停止的开发命令。
+项目 README SHALL 说明经核对的开发前置条件和依赖安装步骤（含根目录与 sidecar 的依赖安装、打包所需内置 Node 运行时的准备方式与锁定版本），并 MUST 区分会执行完并返回的命令与需要用户主动停止的开发命令；README SHALL 说明标准检查命令 `npm run check` 覆盖的科目范围，并说明 CI 使用同一套门禁。
 
 #### Scenario: Reader prepares the development environment
 - **WHEN** 读者准备首次运行项目
-- **THEN** README 列出与当前 Tauri、前端和 Rust 项目一致的前置条件
-- **AND** README 给出当前仓库适用的依赖安装步骤
+- **THEN** README 列出与当前 Tauri、前端和 Rust 项目一致的前置条件，并明确 Node 的版本要求
+- **AND** README 给出当前仓库适用的依赖安装步骤（根目录与 `sidecar/` 各自安装依赖）
+- **AND** README 说明打包额外需要按脚本准备内置 Node 运行时（锁定版本、仅 Windows）
 
 #### Scenario: Reader runs a terminating command
 - **WHEN** 读者查看 `npm run check`、`npm run typecheck`、`npm run test:frontend`、`npm run build`、`npm run test:rust` 或 `npm run tauri:build`
 - **THEN** README 说明这些命令执行完成后会返回终端
-- **AND** README 简要说明各命令验证或生成什么
+- **AND** README 简要说明各命令验证或生成什么，并说明 `npm run check` 的完整科目与「CI 执行同一套」的关系
 
 #### Scenario: Reader runs a development command
 - **WHEN** 读者查看 `npm run dev` 或 `npm run tauri:dev`
 - **THEN** README 说明这些开发命令会持续运行且不自动返回
 - **AND** README 说明用户需要关闭窗口或按 `Ctrl+C` 停止
 - **AND** README 说明首次 Rust 编译可能需要较长时间，持续运行或暂时安静不代表卡死
+
+#### Scenario: Reader prepares an installer build
+- **WHEN** 读者准备构建 Windows 安装包
+- **THEN** README 说明先安装 sidecar 依赖并按脚本准备内置 Node 运行时
+- **AND** README 说明构建前的资源校验会在缺件时以中文错误中止，不产出缺少运行时的安装包
 
 ### Requirement: README provides a concise file index and document authority map
 项目 README SHALL 提供按职责组织的简明文件索引，并 MUST 准确说明项目宪法、已实现真相源、未来方向和变更历史各自的位置。

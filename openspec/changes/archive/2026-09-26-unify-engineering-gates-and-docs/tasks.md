@@ -26,4 +26,4 @@
 - [x] 4.2 新增 `tests/source-hygiene.test.ts`：递归扫描 `src/` 与 `tests/` 下全部 `.ts` 文件，断言不含真实 NUL 字节；失败输出文件路径与字节偏移
 - [x] 4.3 门禁全绿：`npm run check`（含新增科目）与 `npm run test:validation`
 - [x] 4.4 `verification/validation.md`：记录门禁结果、脚本干跑证据、文档校正清单与如实边界（不实际下载归档、不执行安装包真机验收——后者按用户安排在 Change 5 结束后的统一真机测试轮）
-- [ ] 4.5 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 5 行为 ✅（附归档 change 名与日期），并核对五次 change 全部完成、无遗留 ⬜
+- [x] 4.5 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 5 行为 ✅（附归档 change 名与日期），并核对五次 change 全部完成、无遗留 ⬜

@@ -47,6 +47,8 @@
 
 > **2026-09-26 更新**：已由 `openspec/changes/archive/2026-09-26-fix-native-dialog-prompts/` 修复（capabilities 补 `dialog:allow-confirm` / `dialog:allow-message`；新增统一异步语义入口 `src/app-dialog.ts` 并改造全部确认与提示调用点；离线回归与全量门禁通过）。真机可见性复核并入统一真机测试轮。
 
+> **2026-09-26 真机轮更正**：上述初版修复在安装版真机上被证不充分——插件注入的 `window.confirm` 覆写引用的是该版本**不存在**的 `plugin:dialog|confirm` 命令（`allow-confirm` 仅为 `allow-message` 的废弃别名），该通道永远不可用；其中 `dialog:allow-message` 授权保留有效。实际修复已由 `openspec/changes/archive/2026-09-26-fix-dialog-channel-and-window-badge/` 完成（启动时经官方 JS API 安装确认/提示实现），并经统一真机测试轮复验通过（取消/确认、锁存落盘、列表脱敏、重启保持均通过；见 `方向/统一真机验收-2026-09-26.md`）。
+
 ## 四、边界与未验事项
 
 - 未发起任何真实模型生成（无 AI 请求、无网络/密钥依赖）；补读授权流、生成轮次保存等 AI 路径不在本轮范围。

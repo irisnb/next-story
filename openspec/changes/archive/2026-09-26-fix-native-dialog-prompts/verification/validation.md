@@ -36,3 +36,5 @@
 - **未执行真机复核**：确认框/提示框在真实 WebView 中的可见性与取消/确认行为，并入随后统一真机测试轮；存储验证 C 项登记处同步标记「已修复，真机复核待统一轮」。
 - ACL 权限标识符已对照 `src-tauri/gen/schemas/desktop-schema.json` 与 `tauri-plugin-dialog-2.7.1` 权限清单核实存在。
 - 未改后端 Rust；未改确认/提示文案与用户流程。
+
+> **2026-09-26 真机轮后续**：本修复依赖的插件注入覆写通道在真机被证实不可用（插件 2.7.1 不注册 `plugin:dialog|confirm`；`allow-confirm` 为 `allow-message` 的废弃别名）。本 change 新增的 `dialog:allow-message` 授权保留有效；应用侧实际修复由 `openspec/changes/archive/2026-09-26-fix-dialog-channel-and-window-badge/` 完成并经真机复验通过。

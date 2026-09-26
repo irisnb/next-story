@@ -166,6 +166,7 @@ function materialIdentityOf(
 export class ResidentAiSessionTransport implements AiSessionTransport {
   private readonly deps: Required<ResidentSessionDependencies>;
   private readonly sessions: Map<string, string> = new Map();
+  private readonly startingAttempts: Map<string, { invalidated: boolean }> = new Map();
   private messageCounter = 0;
   private readonly currentStreams: Map<string, StreamTarget> = new Map();
   private readonly inFlightByConversation: Map<string, StreamTarget> = new Map();
@@ -198,12 +199,25 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     const existing = this.sessions.get(conversationId);
     if (existing !== undefined) return existing;
     const sessionId = this.deps.newId();
-    const result = await this.deps.startSession(sessionId);
-    if (!result.ok) {
-      throw new Error(result.error.message);
+    const attempt = { invalidated: false };
+    this.startingAttempts.set(conversationId, attempt);
+    try {
+      const result = await this.deps.startSession(sessionId);
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      if (attempt.invalidated) {
+        void this.deps.endSession(sessionId).catch(() => {});
+        throw new Error("请求已取消");
+      }
+      this.sessions.set(conversationId, sessionId);
+      return sessionId;
+    } finally {
+      // 迟到尝试只清理自己，不得删除同一讨论后续尝试的记录。
+      if (this.startingAttempts.get(conversationId) === attempt) {
+        this.startingAttempts.delete(conversationId);
+      }
     }
-    this.sessions.set(conversationId, sessionId);
-    return sessionId;
   }
 
   /** 记录一条在途流式目标（用于增量路由与取消）。 */
@@ -291,12 +305,18 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   /** 取消指定讨论的当前在途生成（幂等 fire-and-forget，失败静默）。 */
   cancelMessage(conversationId: string): void {
     const target = this.inFlightByConversation.get(conversationId);
-    if (target === undefined) return;
+    if (target === undefined) {
+      const attempt = this.startingAttempts.get(conversationId);
+      if (attempt !== undefined) attempt.invalidated = true;
+      return;
+    }
     void this.deps.cancelMessage(target.sessionId, target.messageId).catch(() => {});
   }
 
   /** 结束某个讨论的常驻会话（`ai_end_session` 幂等且 fire-and-forget）。 */
   endSession(conversationId: string): void {
+    const attempt = this.startingAttempts.get(conversationId);
+    if (attempt !== undefined) attempt.invalidated = true;
     const sessionId = this.sessions.get(conversationId);
     if (sessionId === undefined) return;
     this.sessions.delete(conversationId);
@@ -305,6 +325,9 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
 
   /** 结束全部讨论的常驻会话（切换作品 / 应用退出）。 */
   endAllSessions(): void {
+    for (const attempt of this.startingAttempts.values()) {
+      attempt.invalidated = true;
+    }
     for (const conversationId of [...this.sessions.keys()]) {
       this.endSession(conversationId);
     }
@@ -320,20 +343,31 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     origin: AiReplayOrigin,
   ): Promise<void> {
     const sessionId = this.deps.newId();
-    const startResult = await this.deps.startSession(sessionId);
-    if (!startResult.ok) throw new Error(startResult.error.message);
-
+    const attempt = { invalidated: false };
+    this.startingAttempts.set(conversationId, attempt);
     try {
-      const replayResult = await this.deps.replayHistory(sessionId, [...turns], origin);
-      if (!replayResult.ok) throw new Error(replayResult.error.message);
+      const startResult = await this.deps.startSession(sessionId);
+      if (!startResult.ok) throw new Error(startResult.error.message);
 
-      const doneResult = await this.deps.replayDone(sessionId);
-      if (!doneResult.ok) throw new Error(doneResult.error.message);
+      try {
+        if (attempt.invalidated) throw new Error("请求已取消");
+        const replayResult = await this.deps.replayHistory(sessionId, [...turns], origin);
+        if (attempt.invalidated) throw new Error("请求已取消");
+        if (!replayResult.ok) throw new Error(replayResult.error.message);
 
-      this.sessions.set(conversationId, sessionId);
-    } catch (error: unknown) {
-      void this.deps.endSession(sessionId).catch(() => {});
-      throw error;
+        const doneResult = await this.deps.replayDone(sessionId);
+        if (attempt.invalidated) throw new Error("请求已取消");
+        if (!doneResult.ok) throw new Error(doneResult.error.message);
+
+        this.sessions.set(conversationId, sessionId);
+      } catch (error: unknown) {
+        void this.deps.endSession(sessionId).catch(() => {});
+        throw error;
+      }
+    } finally {
+      if (this.startingAttempts.get(conversationId) === attempt) {
+        this.startingAttempts.delete(conversationId);
+      }
     }
   }
 

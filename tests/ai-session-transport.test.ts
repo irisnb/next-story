@@ -21,6 +21,7 @@ interface TransportHarness {
   ids: string[];
   failNextCommand(failure: unknown): void;
   failBusinessCommand(command: string, message: string): void;
+  delayNextCommand(command: string, result: Promise<GenerateAiResult>): void;
 }
 
 function okResult(content = "思考"): GenerateAiResult {
@@ -41,8 +42,14 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
   let idIndex = 0;
   let failure: unknown = null;
   const businessFailures = new Map<string, string>();
+  const delayedCommands = new Map<string, Promise<GenerateAiResult>>();
 
-  function commandResult(command: string): GenerateAiResult {
+  function commandResult(command: string): GenerateAiResult | Promise<GenerateAiResult> {
+    const delayed = delayedCommands.get(command);
+    if (delayed !== undefined) {
+      delayedCommands.delete(command);
+      return delayed;
+    }
     const message = businessFailures.get(command);
     return message === undefined
       ? okResult()
@@ -128,6 +135,7 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       if (message === "") businessFailures.delete(command);
       else businessFailures.set(command, message);
     },
+    delayNextCommand: (command, result) => { delayedCommands.set(command, result); },
   };
 }
 
@@ -526,6 +534,105 @@ test("endAllSessions ends every started session", async () => {
 
   const endCalls = ui.commands.filter((entry) => entry.cmd === "ai_end_session");
   assert.deepEqual(endCalls.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
+});
+
+const invalidateStartingAttempt = {
+  cancelMessage: (transport: ResidentAiSessionTransport) => transport.cancelMessage("c-1"),
+  endSession: (transport: ResidentAiSessionTransport) => transport.endSession("c-1"),
+  endAllSessions: (transport: ResidentAiSessionTransport) => transport.endAllSessions(),
+};
+
+for (const [action, invalidate] of Object.entries(invalidateStartingAttempt)) {
+  test(`${action} during startup rejects the send, ends the late session, and allows a fresh start`, async () => {
+    const ui = harness();
+    const start = deferred<GenerateAiResult>();
+    ui.delayNextCommand("ai_start_session", start.promise);
+    const pending = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("停止前的问题"));
+    const rejected = assert.rejects(pending, { name: "Error", message: "请求已取消" });
+
+    invalidate(ui.transport);
+    assert.deepEqual(ui.commands, [
+      { cmd: "ai_start_session", args: { sessionId: "session-1" } },
+    ], "启动完成前不对未知会话发送取消或结束命令");
+    start.resolve(okResult());
+    await rejected;
+
+    assert.deepEqual(ui.commands, [
+      { cmd: "ai_start_session", args: { sessionId: "session-1" } },
+      { cmd: "ai_end_session", args: { sessionId: "session-1" } },
+    ], "失效后不发送请求，只结束迟到会话");
+    ui.transport.endAllSessions();
+    assert.equal(ui.commands.length, 2, "迟到会话未注册，不得再次结束");
+
+    await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("重新开始"));
+    const starts = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+    const sends = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+    assert.deepEqual(starts.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].args.sessionId, "session-2");
+  });
+
+  for (const stage of ["ai_start_session", "ai_replay_history", "ai_replay_done"]) {
+    test(`${action} during replay ${stage} rejects recovery and never registers the late session`, async () => {
+      const ui = harness();
+      const delayed = deferred<GenerateAiResult>();
+      ui.delayNextCommand(stage, delayed.promise);
+      const pending = ui.transport.replaySession("c-1", [], "direct_question");
+      const rejected = assert.rejects(pending, { name: "Error", message: "请求已取消" });
+      // 启动和历史重放各经过一个微任务；被延迟的阶段会保持挂起。
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(ui.commands[ui.commands.length - 1]?.cmd, stage);
+      const beforeInvalidation = [...ui.commands];
+
+      invalidate(ui.transport);
+      assert.deepEqual(ui.commands, beforeInvalidation);
+      delayed.resolve(okResult());
+      await rejected;
+
+      assert.deepEqual(ui.commands, [
+        ...beforeInvalidation,
+        { cmd: "ai_end_session", args: { sessionId: "session-1" } },
+      ], "失效后不得继续重放下一阶段或发送请求");
+      ui.transport.endAllSessions();
+      assert.equal(ui.commands.length, beforeInvalidation.length + 1);
+
+      await ui.transport.sendViaResidentSession("c-1", followUpRequest("重新开始"));
+      const starts = ui.commands.filter((entry) => entry.cmd === "ai_start_session");
+      assert.deepEqual(starts.map((entry) => entry.args.sessionId), ["session-1", "session-2"]);
+      const sends = ui.commands.filter((entry) => entry.cmd === "ai_send_message");
+      assert.equal(sends.length, 1);
+      assert.equal(sends[0].args.sessionId, "session-2");
+    });
+  }
+}
+
+test("invalidated startup preserves its original failure and allows a fresh attempt", async () => {
+  const ui = harness();
+  const start = deferred<GenerateAiResult>();
+  ui.delayNextCommand("ai_start_session", start.promise);
+  const pending = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
+  const rejected = assert.rejects(pending, { message: "启动失败" });
+  ui.transport.cancelMessage("c-1");
+  start.resolve({ ok: false, error: { code: "service", message: "启动失败" } });
+  await rejected;
+  assert.deepEqual(ui.commands.map((entry) => entry.cmd), ["ai_start_session"]);
+
+  await ui.transport.sendViaResidentSession("c-1", directQuestionRequest("重试"));
+  assert.equal(ui.commands[ui.commands.length - 1]?.args.sessionId, "session-2");
+});
+
+test("invalidated startup still rejects with cancellation when ending the late session fails", async () => {
+  const ui = harness();
+  const start = deferred<GenerateAiResult>();
+  ui.delayNextCommand("ai_start_session", start.promise);
+  const pending = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
+  const rejected = assert.rejects(pending, { message: "请求已取消" });
+  ui.transport.endAllSessions();
+  ui.failNextCommand(new Error("结束失败"));
+  start.resolve(okResult());
+  await rejected;
+  assert.deepEqual(ui.commands.map((entry) => entry.cmd), ["ai_start_session", "ai_end_session"]);
 });
 
 test("replaySession starts a new session, replays turns with origin, and marks done", async () => {

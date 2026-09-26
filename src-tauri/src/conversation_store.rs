@@ -130,6 +130,13 @@ pub struct OnDemandReadingProvenance {
     pub entered_model_context: bool,
 }
 
+/// 档案级永久受限锁存；只由后端写入，已有锁存不改写原因或时间。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationRestriction {
+    pub reason: String,
+    pub at: String,
+}
+
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
 /// 多窗口快车道（任务 9.1）新增两个可选字段：自定义标题 `title` 与置顶标记 `pinned`，
 /// 均带 `#[serde(default)]`，缺失时按「未重命名、未置顶」处理，不视为损坏、不提升版本号。
@@ -164,6 +171,8 @@ pub struct ConversationRecord {
     /// 模型上下文，MUST NOT 保存正文副本。不提升档案版本号。
     #[serde(default)]
     pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
+    #[serde(default)]
+    pub restriction: Option<ConversationRestriction>,
 }
 
 /// 可重建的磁盘索引；引用集合不含出处细节或轮次正文。
@@ -182,6 +191,8 @@ pub struct ConversationMeta {
     pub body_bytes: u64,
     pub provenance: Option<Vec<String>>,
     pub provenance_has_revoked: bool,
+    #[serde(default)]
+    pub restricted: bool,
     pub on_demand_document_ids: Vec<String>,
     pub references_incomplete: bool,
 }
@@ -205,6 +216,8 @@ pub struct ConversationSummary {
     /// 材料出处元数据：`None` 表示旧档案缺少该字段（保守：可查看但不可自动重放）。
     pub provenance: Option<Vec<String>>,
     pub provenance_has_revoked: bool,
+    #[serde(default)]
+    pub restricted: bool,
     pub on_demand_document_ids: Vec<String>,
     pub references_incomplete: bool,
 }
@@ -433,6 +446,30 @@ pub fn save_conversation(
     let deleted = CONVERSATION_STORE_LOCK
         .lock()
         .unwrap_or_else(|p| p.into_inner());
+    validate_conversation_id(&record.conversation_id)?;
+    let mut merged = record.clone();
+    // 普通保存不是这些字段的所有者：同一临界区内只取档案现值。
+    // 首次创建或既有档案不可读时取 None，不信任调用方提供的授权、出处或锁存。
+    let existing = read_conversation_locked(root, &record.conversation_id).ok();
+    merged.on_demand_reading_grant = existing
+        .as_ref()
+        .and_then(|record| record.on_demand_reading_grant.clone());
+    merged.on_demand_reading_provenance = existing
+        .as_ref()
+        .and_then(|record| record.on_demand_reading_provenance.clone());
+    merged.restriction = existing.and_then(|record| record.restriction);
+    save_conversation_locked(root, &merged, &deleted)
+}
+
+/// 仅测试夹具可直接播种后端字段；生产构建不提供整档绕过所有权的入口。
+#[cfg(test)]
+pub(crate) fn seed_conversation(
+    root: &Path,
+    record: &ConversationRecord,
+) -> Result<(), ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     save_conversation_locked(root, record, &deleted)
 }
 
@@ -461,23 +498,12 @@ fn save_conversation_locked(
         ));
     }
 
-    // 前端保存链保全（add-agent-on-demand-reading 任务 7）：按需补读出处由宿主
-    // 工具通道按轮写入（`upsert_on_demand_provenance`），前端记录不携带该字段
-    // （`None`）。保存时若调用方未提供出处而档案已有，则保留档案已有出处——
-    // 前端轮次终态保存不得抹掉通道刚落档的补读记录。通道自身写入时始终携带
-    // `Some(_)`（读改写），不受此保全影响。
-    if stamped.on_demand_reading_provenance.is_none() && file.is_file() {
-        if let Ok(existing) = read_record_file(&file) {
-            stamped.on_demand_reading_provenance = existing.on_demand_reading_provenance;
-        }
-    }
-
     let json = serde_json::to_string_pretty(&stamped)
         .map_err(|e| ConversationStoreError::InvalidRecord(e.to_string()))?;
     if json.len() as u64 > MAX_CONVERSATION_BYTES {
         return Err(ConversationStoreError::TooLarge);
     }
-    // 大小校验必须在保全补读出处之后，且在创建目录等任何写盘之前。
+    // 大小校验针对合并后的最终档案，且在创建目录等任何写盘之前。
     fs::create_dir_all(conversations_dir(root))
         .map_err(|e| ConversationStoreError::WriteError(e.to_string()))?;
     crate::project::write_file_atomically(&file, &json)
@@ -681,6 +707,40 @@ pub fn set_on_demand_reading(
     save_conversation_locked(root, &record, &deleted)
 }
 
+/// 同轮同文档累计出处；读、合并、落盘全程持存储锁，与所有其他写入互斥。
+pub fn upsert_on_demand_provenance(
+    root: &Path,
+    conversation_id: &str,
+    turn_index: u32,
+    updates: &[(String, String, ReadingDepth)],
+) -> Result<(), ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut record = read_conversation_locked(root, conversation_id)?;
+    let entries = record
+        .on_demand_reading_provenance
+        .get_or_insert_with(Vec::new);
+    for (document_id, version, depth) in updates {
+        if let Some(entry) = entries
+            .iter_mut()
+            .find(|entry| entry.turn_index == turn_index && &entry.document_id == document_id)
+        {
+            entry.version = version.clone();
+            entry.depth = *depth;
+        } else {
+            entries.push(OnDemandReadingProvenance {
+                document_id: document_id.clone(),
+                version: version.clone(),
+                depth: *depth,
+                turn_index,
+                entered_model_context: true,
+            });
+        }
+    }
+    save_conversation_locked(root, &record, &deleted)
+}
+
 /// 窄更新：不依赖前端缓存全文，None 不改，空白标题清除自定义标题。
 pub fn conversation_update_meta(
     root: &Path,
@@ -702,7 +762,7 @@ pub fn conversation_update_meta(
     save_conversation_locked(root, &record, &deleted)
 }
 
-/// 只锁存普通出处；降级索引回退读正文，不提前改变补读权限语义。
+/// 两类出处共用永久锁存；降级索引回退读正文，只返回本次新锁存的讨论。
 pub fn latch_conversation_restrictions(
     root: &Path,
     document_id: &str,
@@ -717,20 +777,28 @@ pub fn latch_conversation_restrictions(
                 .provenance
                 .as_ref()
                 .is_some_and(|ids| ids.iter().any(|id| id == document_id))
+            && !summary
+                .on_demand_document_ids
+                .iter()
+                .any(|id| id == document_id)
         {
             continue;
         }
         let mut record = read_conversation_locked(root, &summary.conversation_id)?;
-        let mut changed = false;
-        if let Some(entries) = record.provenance.as_mut() {
-            for entry in entries {
-                if entry.document_id == document_id && entry.material_type != "revoked" {
-                    entry.material_type = "revoked".to_string();
-                    changed = true;
-                }
-            }
-        }
-        if changed {
+        let referenced =
+            record.provenance.as_ref().is_some_and(|entries| {
+                entries.iter().any(|entry| entry.document_id == document_id)
+            }) || record
+                .on_demand_reading_provenance
+                .as_ref()
+                .is_some_and(|entries| {
+                    entries.iter().any(|entry| entry.document_id == document_id)
+                });
+        if referenced && record.restriction.is_none() {
+            record.restriction = Some(ConversationRestriction {
+                reason: "hidden_material".into(),
+                at: current_utc_timestamp(),
+            });
             save_conversation_locked(root, &record, &deleted)?;
             latched.push(record.conversation_id);
         }
@@ -797,11 +865,13 @@ pub fn on_demand_reading_state(
 fn read_meta(path: &Path) -> Result<ConversationMeta, ReadFileFailure> {
     let content = crate::project::read_bounded_string(path, MAX_META_BYTES)
         .map_err(|_| ReadFileFailure::Corrupt)?;
-    let meta: ConversationMeta =
+    let mut meta: ConversationMeta =
         serde_json::from_str(&content).map_err(|_| ReadFileFailure::Corrupt)?;
     if meta.version != CONVERSATION_VERSION {
         return Err(ReadFileFailure::Corrupt);
     }
+    // 旧索引没有 restricted，但其逐条锁存汇总仍是有效的受限证据。
+    meta.restricted |= meta.provenance_has_revoked;
     Ok(meta)
 }
 
@@ -829,6 +899,10 @@ fn derive_meta(
     record: &ConversationRecord,
     body_bytes: u64,
 ) -> Result<ConversationMeta, ConversationStoreError> {
+    let provenance_has_revoked = record
+        .provenance
+        .as_ref()
+        .is_some_and(|entries| entries.iter().any(|entry| entry.material_type == "revoked"));
     let mut meta = ConversationMeta {
         version: CONVERSATION_VERSION,
         conversation_id: record.conversation_id.clone(),
@@ -845,10 +919,8 @@ fn derive_meta(
             .provenance
             .as_ref()
             .map(|entries| unique_document_ids(entries.iter().map(|entry| &entry.document_id))),
-        provenance_has_revoked: record
-            .provenance
-            .as_ref()
-            .is_some_and(|entries| entries.iter().any(|entry| entry.material_type == "revoked")),
+        provenance_has_revoked,
+        restricted: record.restriction.is_some() || provenance_has_revoked,
         on_demand_document_ids: unique_document_ids(
             record
                 .on_demand_reading_provenance
@@ -910,6 +982,7 @@ fn summarize(meta: ConversationMeta) -> ConversationSummary {
         focus_document_title: meta.focus_document_title,
         provenance: meta.provenance,
         provenance_has_revoked: meta.provenance_has_revoked,
+        restricted: meta.restricted,
         on_demand_document_ids: meta.on_demand_document_ids,
         references_incomplete: meta.references_incomplete,
     }
@@ -994,6 +1067,7 @@ mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: None,
             on_demand_reading_provenance: None,
+            restriction: None,
         }
     }
 
@@ -1087,7 +1161,7 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("temp");
         let mut old = record("merge", None, None, vec![]);
         old.on_demand_reading_provenance = Some(vec![on_demand("doc")]);
-        save_conversation(temp.path(), &old).expect("save");
+        seed_conversation(temp.path(), &old).expect("seed");
         let old_bytes = fs::read(conversation_file(temp.path(), "merge")).expect("body");
         let full = record_with_bytes("merge", MAX_CONVERSATION_BYTES as usize);
         assert_eq!(
@@ -1111,8 +1185,12 @@ mod tests {
     #[test]
     fn missing_corrupt_and_oversized_meta_are_rebuilt() {
         let temp = tempfile::TempDir::new().expect("temp");
-        let rec = record("rebuild", Some("从正文重建"), None, vec![]);
-        save_conversation(temp.path(), &rec).expect("save");
+        let mut rec = record("rebuild", Some("从正文重建"), None, vec![]);
+        rec.restriction = Some(ConversationRestriction {
+            reason: "hidden_material".into(),
+            at: "2026-09-20T08:30:00.123Z".into(),
+        });
+        seed_conversation(temp.path(), &rec).expect("seed");
         let path = meta_file(temp.path(), "rebuild");
         let expected = read_meta(&path).expect("meta");
         for bad in [
@@ -1128,6 +1206,7 @@ mod tests {
             let listed = list_conversations(temp.path()).expect("list");
             assert!(listed.skipped.is_empty());
             assert_eq!(listed.conversations.len(), 1);
+            assert!(listed.conversations[0].restricted);
             assert_eq!(read_meta(&path).expect("rebuilt"), expected);
         }
     }
@@ -1139,10 +1218,15 @@ mod tests {
         save_conversation(temp.path(), &rec).expect("save");
         rec.title = Some("正文已改变而索引尚未更新".to_string());
         rec.provenance = Some(vec![provenance("new-doc", 0)]);
+        rec.restriction = Some(ConversationRestriction {
+            reason: "hidden_material".into(),
+            at: "2026-09-20T08:30:00.123Z".into(),
+        });
         let json = serde_json::to_string_pretty(&rec).expect("serialize");
         fs::write(conversation_file(temp.path(), "stale"), &json).expect("update body only");
         let listed = list_conversations(temp.path()).expect("list");
         assert_eq!(listed.conversations[0].title, rec.title.expect("title"));
+        assert!(listed.conversations[0].restricted);
         assert_eq!(
             listed.conversations[0].provenance,
             Some(vec!["new-doc".to_string()])
@@ -1196,13 +1280,14 @@ mod tests {
             .expect("last")
             .document_id
             .clone();
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
         let path = meta_file(temp.path(), "many");
         let meta = read_meta(&path).expect("meta");
         assert!(meta.references_incomplete);
         assert!(meta.provenance.is_none());
         assert!(meta.on_demand_document_ids.is_empty());
         assert!(meta.provenance_has_revoked);
+        assert!(meta.restricted);
         assert_eq!(meta.title, "很多出处");
         assert!(fs::metadata(path).expect("meta size").len() <= MAX_META_BYTES);
         for doc in [&target, "on-demand-only"] {
@@ -1212,14 +1297,34 @@ mod tests {
                 "many"
             );
         }
-        assert_eq!(
-            latch_conversation_restrictions(temp.path(), &target).expect("latch"),
-            vec!["many"]
-        );
+        assert!(latch_conversation_restrictions(temp.path(), "unrelated")
+            .expect("no false positive on incomplete index")
+            .is_empty());
+        // 分别从未锁存的夹具出发，证明降级路径两类出处都能单独命中。
+        for doc in [&target, "on-demand-only"] {
+            seed_conversation(temp.path(), &rec).expect("reset seed");
+            assert_eq!(
+                latch_conversation_restrictions(temp.path(), doc).expect("latch"),
+                vec!["many"]
+            );
+            assert!(read_conversation(temp.path(), "many")
+                .expect("read")
+                .restriction
+                .is_some());
+            assert!(
+                read_meta(&meta_file(temp.path(), "many"))
+                    .expect("meta")
+                    .restricted
+            );
+        }
         let loaded = read_conversation(temp.path(), "many").expect("read");
+        assert_eq!(
+            loaded.provenance, rec.provenance,
+            "新锁存不得改写任何逐条出处"
+        );
         let entries = loaded.provenance.expect("provenance");
         assert_eq!(entries.len(), 4500, "正文出处绝不能截断");
-        assert_eq!(entries.last().expect("last").material_type, "revoked");
+        assert_eq!(entries.last().expect("last").material_type, "selection");
         assert_eq!(
             loaded.on_demand_reading_provenance,
             rec.on_demand_reading_provenance
@@ -1236,7 +1341,7 @@ mod tests {
             provenance("b", 1),
         ]);
         rec.on_demand_reading_provenance = Some(vec![on_demand("b"), on_demand("b")]);
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
         let meta = read_meta(&meta_file(temp.path(), "sets")).expect("meta");
         assert_eq!(
             meta.provenance,
@@ -1419,49 +1524,76 @@ mod tests {
         let mut rec = record("affected", None, None, vec![]);
         rec.provenance = Some(vec![provenance("target", 0), provenance("other", 1)]);
         rec.on_demand_reading_provenance = Some(vec![on_demand("target")]);
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
         let mut only_on_demand = record("on-demand", None, None, vec![]);
         only_on_demand.on_demand_reading_provenance = Some(vec![on_demand("target")]);
-        save_conversation(temp.path(), &only_on_demand).expect("save on-demand");
+        seed_conversation(temp.path(), &only_on_demand).expect("seed on-demand");
         let mut legacy = record("legacy", None, None, vec![]);
         legacy.provenance = None;
         save_conversation(temp.path(), &legacy).expect("save legacy");
-        assert_eq!(
-            latch_conversation_restrictions(temp.path(), "target").expect("latch"),
-            vec!["affected"]
-        );
+        let mut latched = latch_conversation_restrictions(temp.path(), "target").expect("latch");
+        latched.sort();
+        assert_eq!(latched, vec!["affected", "on-demand"]);
         let loaded = read_conversation(temp.path(), "affected").expect("read");
-        let mut expected = rec.provenance.clone().expect("provenance");
-        expected[0].material_type = "revoked".to_string();
-        assert_eq!(loaded.provenance, Some(expected));
+        assert_eq!(loaded.provenance, rec.provenance);
         assert_eq!(
             loaded.on_demand_reading_provenance,
             rec.on_demand_reading_provenance
         );
-        assert!(
-            read_meta(&meta_file(temp.path(), "affected"))
-                .expect("meta")
-                .provenance_has_revoked
+        let mut originals = Vec::new();
+        for id in ["affected", "on-demand"] {
+            let reopened = read_conversation(temp.path(), id).expect("reopen");
+            let restriction = reopened.restriction.expect("persisted restriction");
+            assert_eq!(restriction.reason, "hidden_material");
+            assert!(chrono::DateTime::parse_from_rfc3339(&restriction.at).is_ok());
+            let meta = read_meta(&meta_file(temp.path(), id)).expect("meta");
+            assert!(meta.restricted);
+            assert!(!meta.provenance_has_revoked, "不得新增逐条 revoked 标记");
+            originals.push((
+                id,
+                restriction,
+                fs::read(conversation_file(temp.path(), id)).expect("body"),
+            ));
+        }
+        assert_eq!(
+            read_conversation(temp.path(), "on-demand")
+                .expect("read")
+                .on_demand_reading_provenance,
+            only_on_demand.on_demand_reading_provenance
         );
-        let original = fs::read(conversation_file(temp.path(), "affected")).expect("body");
+        std::thread::sleep(std::time::Duration::from_millis(5));
         assert!(latch_conversation_restrictions(temp.path(), "target")
             .expect("idempotent")
             .is_empty());
-        assert_eq!(
-            fs::read(conversation_file(temp.path(), "affected")).expect("body"),
-            original
-        );
-        assert!(
-            !read_meta(&meta_file(temp.path(), "on-demand"))
-                .expect("meta")
-                .provenance_has_revoked
-        );
+        assert!(latch_conversation_restrictions(temp.path(), "other")
+            .expect("already restricted")
+            .is_empty());
+        for (id, restriction, original) in originals {
+            assert_eq!(
+                fs::read(conversation_file(temp.path(), id)).expect("body"),
+                original
+            );
+            assert_eq!(
+                read_conversation(temp.path(), id)
+                    .expect("read")
+                    .restriction,
+                Some(restriction)
+            );
+        }
+        let summaries = list_conversations(temp.path()).expect("list").conversations;
+        for summary in summaries {
+            assert_eq!(summary.restricted, summary.conversation_id != "legacy");
+        }
         assert_eq!(
             read_conversation(temp.path(), "legacy")
                 .expect("legacy")
                 .provenance,
             None
         );
+        assert!(read_conversation(temp.path(), "legacy")
+            .expect("legacy")
+            .restriction
+            .is_none());
     }
 
     #[test]
@@ -1475,7 +1607,7 @@ mod tests {
         );
         rec.provenance = Some(vec![provenance("doc", 0)]);
         rec.on_demand_reading_provenance = Some(vec![on_demand("doc")]);
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
         conversation_update_meta(
             temp.path(),
             "edit",
@@ -1997,7 +2129,7 @@ mod tests {
             },
         ]);
 
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
 
         // 「重启」：新实例只依赖磁盘档案恢复状态（保存 → 重开 → 状态恢复）。
         let loaded = read_conversation(temp.path(), "conv-1").expect("read after restart");
@@ -2045,7 +2177,7 @@ mod tests {
             entered_model_context: true,
         }]);
 
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
 
         // 序列化形状：授权对象只含 granted_at；出处条目字段在最小白名单内，
         // 绝不出现正文副本字段。
@@ -2113,7 +2245,7 @@ mod tests {
                 entered_model_context: true,
             },
         ]);
-        save_conversation(temp.path(), &rec2).expect("save 2");
+        seed_conversation(temp.path(), &rec2).expect("seed 2");
         let raw2 = fs::read_to_string(conversation_file(temp.path(), "conv-2")).expect("raw 2");
         assert!(raw2.contains("\"search_snippet\""));
         assert!(raw2.contains("\"full\""));
@@ -2173,7 +2305,7 @@ mod tests {
             turn_index: 1,
             entered_model_context: true,
         }]);
-        save_conversation(temp.path(), &rec).expect("save");
+        seed_conversation(temp.path(), &rec).expect("seed");
 
         // 开启：写入已授权及时间。
         set_on_demand_reading(temp.path(), "conv-t", true).expect("grant");
@@ -2227,7 +2359,7 @@ mod tests {
             turn_index: 2,
             entered_model_context: true,
         }]);
-        save_conversation(temp.path(), &on_demand_rec).expect("save on-demand");
+        seed_conversation(temp.path(), &on_demand_rec).expect("seed on-demand");
         // 无关讨论。
         save_conversation(temp.path(), &record("conv-x", Some("无关"), None, vec![]))
             .expect("save unrelated");
@@ -2255,25 +2387,22 @@ mod tests {
             .is_empty());
     }
 
-    /// 任务 7 前端保存链保全：前端记录不携带补读出处（`None`）时，保存不得抹掉
-    /// 宿主通道已落档的出处；显式携带 `Some(_)`（通道读改写 / 删除撤销重写）时以
-    /// 调用方为准。
+    /// 普通保存无论省略还是显式提供出处，都不能改变后端已落档的出处。
     #[test]
     fn save_preserves_backend_owned_on_demand_provenance_when_caller_omits_it() {
         let temp = tempfile::TempDir::new().expect("temp dir");
         let rec = record("conv-p", Some("问题"), None, vec![]);
         save_conversation(temp.path(), &rec).expect("initial save");
 
-        // 宿主通道按轮写入补读出处（读改写，始终携带 Some）。
-        let mut with_provenance = read_conversation(temp.path(), "conv-p").expect("read");
-        with_provenance.on_demand_reading_provenance = Some(vec![OnDemandReadingProvenance {
-            document_id: "doc-2".to_string(),
-            version: "v2".to_string(),
-            depth: ReadingDepth::SearchSnippet,
-            turn_index: 1,
-            entered_model_context: true,
-        }]);
-        save_conversation(temp.path(), &with_provenance).expect("save provenance");
+        // 宿主通道经存储层窄更新按轮写入出处。
+        upsert_on_demand_provenance(
+            temp.path(),
+            "conv-p",
+            1,
+            &[("doc-2".into(), "v2".into(), ReadingDepth::SearchSnippet)],
+        )
+        .expect("save provenance");
+        let with_provenance = read_conversation(temp.path(), "conv-p").expect("read");
 
         // 前端轮次终态保存：记录不携带出处字段 → 档案已有出处必须保全。
         let frontend_rec = record(
@@ -2294,12 +2423,321 @@ mod tests {
             "前端保存的轮次内容正常落盘"
         );
 
-        // 显式携带（删除撤销重写路径）：以调用方为准。
+        // 显式携带空出处同样无权清除（删除撤销走独立恢复命令）。
         let mut explicit = read_conversation(temp.path(), "conv-p").expect("read");
         explicit.on_demand_reading_provenance = Some(vec![]);
         save_conversation(temp.path(), &explicit).expect("explicit save");
         let reloaded = read_conversation(temp.path(), "conv-p").expect("read");
-        assert_eq!(reloaded.on_demand_reading_provenance, Some(vec![]));
+        assert_eq!(
+            reloaded.on_demand_reading_provenance,
+            with_provenance.on_demand_reading_provenance
+        );
+    }
+
+    #[test]
+    fn legacy_revoked_archive_and_meta_without_restriction_remain_restricted() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut rec = record("legacy-revoked", None, None, vec![]);
+        let mut entry = provenance("target", 0);
+        entry.material_type = "revoked".into();
+        rec.provenance = Some(vec![entry]);
+        let mut body = serde_json::to_value(&rec).expect("json");
+        body.as_object_mut().expect("object").remove("restriction");
+        fs::create_dir_all(conversations_dir(temp.path())).expect("directory");
+        fs::write(
+            conversation_file(temp.path(), "legacy-revoked"),
+            serde_json::to_vec_pretty(&body).expect("serialize"),
+        )
+        .expect("legacy archive");
+        let reopened = read_conversation(temp.path(), "legacy-revoked").expect("read legacy");
+        assert_eq!(reopened.restriction, None);
+        let listed = list_conversations(temp.path()).expect("rebuild");
+        assert!(listed.conversations[0].restricted);
+        assert!(listed.conversations[0].provenance_has_revoked);
+        let path = meta_file(temp.path(), "legacy-revoked");
+        let meta = read_meta(&path).expect("rebuilt meta");
+        assert!(meta.restricted);
+        let mut old_meta = serde_json::to_value(meta).expect("meta json");
+        old_meta
+            .as_object_mut()
+            .expect("object")
+            .remove("restricted");
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&old_meta).expect("serialize"),
+        )
+        .expect("old meta");
+        assert!(
+            read_meta(&path)
+                .expect("old meta still restricted")
+                .restricted
+        );
+        assert!(
+            list_conversations(temp.path())
+                .expect("old index")
+                .conversations[0]
+                .restricted
+        );
+        // 未命中不迁移；命中时写档案级锁存，但旧标记不被改写或清除。
+        assert!(latch_conversation_restrictions(temp.path(), "other")
+            .expect("unrelated")
+            .is_empty());
+        assert_eq!(
+            read_conversation(temp.path(), "legacy-revoked")
+                .expect("read")
+                .restriction,
+            None
+        );
+        assert_eq!(
+            latch_conversation_restrictions(temp.path(), "target").expect("latch"),
+            vec!["legacy-revoked"]
+        );
+        let latched = read_conversation(temp.path(), "legacy-revoked").expect("read latched");
+        assert_eq!(latched.provenance, rec.provenance);
+        assert!(latched.restriction.is_some());
+        assert!(latch_conversation_restrictions(temp.path(), "target")
+            .expect("repeat")
+            .is_empty());
+        assert_eq!(
+            read_conversation(temp.path(), "legacy-revoked")
+                .expect("reopen")
+                .restriction,
+            latched.restriction
+        );
+    }
+
+    #[test]
+    fn ordinary_save_cannot_revive_revoked_grant_or_clear_current_grant() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let without_grant = record("grant-race", None, None, vec![]);
+        save_conversation(temp.path(), &without_grant).expect("create");
+        set_on_demand_reading(temp.path(), "grant-race", true).expect("grant");
+        let mut stale = read_conversation(temp.path(), "grant-race").expect("old copy");
+        assert!(stale.on_demand_reading_grant.is_some());
+        set_on_demand_reading(temp.path(), "grant-race", false).expect("revoke");
+        stale
+            .turns
+            .push(turn("assistant", "撤销后迟到的回答", "success"));
+        save_conversation(temp.path(), &stale).expect("late save");
+        // 没有内存缓存，重开只从磁盘恢复；旧授权不得复活。
+        let reopened = read_conversation(temp.path(), "grant-race").expect("reopen");
+        assert_eq!(reopened.on_demand_reading_grant, None);
+        assert_eq!(reopened.turns, stale.turns);
+        assert_eq!(
+            on_demand_reading_state(temp.path(), "grant-race")
+                .expect("state")
+                .grant,
+            None
+        );
+
+        set_on_demand_reading(temp.path(), "grant-race", true).expect("grant again");
+        let current = read_conversation(temp.path(), "grant-race").expect("current grant");
+        let mut omitted = serde_json::to_value(&without_grant).expect("json");
+        omitted
+            .as_object_mut()
+            .expect("object")
+            .remove("on_demand_reading_grant");
+        let mut late: ConversationRecord =
+            serde_json::from_value(omitted).expect("omitted field defaults");
+        late.turns
+            .push(turn("assistant", "无授权字段的新回答", "success"));
+        save_conversation(temp.path(), &late).expect("save without grant");
+        let reopened = read_conversation(temp.path(), "grant-race").expect("reopen");
+        assert_eq!(
+            reopened.on_demand_reading_grant,
+            current.on_demand_reading_grant
+        );
+        assert_eq!(reopened.turns, late.turns);
+    }
+
+    #[test]
+    fn ordinary_save_ignores_all_backend_fields_for_new_unreadable_and_existing_archives() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut caller = record("owned", None, None, vec![]);
+        caller.on_demand_reading_grant = Some(OnDemandReadingGrant {
+            granted_at: "caller-time".into(),
+        });
+        caller.on_demand_reading_provenance = Some(vec![on_demand("caller-doc")]);
+        caller.restriction = Some(ConversationRestriction {
+            reason: "caller-reason".into(),
+            at: "caller-time".into(),
+        });
+        for corrupt_existing in [false, true] {
+            if corrupt_existing {
+                fs::write(conversation_file(temp.path(), "owned"), "invalid json")
+                    .expect("corrupt body");
+            }
+            save_conversation(temp.path(), &caller).expect("ordinary save");
+            let loaded = read_conversation(temp.path(), "owned").expect("read");
+            assert_eq!(loaded.on_demand_reading_grant, None);
+            assert_eq!(loaded.on_demand_reading_provenance, None);
+            assert_eq!(loaded.restriction, None);
+        }
+        set_on_demand_reading(temp.path(), "owned", true).expect("backend grant");
+        upsert_on_demand_provenance(
+            temp.path(),
+            "owned",
+            2,
+            &[("backend-doc".into(), "v2".into(), ReadingDepth::Partial)],
+        )
+        .expect("backend provenance");
+        assert_eq!(
+            latch_conversation_restrictions(temp.path(), "backend-doc")
+                .expect("backend restriction"),
+            vec!["owned"]
+        );
+        let current = read_conversation(temp.path(), "owned").expect("current");
+        caller.turns.push(turn("assistant", "最新轮次", "success"));
+        caller.title = Some("最新标题".into());
+        save_conversation(temp.path(), &caller).expect("ignore conflicting explicit values");
+        let loaded = read_conversation(temp.path(), "owned").expect("read");
+        assert_eq!(
+            loaded.on_demand_reading_grant,
+            current.on_demand_reading_grant
+        );
+        assert_eq!(
+            loaded.on_demand_reading_provenance,
+            current.on_demand_reading_provenance
+        );
+        assert_eq!(loaded.restriction, current.restriction);
+        assert_eq!(loaded.turns, caller.turns);
+        assert_eq!(loaded.title, caller.title);
+        assert!(
+            read_meta(&meta_file(temp.path(), "owned"))
+                .expect("meta")
+                .restricted
+        );
+    }
+
+    #[test]
+    fn latched_restriction_survives_stale_save_and_delete_restore() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let mut stale = record("latch-race", None, None, vec![]);
+        stale.provenance = Some(vec![provenance("target", 0)]);
+        save_conversation(temp.path(), &stale).expect("create");
+        latch_conversation_restrictions(temp.path(), "target").expect("latch");
+        let restriction = read_conversation(temp.path(), "latch-race")
+            .expect("read")
+            .restriction;
+        assert!(restriction.is_some());
+        stale.turns.push(turn("assistant", "新回答", "success"));
+        save_conversation(temp.path(), &stale).expect("late save without restriction");
+        let reopened = read_conversation(temp.path(), "latch-race").expect("read");
+        assert_eq!(reopened.restriction, restriction);
+        assert_eq!(reopened.turns, stale.turns);
+        delete_conversation(temp.path(), "latch-race").expect("delete");
+        assert!(latch_conversation_restrictions(temp.path(), "target")
+            .expect("deleted not latched")
+            .is_empty());
+        restore_conversation(temp.path(), "latch-race").expect("restore");
+        assert_eq!(
+            read_conversation(temp.path(), "latch-race")
+                .expect("restored")
+                .restriction,
+            restriction
+        );
+        assert!(list_conversations(temp.path()).expect("list").conversations[0].restricted);
+    }
+
+    #[test]
+    fn upsert_merges_by_turn_and_document_and_preserves_other_fields() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let rec = record(
+            "upsert",
+            None,
+            None,
+            vec![turn("assistant", "保留回答", "success")],
+        );
+        save_conversation(temp.path(), &rec).expect("create");
+        set_on_demand_reading(temp.path(), "upsert", true).expect("grant");
+        conversation_update_meta(temp.path(), "upsert", Some("保留标题".into()), Some(true))
+            .expect("meta");
+        upsert_on_demand_provenance(
+            temp.path(),
+            "upsert",
+            0,
+            &[
+                ("doc-a".into(), "v1".into(), ReadingDepth::SearchSnippet),
+                ("doc-b".into(), "v1".into(), ReadingDepth::Partial),
+            ],
+        )
+        .expect("first upsert");
+        latch_conversation_restrictions(temp.path(), "doc-b").expect("latch");
+        let before = read_conversation(temp.path(), "upsert").expect("before");
+        upsert_on_demand_provenance(
+            temp.path(),
+            "upsert",
+            0,
+            &[("doc-a".into(), "v2".into(), ReadingDepth::Full)],
+        )
+        .expect("upgrade");
+        upsert_on_demand_provenance(
+            temp.path(),
+            "upsert",
+            1,
+            &[("doc-a".into(), "v3".into(), ReadingDepth::Partial)],
+        )
+        .expect("next turn");
+        let after = read_conversation(temp.path(), "upsert").expect("after");
+        let entries = after.on_demand_reading_provenance.expect("entries");
+        assert_eq!(entries.len(), 3);
+        assert_eq!(
+            (
+                &entries[0].document_id,
+                entries[0].turn_index,
+                &entries[0].version,
+                entries[0].depth
+            ),
+            (
+                &"doc-a".to_string(),
+                0,
+                &"v2".to_string(),
+                ReadingDepth::Full
+            )
+        );
+        assert_eq!(
+            entries[1],
+            before.on_demand_reading_provenance.expect("before entries")[1]
+        );
+        assert_eq!(
+            (
+                &entries[2].document_id,
+                entries[2].turn_index,
+                &entries[2].version,
+                entries[2].depth
+            ),
+            (
+                &"doc-a".to_string(),
+                1,
+                &"v3".to_string(),
+                ReadingDepth::Partial
+            )
+        );
+        assert!(entries.iter().all(|entry| entry.entered_model_context));
+        assert_eq!(after.turns, before.turns);
+        assert_eq!(after.title, before.title);
+        assert_eq!(after.pinned, before.pinned);
+        assert_eq!(
+            after.on_demand_reading_grant,
+            before.on_demand_reading_grant
+        );
+        assert_eq!(after.restriction, before.restriction);
+        let meta = read_meta(&meta_file(temp.path(), "upsert")).expect("meta");
+        assert_eq!(meta.on_demand_document_ids, vec!["doc-a", "doc-b"]);
+        assert!(meta.restricted);
+        assert!(matches!(
+            upsert_on_demand_provenance(temp.path(), "missing", 0, &[]),
+            Err(ConversationStoreError::NotFound(_))
+        ));
+        delete_conversation(temp.path(), "upsert").expect("delete");
+        assert!(upsert_on_demand_provenance(
+            temp.path(),
+            "upsert",
+            2,
+            &[("doc-c".into(), "v1".into(), ReadingDepth::Full)]
+        )
+        .is_err());
+        assert!(!conversation_file(temp.path(), "upsert").exists());
     }
 
     #[test]

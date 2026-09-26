@@ -37,9 +37,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::conversation_store::{
-    read_conversation, save_conversation, OnDemandReadingProvenance, ReadingDepth,
-};
+use crate::conversation_store::{upsert_on_demand_provenance, ReadingDepth};
 use crate::dsh_driver::{DshDriverManager, ToolCallPayload};
 use crate::project::{MaterialRange, ProjectPaths, SearchResult, SearchStatus};
 use crate::story_tools::{
@@ -360,9 +358,6 @@ pub struct StoryToolChannel {
     reading_request_sink: Mutex<Option<ReadingRequestSink>>,
     /// 各讨论的当前轮监管状态（讨论 → 轮状态；register_round 重置）。
     rounds: Mutex<HashMap<String, RoundReadingState>>,
-    /// 讨论档案出处的读改写串行锁：同一讨论的多个工具调用线程并发 upsert 时，
-    /// 保证每次读改写都基于最新档案（防后写者用过期快照覆盖前写者）。
-    provenance_write_lock: Mutex<()>,
     fuse_config: ReadingFuseConfig,
 }
 
@@ -389,7 +384,6 @@ impl StoryToolChannel {
             pending: Mutex::new(HashMap::new()),
             reading_request_sink: Mutex::new(None),
             rounds: Mutex::new(HashMap::new()),
-            provenance_write_lock: Mutex::new(()),
             fuse_config,
         }
     }
@@ -728,7 +722,7 @@ impl StoryToolChannel {
                     let updates = state.cumulative_updates();
                     state.provenance_dirty = false;
                     // 累计视图的计算与落档都在 rounds 锁内完成（再经
-                    // provenance_write_lock 串行文件读改写）：后写者的累计视图
+                    // 存储层统一锁串行文件读改写）：后写者的累计视图
                     // 必不旧于先写者，杜绝并发覆盖回退（局部覆盖完整）。
                     this.upsert_provenance(
                         &context.project_root,
@@ -811,7 +805,6 @@ impl StoryToolChannel {
         turn_index: u32,
         updates: &[(String, String, ReadingDepth)],
     ) {
-        let _guard = lock(&self.provenance_write_lock);
         if let Err(error) =
             upsert_on_demand_provenance(project_root, conversation_id, turn_index, updates)
         {
@@ -923,41 +916,6 @@ fn recovery_hint_for_reason(reason: &str) -> Option<&'static str> {
     }
 }
 
-/// 出处按轮累计 upsert（设计 D12，任务 6.2）：同一（轮, 文档）只保留一条最小
-/// 元数据，阅读程度随轮内累计升级（局部 → 完整）。沿用既有讨论档案原子保存；
-/// 读取 / 保存失败向调用方返回错误，由调用侧记录，不能静默丢弃出处。
-/// 读改写全程持 `provenance_write_lock`：同一讨论的并发工具调用线程串行落档，
-/// 后写者必基于最新档案（防丢失更新）。
-fn upsert_on_demand_provenance(
-    project_root: &Path,
-    conversation_id: &str,
-    turn_index: u32,
-    updates: &[(String, String, ReadingDepth)],
-) -> Result<(), crate::conversation_store::ConversationStoreError> {
-    let mut record = read_conversation(project_root, conversation_id)?;
-    let entries = record
-        .on_demand_reading_provenance
-        .get_or_insert_with(Vec::new);
-    for (document_id, version, depth) in updates {
-        if let Some(entry) = entries
-            .iter_mut()
-            .find(|entry| entry.turn_index == turn_index && &entry.document_id == document_id)
-        {
-            entry.version = version.clone();
-            entry.depth = *depth;
-        } else {
-            entries.push(OnDemandReadingProvenance {
-                document_id: document_id.clone(),
-                version: version.clone(),
-                depth: *depth,
-                turn_index,
-                entered_model_context: true,
-            });
-        }
-    }
-    save_conversation(project_root, &record)
-}
-
 /// 恢复式取锁（与 dsh_driver 一致：中毒后取内部数据，不连锁 panic）。
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
@@ -969,7 +927,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use crate::conversation_store::{
-        read_conversation, save_conversation as save_archive, ConversationRecord,
+        read_conversation, seed_conversation as save_archive, ConversationRecord,
         FirstRoundMaterial, OnDemandReadingGrant as GrantEntry, ReadingDepth,
     };
     use crate::dsh_driver::{DriverParams, DshDriverManager};
@@ -1027,6 +985,62 @@ mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: grant,
             on_demand_reading_provenance: None,
+            restriction: None,
+        }
+    }
+
+    #[test]
+    fn channel_upsert_and_ordinary_save_keep_latest_turns_and_provenance_in_both_orders() {
+        use crate::conversation_store::{
+            save_conversation, set_on_demand_reading, ConversationTurn,
+        };
+
+        for upsert_first in [true, false] {
+            let temp = tempfile::TempDir::new().expect("temp");
+            let initial = archive("interleaved", None);
+            save_conversation(temp.path(), &initial).expect("create");
+            set_on_demand_reading(temp.path(), "interleaved", true).expect("grant");
+            let channel = StoryToolChannel::new();
+            channel.upsert_provenance(
+                temp.path(),
+                "interleaved",
+                0,
+                &[("previous-doc".into(), "v1".into(), ReadingDepth::Full)],
+            );
+            let mut queued_save =
+                read_conversation(temp.path(), "interleaved").expect("queued snapshot");
+            let original_grant = queued_save.on_demand_reading_grant.clone();
+            queued_save.turns.push(ConversationTurn {
+                role: "assistant".into(),
+                text: "最新轮次".into(),
+                status: "success".into(),
+            });
+            queued_save.title = Some("最新标题".into());
+            let updates = [("latest-doc".into(), "v2".into(), ReadingDepth::Partial)];
+            if upsert_first {
+                channel.upsert_provenance(temp.path(), "interleaved", 1, &updates);
+                save_conversation(temp.path(), &queued_save).expect("late ordinary save");
+            } else {
+                save_conversation(temp.path(), &queued_save).expect("ordinary save first");
+                channel.upsert_provenance(temp.path(), "interleaved", 1, &updates);
+            }
+            let loaded = read_conversation(temp.path(), "interleaved").expect("reopen");
+            assert_eq!(loaded.turns, queued_save.turns);
+            assert_eq!(loaded.title, queued_save.title);
+            assert_eq!(loaded.on_demand_reading_grant, original_grant);
+            let entries = loaded.on_demand_reading_provenance.expect("provenance");
+            assert_eq!(entries.len(), 2);
+            assert_eq!(
+                entries[0],
+                queued_save
+                    .on_demand_reading_provenance
+                    .expect("old provenance")[0]
+            );
+            assert_eq!(entries[1].document_id, "latest-doc");
+            assert_eq!(entries[1].version, "v2");
+            assert_eq!(entries[1].turn_index, 1);
+            assert_eq!(entries[1].depth, ReadingDepth::Partial);
+            assert!(entries[1].entered_model_context);
         }
     }
 

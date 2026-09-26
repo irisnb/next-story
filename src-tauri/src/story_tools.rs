@@ -30,9 +30,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::conversation_store::{
-    read_conversation, save_conversation, ConversationStoreError, OnDemandReadingGrant,
-};
+use crate::conversation_store::{read_conversation, set_on_demand_reading, ConversationStoreError};
 use crate::project::{
     compute_version, project_directory, read_and_validate_notebook, read_material_from_tree,
     search_documents, strict_read_content_tree, ContentTree, ContentTreeNode, DirectoryProjection,
@@ -522,18 +520,13 @@ pub fn execute_story_tool_for_conversation(
     execute_story_tool(reader, authorization, call)
 }
 
-/// 供调用方（组 5/组 7 前端保存链）在用户开启授权时写入授权状态：把档案的
-/// 授权字段置为已授权及当前时间。关闭授权（置回未授权）直接经既有
-/// `conversation_save` 保存 `None` 即可，无需专用函数。
+/// 用户开启授权时经存储层窄更新写入授权及时间，读改写全程持同一存储锁。
+/// 关闭授权同样必须经 `set_on_demand_reading(..., false)`；普通保存无权改变授权。
 pub fn grant_on_demand_reading(
     project_root: &Path,
     conversation_id: &str,
 ) -> Result<(), ConversationStoreError> {
-    let mut record = read_conversation(project_root, conversation_id)?;
-    record.on_demand_reading_grant = Some(OnDemandReadingGrant {
-        granted_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
-    });
-    save_conversation(project_root, &record)
+    set_on_demand_reading(project_root, conversation_id, true)
 }
 
 #[cfg(test)]
@@ -1145,7 +1138,7 @@ mod tests {
     // ========== 宿主逐次校验接线（任务 4.3/4.4） ==========
 
     use crate::conversation_store::{
-        save_conversation as save_archive, ConversationRecord as ArchiveRecord,
+        seed_conversation as save_archive, ConversationRecord as ArchiveRecord,
         ConversationStoreError, FirstRoundMaterial, OnDemandReadingGrant,
     };
 
@@ -1168,6 +1161,7 @@ mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: grant,
             on_demand_reading_provenance: None,
+            restriction: None,
         }
     }
 

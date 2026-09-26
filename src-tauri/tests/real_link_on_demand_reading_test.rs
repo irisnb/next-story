@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use next_story_lib::conversation_store::{
-    read_conversation, save_conversation, ConversationRecord, FirstRoundMaterial,
-    OnDemandReadingGrant,
+    read_conversation, save_conversation, set_on_demand_reading, ConversationRecord,
+    FirstRoundMaterial,
 };
 use next_story_lib::dsh_driver::{DriverParams, DshDriverManager};
 use next_story_lib::dsh_sidecar::resolve_paths;
@@ -55,7 +55,7 @@ fn notebook_with_text(text: &str) -> String {
     .unwrap()
 }
 
-fn archive_record(conversation_id: &str, granted: bool) -> ConversationRecord {
+fn archive_record(conversation_id: &str) -> ConversationRecord {
     ConversationRecord {
         version: next_story_lib::conversation_store::CONVERSATION_VERSION,
         conversation_id: conversation_id.to_string(),
@@ -72,10 +72,9 @@ fn archive_record(conversation_id: &str, granted: bool) -> ConversationRecord {
         title: None,
         pinned: false,
         provenance: Some(vec![]),
-        on_demand_reading_grant: granted.then(|| OnDemandReadingGrant {
-            granted_at: "2026-09-20T08:30:00.000Z".to_string(),
-        }),
+        on_demand_reading_grant: None,
         on_demand_reading_provenance: None,
+        restriction: None,
     }
 }
 
@@ -113,9 +112,12 @@ fn setup_fixture() -> RealLinkFixture {
         )
         .expect("save");
     }
-    save_conversation(&root, &archive_record("conv-tools", true)).expect("archive tools");
-    save_conversation(&root, &archive_record("conv-auth", false)).expect("archive auth");
-    save_conversation(&root, &archive_record("conv-fuse", true)).expect("archive fuse");
+    save_conversation(&root, &archive_record("conv-tools")).expect("archive tools");
+    save_conversation(&root, &archive_record("conv-auth")).expect("archive auth");
+    save_conversation(&root, &archive_record("conv-fuse")).expect("archive fuse");
+    // 授权只经受控窄更新写入；普通保存无权改变授权（fix-conversation-permission-and-ownership）。
+    set_on_demand_reading(&root, "conv-tools", true).expect("grant tools");
+    set_on_demand_reading(&root, "conv-fuse", true).expect("grant fuse");
     RealLinkFixture { temp, root }
 }
 

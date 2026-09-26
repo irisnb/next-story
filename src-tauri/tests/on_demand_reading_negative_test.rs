@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use next_story_lib::conversation_store::{
-    save_conversation, ConversationRecord, FirstRoundMaterial,
+    save_conversation, set_on_demand_reading, ConversationRecord, FirstRoundMaterial,
 };
 use next_story_lib::project::{
     create_new_project, recover_then_read_content_tree, save_document, CreateProjectParams,
@@ -82,6 +82,7 @@ fn archive_record(conversation_id: &str) -> ConversationRecord {
         provenance: Some(vec![]),
         on_demand_reading_grant: None,
         on_demand_reading_provenance: None,
+        restriction: None,
     }
 }
 
@@ -157,12 +158,9 @@ fn negative_direct_calls_fail_closed_with_zero_disk_side_effects() {
     let (root, doc_ids) = setup_work_with_docs(&temp);
     // 未授权档案 + 已授权档案各一份。
     save_conversation(&root, &archive_record("conv-un")).expect("save un");
-    let mut granted = archive_record("conv-gr");
-    granted.on_demand_reading_grant =
-        Some(next_story_lib::conversation_store::OnDemandReadingGrant {
-            granted_at: "2026-09-20T08:30:00.000Z".to_string(),
-        });
-    save_conversation(&root, &granted).expect("save granted");
+    save_conversation(&root, &archive_record("conv-gr")).expect("save granted");
+    // 授权只经受控窄更新写入；普通保存无权改变授权（fix-conversation-permission-and-ownership）。
+    set_on_demand_reading(&root, "conv-gr", true).expect("grant conv-gr");
 
     let before_work = snapshot_tree(&root);
     let before_archives = snapshot_archives(&root);

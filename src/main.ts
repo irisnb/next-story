@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { showMessage } from "./app-dialog.ts";
+import { installNativeDialogs, showMessage } from "./app-dialog.ts";
 
 import {
   CloseCoordinator,
@@ -35,6 +35,7 @@ function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string 
 (globalThis as Record<string, unknown>).__waitTiming = waitTiming;
 
 window.addEventListener("DOMContentLoaded", () => {
+  installNativeDialogs();
   const dom = getAppDom();
   const moduleViews: ModuleViews = {
     writing: dom.moduleWriting,

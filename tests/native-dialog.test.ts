@@ -2,7 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-import { confirmDialog, showMessage } from "../src/app-dialog.ts";
+import { confirmDialog, installNativeDialogs, showMessage } from "../src/app-dialog.ts";
+
+test("installNativeDialogs routes confirm to the injected implementation", async () => {
+  const previous = globalThis.confirm;
+  try {
+    const messages: string[] = [];
+    installNativeDialogs({
+      confirm: async (message) => { messages.push(message); return true; },
+    });
+    assert.equal(await globalThis.confirm("x"), true);
+    assert.deepEqual(messages, ["x"]);
+  } finally {
+    globalThis.confirm = previous;
+  }
+});
+
+test("installNativeDialogs routes alert to message and consumes rejection", async () => {
+  const previous = globalThis.alert;
+  const unhandled: unknown[] = [];
+  const collect = (reason: unknown) => { unhandled.push(reason); };
+  process.on("unhandledRejection", collect);
+  try {
+    const messages: string[] = [];
+    installNativeDialogs({
+      message: async (message) => { messages.push(message); throw new Error("授权被拒"); },
+    });
+    assert.equal(globalThis.alert("y"), undefined);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(messages, ["y"]);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    globalThis.alert = previous;
+    process.off("unhandledRejection", collect);
+  }
+});
 
 for (const expected of [false, true]) {
   test(`confirmDialog accepts synchronous ${expected}`, async () => {
@@ -91,10 +125,10 @@ test("showMessage consumes asynchronous rejection without unhandledRejection", a
   }
 });
 
-test("main window capabilities authorize confirm and message dialogs", async () => {
+test("main window capabilities authorize message but not deprecated confirm", async () => {
   const capability = JSON.parse(await readFile(
     new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8",
   ));
-  assert.ok(capability.permissions.includes("dialog:allow-confirm"));
+  assert.equal(capability.permissions.includes("dialog:allow-confirm"), false);
   assert.ok(capability.permissions.includes("dialog:allow-message"));
 });

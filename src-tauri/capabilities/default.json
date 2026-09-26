@@ -8,7 +8,6 @@
     "core:window:allow-destroy",
     "dialog:allow-open",
     "dialog:allow-save",
-    "dialog:allow-confirm",
     "dialog:allow-message"
   ]
 }

@@ -123,6 +123,36 @@ test("window stop and close buttons invoke the bound actions", () => {
   }
 });
 
+test("window badge shows generating, hides after success, and labels stopped state", () => {
+  const { root } = createAiWindowFixture("badge");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState(undefined, () => "badge");
+    const wa = windowActions(state);
+    setupAiWindow(root as unknown as HTMLElement, state, "badge", wa.actions);
+    const badge = root.queryResults.get('[data-role="badge"]')!;
+
+    state.beginDirectQuestion("问题", null);
+    assert.ok(state.activeConversationId);
+    assert.equal(badge.classList.contains("hidden"), false);
+    assert.equal(badge.classList.contains("is-generating"), true);
+    assert.equal(badge.textContent, "生成中");
+
+    state.succeedDirectQuestion("回答");
+    assert.equal(badge.classList.contains("hidden"), true);
+
+    state.beginDirectQuestion("第二个问题", null);
+    const secondConversationId = state.activeConversationId;
+    assert.ok(secondConversationId);
+    assert.equal(state.stopRequest(secondConversationId), true);
+    assert.equal(badge.classList.contains("hidden"), false);
+    assert.equal(badge.classList.contains("is-stopped"), true);
+    assert.equal(badge.textContent, "已停止");
+  } finally {
+    doc.restore();
+  }
+});
+
 test("restricted discussion window shows a notice, disables follow-up, and offers a new conversation", () => {
   const { root } = createAiWindowFixture("c-1");
   const doc = installDocument();

@@ -586,7 +586,7 @@ export function setupAiWindow(
   }
 
   function applyBadgeClass(dom: AiWindowDom, status: WindowStatus): void {
-    dom.badge.className = "ai-window-badge";
+    dom.badge.classList.remove("is-generating", "is-queued", "is-stopped", "is-failed", "is-recovering");
     if (status !== "idle" && status !== "done") {
       dom.badge.classList.add(`is-${status}`);
     }

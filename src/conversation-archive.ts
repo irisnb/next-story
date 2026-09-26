@@ -204,7 +204,7 @@ export interface ConversationListResult {
  * 链上每环吞掉前一环的错误（真失败已向上抛给该环自己的调用方），不阻断后续环节。
  */
 const conversationKey = (projectPath: string, conversationId: string): string =>
-  `${projectPath} ${conversationId}`;
+  `${projectPath}\u0000${conversationId}`;
 
 const deletedConversations = new Set<string>();
 const archiveChains = new Map<string, Promise<unknown>>();

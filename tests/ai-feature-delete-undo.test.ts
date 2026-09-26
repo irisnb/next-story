@@ -3,6 +3,7 @@ import test from "node:test";
 import { setupDeleteUndo } from "../src/ai-feature-delete-undo.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
 import { deriveConversationSummary, type ConversationRecord } from "../src/conversation-archive.ts";
+import { displayFocusDocumentTitle } from "../src/ai-panel-conversation-list.ts";
 
 function record(): ConversationRecord {
   return {
@@ -13,9 +14,9 @@ function record(): ConversationRecord {
   };
 }
 
-function harness() {
+function harness(archive = record(), hidden: ReadonlySet<string> = new Set()) {
   const state = new AiPanelState();
-  state.loadDiscussions([deriveConversationSummary(record())], [], new Set());
+  state.loadDiscussions([deriveConversationSummary(archive)], [], hidden);
   let token = 1;
   let restoreError = false;
   let readError = false;
@@ -23,7 +24,7 @@ function harness() {
   const calls: string[] = [];
   const undo = setupDeleteUndo({
     state, getCurrentProjectPath: () => "作品", getProjectToken: () => token,
-    hiddenDocumentIds: () => new Set(), isDestroyed: () => false,
+    hiddenDocumentIds: () => hidden, isDestroyed: () => false,
     cancelMessage: () => {}, endSession: () => {}, cancelQueued: () => {},
     deleteConversation: async () => { calls.push("delete"); },
     restoreConversation: async () => {
@@ -35,7 +36,7 @@ function harness() {
       calls.push("read");
       readHook();
       if (readError) throw new Error("读取失败");
-      return record();
+      return archive;
     },
   });
   return { state, undo, calls,
@@ -62,6 +63,29 @@ test("2.8 未打开讨论软删除后，撤销先恢复再读取，不依赖内�
     assert.equal(ui.undo.getUndoNotice(), null);
   } finally { ui.undo.clearUndo(); }
 });
+
+for (const latched of [false, true]) {
+  test(`撤销删除恢复补读-only 受限讨论：${latched ? "统一锁存、已重新可见" : "当前隐藏"}`, async () => {
+    const archive: ConversationRecord = {
+      ...record(), focus_document_id: "focus", focus_document_title: "关注文档名",
+      on_demand_reading_provenance: [{ document_id: "supplement", version: "v1",
+        depth: "full", turn_index: 0, entered_model_context: true }],
+      ...(latched ? { restriction: { reason: "hidden_material" as const, at: "t1" } } : {}),
+    };
+    const ui = harness(archive, new Set(latched ? [] : ["supplement"]));
+    try {
+      await ui.undo.deleteDiscussion("archived");
+      await ui.undo.undoDelete();
+      assert.deepEqual(ui.calls, ["delete", "restore", "read"]);
+      assert.equal(ui.state.conversation?.restricted, true);
+      assert.equal(ui.state.conversation?.restrictionReason, "hidden_material");
+      assert.equal(ui.state.followUpAvailable, false);
+      assert.equal(ui.state.conversations[0].restricted, true);
+      assert.equal(displayFocusDocumentTitle(ui.state.conversations[0]), "（已隐藏的文档）");
+      assert.equal(ui.state.conversations[0].provenance_has_revoked, false);
+    } finally { ui.undo.clearUndo(); }
+  });
+}
 
 test("2.8 恢复失败保留删除守卫及撤销提示，再次撤销可成功", async () => {
   const ui = harness();

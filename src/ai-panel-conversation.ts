@@ -70,8 +70,8 @@ export interface TemporaryConversation {
   provenance?: MaterialProvenance[];
   /**
    * 按需补读授权状态（add-agent-on-demand-reading 任务 7.2）：`null` / 缺省表示
-   * 未授权；授权属于讨论、跨重启保留（重开档案 / 摘要携带）。前端保存链携带它，
-   * 授权事实由后端档案保管。
+   * 未授权；授权属于讨论、跨重启保留。只供读取与展示，前端普通保存不携带，
+   * 授权事实由后端窄更新保管。
    */
   onDemandReadingGrant?: OnDemandReadingGrant | null;
   /**
@@ -183,6 +183,30 @@ export function isRevokedMaterial(p: MaterialProvenance): boolean {
   return p.material_type === "revoked";
 }
 
+/** 档案消费过的文档并集；旧档案缺普通出处时保持保守未知。 */
+export function recordConsumedDocumentIds(record: ConversationRecord): Set<string> | null {
+  if (record.provenance == null) return null;
+  return new Set([
+    ...record.provenance.map((p) => p.document_id),
+    ...(record.on_demand_reading_provenance ?? []).map((p) => p.document_id),
+  ]);
+}
+
+/** 仅用摘要索引推导消费文档，不读取讨论正文。 */
+export function summaryConsumedDocumentIds(summary: ConversationSummary): Set<string> | null {
+  if (summary.provenance == null) return null;
+  return new Set([...(summary.provenance ?? []), ...summary.on_demand_document_ids]);
+}
+
+/** 运行期消费文档；尚未归档的普通出处由冻结选区锚点派生。 */
+export function conversationConsumedDocumentIds(conversation: ReadonlyTemporaryConversation): Set<string> {
+  return new Set([
+    ...(conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor))
+      .map((p) => p.document_id),
+    ...(conversation.onDemandReadingProvenance ?? []).map((p) => p.document_id),
+  ]);
+}
+
 /**
  * 判定一份档案是否因材料权限变化而受限（controlled-story-read-visibility 任务 5.2/5.4）：
  * - 旧档案缺少 `provenance` 字段 → 保守受限（无法确认所用材料是否仍可查看，不自动重放）；
@@ -195,14 +219,7 @@ export function isConversationMaterialRestricted(
   record: ConversationRecord | ConversationSummary,
   hiddenDocumentIds: ReadonlySet<string>,
 ): boolean {
-  if (record.provenance === undefined || record.provenance === null) return true;
-  // IPC 摘要也携带 version；以摘要独有的锁存字段区分两种出处形状。
-  if ("provenance_has_revoked" in record) {
-    return record.provenance_has_revoked || record.provenance.some((id) => hiddenDocumentIds.has(id));
-  }
-  return record.provenance.some(
-    (p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id),
-  );
+  return restrictionReasonOf(record, hiddenDocumentIds) !== undefined;
 }
 
 /** 受限原因：旧档案缺出处 / 出处引用隐藏文档 / 出处含锁存标记。 */
@@ -210,8 +227,15 @@ export function restrictionReasonOf(
   record: ConversationRecord | ConversationSummary,
   hiddenDocumentIds: ReadonlySet<string>,
 ): RestrictionReason | undefined {
-  if (record.provenance === undefined || record.provenance === null) return "missing_provenance";
-  return isConversationMaterialRestricted(record, hiddenDocumentIds)
+  // IPC 摘要也携带 version；以摘要独有的锁存字段区分两种出处形状。
+  const summary = "provenance_has_revoked" in record;
+  const latched = summary
+    ? record.restricted === true || record.provenance_has_revoked
+    : record.restriction != null || record.provenance?.some(isRevokedMaterial);
+  if (latched) return "hidden_material";
+  const consumed = summary ? summaryConsumedDocumentIds(record) : recordConsumedDocumentIds(record);
+  if (consumed === null) return "missing_provenance";
+  return [...consumed].some((id) => hiddenDocumentIds.has(id))
     ? "hidden_material"
     : undefined;
 }
@@ -244,13 +268,8 @@ export function conversationProvenanceForArchive(
   conversation: TemporaryConversation,
 ): MaterialProvenance[] | undefined {
   if (conversation.restrictionReason === "missing_provenance") return undefined;
-  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
-  // 锁存：受限讨论（hidden_material）重存时把出处标记为 `revoked`，使重新开启可见性后
-  // 重开该讨论也不会被当前可见性重算解除（任务 5.4）。
-  if (conversation.restrictionReason === "hidden_material") {
-    return provenance.map((p) => (isRevokedMaterial(p) ? p : { ...p, material_type: "revoked" }));
-  }
-  return provenance;
+  // 统一锁存由后端档案字段保管；旧 revoked 出处原样直通，不再新增打标。
+  return conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
 }
 
 /**
@@ -270,8 +289,8 @@ export function isConversationRestrictedForRecovery(
   if (conversation.restrictionReason === "missing_provenance") return true;
   // 已锁存的受限讨论（restricted / revoked 出处）永久不可重放，不因重新开启可见性解除。
   if (conversation.restricted) return true;
-  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
-  return provenance.some((p) => isRevokedMaterial(p) || hiddenDocumentIds.has(p.document_id));
+  return conversation.provenance?.some(isRevokedMaterial) === true ||
+    [...conversationConsumedDocumentIds(conversation)].some((id) => hiddenDocumentIds.has(id));
 }
 
 /**
@@ -285,8 +304,7 @@ export function latchConversationRestriction(
   hiddenDocumentIds: ReadonlySet<string>,
 ): TemporaryConversation {
   if (conversation.restricted) return conversation;
-  const provenance = conversation.provenance ?? materialProvenanceFromAnchor(conversation.anchor);
-  if (!provenance.some((p) => hiddenDocumentIds.has(p.document_id))) return conversation;
+  if (![...conversationConsumedDocumentIds(conversation)].some((id) => hiddenDocumentIds.has(id))) return conversation;
   return { ...conversation, restricted: true, restrictionReason: "hidden_material" };
 }
 
@@ -608,10 +626,7 @@ export function buildConversationRecord(
       const provenance = conversationProvenanceForArchive(conversation);
       return provenance !== undefined ? { provenance } : {};
     })(),
-    // 按需补读授权状态：前端保存链携带运行期跟踪的授权（null = 未授权 / 已关闭）。
-    // 补读出处（on_demand_reading_provenance）由后端通道按轮写入，前端不携带
-    // （后端保存时保全档案已有出处，见 conversation_store::save_conversation）。
-    on_demand_reading_grant: conversation.onDemandReadingGrant ?? null,
+    // 授权、补读出处与统一锁存由后端窄更新保管，普通保存不携带。
   };
 }
 
@@ -625,7 +640,7 @@ export function conversationFromRecord(
   options: { hiddenDocumentIds?: ReadonlySet<string> } = {},
 ): TemporaryConversation {
   const hiddenDocumentIds = options.hiddenDocumentIds ?? new Set<string>();
-  const restricted = isConversationMaterialRestricted(record, hiddenDocumentIds);
+  const restricted = record.restriction != null || isConversationMaterialRestricted(record, hiddenDocumentIds);
   const restrictionReason = restrictionReasonOf(record, hiddenDocumentIds);
   const material = firstRoundMaterialFromArchive(record.first_round_material);
   const turns = record.turns;
@@ -683,7 +698,7 @@ export function conversationFromRecord(
     pinned: record.pinned ?? false,
     restricted,
     restrictionReason,
-    provenance: record.provenance,
+    provenance: record.provenance ?? undefined,
     onDemandReadingGrant: record.on_demand_reading_grant ?? null,
     onDemandReadingProvenance: record.on_demand_reading_provenance ?? undefined,
   };
@@ -722,22 +737,19 @@ export function buildDiscussionRecord(discussion: Discussion): ConversationRecor
     first_round_material: material,
     turns,
     provenance: materialProvenanceFromAnchor(discussion.anchor),
-    // 按需补读授权：首轮在途期间允许的授权也随「接受即存 / 停止终态」保存落档
-    // （授权属于讨论；无授权时为 null，与保存契约一致）。
-    on_demand_reading_grant: discussion.onDemandReadingGrant ?? null,
+    // 首轮在途授权也只经后端窄更新写入，不由普通保存携带。
   };
 }
 
 /** 由讨论生成会话列表条目（标题取首轮问题/召唤文本截断，空则时间）。 */
-export function summaryOf(  conversation: TemporaryConversation,
+export function summaryOf(
+  conversation: TemporaryConversation,
   focusDocumentId: string | null,
   focusDocumentTitle: string | null,
 ): ConversationSummary {
-  return {
-    ...deriveConversationSummary({
-      ...buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle),
-      on_demand_reading_provenance: conversation.onDemandReadingProvenance,
-    }),
-    restricted: conversation.restricted ?? false,
-  };
+  const derived = deriveConversationSummary({
+    ...buildConversationRecord(conversation, focusDocumentId, focusDocumentTitle),
+    on_demand_reading_provenance: conversation.onDemandReadingProvenance,
+  });
+  return { ...derived, restricted: conversation.restricted === true || derived.restricted === true };
 }

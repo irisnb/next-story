@@ -125,10 +125,12 @@ export interface ConversationRecord {
    * 材料出处元数据。缺失（旧档案）按保守策略处理：可查看但不可自动重放；
    * 空数组表示新档案且本轮未使用任何作品材料。
    */
-  provenance?: MaterialProvenance[];
+  provenance?: MaterialProvenance[] | null;
+  /** 后端永久锁存，只供读取；普通保存不得改写。 */
+  restriction?: { reason: "hidden_material"; at: string } | null;
   /**
    * 按需补读授权状态（add-agent-on-demand-reading）：`null` / 缺失表示未授权。
-   * 前端保存链携带运行期跟踪的授权状态；授权事实由后端档案保管。
+   * 仅供读取与展示；授权只经后端窄更新写入，前端普通保存不携带。
    */
   on_demand_reading_grant?: OnDemandReadingGrant | null;
   /**
@@ -178,8 +180,8 @@ export interface ConversationSummary {
   on_demand_document_ids: string[];
   references_incomplete: boolean;
   /**
-   * 前端派生的材料受限标记（不落盘）：为 true 时列表等显示层必须对关注文档标题脱敏。
-   * 后端返回的摘要不带该字段。
+   * 后端由统一锁存或旧 revoked 标记派生，与前端当前权限判定 OR。
+   * 为 true 时列表等显示层必须对关注文档标题脱敏。
    */
   restricted?: boolean;
 }
@@ -253,6 +255,7 @@ export async function conversationList(
 
 /** 与后端 meta 同构的列表投影；保存与撤销共用，不保留轮次全文。 */
 export function deriveConversationSummary(record: ConversationRecord): ConversationSummary {
+  const provenanceHasRevoked = record.provenance?.some((p) => p.material_type === "revoked") ?? false;
   return {
     conversation_id: record.conversation_id,
     title: record.title?.trim() || deriveConversationTitle(record.first_round_material, record.created_at),
@@ -264,7 +267,8 @@ export function deriveConversationSummary(record: ConversationRecord): Conversat
     focus_document_id: record.focus_document_id,
     focus_document_title: record.focus_document_title,
     provenance: record.provenance == null ? null : [...new Set(record.provenance.map((p) => p.document_id))],
-    provenance_has_revoked: record.provenance?.some((p) => p.material_type === "revoked") ?? false,
+    provenance_has_revoked: provenanceHasRevoked,
+    restricted: record.restriction != null || provenanceHasRevoked,
     on_demand_document_ids: [...new Set(record.on_demand_reading_provenance?.map((p) => p.document_id) ?? [])],
     references_incomplete: false,
   };

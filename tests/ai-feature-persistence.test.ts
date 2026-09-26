@@ -10,6 +10,8 @@ import type {
   FirstRoundMaterial,
 } from "../src/conversation-archive.ts";
 import { deriveConversationSummary } from "../src/conversation-archive.ts";
+import { recordConsumedDocumentIds } from "../src/ai-panel-conversation.ts";
+import { displayFocusDocumentTitle } from "../src/ai-panel-conversation-list.ts";
 import type {
   GenerateAiRequest,
   GenerateAiResult,
@@ -128,9 +130,10 @@ function persistenceHarness(overrides: {
       latchCalls.push(documentId);
       const affected: string[] = [];
       for (const [id, record] of archives) {
-        if (!record.provenance?.some((entry) => entry.document_id === documentId)) continue;
-        archives.set(id, { ...record, provenance: record.provenance.map((entry) =>
-          entry.document_id === documentId ? { ...entry, material_type: "revoked" } : entry) });
+        const consumed = recordConsumedDocumentIds(record);
+        if (consumed !== null && !consumed.has(documentId)) continue;
+        archives.set(id, { ...record,
+          restriction: record.restriction ?? { reason: "hidden_material", at: "t1" } });
         affected.push(id);
       }
       return affected;
@@ -138,7 +141,12 @@ function persistenceHarness(overrides: {
     conversationSave: (_projectPath, record) => {
       if (overrides.failSave) return Promise.reject(new Error("磁盘写入失败"));
       saves.push(record);
-      archives.set(record.conversation_id, record);
+      const existing = archives.get(record.conversation_id);
+      archives.set(record.conversation_id, { ...record,
+        on_demand_reading_grant: existing?.on_demand_reading_grant ?? null,
+        on_demand_reading_provenance: existing?.on_demand_reading_provenance ?? null,
+        restriction: existing?.restriction ?? null,
+      });
       return Promise.resolve();
     },
     conversationDelete: (_projectPath, conversationId) => {
@@ -678,6 +686,43 @@ test("5.8a replay transport failure enters recovery error instead of completing 
 
 // ========== 任务 5.2/5.4：权限变更后锁存 + 重新开启可见性不解除 ==========
 
+test("补读-only 来源隐藏：真实编排过滤恢复、锁存、列表脱敏，关闭窗口后重读仍受限", async () => {
+  const hidden = new Set<string>();
+  const ui = persistenceHarness({ getHiddenDocumentIds: () => hidden });
+  try {
+    await ui.openRecord({
+      ...savedRecord("on-demand-only"), focus_document_id: "doc-1", focus_document_title: "关注文档名",
+      on_demand_reading_provenance: [{ document_id: "supplement", version: "v1",
+        depth: "full", turn_index: 0, entered_model_context: true }],
+    });
+    assert.equal(ui.controller.state.conversation?.restricted, false);
+    hidden.add("supplement");
+    ui.fireDriverLost();
+    await flush();
+    assert.deepEqual(ui.replayCalls, [], "当前隐藏的补读材料不得重放");
+    ui.controller.recomputeRestrictions();
+    assert.equal(ui.controller.state.conversation?.restricted, true);
+    await flush();
+    assert.deepEqual(ui.latchCalls, ["supplement"]);
+    const archived = ui.archives.get("on-demand-only")!;
+    assert.deepEqual(archived.restriction, { reason: "hidden_material", at: "t1" });
+    assert.deepEqual(archived.provenance, [], "不可对空普通出处伪造 revoked");
+    assert.equal(displayFocusDocumentTitle(ui.controller.getConversations()[0]), "（已隐藏的文档）");
+    assert.equal(await ui.controller.submitFollowUp("追问"), false);
+    hidden.clear();
+    ui.controller.state.closeWindow("on-demand-only");
+    ui.controller.openDiscussion(deriveConversationSummary(archived));
+    await flush();
+    assert.deepEqual(ui.reads, ["on-demand-only", "on-demand-only"], "重开确实重新读档");
+    assert.equal(ui.controller.state.conversation?.restricted, true);
+    assert.equal(ui.controller.state.conversation?.restrictionReason, "hidden_material");
+    assert.equal(ui.controller.state.followUpAvailable, false);
+    ui.fireDriverLost();
+    await flush();
+    assert.deepEqual(ui.replayCalls, [], "重新可见后也不得恢复已锁存讨论");
+  } finally { ui.restore(); }
+});
+
 test("5.9 recomputeRestrictions latches an open discussion and persists it so re-enable + reopen stays restricted", async () => {
   const hidden = new Set<string>();
   const ui = persistenceHarness({ getHiddenDocumentIds: () => hidden });
@@ -704,12 +749,13 @@ test("5.9 recomputeRestrictions latches an open discussion and persists it so re
     ui.controller.recomputeRestrictions();
     assert.equal(ui.controller.state.conversation?.restricted, true);
     assert.equal(ui.controller.state.followUpAvailable, false);
-    // 锁存被持久化（revoked 出处，不泄露身份，只记录来源文档 ID）。
+    // 锁存由后端档案级字段持久化，不再改写普通出处。
     await flush();
     assert.deepEqual(ui.latchCalls, ["doc-1"]);
     assert.equal(ui.saves.length, 0, "锁存不再由前端重存全文");
     const persisted = ui.archives.get("c-11")!;
-    assert.equal(persisted.provenance?.[0]?.material_type, "revoked");
+    assert.deepEqual(persisted.restriction, { reason: "hidden_material", at: "t1" });
+    assert.equal(persisted.provenance?.[0]?.material_type, "selection");
 
     // 受限讨论不能追问。
     assert.equal(await ui.controller.submitFollowUp("追问"), false);

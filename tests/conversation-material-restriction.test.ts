@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   beginConversationFollowUp,
   buildConversationRecord,
+  buildDiscussionRecord,
+  conversationConsumedDocumentIds,
   conversationFromRecord,
   conversationProvenanceForArchive,
   conversationRestrictionNotice,
@@ -18,7 +20,10 @@ import {
   materialProvenanceFromAnchor,
   MISSING_PROVENANCE_RESTRICTION_NOTICE,
   restrictionReasonOf,
+  recordConsumedDocumentIds,
   retryFollowUpQuestionOf,
+  summaryConsumedDocumentIds,
+  summaryOf,
   type TemporaryConversation,
 } from "../src/ai-panel-conversation.ts";
 import type {
@@ -26,6 +31,8 @@ import type {
   ConversationSummary,
 } from "../src/conversation-archive.ts";
 import { displayFocusDocumentTitle } from "../src/ai-panel-conversation-list.ts";
+import { deriveConversationSummary } from "../src/conversation-archive.ts";
+import { AiPanelState } from "../src/ai-panel-state.ts";
 import { initialAiPanelCoreState, reduceAiPanelState } from "../src/ai-panel-reducer.ts";
 import type { SelectionSnapshot } from "../src/types.ts";
 
@@ -78,9 +85,11 @@ for (const provenance of [null, undefined]) {
   });
 }
 
-test("IPC 摘要含 version：未锁存且无普通出处命中时不受限", () => {
+test("IPC 摘要含 version：仅补读出处命中也受限", () => {
   const summary = backendSummary({ on_demand_document_ids: ["doc-other"] });
-  assert.equal(isConversationMaterialRestricted(summary, new Set(["doc-other"])), false);
+  assert.equal(isConversationMaterialRestricted(summary, new Set(["doc-other"])), true);
+  assert.equal(restrictionReasonOf(summary, new Set(["doc-other"])), "hidden_material");
+  assert.equal(isConversationMaterialRestricted(summary, new Set(["unrelated"])), false);
 });
 
 test("IPC 摘要含 version：列表对受限关注文档标题脱敏", () => {
@@ -241,7 +250,7 @@ test("re-saving a missing-provenance archive preserves the conservative restrict
   assert.equal(record.provenance, undefined, "旧档案重存不得写出处，保持保守受限");
 });
 
-test("re-saving a hidden-material restricted archive latches the restriction (revoked) and preserves the source document", () => {
+test("re-saving a hidden-material restricted archive preserves provenance without fabricating revoked markers", () => {
   const provenance = [
     { document_id: "doc-1", material_type: "selection" as const, document_version: null, turn_index: 0, entered_model_context: true },
   ];
@@ -250,19 +259,8 @@ test("re-saving a hidden-material restricted archive latches the restriction (re
     { hiddenDocumentIds: new Set(["doc-1"]) },
   );
   const record = buildConversationRecord(hidden, null, null);
-  // 锁存：重存时出处标记为 revoked，来源文档身份保留（权限变化关系不丢失）。
-  assert.deepEqual(
-    record.provenance,
-    [
-      { document_id: "doc-1", material_type: "revoked", document_version: null, turn_index: 0, entered_model_context: true },
-    ],
-    "受限讨论重存必须锁存出处（revoked）并保留来源文档身份",
-  );
-  // 锁存后的档案在重新开启可见性（隐藏集为空）时仍受限，不被当前可见性重算解除。
-  const reopened = conversationFromRecord(record, { hiddenDocumentIds: new Set() });
-  assert.equal(reopened.restricted, true);
-  assert.equal(reopened.restrictionReason, "hidden_material");
-  assert.equal(followUpAvailableOf(reopened), false);
+  assert.deepEqual(record.provenance, provenance, "出处保持原样；永久锁存只由后端窄更新写入");
+  assert.equal("restriction" in record, false, "普通保存不写后端锁存字段");
 });
 
 test("isConversationRestrictedForRecovery re-checks current visibility before replay", () => {
@@ -351,7 +349,7 @@ test("isConversationRestrictedForRecovery blocks a latched (revoked) discussion"
   assert.equal(isConversationRestrictedForRecovery(restricted, new Set()), true);
 });
 
-test("conversationProvenanceForArchive writes the revoked marker only for hidden-material restriction", () => {
+test("conversationProvenanceForArchive preserves both ordinary provenance and legacy revoked entries", () => {
   const selectionProvenance = [
     { document_id: "doc-1", material_type: "selection" as const, document_version: null, turn_index: 0, entered_model_context: true },
   ];
@@ -360,9 +358,181 @@ test("conversationProvenanceForArchive writes the revoked marker only for hidden
   // 未受限：保持原出处。
   assert.deepEqual(conversationProvenanceForArchive(visibleWithProvenance), selectionProvenance);
 
-  // 受限（hidden_material）：锁存为 revoked。
+  // 受限（hidden_material）：不再把正常出处改成 revoked。
   const restricted = { ...visibleWithProvenance, restricted: true, restrictionReason: "hidden_material" as const };
-  assert.deepEqual(conversationProvenanceForArchive(restricted), [
+  assert.deepEqual(conversationProvenanceForArchive(restricted), selectionProvenance);
+  const legacy = recordWithProvenance([
     { document_id: "doc-1", material_type: "revoked", document_version: null, turn_index: 0, entered_model_context: true },
   ]);
+  assert.deepEqual(conversationProvenanceForArchive(conversationFromRecord(legacy)), legacy.provenance);
 });
+
+function onDemandOnlyRecord(): ConversationRecord {
+  return {
+    ...recordWithProvenance([]),
+    on_demand_reading_provenance: [{
+      document_id: "supplement", version: "v1", depth: "full", turn_index: 0,
+      entered_model_context: true,
+    }],
+  };
+}
+
+test("三种消费文档推导合并并去重两类出处，运行期仅在缺出处时回退锚点", () => {
+  const record = onDemandOnlyRecord();
+  record.provenance = materialProvenanceFromAnchor(snapshot("选区", "ordinary"));
+  record.on_demand_reading_provenance!.push({
+    ...record.on_demand_reading_provenance![0], document_id: "ordinary",
+  });
+  const expected = new Set(["ordinary", "supplement"]);
+  assert.deepEqual(recordConsumedDocumentIds(record), expected);
+  assert.deepEqual(summaryConsumedDocumentIds(deriveConversationSummary(record)), expected);
+  const live = conversationFromRecord(record);
+  assert.deepEqual(conversationConsumedDocumentIds(live), expected);
+  live.anchor = snapshot("选区", "anchor");
+  assert.deepEqual(conversationConsumedDocumentIds(live), expected, "已有出处优先于锚点");
+  live.provenance = undefined;
+  assert.deepEqual(conversationConsumedDocumentIds(live), new Set(["anchor", "supplement", "ordinary"]));
+  live.provenance = [];
+  assert.deepEqual(conversationConsumedDocumentIds(live), new Set(["supplement", "ordinary"]), "空出处不回退锚点");
+});
+
+for (const provenance of [null, undefined]) {
+  test(`补读出处存在但普通出处为 ${provenance} 仍保持 missing_provenance`, () => {
+    const record = { ...onDemandOnlyRecord(), provenance };
+    assert.equal(recordConsumedDocumentIds(record), null);
+    assert.equal(summaryConsumedDocumentIds(deriveConversationSummary(record)), null);
+    assert.equal(isConversationMaterialRestricted(record, new Set()), true);
+    assert.equal(restrictionReasonOf(record, new Set()), "missing_provenance");
+    const live = conversationFromRecord(record);
+    assert.equal(live.restrictionReason, "missing_provenance");
+    assert.equal(isConversationRestrictedForRecovery(live, new Set()), true);
+    assert.equal(conversationProvenanceForArchive(live), undefined);
+  });
+}
+
+test("补读-only 隐藏来源：重开、摘要、恢复和实时锁存统一受限", () => {
+  const record = onDemandOnlyRecord();
+  const hidden = new Set(["supplement"]);
+  const visible = conversationFromRecord(record);
+  assert.equal(visible.restricted, false);
+  assert.equal(isConversationRestrictedForRecovery(visible, new Set()), false);
+  assert.equal(latchConversationRestriction(visible, new Set(["unrelated"])), visible);
+  assert.equal(isConversationMaterialRestricted(record, hidden), true);
+  assert.equal(restrictionReasonOf(record, hidden), "hidden_material");
+  const opened = conversationFromRecord(record, { hiddenDocumentIds: hidden });
+  assert.equal(opened.restricted, true);
+  assert.equal(opened.restrictionReason, "hidden_material");
+  assert.equal(followUpAvailableOf(opened), false);
+  assert.equal(beginConversationFollowUp(opened, "不能继续", 1).turnId, null);
+  assert.equal(isConversationMaterialRestricted(deriveConversationSummary(record), hidden), true);
+  assert.equal(isConversationRestrictedForRecovery(visible, hidden), true);
+  const latched = latchConversationRestriction(visible, hidden);
+  assert.equal(latched.restricted, true);
+  assert.equal(latched.restrictionReason, "hidden_material");
+  assert.equal(latchConversationRestriction(latched, new Set()), latched);
+  assert.equal(isConversationRestrictedForRecovery(latched, new Set()), true);
+  assert.equal(summaryOf(latched, "doc-1", "关注文档").restricted, true);
+});
+
+for (const provenance of [[], null, undefined] as const) {
+  test(`统一锁存优先于缺出处（${provenance}），可见性重新开启也不解除`, () => {
+    const record: ConversationRecord = {
+      ...onDemandOnlyRecord(), provenance: provenance == null ? provenance : [],
+      restriction: { reason: "hidden_material", at: "2026-09-26T00:00:00Z" },
+    };
+    assert.equal(isConversationMaterialRestricted(record, new Set()), true);
+    assert.equal(restrictionReasonOf(record, new Set()), "hidden_material");
+    const opened = conversationFromRecord(record);
+    assert.equal(opened.restricted, true);
+    assert.equal(opened.restrictionReason, "hidden_material");
+    assert.equal(isConversationRestrictedForRecovery(opened, new Set()), true);
+    const summary = deriveConversationSummary(record);
+    assert.equal(summary.restricted, true);
+    assert.equal(summary.provenance_has_revoked, false, "统一锁存不伪造旧标记");
+    assert.equal(isConversationMaterialRestricted(summary, new Set()), true);
+    assert.equal(restrictionReasonOf(summary, new Set()), "hidden_material");
+  });
+}
+
+test("旧 revoked 标记在摘要派生与恢复中保留，不能被运行期 false 覆盖", () => {
+  const record = recordWithProvenance([{ ...materialProvenanceFromAnchor(snapshot("选区"))[0], material_type: "revoked" }]);
+  assert.equal(record.restriction, undefined);
+  const derived = deriveConversationSummary(record);
+  assert.equal(derived.restricted, true);
+  assert.equal(derived.provenance_has_revoked, true);
+  assert.equal(isConversationMaterialRestricted({ ...derived, restricted: false }, new Set()), true);
+  const live = { ...conversationFromRecord(record), restricted: false };
+  assert.equal(isConversationRestrictedForRecovery(live, new Set()), true);
+  assert.equal(summaryOf(live, "doc-1", "关注文档").restricted, true);
+});
+
+test("recomputeRestrictions 对补读-only 打开窗口和仅列表摘要统一锁存、脱敏", () => {
+  const record = { ...onDemandOnlyRecord(), focus_document_title: "关注文档名" };
+  const state = new AiPanelState();
+  state.loadDiscussions([
+    deriveConversationSummary(record),
+    { ...deriveConversationSummary(record), conversation_id: "closed" },
+  ], []);
+  state.openDiscussion(conversationFromRecord(record), record.focus_document_id, record.focus_document_title);
+  assert.deepEqual(state.recomputeRestrictions(new Set(["supplement"])), ["c-1"]);
+  assert.equal(state.conversation?.restricted, true);
+  assert.equal(state.followUpAvailable, false);
+  for (const summary of state.conversations) {
+    assert.equal(summary.restricted, true);
+    assert.equal(displayFocusDocumentTitle(summary), "（已隐藏的文档）");
+    assert.equal(summary.provenance_has_revoked, false);
+  }
+  assert.equal(state.getDiscussion("closed"), null, "仅列表讨论不读正文");
+  assert.deepEqual(state.recomputeRestrictions(new Set()), []);
+  state.loadDiscussions([deriveConversationSummary(record)], [], new Set());
+  assert.equal(state.conversations[0].restricted, true, "旧列表回填不得解除运行期锁存");
+});
+
+for (const overrides of [
+  { on_demand_document_ids: ["supplement"] },
+  { restricted: true },
+  { provenance_has_revoked: true, restricted: false },
+]) {
+  test(`列表首载与摘要更新识别受限来源 ${JSON.stringify(overrides)}`, () => {
+    const summary = backendSummary({ provenance: [], ...overrides });
+    const state = new AiPanelState();
+    state.loadDiscussions([summary], [], new Set(["supplement"]));
+    assert.equal(displayFocusDocumentTitle(state.conversations[0]), "（已隐藏的文档）");
+    const updated = new AiPanelState();
+    updated.upsertSummary(summary, new Set(["supplement"]));
+    assert.equal(updated.conversations[0].restricted, true);
+    assert.equal(displayFocusDocumentTitle(updated.conversations[0]), "（已隐藏的文档）");
+  });
+}
+
+test("后端锁存回执只设置统一受限，不伪造 provenance_has_revoked", () => {
+  const state = new AiPanelState();
+  state.loadDiscussions([backendSummary()], []);
+  state.latchRestrictions(["c-1"]);
+  assert.equal(state.conversations[0].restricted, true);
+  assert.equal(state.conversations[0].provenance_has_revoked, false);
+  assert.equal(displayFocusDocumentTitle(state.conversations[0]), "（已隐藏的文档）");
+});
+
+for (const grant of [undefined, null, { granted_at: "t1" }]) {
+  test(`普通保存不携带授权字段（运行期授权 ${JSON.stringify(grant)}）`, () => {
+    const record = { ...onDemandOnlyRecord(), on_demand_reading_grant: grant };
+    const conversation = conversationFromRecord(record);
+    assert.deepEqual(conversation.onDemandReadingGrant, grant ?? null, "读取授权仍保留");
+    const state = new AiPanelState();
+    state.openDiscussion(conversation, "doc-1", "关注文档");
+    const discussion = state.getDiscussion("c-1")!;
+    const records = [
+      buildConversationRecord(conversation, "doc-1", "关注文档"),
+      buildDiscussionRecord(discussion),
+      buildDiscussionRecord({ ...discussion, conversation: null,
+        pendingFirstRequest: { kind: "direct_question", question: "问题" }, onDemandReadingGrant: grant }),
+    ];
+    for (const payload of records) {
+      assert.equal("on_demand_reading_grant" in payload, false);
+      assert.equal("on_demand_reading_grant" in JSON.parse(JSON.stringify(payload)), false);
+      assert.equal("on_demand_reading_provenance" in payload, false);
+      assert.equal("restriction" in payload, false);
+    }
+  });
+}

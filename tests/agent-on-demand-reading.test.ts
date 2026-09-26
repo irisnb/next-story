@@ -280,7 +280,7 @@ function readingHarness(overrides: {
   };
 }
 
-test("7.1c 允许：调 ai_resolve_reading_request(true)，授权卡消失，授权写入讨论并持久化", async () => {
+test("7.1c 允许：调 ai_resolve_reading_request(true)，授权卡消失，普通保存不携带后端授权", async () => {
   const ui = readingHarness({ onDemandState: () => ({ grant: { granted_at: "t1" }, provenance: null }) });
   try {
     const round = ui.startDirectQuestion("涉及其他文档的问题");
@@ -312,10 +312,12 @@ test("7.1c 允许：调 ai_resolve_reading_request(true)，授权卡消失，授
     );
     assert.equal(ui.controller.state.onDemandReadingEnabledOf("c-1"), true, "授权写入讨论");
 
-    // 轮次完成后保存的档案携带授权（授权属于讨论、跨重启保留）。
+    // 授权已由后端窄更新保管；终态保存不得携带运行期授权副本。
     await round.finish({ ok: true, content: "回答" });
     const terminal = ui.saves[ui.saves.length - 1];
-    assert.ok(terminal.on_demand_reading_grant, "终态保存携带按需补读授权状态");
+    assert.equal("on_demand_reading_grant" in terminal, false, "终态普通保存不得改写授权");
+    assert.equal("on_demand_reading_grant" in JSON.parse(JSON.stringify(terminal)), false);
+    assert.equal(ui.controller.state.onDemandReadingEnabledOf("c-1"), true, "刷新后仍显示后端授权");
   } finally {
     ui.restore();
   }

@@ -656,7 +656,7 @@ export function reduceAiPanelState(
       const previous = state.summaries.get(id);
       return { ...state, deletedIds, summaries: new Map(state.summaries).set(id, {
         ...event.summary,
-        restricted: previous?.restricted || event.summary.restricted,
+        restricted: previous?.restricted || isConversationMaterialRestricted(event.summary, new Set()),
         provenance_has_revoked: previous?.provenance_has_revoked || event.summary.provenance_has_revoked,
       }) };
     }
@@ -680,7 +680,7 @@ export function reduceAiPanelState(
       const discussions = new Map(state.discussions);
       for (const id of event.conversationIds) {
         const summary = summaries.get(id);
-        if (summary) summaries.set(id, { ...summary, restricted: true, provenance_has_revoked: true });
+        if (summary) summaries.set(id, { ...summary, restricted: true });
         const discussion = discussions.get(id);
         if (discussion?.conversation) discussions.set(id, { ...discussion, conversation: {
           ...discussion.conversation, restricted: true,

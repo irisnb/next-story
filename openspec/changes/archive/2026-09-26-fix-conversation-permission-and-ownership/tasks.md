@@ -26,4 +26,4 @@
 
 - [x] 4.1 门禁全绿：`npm run check`、`npm run test:validation`、`cargo test`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`
 - [x] 4.2 `verification/validation.md`：记录门禁结果、F03/F05 转正测试证据与交错用例；如执行应用级记录（列表脱敏 / 隐藏后重开）如实写明范围与结果
-- [ ] 4.3 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 3 行为 ✅（附归档 change 名与日期）；确认 Change 4 边界未被本 change 提前覆盖
+- [x] 4.3 归档前核对：规格 delta 完整（MODIFIED 全文、场景 4 级标题格式）；更新《开发前全面工程复核-2026-09-23.md》第 10 节 Change 3 行为 ✅（附归档 change 名与日期）；确认 Change 4 边界未被本 change 提前覆盖

@@ -535,6 +535,7 @@ test("showProject begins the AI project and unload ends it", async () => {
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      drainPendingSaves: async () => {},
       destroy: () => {},
     };
     fixture.editor.attachAi(ai);
@@ -566,6 +567,7 @@ test("applyTree with the same document does not reset the AI project", async () 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      drainPendingSaves: async () => {},
       destroy: () => {},
     };
     fixture.editor.attachAi(ai);
@@ -597,6 +599,7 @@ test("switching to another document does not reset the AI project", async () => 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      drainPendingSaves: async () => {},
       destroy: () => {},
     };
     fixture.editor.attachAi(ai);

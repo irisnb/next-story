@@ -216,6 +216,79 @@ test("application destroyer releases AI and editor before the native window exac
   assert.deepEqual(calls, ["ai", "editor", "window"]);
 });
 
+test("F09 failed window destruction retries only the unfinished stage", async () => {
+  const calls: string[] = [];
+  const failure = new Error("窗口销毁暂时失败");
+  let windowAttempts = 0;
+  const destroy = createApplicationDestroyer({
+    drainSaves: () => { calls.push("drain"); },
+    destroyAi: () => { calls.push("ai"); },
+    destroyEditor: () => { calls.push("editor"); },
+    destroyWindow: async () => {
+      calls.push("window");
+      if (++windowAttempts === 1) throw failure;
+    },
+  });
+
+  await assert.rejects(destroy(), (error) => error === failure);
+  assert.deepEqual(calls, ["drain", "ai", "editor", "window"]);
+  await destroy();
+  assert.deepEqual(calls, ["drain", "ai", "editor", "window", "window"]);
+  await destroy();
+  assert.equal(calls.length, 5, "全部完成后再次关闭无副作用");
+});
+
+test("F09 application destroyer shares pending work and awaits each asynchronous stage", async () => {
+  const calls: string[] = [];
+  const ai = deferredSave();
+  const editor = deferredSave();
+  const destroy = createApplicationDestroyer({
+    destroyAi: () => { calls.push("ai"); return ai.promise; },
+    destroyEditor: () => { calls.push("editor"); return editor.promise; },
+    destroyWindow: () => { calls.push("window"); },
+  });
+  const first = destroy();
+  assert.equal(destroy(), first);
+  await Promise.resolve();
+  assert.deepEqual(calls, ["ai"]);
+  ai.resolve();
+  await Promise.resolve();
+  assert.deepEqual(calls, ["ai", "editor"]);
+  assert.equal(destroy(), first);
+  editor.resolve();
+  await first;
+  assert.deepEqual(calls, ["ai", "editor", "window"]);
+});
+
+test("F07 drain failure keeps the window open without destruction; retry drains before cleanup", async () => {
+  const failure = new Error("讨论保存失败");
+  const reported: unknown[] = [];
+  const calls: string[] = [];
+  let attempts = 0;
+  const destroy = createApplicationDestroyer({
+    drainSaves: async () => {
+      calls.push("drain");
+      if (++attempts === 1) throw failure;
+    },
+    destroyAi: () => { calls.push("ai"); },
+    destroyEditor: () => { calls.push("editor"); },
+    destroyWindow: () => { calls.push("window"); },
+  });
+  const close = () => orchestrateCloseRequest({
+    isDirty: () => false,
+    preventDefault: () => {},
+    guardLeave: async () => true,
+    destroy,
+    reportError: (error) => { reported.push(error); },
+  });
+  assert.equal(await close(), "kept-open");
+  assert.deepEqual(reported, [failure]);
+  assert.deepEqual(calls, ["drain"], "排空失败不进入任何销毁阶段");
+  assert.equal(await close(), "closed");
+  assert.deepEqual(calls, ["drain", "drain", "ai", "editor", "window"]);
+  assert.deepEqual(reported, [failure]);
+});
+
 test("cancelled or failed native close stays open without destroying the window", async () => {
   let destroys = 0;
   const result = await orchestrateCloseRequest({

@@ -122,6 +122,7 @@ window.addEventListener("DOMContentLoaded", () => {
     { isDirty: llmConfig.hasUnsavedChanges, guardLeave: llmConfig.guardLeave },
   ]);
   const destroyApplication = createApplicationDestroyer({
+    drainSaves: () => ai?.drainPendingSaves() ?? Promise.resolve(),
     destroyAi: () => ai?.destroy(),
     destroyEditor: () => { projectFlow.destroy(); editor.destroy(); },
     destroyWindow: () => appWindow.destroy(),

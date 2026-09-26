@@ -14,22 +14,36 @@ export interface CloseGuard {
 }
 
 export interface ApplicationDestroyOptions {
-  destroyAi(): void;
-  destroyEditor(): void;
-  destroyWindow(): Promise<void>;
+  drainSaves?(): void | Promise<void>;
+  destroyAi(): void | Promise<void>;
+  destroyEditor(): void | Promise<void>;
+  destroyWindow(): void | Promise<void>;
 }
 
+/**
+ * 按序排空保存并销毁；失败由关闭流程报告，窗口保留。
+ * 已完成阶段保持完成（部分界面可能已失效），重试仅完成剩余阶段。
+ */
 export function createApplicationDestroyer(
   options: ApplicationDestroyOptions,
 ): () => Promise<void> {
+  const stages: Array<() => void | Promise<void>> = [
+    ...(options.drainSaves ? [() => options.drainSaves!()] : []),
+    () => options.destroyAi(),
+    () => options.destroyEditor(),
+    () => options.destroyWindow(),
+  ];
+  let completedStages = 0;
   let pending: Promise<void> | null = null;
   return (): Promise<void> => {
     if (pending) return pending;
-    pending = (async () => {
-      options.destroyAi();
-      options.destroyEditor();
-      await options.destroyWindow();
-    })();
+    if (completedStages === stages.length) return Promise.resolve();
+    pending = Promise.resolve().then(async () => {
+      while (completedStages < stages.length) {
+        await stages[completedStages]();
+        completedStages += 1;
+      }
+    }).finally(() => { pending = null; });
     return pending;
   };
 }

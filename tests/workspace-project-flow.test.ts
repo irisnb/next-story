@@ -257,6 +257,7 @@ function fixture(options: FixtureOptions = {}) {
     openDiscussion() {},
     async deleteDiscussion() {},
     recomputeRestrictions() {},
+    drainPendingSaves: async () => {},
     destroy() {},
   };
   editor.attachAi(ai);

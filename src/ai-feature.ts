@@ -121,6 +121,7 @@ export interface AiFeatureController {
   deleteDiscussion(conversationId: string): Promise<void>;
   /** 权限变更后重算已打开讨论的材料限制并锁存（任务 5.2/5.4）。 */
   recomputeRestrictions(): void;
+  drainPendingSaves(): Promise<void>;
   destroy(): void;
 }
 
@@ -293,6 +294,7 @@ export function setupAiFeature(
     new ResidentAiSessionTransport({ getCurrentProjectPath: () => context.getCurrentProjectPath() });
   const listConversations = dependencies.conversationList ?? conversationList;
   const saveConversation = dependencies.conversationSave ?? conversationSave;
+  const pendingSaves = new Set<Promise<unknown>>();
   const deleteConversation = dependencies.conversationDelete ?? conversationDelete;
   const restoreConversation = dependencies.conversationRestore ?? conversationRestore;
   const readConversation = dependencies.conversationRead ?? conversationRead;
@@ -359,7 +361,11 @@ export function setupAiFeature(
     }
     const token = context.getProjectToken();
     const metaVersion = metaVersions.get(conversationId);
-    void saveConversation(projectPath, record)
+    const saving = saveConversation(projectPath, record);
+    pendingSaves.add(saving);
+    const cleanup = (): void => { pendingSaves.delete(saving); };
+    void saving.then(cleanup, cleanup);
+    void saving
       .then(() => {
         if (context.isDestroyed() || context.getProjectToken() !== token || state.isDeleted(conversationId)) return;
         const currentSummary = state.conversations.find((item) => item.conversation_id === conversationId);
@@ -382,6 +388,15 @@ export function setupAiFeature(
             ? error : "讨论保存失败，本次内容可能未落盘", conversationId);
         }
       });
+  }
+
+  /** 关闭前等待在途保存；等待期间新登记的保存也必须落定。 */
+  async function drainPendingSaves(): Promise<void> {
+    while (pendingSaves.size > 0) {
+      const results = await Promise.allSettled([...pendingSaves]);
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    }
   }
 
   function persistCurrentDiscussion(): void {
@@ -867,6 +882,7 @@ export function setupAiFeature(
     openDiscussion,
     deleteDiscussion,
     recomputeRestrictions,
+    drainPendingSaves,
     destroy,
   };
 }

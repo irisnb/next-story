@@ -12,6 +12,7 @@ import type {
 import { deriveConversationSummary } from "../src/conversation-archive.ts";
 import { recordConsumedDocumentIds } from "../src/ai-panel-conversation.ts";
 import { displayFocusDocumentTitle } from "../src/ai-panel-conversation-list.ts";
+import { createApplicationDestroyer, orchestrateCloseRequest } from "../src/close-guard.ts";
 import type {
   GenerateAiRequest,
   GenerateAiResult,
@@ -404,6 +405,95 @@ test("4.1 user turn accepted saves a pending record, terminal result updates it"
   } finally {
     ui.restore();
   }
+});
+
+test("F07 close waits for every pending discussion save before destroying controllers and window", async () => {
+  const accepted = deferred<void>();
+  const terminal = deferred<void>();
+  let saves = 0;
+  const calls: string[] = [];
+  const ui = persistenceHarness({ dependencies: {
+    conversationSave: () => ++saves === 1 ? accepted.promise : terminal.promise,
+  } });
+  try {
+    await ui.controller.drainPendingSaves();
+    ui.submitDirectQuestion("关闭前保存");
+    await flush();
+    assert.equal(saves, 2);
+    const destroy = createApplicationDestroyer({
+      drainSaves: () => ui.controller.drainPendingSaves(),
+      destroyAi: () => { calls.push("ai"); ui.controller.destroy(); },
+      destroyEditor: () => { calls.push("editor"); },
+      destroyWindow: () => { calls.push("window"); },
+    });
+    const closing = orchestrateCloseRequest({
+      isDirty: () => false, preventDefault: () => {}, guardLeave: async () => true,
+      destroy,
+    });
+    await flush();
+    assert.deepEqual(calls, []);
+    accepted.resolve();
+    await flush();
+    assert.deepEqual(calls, [], "仍须等待终态保存，不先销毁");
+    terminal.resolve();
+    assert.equal(await closing, "closed");
+    assert.deepEqual(calls, ["ai", "editor", "window"]);
+    await ui.controller.drainPendingSaves();
+    assert.equal(saves, 2, "成功排空后不重发保存");
+  } finally { ui.restore(); }
+});
+
+test("F07 drain includes a terminal save registered while the accepted save is pending", async () => {
+  const accepted = deferred<void>();
+  const terminal = deferred<void>();
+  let saves = 0;
+  let drained = false;
+  const ui = persistenceHarness({ dependencies: {
+    conversationSave: () => ++saves === 1 ? accepted.promise : terminal.promise,
+  } });
+  try {
+    ui.submitDirectQuestion("排空期间新增保存");
+    assert.equal(saves, 1);
+    const draining = ui.controller.drainPendingSaves().then(() => { drained = true; });
+    await flush();
+    assert.equal(saves, 2, "排空开始后才登记终态保存");
+    accepted.resolve();
+    await flush();
+    assert.equal(drained, false, "第一批完成不能遗漏后来登记的保存");
+    terminal.resolve();
+    await draining;
+    assert.equal(drained, true);
+    await ui.controller.drainPendingSaves();
+    assert.equal(saves, 2);
+  } finally { ui.restore(); }
+});
+
+test("F07 drain waits for its batch to settle and rejects with the original save error", async () => {
+  const accepted = deferred<void>();
+  const terminal = deferred<void>();
+  const failure = new Error("磁盘写入失败");
+  let saves = 0;
+  let settled = false;
+  const ui = persistenceHarness({ dependencies: {
+    conversationSave: () => ++saves === 1 ? accepted.promise : terminal.promise,
+  } });
+  try {
+    ui.submitDirectQuestion("保存失败");
+    await flush();
+    assert.equal(saves, 2);
+    const draining = ui.controller.drainPendingSaves();
+    void draining.then(() => { settled = true; }, () => { settled = true; });
+    const rejection = assert.rejects(draining, (error) => error === failure);
+    accepted.reject(failure);
+    await flush();
+    assert.equal(settled, false, "拒绝也须等待同批其他保存落定");
+    assert.equal(ui.saveError(), failure.message, "既有保存失败提示保持可见");
+    terminal.reject(new Error("终态保存失败"));
+    await rejection;
+    assert.equal(settled, true);
+    await ui.controller.drainPendingSaves();
+    assert.equal(saves, 2, "落定后移除在途记录，不缓存失败 Promise");
+  } finally { ui.restore(); }
 });
 
 test("4.2 save failure is visible and not faked as saved", async () => {

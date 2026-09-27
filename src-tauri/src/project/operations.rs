@@ -1,3 +1,63 @@
+//! # 职责
+//! 作品数据的唯一写入通道：建档、内容树变更、文档保存、迁移回滚与崩溃恢复。
+//!
+//! # 安全不变式清单
+//! 1. 本模块生产路径的文件内容写入统一经 `write_file_atomically`：同目录临时文件
+//!    写入并同步后以 `persist` 原子替换；多文件变更在此基础上使用暂存与清单协议。
+//!    锚点：`write_file_atomically`、`transactional_write_mapped`；测试夹具的直接写不在此列。
+//! 2. 多文件提交按清单顺序执行，`project.json` 最后替换，作为世代完成标记；
+//!    旧清单按草稿、正文、元信息的固定顺序执行。恢复依据清单阶段，而非可见元信息：
+//!    `Staged` 丢弃暂存，`Committing` 校验完整暂存后前滚；迁移回滚也以前滚备份实现。
+//!    锚点：`METADATA_TARGET`、`read_transaction_manifest`、`commit_staged_generation`、
+//!    `recover_interrupted_save`、`transactional_restore`。
+//! 3. 用户打开、内容树读取与文档读取入口先恢复，再读取；底层读取助手不自行恢复，
+//!    AI 严格读取入口也不触发恢复。锚点：`open_project`、`read_document`、
+//!    `recover_then_read_content_tree`；测试 `recover_then_read_content_tree_recovers_pending_transaction`。
+//! 4. AI 严格读取发现任何形态的事务现场即返回 `RecoveryRequired`，不触碰文件；
+//!    内容树与正文校验失败返回 `ProjectError` 中的可读错误，不用空白内容替代。
+//!    锚点：`strict_read_content_tree`、`read_content_tree`、`read_and_validate_notebook`；
+//!    测试 `strict_read_content_tree_fails_closed_*` 逐字节核对现场不变。
+//! 5. 本模块生产路径的文件内容读取统一经 `read_bounded_string`，以 `take(max + 1)`
+//!    限量读入并拒绝超限；元信息/清单、内容树、正文分别使用 `MAX_METADATA_BYTES`、
+//!    `MAX_CONTENT_TREE_BYTES`、`MAX_NOTEBOOK_BYTES`，通用暂存复制使用正文上限。
+//!    锚点：`read_bounded_string`、`replace_from_staged`；
+//!    测试 `bounded_read_rejects_file_that_grew_past_limit_after_size_check`。
+//! 6. 结构校验中的必需目录/文件拒绝符号链接与重解析点，并核对规范路径留在作品根内；
+//!    正文读取与迁移源校验也检查相应文件的链接属性，清单目标另有限定路径校验。
+//!    锚点：`validate_no_reparse_point`、`validate_path_stays_under_root`、
+//!    `validate_required_file`、`read_transaction_manifest`；不据此承诺所有路径均无竞态。
+//! 7. 已有作品操作的锁由调用层持有：`lib.rs` 命令层以 `ProjectLocks::acquire`
+//!    包住打开、读取和变更，本模块生产函数不自行取锁。
+//!    锚点：`lib.rs::save_document`；
+//!    测试 `concurrent_saves_of_same_project_serialize_without_mixing_generations`。
+//! 8. 完整有效暂存可重复前滚：替换重读暂存，删除已不存在的旧文件仍成功；
+//!    暂存未提交时可丢弃。迁移步骤的可重跑要求见 `migration.rs` 模块头。
+//!    锚点：`replace_from_staged`、`delete_manifest_target`、`recover_interrupted_save`；
+//!    测试 `open_discards_staged_structure_change_and_loads_old_generation`、
+//!    `open_rolls_forward_committing_structure_change_to_complete_generation`，以及迁移测试
+//!    `reopen_after_crash_during_migration_commit_rolls_forward_from_manifest`。
+//!
+//! # 分区地图（按代码顺序）
+//! - 作品生命周期与结构校验
+//! - 内容树与文档读取
+//! - 内容树结构变更
+//! - 文档保存入口
+//! - 迁移辅助校验
+//! - 保存事务与恢复（暂存 / 清单 / 前滚 / 回滚）
+//! - 文件系统工具（原子写 / 有界读 / 路径安全）
+//! - 测试（故障注入 / 恢复 / 并发）
+//!
+//! 贴近生产函数的 `#[cfg(test)]` 故障注入辅助保留原位；最后一分区为主测试模块。
+//!
+//! # 为何保持单文件
+//! - 2026-09-14《全量地基审计》队列 8a：无干净缝，保持不动。
+//! - 2026-09-21 `extract-ai-logic-seams`：恢复与提交共享同一套清单/前滚机制，
+//!   没有不拖家带口的真缝。
+//! - 2026-09-23《开发前全面工程复核》：事务一致性强相关，不因总行数机械拆分。
+//!
+//! 后续拆分提案须先重估共享机制前提；前提未变时不得仅为行数或导航拆分，
+//! 见规格 `operations-module-map`。本地图只作实现索引，不替代既有行为规格。
+
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,7 +71,9 @@ use super::{
     ProjectOpenResult, ProjectPaths,
 };
 
+/// 作品元信息与事务清单的有界读取上限（字节）。
 pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
+/// 正文读取与保存校验的大小上限（字节），也用于通用暂存文件复制。
 pub(crate) const MAX_NOTEBOOK_BYTES: u64 = 10 * 1024 * 1024;
 /// 内容树元数据文件的有界读取上限。树元数据只含结构信息，与正文解耦；
 /// 有界读取保证超大或损坏的树文件不会被无界读入内存。
@@ -23,6 +85,8 @@ const SAVE_TRANSACTION_DIR: &str = "save-transaction";
 const SAVE_MANIFEST_FILE: &str = "manifest.json";
 /// 事务清单中元信息目标路径（相对作品根）。恢复代码据此识别「元信息 = 完成标记」。
 const METADATA_TARGET: &str = "next-story-system/project.json";
+
+// ========== 作品生命周期与结构校验 ==========
 
 /// 创建新作品：版本 3 内容树布局。
 /// 根级创建一篇默认文档，正文文件按稳定 ID 命名放在
@@ -188,6 +252,8 @@ pub fn open_project(project_root: &Path) -> Result<ProjectOpenResult, ProjectErr
     Ok(ProjectOpenResult { metadata, tree })
 }
 
+// ========== 内容树与文档读取 ==========
+
 /// 读取并校验内容树元数据文件。
 pub(crate) fn read_content_tree(paths: &ProjectPaths) -> Result<ContentTree, ProjectError> {
     let json = read_bounded_string(&paths.content_tree_file, MAX_CONTENT_TREE_BYTES)
@@ -245,6 +311,8 @@ pub fn read_document(project_root: &Path, document_id: &str) -> Result<String, P
     }
     read_and_validate_notebook(&paths.document_file(document_id), &node.name)
 }
+
+// ========== 内容树结构变更 ==========
 
 /// 校验并原子写入内容树元数据文件。
 pub(crate) fn write_content_tree(
@@ -422,6 +490,8 @@ pub fn set_document_ai_visibility(
     Ok(())
 }
 
+// ========== 文档保存入口 ==========
+
 /// 按文档 ID 保存单篇文档正文：校验 ID 是内容树中存在的文档节点、正文为合法
 /// 格式版本 2 且不超限，复用映射式事务把该文档正文 + project.json 作为一个
 /// 完整一致世代原子提交（元信息最后，作为完成标记）。
@@ -488,6 +558,8 @@ pub fn save_document(
     Ok(())
 }
 
+// ========== 迁移辅助校验 ==========
+
 /// 迁移前校验源文件边界：作品根、元信息都不能是符号链接 / 重解析点，且内容在
 /// 读取上限内。旧双本子（版本 2 源）与内容树（版本 3 源）按存在性校验，兼容
 /// 不同起始版本的迁移链。在创建备份之前调用，保证迁移失败时不产生备份 / 回滚
@@ -520,6 +592,8 @@ pub(crate) fn validate_migration_source_files(project_root: &Path) -> Result<(),
     Ok(())
 }
 
+// ========== 保存事务与恢复（暂存 / 清单 / 前滚 / 回滚） ==========
+
 /// 保存事务的阶段边界。无故障路径会经过每个边界但不做任何事；
 /// 测试通过故障钩子在指定边界中断。此类型是作品领域内部私有，不暴露给 Tauri 或前端。
 /// 仅测试专用路径（`run_save_transaction`）使用。
@@ -547,9 +621,12 @@ enum TransactionPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ManifestPurpose {
+    /// 手动保存；旧清单缺少用途字段时采用此值。
     #[default]
     Save,
+    /// 用备份内容恢复迁移前世代，复用事务前滚机制。
     MigrationRollback,
+    /// 作品版本升级，可包含删除旧布局文件的动作。
     Migration,
     /// 结构变更（创建 / 重命名 / 移动 / 排序 / 删除 / 恢复）：改写内容树元数据
     /// 与 `project.json`，创建文档时另写一篇空正文文件。
@@ -603,8 +680,10 @@ impl SaveManifest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum StagedAction {
+    /// 从暂存内容替换目标文件；旧映射项缺少动作字段时采用此值。
     #[default]
     Replace,
+    /// 删除迁移清单允许的旧布局文件，不携带暂存内容。
     Delete,
 }
 
@@ -613,8 +692,11 @@ pub(crate) enum StagedAction {
 /// `Delete` 动作没有暂存文件（`staged` 为空），提交时删除目标文件。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct StagedFile {
+    /// 事务目录内的相对暂存路径；删除动作使用空字符串。
     pub(crate) staged: String,
+    /// 相对作品根的目标路径，由清单读取校验允许范围。
     pub(crate) target: String,
+    /// 提交时执行的动作，未提供时默认为替换。
     #[serde(default)]
     pub(crate) action: StagedAction,
 }
@@ -634,6 +716,7 @@ pub(crate) struct TransactionLayout {
 }
 
 impl TransactionLayout {
+    /// 根据作品路径计算事务目录与固定文件位置，不创建或读取文件。
     pub(crate) fn new(paths: &ProjectPaths) -> Self {
         let dir = paths.system_dir.join(SAVE_TRANSACTION_DIR);
 
@@ -1043,6 +1126,8 @@ pub(crate) fn recover_migration_rollback_transaction(
     Ok(())
 }
 
+/// 有界读取并校验事务清单的版本、映射路径、动作用途与元信息末项约束。
+/// 校验失败返回带中文说明的读取错误，不修改事务现场。
 pub(crate) fn read_transaction_manifest(
     layout: &TransactionLayout,
 ) -> Result<SaveManifest, ProjectError> {
@@ -1263,6 +1348,10 @@ fn cleanup_transaction(layout: &TransactionLayout) {
     let _ = fs::remove_dir_all(&layout.dir);
 }
 
+// ========== 文件系统工具（原子写 / 有界读 / 路径安全） ==========
+
+/// 在目标同目录创建临时文件，写入、刷新并同步内容后原子替换目标。
+/// 替换后尽力同步父目录；目录同步失败不改变已完成保存的成功结果。
 pub(crate) fn write_file_atomically(path: &Path, content: &str) -> Result<(), ProjectError> {
     let parent = path
         .parent()
@@ -1337,6 +1426,8 @@ fn validate_required_file(root: &Path, path: &Path, label: &str) -> Result<(), P
     validate_path_stays_under_root(root, path, label)
 }
 
+/// 检查指定路径自身的链接属性，拒绝符号链接及 Windows 重解析点。
+/// 不检查祖先目录；规范路径是否留在作品根内由独立校验负责。
 pub(crate) fn validate_no_reparse_point(path: &Path, label: &str) -> Result<(), ProjectError> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| ProjectError::InvalidStructure(format!("缺少{label}")))?;
@@ -1415,6 +1506,8 @@ fn cleanup_created_paths(created_paths: &[PathBuf]) {
         let _ = result;
     }
 }
+
+// ========== 测试（故障注入 / 恢复 / 并发） ==========
 
 #[cfg(test)]
 mod tests {

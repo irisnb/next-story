@@ -466,6 +466,10 @@ impl StoryToolChannel {
 
         std::thread::spawn(move || {
             let this = &*channel;
+            // 驱动未接线（设计 D2-3）：无驱动即无事件源，此分支实际不可达，
+            // 仅为装配顺序防御。没有回填对象（tool_result 依赖驱动连接），不适用
+            // 「所有失败路径都结构化回填」承诺——也无等待中的轮次可悬挂。行为
+            // 保持丢弃＋日志。
             let Some(driver) = driver else {
                 eprintln!(
                     "story_tool_channel: 驱动未接线，工具调用被丢弃（tool={}）",
@@ -740,6 +744,31 @@ impl StoryToolChannel {
                 Ok(StoryToolOutcome::ReadingRequested(
                     ReadingRequestOutcome::WaitingForAuthorization { reason },
                 )) => {
+                    // 授权请求无接收通道（装配降级路径，设计 D2-2）：请求无法
+                    // 呈现给用户，等待永远不会被决定——不插入待决、不进入等待，
+                    // 立即回填结构化拒绝（与用户拒绝同构：拒绝是合法结果，模型
+                    // 继续有限回答，轮次不悬挂）。
+                    let sink = lock(&this.reading_request_sink).clone();
+                    let Some(sink) = sink else {
+                        eprintln!(
+                            "story_tool_channel: 授权请求无接收通道（装配缺失），已立即回填未授权拒绝（conversation={}）",
+                            context.conversation_id
+                        );
+                        let result = serde_json::json!({
+                            "granted": false,
+                            "recovery": RECOVERY_READING_UNAUTHORIZED,
+                        });
+                        let _ = driver.send_tool_result(
+                            &payload.session_id,
+                            &payload.message_id,
+                            &payload.call_id,
+                            true,
+                            Some(result),
+                            None,
+                            None,
+                        );
+                        return;
+                    };
                     lock(&this.pending).insert(
                         payload.call_id.clone(),
                         PendingAuthorization {
@@ -756,15 +785,7 @@ impl StoryToolChannel {
                         conversation_id: context.conversation_id.clone(),
                         reason: reason.clone(),
                     };
-                    let sink = lock(&this.reading_request_sink).clone();
-                    if let Some(sink) = sink {
-                        sink(event);
-                    } else {
-                        eprintln!(
-                            "story_tool_channel: 授权请求无接收通道（conversation={}）",
-                            context.conversation_id
-                        );
-                    }
+                    sink(event);
                 }
                 Ok(outcome) => {
                     let result = serde_json::to_value(outcome).ok();
@@ -816,7 +837,10 @@ impl StoryToolChannel {
     /// 或测试注入）。granted → 写授权档案 + 回填 `{granted: true}`；
     /// denied → 回填 `{granted: false, recovery}`（拒绝是合法结果，模型继续有限
     /// 回答；恢复路径提示与未授权系拒绝同一常量，design D5——用户可在讨论面板
-    /// 主动开启，新问题可再请求）。
+    /// 主动开启，新问题可再请求）。granted 但授权档案写入失败 → 仍回填
+    /// `{granted: false, recovery}`（与用户拒绝同构：轮次不悬挂、继续有限
+    /// 回答），随后把写入错误如实返回前端（fix-story-tool-channel-failures-
+    /// and-split 设计 D2-1，不伪造授权成功）。
     ///
     /// 迟到 / 未知 call_id、会话身份不符：失败关闭，不动档案。
     /// 授权属于讨论：即使原轮已被取消，granted 仍写入档案（后续轮次生效），
@@ -843,10 +867,32 @@ impl StoryToolChannel {
         };
         lock(&self.pending).remove(call_id);
 
-        if granted {
-            grant_on_demand_reading(&request.project_root, &request.conversation_id)
-                .map_err(|e| e.to_string())?;
-        }
+        // 授权档案写入失败（设计 D2-1）：仍先向驱动回填结构化拒绝（与用户拒绝
+        // 同构——拒绝是合法结果，模型继续有限回答，轮次不悬挂）；回填完成后把
+        // 原错误如实返回前端（界面提示授权未能保存，不伪造授权成功）。
+        let granted = if granted {
+            match grant_on_demand_reading(&request.project_root, &request.conversation_id) {
+                Ok(()) => true,
+                Err(error) => {
+                    let result = serde_json::json!({
+                        "granted": false,
+                        "recovery": RECOVERY_READING_UNAUTHORIZED,
+                    });
+                    let _ = driver.send_tool_result(
+                        &request.session_id,
+                        &request.message_id,
+                        call_id,
+                        true,
+                        Some(result),
+                        None,
+                        None,
+                    );
+                    return Err(error.to_string());
+                }
+            }
+        } else {
+            false
+        };
         // 拒绝结果是工具结果内容（ok=true 的 result），不是 error 载荷；恢复提示
         // 放在结果对象内，与 error.recovery 同一常量、同一语义。
         let result = if granted {
@@ -1703,6 +1749,121 @@ setInterval(() => {}, 1000);
             .expect("匹配身份应成功");
         let outcome = send.join().expect("send 线程").expect("轮次完成");
         assert_eq!(outcome.text, "授权通过，继续回答");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// fix-story-tool-channel-failures-and-split 任务 1.1：用户允许但授权档案写入
+    /// 失败——驱动仍收到结构化拒绝（granted:false＋恢复提示，与用户拒绝同构），
+    /// 轮次走有限回答立即收束（不悬挂等待停滞看护）；resolve 如实返回 Err；
+    /// 授权档案未被伪造。写入失败用删除档案文件制造（存储层对缺失档案返回
+    /// NotFound）。
+    #[test]
+    fn grant_write_failure_backfills_denial_and_round_finishes() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let (root, _doc_id) =
+            setup_work_with_doc(&temp, "授权写失败作品", &notebook_with_text("正文"));
+        save_archive(&root, &archive("conv-write-fail", None)).expect("save archive");
+
+        let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
+        let (manager, channel, _guard) = wire_channel();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+        manager.start_session("s1").expect("start session");
+        channel.register_round("s1", "conv-write-fail", root.clone(), false);
+        let events = Arc::new(Mutex::new(Vec::<ReadingRequestEvent>::new()));
+        let events_for_sink = events.clone();
+        channel.set_reading_request_sink(Arc::new(move |event| {
+            events_for_sink.lock().unwrap().push(event);
+        }));
+
+        let manager_for_send = manager.clone();
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait("s1", "m1", "问题", Duration::from_secs(10))
+        });
+        std::thread::sleep(Duration::from_millis(1500));
+        assert_eq!(events.lock().unwrap().len(), 1, "授权请求已挂起");
+
+        // 制造授权档案写入失败：删除档案文件（授权无处可写）。
+        let archive_path = root
+            .join("next-story-system")
+            .join("conversations")
+            .join("conv-write-fail.json");
+        std::fs::remove_file(&archive_path).expect("remove archive");
+
+        // 用户允许 → 写入失败：resolve 返回 Err，但驱动已收到结构化拒绝。
+        let resolved = channel.resolve_reading_request("s1", "call-1", true);
+        assert!(resolved.is_err(), "写入失败必须如实返回错误: {resolved:?}");
+
+        // 轮次经拒绝回填立即收束为有限回答（10 秒请求超时内，不依赖停滞看护——
+        // 回填若未生效，这里会超时响亮失败）。
+        let outcome = send
+            .join()
+            .expect("send 线程")
+            .expect("写入失败后轮次仍应经拒绝回填收束");
+        assert!(
+            outcome.text.starts_with("未获授权，有限回答"),
+            "写入失败按未授权回填，模型转有限回答: {}",
+            outcome.text
+        );
+        assert!(
+            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "写入失败的拒绝回填应携带恢复路径提示: {}",
+            outcome.text
+        );
+
+        // 授权未被伪造：档案文件仍不存在。
+        assert!(!archive_path.exists(), "授权档案不得在写入失败后被伪造重建");
+
+        manager.shutdown_best_effort();
+    }
+
+    /// fix-story-tool-channel-failures-and-split 任务 1.2：授权请求无接收通道
+    /// （sink 未安装的装配降级路径）——不插入待决、不进入等待，驱动立即收到
+    /// granted:false 结构化拒绝，轮次以有限回答收束；随后任意 call_id 的决定
+    /// 失败关闭（无待决）；授权档案零副作用。
+    #[test]
+    fn missing_reading_request_sink_fails_closed_immediately() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let (root, _doc_id) =
+            setup_work_with_doc(&temp, "无接收通道作品", &notebook_with_text("正文"));
+        save_archive(&root, &archive("conv-no-sink", None)).expect("save archive");
+
+        let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
+        // wire_channel 创建独立通道实例且不装授权请求接收通道（sink 保持 None）。
+        let (manager, channel, _guard) = wire_channel();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+        manager.start_session("s1").expect("start session");
+        channel.register_round("s1", "conv-no-sink", root.clone(), false);
+
+        let manager_for_send = manager.clone();
+        let send = std::thread::spawn(move || {
+            manager_for_send.send_message_and_wait("s1", "m1", "问题", Duration::from_secs(10))
+        });
+        // 无接收通道：不进入授权等待，轮次立即经拒绝回填收束（有限回答）。
+        let outcome = send
+            .join()
+            .expect("send 线程")
+            .expect("无接收通道应立即回填拒绝并收束");
+        assert!(
+            outcome.text.starts_with("未获授权，有限回答"),
+            "无接收通道的授权请求应立即按未授权回填: {}",
+            outcome.text
+        );
+        assert!(
+            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
+            "无接收通道的拒绝回填应携带恢复路径提示: {}",
+            outcome.text
+        );
+
+        // 未插入待决：任意决定失败关闭；授权档案未被写入。
+        assert!(
+            channel
+                .resolve_reading_request("s1", "call-1", true)
+                .is_err(),
+            "无接收通道不得留下待决授权"
+        );
+        let record = read_conversation(&root, "conv-no-sink").expect("read archive");
+        assert!(record.on_demand_reading_grant.is_none(), "拒绝不写授权");
 
         manager.shutdown_best_effort();
     }

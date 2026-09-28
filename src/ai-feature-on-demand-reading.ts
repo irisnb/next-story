@@ -80,10 +80,11 @@ export function setupOnDemandReadingInteractions(
   }
 
   /**
-   * 用户对授权请求的决定（任务 7.1）：调 `ai_resolve_reading_request` 回填；
-   * 成功后清除授权卡，允许时写入讨论授权（授权属于讨论、跨重启保留）。
-   * 迟到 / 身份不符的失败也清除授权卡（该轮已收束），但不伪造授权。
-   */
+    * 用户对授权请求的决定（任务 7.1）：调 `ai_resolve_reading_request` 回填；
+    * 成功后清除授权卡，允许时写入讨论授权（授权属于讨论、跨重启保留）。
+    * 迟到 / 身份不符的失败也清除授权卡（该轮已收束），但不伪造授权；后端
+    * 授权写入失败时轮次已按未授权回填继续，这里如实提示授权未能保存。
+    */
   function resolveReadingRequest(conversationId: string, granted: boolean): void {
     const pending = state.pendingReadingRequestOf(conversationId);
     if (pending === null) return;
@@ -95,6 +96,7 @@ export function setupOnDemandReadingInteractions(
       .catch(() => {
         if (isDestroyed()) return;
         state.resolveReadingRequest(conversationId, false);
+        state.setSaveError("授权未能保存，本轮按未授权继续");
       });
   }
 

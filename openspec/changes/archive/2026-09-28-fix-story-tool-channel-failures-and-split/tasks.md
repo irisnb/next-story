@@ -16,4 +16,4 @@
 
 - [x] 3.1 `npm run check` 全绿（含 cargo fmt / clippy / 全量 Rust 测试）
 - [x] 3.2 `verification/validation.md`：三条故障路径证据、拆分前后文件结构对照、测试计数
-- [ ] 3.3 归档核对：规格增量同步（`agent-on-demand-reading` 新增失败收束要求）
+- [x] 3.3 归档核对：规格增量同步（`agent-on-demand-reading` 新增失败收束要求）

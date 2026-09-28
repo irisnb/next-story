@@ -1,5 +1,6 @@
 //! 宿主工具调用通道（change: add-agent-on-demand-reading 任务组 5/6，设计
-//! D1/D2/D4/D5/D8/D9/D12/D13）。
+//! D1/D2/D4/D5/D8/D9/D12/D13；fix-story-tool-channel-failures-and-split D3
+//! 拆分后兼作门面）。
 //!
 //! 职责：把驱动的 `tool_call` 事件路由到受控执行与授权流程——
 //! - 三个读取工具：经 [`crate::story_tools`] 执行（内置作品身份 / 回收站 /
@@ -8,8 +9,10 @@
 //! - `story-request-reading`（控制工具，设计 D1）：宿主拦截。已授权讨论直接回
 //!   「无需再请求」；未授权讨论转为面向前端的授权请求事件（`ai-reading-request`），
 //!   该轮挂起、不产生模型请求，用户决定经 [`StoryToolChannel::resolve_reading_request`]
-//!   以工具结果（granted / denied）回填继续。授权卡 UI 是任务组 7，本模块只定义
-//!   事件与命令接口，且全部可在无 UI 情况下被 Rust 测试直接调用。
+//!   以工具结果（granted / denied）回填继续（待决授权表、事件构造与决定回填
+//!   在 `crate::story_tool_authorization`，随 D3 拆分迁入）。授权卡 UI 是
+//!   任务组 7，本模块只定义事件与命令接口，且全部可在无 UI 情况下被 Rust
+//!   测试直接调用。
 //! - 及时召唤首轮硬门禁（设计 D13，任务 5.5）：路由上下文携带 `hard_gate` 时，
 //!   全部补读工具调用（含授权请求）一律结构化拒绝（`on_demand_reading_unauthorized`）。
 //! - 拒绝恢复提示（batch-improvement-candidates ②，design D5）：未授权系与补读
@@ -18,56 +21,40 @@
 //!   不允许」的 `{granted:false}` 结果内附同一恢复串。
 //! - 迟到丢弃（任务 5.3）：讨论 / 会话身份失效或轮次已取消时，迟到的授权决定由
 //!   驱动侧拒绝（`tool_call_not_found`），不污染其他讨论；宿主侧待决表只认
-//!   call_id + 会话身份双重匹配。
-//! - 轮内监管（任务组 6，状态全部在本通道，执行器保持无状态）：
-//!   版本固定表（D4，首次成功读取固定该轮版本，失配 `story_version_changed`
-//!   本轮停读）、同轮同版去重（D9，重复返回「已提供过」附出处，跨轮不屏蔽）、
-//!   按轮累计的阅读程度判定（D12，写入讨论档案出处）、宿主侧保险丝（D5，
-//!   按轮调用计数 + 累计时长超阈值后该轮后续补读一律 `reading_stopped`）。
+//!   call_id + 会话身份双重匹配（表在 `crate::story_tool_authorization`）。
+//! - 轮内监管（任务组 6，状态与判定在 `crate::story_tool_round_state`，
+//!   执行器保持无状态）：版本固定表（D4，首次成功读取固定该轮版本，失配
+//!   `story_version_changed` 本轮停读）、同轮同版去重（D9，重复返回「已提供过」
+//!   附出处，跨轮不屏蔽）、按轮累计的阅读程度判定（D12，写入讨论档案出处）、
+//!   宿主侧保险丝（D5，按轮调用计数 + 累计时长超阈值后该轮后续补读一律
+//!   `reading_stopped`）。
 //!   轮身份 =（讨论, register_round 序号）：同一讨论同一轮请求周期内共享状态，
 //!   新一轮 / 重启后旧轮状态作废（固定语义只活在一轮之内，不持久化）。
 //!
 //! 本模块不读写用户作品正文（执行走 story_tools 只读面）；授权与出处的写入只经
 //! 既有讨论档案原子保存。
+//!
+//! 门面（fix-story-tool-channel-failures-and-split D3）：`story_tool_authorization`
+//! 与 `story_tool_round_state` 的公开类型经本模块 re-export，外部路径
+//! （`story_tool_channel::X`）保持不变。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
-
 use crate::conversation_store::{upsert_on_demand_provenance, ReadingDepth};
 use crate::dsh_driver::{DshDriverManager, ToolCallPayload};
-use crate::project::{MaterialRange, ProjectPaths, SearchResult, SearchStatus};
+use crate::project::ProjectPaths;
+use crate::story_tool_authorization::PendingAuthorization;
+use crate::story_tool_round_state::{ReadPreparation, RoundReadingState};
 use crate::story_tools::{
-    execute_story_tool, grant_on_demand_reading, resolve_conversation_authorization,
-    AuthorizationResolution, DiskStoryReader, ProvidedHint, ReadingRequestOutcome, StoryToolCall,
-    StoryToolDenialReason, StoryToolOutcome,
+    execute_story_tool, resolve_conversation_authorization, AuthorizationResolution,
+    DiskStoryReader, ReadingRequestOutcome, StoryToolCall, StoryToolDenialReason, StoryToolOutcome,
 };
 
-/// 按轮补读保险丝配置（设计 D5，任务 6.4）。单一配置源：默认值在此，测试与
-/// 真实链路校准（任务 9.5）只改这里 / 注入新值——不是散落的魔法数字。
-/// 数值为内部初始值，需真实效果验证，非产品效果承诺，也不向用户呈现配额。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ReadingFuseConfig {
-    /// 每轮补读工具调用（story-list / story-read / story-search 到达）次数上限。
-    pub max_tool_calls: u64,
-    /// 每轮补读工具累计执行时长上限（只计工具执行，不含授权等待——等待以分钟
-    /// 计且由用户驱动，不是异常循环信号）。
-    pub max_accumulated_duration: Duration,
-}
-
-impl Default for ReadingFuseConfig {
-    fn default() -> Self {
-        Self {
-            // 内部初始值：正常一轮（目录 + 若干读取 / 检索）远低于此；异常循环
-            // （DSH 框架无总步数上限，设计 D5 风险）会被截停。校准归任务 9.5。
-            max_tool_calls: 24,
-            max_accumulated_duration: Duration::from_secs(120),
-        }
-    }
-}
+pub use crate::story_tool_authorization::{ReadingRequestEvent, ReadingRequestSink};
+pub use crate::story_tool_round_state::ReadingFuseConfig;
 
 /// 一轮的工具路由上下文：`ai_send_message` 随轮次注册（讨论身份 + 作品根）。
 #[derive(Debug, Clone)]
@@ -78,268 +65,6 @@ pub struct ToolRoutingContext {
     pub hard_gate: bool,
     /// 本轮序号（进程内按讨论递增；出处轮次的跨重启对齐由任务组 6 落实）。
     pub turn_index: u32,
-}
-
-/// 面向前端的授权请求事件载荷（Tauri 事件 `ai-reading-request`；UI 是任务组 7）。
-/// 只携带身份与模型提供的请求原因，不携带任何作品数据（设计 D1）。
-#[derive(Clone, Debug, Serialize, PartialEq)]
-pub struct ReadingRequestEvent {
-    pub session_id: String,
-    pub message_id: String,
-    pub call_id: String,
-    pub conversation_id: String,
-    /// 模型提供的请求原因（透传）。
-    pub reason: String,
-}
-
-/// 授权请求事件回调（Tauri 层转发为前端事件；测试注入收集器）。
-pub type ReadingRequestSink = Arc<dyn Fn(ReadingRequestEvent) + Send + Sync>;
-
-/// 待决授权请求（挂起的 story-request-reading 调用；D1：恢复 = 工具结果返回）。
-#[derive(Debug, Clone)]
-struct PendingAuthorization {
-    session_id: String,
-    message_id: String,
-    conversation_id: String,
-    project_root: PathBuf,
-}
-
-// ========== 轮内监管状态（任务组 6：固定表 / 去重 / 覆盖累计 / 熔断） ==========
-
-/// 一篇文档在该轮的覆盖累计（设计 D12）：按版本记录已读字节区间与全文长度，
-/// 版本变化即重置（旧区间的字节不再对应新正文）。
-#[derive(Debug, Default, Clone)]
-struct DocCoverage {
-    version: Option<String>,
-    total_len: Option<usize>,
-    /// 已合并排序的覆盖区间（字节，左闭右开）。
-    intervals: Vec<(usize, usize)>,
-}
-
-impl DocCoverage {
-    /// 记录一次读取覆盖；版本变化重置累计。
-    fn record(&mut self, version: &str, range: MaterialRange, total_len: Option<usize>) {
-        if self.version.as_deref() != Some(version) {
-            self.version = Some(version.to_string());
-            self.intervals.clear();
-            self.total_len = total_len;
-        } else if self.total_len.is_none() {
-            self.total_len = total_len;
-        }
-        self.intervals.push((range.start, range.end));
-        self.intervals.sort_unstable();
-        let mut merged: Vec<(usize, usize)> = Vec::with_capacity(self.intervals.len());
-        for (start, end) in self.intervals.drain(..) {
-            match merged.last_mut() {
-                Some(last) if start <= last.1 => last.1 = last.1.max(end),
-                _ => merged.push((start, end)),
-            }
-        }
-        self.intervals = merged;
-    }
-
-    fn covered_len(&self) -> usize {
-        self.intervals
-            .iter()
-            .map(|(s, e)| e.saturating_sub(*s))
-            .sum()
-    }
-
-    /// 是否覆盖全文：需要已知全文长度且区间全覆盖（长度未知时不冒充完整）。
-    fn is_full(&self) -> bool {
-        match self.total_len {
-            Some(total) => total > 0 && self.covered_len() >= total,
-            None => false,
-        }
-    }
-}
-
-/// 读取前的轮内决策（固定表 / 去重 / 停读）。
-#[derive(Debug)]
-enum ReadPreparation {
-    /// 结构化拒绝（版本失配等）。
-    Denied(StoryToolDenialReason),
-    /// 同轮同版同范围已提供过：返回简短提示（设计 D9）。
-    AlreadyProvided(ProvidedHint),
-    /// 放行执行；`version` 为经固定表改写后的期望版本（已固定文档强制携带）。
-    Execute { version: Option<String> },
-}
-
-/// 已提供键（设计 D9）：（文档 id, 版本, 请求范围）。
-type ProvidedKey = (String, String, Option<(usize, usize)>);
-
-/// 一轮的补读监管状态：register_round 时整体重置（跨轮不共享；旧轮状态作废）。
-#[derive(Debug, Default, Clone)]
-struct RoundReadingState {
-    /// 版本固定表（设计 D4）：文档 → 该轮固定版本（首次成功读取固定）。
-    pinned: HashMap<String, String>,
-    /// 本轮停读的文档（版本失配后；下一轮自然恢复）。
-    blocked: HashSet<String>,
-    /// 已提供（文档, 版本, 请求范围）→ 首次提供的有效范围（设计 D9）。
-    provided: HashMap<ProvidedKey, MaterialRange>,
-    /// 文档名（去重提示的出处用）。
-    names: HashMap<String, String>,
-    /// 按轮累计的读取覆盖（设计 D12）。
-    coverage: HashMap<String, DocCoverage>,
-    /// 仅检索命中的文档（无读取覆盖时阅读程度为搜索片段，设计 D12）。
-    search_only: HashMap<String, String>,
-    /// 本轮补读工具调用到达计数（保险丝，设计 D5）。
-    reading_calls: u64,
-    /// 本轮补读工具累计执行时长（不含授权等待）。
-    accumulated: Duration,
-    /// 保险丝是否已触发（触发后该轮后续补读一律拒绝）。
-    fused: bool,
-    /// 本轮出处是否有更新（决定是否写档案）。
-    provenance_dirty: bool,
-}
-
-impl RoundReadingState {
-    /// story-read 的轮内前置决策：停读 / 固定表改写与失配拒绝 / 同轮去重。
-    fn prepare_read(
-        &mut self,
-        turn_index: u32,
-        document_id: &str,
-        version: Option<String>,
-        range: Option<MaterialRange>,
-    ) -> ReadPreparation {
-        // 本轮已停读：任何后续读取一律版本失配拒绝（下一轮读最新版）。
-        if self.blocked.contains(document_id) {
-            return ReadPreparation::Denied(StoryToolDenialReason::StoryVersionChanged);
-        }
-        // 版本固定表（D4）：未固定时透传请求版本；已固定时强制该轮版本，
-        // 请求他版即失配（本轮停读该文档）。
-        let effective_version = match self.pinned.get(document_id) {
-            Some(pinned) => {
-                if version.as_deref().is_some_and(|v| v != pinned) {
-                    self.blocked.insert(document_id.to_string());
-                    return ReadPreparation::Denied(StoryToolDenialReason::StoryVersionChanged);
-                }
-                Some(pinned.clone())
-            }
-            None => version,
-        };
-        // 同轮同版去重（D9）：请求范围按 None / 字节区间归一比较；跨轮不屏蔽
-        // （状态随轮重置）。整篇（None）与显式区间视为不同请求。
-        let key = (
-            document_id.to_string(),
-            effective_version.clone().unwrap_or_default(),
-            range.map(|r| (r.start, r.end)),
-        );
-        if let Some(&effective_range) = self.provided.get(&key) {
-            return ReadPreparation::AlreadyProvided(ProvidedHint {
-                document_id: document_id.to_string(),
-                document_name: self.names.get(document_id).cloned().unwrap_or_default(),
-                version: effective_version.unwrap_or_default(),
-                range: effective_range,
-                turn_index,
-            });
-        }
-        ReadPreparation::Execute {
-            version: effective_version,
-        }
-    }
-
-    /// story-read 成功后记账：固定版本、记已提供、累计覆盖（D12）。
-    fn record_read_success(
-        &mut self,
-        document_id: &str,
-        document_name: &str,
-        version: String,
-        requested_range: Option<MaterialRange>,
-        material_range: MaterialRange,
-        total_len: Option<usize>,
-    ) {
-        self.pinned
-            .entry(document_id.to_string())
-            .or_insert_with(|| version.clone());
-        self.names
-            .insert(document_id.to_string(), document_name.to_string());
-        let key = (
-            document_id.to_string(),
-            version.clone(),
-            requested_range.map(|r| (r.start, r.end)),
-        );
-        self.provided.entry(key).or_insert(material_range);
-        self.search_only.remove(document_id);
-        self.coverage
-            .entry(document_id.to_string())
-            .or_default()
-            .record(&version, material_range, total_len);
-        self.provenance_dirty = true;
-    }
-
-    /// story-read 被执行器以 `version_unavailable` 拒绝后的映射（D4「读到一半出新
-    /// 版本」）：该文档本轮已固定版本时，映射为 `story_version_changed` 并停读。
-    /// 返回是否映射。
-    fn note_read_version_unavailable(&mut self, document_id: &str) -> bool {
-        if self.pinned.contains_key(document_id) {
-            self.blocked.insert(document_id.to_string());
-            true
-        } else {
-            false
-        }
-    }
-
-    /// story-search 结果的轮内后处理：本轮停读或版本已漂移的文档过滤其命中
-    /// （避免一次回答拼接两个版本），并把保留的命中记为「仅检索命中」。
-    fn filter_search(&mut self, result: &mut SearchResult) {
-        result.snippets.retain(|snippet| {
-            if self.blocked.contains(&snippet.document_id) {
-                return false;
-            }
-            if let Some(pinned) = self.pinned.get(&snippet.document_id) {
-                if pinned != &snippet.version {
-                    // 检索发现该文档已保存为新版：本轮停读（D4）。
-                    self.blocked.insert(snippet.document_id.clone());
-                    return false;
-                }
-            }
-            self.search_only
-                .entry(snippet.document_id.clone())
-                .or_insert_with(|| snippet.version.clone());
-            true
-        });
-        if result.snippets.is_empty() {
-            result.status = SearchStatus::NotFound;
-        }
-        self.provenance_dirty = true;
-    }
-
-    /// 本轮出处的累计视图（D12）：读取覆盖三档判定 + 仅检索命中文档为搜索片段。
-    fn cumulative_updates(&self) -> Vec<(String, String, ReadingDepth)> {
-        let mut updates = Vec::new();
-        for (document_id, coverage) in &self.coverage {
-            if let Some(version) = &coverage.version {
-                let depth = if coverage.is_full() {
-                    ReadingDepth::Full
-                } else {
-                    ReadingDepth::Partial
-                };
-                updates.push((document_id.clone(), version.clone(), depth));
-            }
-        }
-        for (document_id, version) in &self.search_only {
-            if !self.coverage.contains_key(document_id) {
-                updates.push((
-                    document_id.clone(),
-                    version.clone(),
-                    ReadingDepth::SearchSnippet,
-                ));
-            }
-        }
-        updates
-    }
-
-    /// 一次补读工具调用收尾（保险丝记账，D5）：累计执行时长并在越过阈值后
-    /// 触发熔断（对该轮**后续**补读调用生效；本调用结果照常返回）。
-    fn note_reading_arrival_completed(&mut self, elapsed: Duration, config: &ReadingFuseConfig) {
-        self.accumulated += elapsed;
-        if self.reading_calls >= config.max_tool_calls
-            || self.accumulated >= config.max_accumulated_duration
-        {
-            self.fused = true;
-        }
-    }
 }
 
 /// 读取一篇文档当前已保存正文的字节长度（仅长度，不取内容；用于 D12 覆盖判定）。
@@ -542,7 +267,8 @@ impl StoryToolChannel {
                 }
             };
 
-            // ===== 任务组 6：轮内监管（状态在本通道；执行器保持无状态） =====
+            // ===== 任务组 6：轮内监管（轮表由本通道持有；状态与判定在
+            // crate::story_tool_round_state，执行器保持无状态） =====
             let is_reading_tool = matches!(
                 call,
                 StoryToolCall::List { .. }
@@ -740,53 +466,20 @@ impl StoryToolChannel {
             // 回填驱动；等待授权的轮次挂起（不回填，不产生模型请求）。
             match &outcome {
                 // 等待授权（设计 D1）：转为面向用户的授权请求，轮次挂起——
-                // 不回填 tool_result、不产生模型请求，直到用户决定。
+                // 不回填 tool_result、不产生模型请求，直到用户决定（待决授权表、
+                // 事件构造与无接收通道收束在 crate::story_tool_authorization，
+                // 随 fix-story-tool-channel-failures-and-split D3 迁入，纯移动）。
                 Ok(StoryToolOutcome::ReadingRequested(
                     ReadingRequestOutcome::WaitingForAuthorization { reason },
-                )) => {
-                    // 授权请求无接收通道（装配降级路径，设计 D2-2）：请求无法
-                    // 呈现给用户，等待永远不会被决定——不插入待决、不进入等待，
-                    // 立即回填结构化拒绝（与用户拒绝同构：拒绝是合法结果，模型
-                    // 继续有限回答，轮次不悬挂）。
-                    let sink = lock(&this.reading_request_sink).clone();
-                    let Some(sink) = sink else {
-                        eprintln!(
-                            "story_tool_channel: 授权请求无接收通道（装配缺失），已立即回填未授权拒绝（conversation={}）",
-                            context.conversation_id
-                        );
-                        let result = serde_json::json!({
-                            "granted": false,
-                            "recovery": RECOVERY_READING_UNAUTHORIZED,
-                        });
-                        let _ = driver.send_tool_result(
-                            &payload.session_id,
-                            &payload.message_id,
-                            &payload.call_id,
-                            true,
-                            Some(result),
-                            None,
-                            None,
-                        );
-                        return;
-                    };
-                    lock(&this.pending).insert(
-                        payload.call_id.clone(),
-                        PendingAuthorization {
-                            session_id: payload.session_id.clone(),
-                            message_id: payload.message_id.clone(),
-                            conversation_id: context.conversation_id.clone(),
-                            project_root: context.project_root.clone(),
-                        },
-                    );
-                    let event = ReadingRequestEvent {
-                        session_id: payload.session_id.clone(),
-                        message_id: payload.message_id.clone(),
-                        call_id: payload.call_id.clone(),
-                        conversation_id: context.conversation_id.clone(),
-                        reason: reason.clone(),
-                    };
-                    sink(event);
-                }
+                )) => crate::story_tool_authorization::suspend_waiting_for_authorization(
+                    &driver,
+                    &this.pending,
+                    &this.reading_request_sink,
+                    &payload,
+                    &context.conversation_id,
+                    &context.project_root,
+                    reason,
+                ),
                 Ok(outcome) => {
                     let result = serde_json::to_value(outcome).ok();
                     let _ = driver.send_tool_result(
@@ -834,17 +527,10 @@ impl StoryToolChannel {
     }
 
     /// 用户对授权请求的决定（任务 5.2；前端命令 `ai_resolve_reading_request`
-    /// 或测试注入）。granted → 写授权档案 + 回填 `{granted: true}`；
-    /// denied → 回填 `{granted: false, recovery}`（拒绝是合法结果，模型继续有限
-    /// 回答；恢复路径提示与未授权系拒绝同一常量，design D5——用户可在讨论面板
-    /// 主动开启，新问题可再请求）。granted 但授权档案写入失败 → 仍回填
-    /// `{granted: false, recovery}`（与用户拒绝同构：轮次不悬挂、继续有限
-    /// 回答），随后把写入错误如实返回前端（fix-story-tool-channel-failures-
-    /// and-split 设计 D2-1，不伪造授权成功）。
-    ///
-    /// 迟到 / 未知 call_id、会话身份不符：失败关闭，不动档案。
-    /// 授权属于讨论：即使原轮已被取消，granted 仍写入档案（后续轮次生效），
-    /// 只有工具结果被驱动丢弃。
+    /// 或测试注入）。完整语义（granted / denied / 授权档案写入失败的失败收束、
+    /// 迟到与身份不符的失败关闭）见 `crate::story_tool_authorization::
+    /// resolve_reading_request`——决定回填逻辑随
+    /// fix-story-tool-channel-failures-and-split D3 迁入该模块（纯移动）。
     pub fn resolve_reading_request(
         &self,
         session_id: &str,
@@ -855,62 +541,13 @@ impl StoryToolChannel {
         let Some(driver) = driver else {
             return Err("工具通道未接线".to_string());
         };
-        let request = {
-            let pending = lock(&self.pending);
-            let Some(request) = pending.get(call_id) else {
-                return Err("没有该身份的待决授权请求".to_string());
-            };
-            if request.session_id != session_id {
-                return Err("授权请求身份不符".to_string());
-            }
-            request.clone()
-        };
-        lock(&self.pending).remove(call_id);
-
-        // 授权档案写入失败（设计 D2-1）：仍先向驱动回填结构化拒绝（与用户拒绝
-        // 同构——拒绝是合法结果，模型继续有限回答，轮次不悬挂）；回填完成后把
-        // 原错误如实返回前端（界面提示授权未能保存，不伪造授权成功）。
-        let granted = if granted {
-            match grant_on_demand_reading(&request.project_root, &request.conversation_id) {
-                Ok(()) => true,
-                Err(error) => {
-                    let result = serde_json::json!({
-                        "granted": false,
-                        "recovery": RECOVERY_READING_UNAUTHORIZED,
-                    });
-                    let _ = driver.send_tool_result(
-                        &request.session_id,
-                        &request.message_id,
-                        call_id,
-                        true,
-                        Some(result),
-                        None,
-                        None,
-                    );
-                    return Err(error.to_string());
-                }
-            }
-        } else {
-            false
-        };
-        // 拒绝结果是工具结果内容（ok=true 的 result），不是 error 载荷；恢复提示
-        // 放在结果对象内，与 error.recovery 同一常量、同一语义。
-        let result = if granted {
-            serde_json::json!({ "granted": true })
-        } else {
-            serde_json::json!({ "granted": false, "recovery": RECOVERY_READING_UNAUTHORIZED })
-        };
-        driver
-            .send_tool_result(
-                &request.session_id,
-                &request.message_id,
-                call_id,
-                true,
-                Some(result),
-                None,
-                None,
-            )
-            .map_err(|e| e.message.clone())
+        crate::story_tool_authorization::resolve_reading_request(
+            &driver,
+            &self.pending,
+            session_id,
+            call_id,
+            granted,
+        )
     }
 }
 
@@ -946,7 +583,8 @@ fn denial_reason_label(reason: StoryToolDenialReason) -> String {
 
 /// 未授权系拒绝的稳定恢复路径提示（design D5，batch-improvement-candidates ②，
 /// 逐字使用）：面向模型的英文常量，与 reason 同理不做自由文本。
-const RECOVERY_READING_UNAUTHORIZED: &str = "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.";
+/// （决定回填在 `crate::story_tool_authorization`，经门面引用同一常量。）
+pub(crate) const RECOVERY_READING_UNAUTHORIZED: &str = "Reading is not authorized. Call story-request-reading to request it; the user can grant it in the discussion panel, and a new question may re-request.";
 
 /// 补读停止（保险丝）拒绝的稳定恢复路径提示（design D5，逐字使用）。
 const RECOVERY_READING_STOPPED: &str = "Reading was stopped. Answer from materials already collected; the user may re-enable reading in the discussion panel.";
@@ -969,8 +607,11 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// 通道与授权流共用的测试夹具随 `story_tool_authorization` 的测试共享
+/// （fix-story-tool-channel-failures-and-split D3：测试随行迁移但不复制夹具，
+/// 共享项以 `pub(crate)` 暴露给 crate 内其他测试模块）。
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::conversation_store::{
         read_conversation, seed_conversation as save_archive, ConversationRecord,
@@ -984,7 +625,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    fn notebook_with_text(text: &str) -> String {
+    pub(crate) fn notebook_with_text(text: &str) -> String {
         serde_json::to_string(&serde_json::json!({
             "format": "next-story-tiptap",
             "version": 2,
@@ -996,7 +637,7 @@ mod tests {
         .unwrap()
     }
 
-    fn setup_work_with_doc(
+    pub(crate) fn setup_work_with_doc(
         temp: &tempfile::TempDir,
         name: &str,
         content: &str,
@@ -1012,7 +653,7 @@ mod tests {
         (root, doc_id)
     }
 
-    fn archive(conversation_id: &str, grant: Option<GrantEntry>) -> ConversationRecord {
+    pub(crate) fn archive(conversation_id: &str, grant: Option<GrantEntry>) -> ConversationRecord {
         ConversationRecord {
             version: crate::conversation_store::CONVERSATION_VERSION,
             conversation_id: conversation_id.to_string(),
@@ -1092,7 +733,7 @@ mod tests {
 
     /// 假驱动夹具：echo 驱动把 tool_call→tool_result→message_done 串起来。
     /// `script` 可定制工具名与行为；返回 (TempDir, paths, params)。
-    fn fake_driver(script: &str) -> (tempfile::TempDir, DshRuntimePaths, DriverParams) {
+    pub(crate) fn fake_driver(script: &str) -> (tempfile::TempDir, DshRuntimePaths, DriverParams) {
         let temp = tempfile::TempDir::new().expect("temp dir");
         let driver_dir = temp.path().join("driver");
         std::fs::create_dir_all(&driver_dir).expect("driver dir");
@@ -1170,7 +811,7 @@ rl.on('line', (line) => {
 
     // 假驱动：send_message → tool_call(story-request-reading)；授权等待挂起，
     // 直到 tool_result（granted/denied）回填才产出终态；cancel_message → cancelled 终态。
-    fn request_bridge_driver() -> String {
+    pub(crate) fn request_bridge_driver() -> String {
         let head = r#"
 import readline from 'node:readline';
 console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));
@@ -1199,7 +840,7 @@ rl.on('line', (line) => {
 
     /// panic 兜底守卫：测试任何路径退出（含断言失败 unwind）都优雅关停驱动，
     /// 杜绝 `.tmp*\driver` 进程泄漏；正常路径与测试末尾的显式关停幂等叠加。
-    struct DriverGuard(DshDriverManager);
+    pub(crate) struct DriverGuard(DshDriverManager);
     impl Drop for DriverGuard {
         fn drop(&mut self) {
             self.0.shutdown_best_effort();
@@ -1222,7 +863,7 @@ rl.on('line', (line) => {
         (manager, channel, guard)
     }
 
-    fn wire_channel() -> (Arc<DshDriverManager>, Arc<StoryToolChannel>, DriverGuard) {
+    pub(crate) fn wire_channel() -> (Arc<DshDriverManager>, Arc<StoryToolChannel>, DriverGuard) {
         wire_channel_with(ReadingFuseConfig::default())
     }
 
@@ -1702,121 +1343,6 @@ setInterval(() => {}, 1000);
         manager.shutdown_best_effort();
     }
 
-    /// 待决授权的身份校验：会话不符 / 未知 call_id → 失败关闭，不动档案。
-    #[test]
-    fn pending_authorization_identity_must_match() {
-        let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, _doc_id) =
-            setup_work_with_doc(&temp, "身份校验作品", &notebook_with_text("正文"));
-        save_archive(&root, &archive("conv-6", None)).expect("save archive");
-
-        let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
-        let (manager, channel, _guard) = wire_channel();
-        manager.ensure_started(&params, &paths).expect("驱动启动");
-        manager.start_session("s1").expect("start session");
-        channel.register_round("s1", "conv-6", root.clone(), false);
-        let events = Arc::new(Mutex::new(Vec::<ReadingRequestEvent>::new()));
-        let events_for_sink = events.clone();
-        channel.set_reading_request_sink(Arc::new(move |event| {
-            events_for_sink.lock().unwrap().push(event);
-        }));
-
-        let manager_for_send = manager.clone();
-        let send = std::thread::spawn(move || {
-            manager_for_send.send_message_and_wait("s1", "m1", "问题", Duration::from_secs(30))
-        });
-        std::thread::sleep(Duration::from_millis(1200));
-
-        // 会话身份不符 → 拒绝；档案不动、原请求仍待决。
-        assert!(
-            channel
-                .resolve_reading_request("s2", "call-1", true)
-                .is_err(),
-            "会话身份不符必须失败"
-        );
-        assert!(
-            channel
-                .resolve_reading_request("s1", "call-none", true)
-                .is_err(),
-            "未知 call_id 必须失败"
-        );
-        let record = read_conversation(&root, "conv-6").expect("read archive");
-        assert!(record.on_demand_reading_grant.is_none(), "失败路径不动档案");
-
-        // 正确身份 → 成功，轮次继续完成。
-        channel
-            .resolve_reading_request("s1", "call-1", true)
-            .expect("匹配身份应成功");
-        let outcome = send.join().expect("send 线程").expect("轮次完成");
-        assert_eq!(outcome.text, "授权通过，继续回答");
-
-        manager.shutdown_best_effort();
-    }
-
-    /// fix-story-tool-channel-failures-and-split 任务 1.1：用户允许但授权档案写入
-    /// 失败——驱动仍收到结构化拒绝（granted:false＋恢复提示，与用户拒绝同构），
-    /// 轮次走有限回答立即收束（不悬挂等待停滞看护）；resolve 如实返回 Err；
-    /// 授权档案未被伪造。写入失败用删除档案文件制造（存储层对缺失档案返回
-    /// NotFound）。
-    #[test]
-    fn grant_write_failure_backfills_denial_and_round_finishes() {
-        let temp = tempfile::TempDir::new().expect("temp dir");
-        let (root, _doc_id) =
-            setup_work_with_doc(&temp, "授权写失败作品", &notebook_with_text("正文"));
-        save_archive(&root, &archive("conv-write-fail", None)).expect("save archive");
-
-        let (_driver_temp, paths, params) = fake_driver(&request_bridge_driver());
-        let (manager, channel, _guard) = wire_channel();
-        manager.ensure_started(&params, &paths).expect("驱动启动");
-        manager.start_session("s1").expect("start session");
-        channel.register_round("s1", "conv-write-fail", root.clone(), false);
-        let events = Arc::new(Mutex::new(Vec::<ReadingRequestEvent>::new()));
-        let events_for_sink = events.clone();
-        channel.set_reading_request_sink(Arc::new(move |event| {
-            events_for_sink.lock().unwrap().push(event);
-        }));
-
-        let manager_for_send = manager.clone();
-        let send = std::thread::spawn(move || {
-            manager_for_send.send_message_and_wait("s1", "m1", "问题", Duration::from_secs(10))
-        });
-        std::thread::sleep(Duration::from_millis(1500));
-        assert_eq!(events.lock().unwrap().len(), 1, "授权请求已挂起");
-
-        // 制造授权档案写入失败：删除档案文件（授权无处可写）。
-        let archive_path = root
-            .join("next-story-system")
-            .join("conversations")
-            .join("conv-write-fail.json");
-        std::fs::remove_file(&archive_path).expect("remove archive");
-
-        // 用户允许 → 写入失败：resolve 返回 Err，但驱动已收到结构化拒绝。
-        let resolved = channel.resolve_reading_request("s1", "call-1", true);
-        assert!(resolved.is_err(), "写入失败必须如实返回错误: {resolved:?}");
-
-        // 轮次经拒绝回填立即收束为有限回答（10 秒请求超时内，不依赖停滞看护——
-        // 回填若未生效，这里会超时响亮失败）。
-        let outcome = send
-            .join()
-            .expect("send 线程")
-            .expect("写入失败后轮次仍应经拒绝回填收束");
-        assert!(
-            outcome.text.starts_with("未获授权，有限回答"),
-            "写入失败按未授权回填，模型转有限回答: {}",
-            outcome.text
-        );
-        assert!(
-            outcome.text.contains(RECOVERY_READING_UNAUTHORIZED),
-            "写入失败的拒绝回填应携带恢复路径提示: {}",
-            outcome.text
-        );
-
-        // 授权未被伪造：档案文件仍不存在。
-        assert!(!archive_path.exists(), "授权档案不得在写入失败后被伪造重建");
-
-        manager.shutdown_best_effort();
-    }
-
     /// fix-story-tool-channel-failures-and-split 任务 1.2：授权请求无接收通道
     /// （sink 未安装的装配降级路径）——不插入待决、不进入等待，驱动立即收到
     /// granted:false 结构化拒绝，轮次以有限回答收束；随后任意 call_id 的决定
@@ -1907,222 +1433,6 @@ setInterval(() => {}, 1000);
     // ========== 任务组 6：轮内监管（版本固定 / 去重 / 阅读程度 / 熔断） ==========
 
     use crate::project::compute_version;
-
-    /// 6.1 单元：版本固定表——首读固定、他版失配（本轮停读）、停读后任意读取拒绝。
-    #[test]
-    fn round_state_pins_version_and_blocks_on_mismatch() {
-        let mut state = RoundReadingState::default();
-        // 首读未固定：透传请求版本。
-        match state.prepare_read(0, "d", None, None) {
-            ReadPreparation::Execute { version } => assert_eq!(version, None),
-            other => panic!("首读应放行，实际 {other:?}"),
-        }
-        state.record_read_success(
-            "d",
-            "文档",
-            "v1".to_string(),
-            None,
-            MaterialRange { start: 0, end: 10 },
-            Some(10),
-        );
-        assert_eq!(state.pinned.get("d").map(String::as_str), Some("v1"));
-        // 同轮请求他版：story_version_changed + 本轮停读。
-        match state.prepare_read(0, "d", Some("v0".into()), None) {
-            ReadPreparation::Denied(reason) => {
-                assert_eq!(reason, StoryToolDenialReason::StoryVersionChanged)
-            }
-            other => panic!("他版应失配拒绝，实际 {other:?}"),
-        }
-        // 停读后：固定版 / 无版本一律失配拒绝（下一轮读新版由状态重置保证）。
-        for version in [Some("v1".to_string()), None] {
-            match state.prepare_read(0, "d", version, None) {
-                ReadPreparation::Denied(reason) => {
-                    assert_eq!(reason, StoryToolDenialReason::StoryVersionChanged)
-                }
-                other => panic!("停读文档应拒绝，实际 {other:?}"),
-            }
-        }
-    }
-
-    /// 6.1 单元：已固定文档读取期间正文保存为新版（执行器 version_unavailable）
-    /// → 映射 story_version_changed 并停读；未固定文档保持 version_unavailable。
-    #[test]
-    fn round_state_maps_version_unavailable_only_when_pinned() {
-        let mut state = RoundReadingState::default();
-        state.record_read_success(
-            "d",
-            "文档",
-            "v1".to_string(),
-            None,
-            MaterialRange { start: 0, end: 10 },
-            Some(10),
-        );
-        assert!(state.note_read_version_unavailable("d"), "已固定文档应映射");
-        assert!(state.blocked.contains("d"));
-
-        let mut fresh = RoundReadingState::default();
-        assert!(
-            !fresh.note_read_version_unavailable("d"),
-            "未固定文档保持 version_unavailable（可重试正确版本）"
-        );
-    }
-
-    /// 6.3 单元：同轮同版同范围去重；不同范围 / 跨轮不屏蔽。
-    #[test]
-    fn round_state_dedups_same_version_and_range_only() {
-        let mut state = RoundReadingState::default();
-        state.record_read_success(
-            "d",
-            "文档",
-            "v1".to_string(),
-            Some(MaterialRange { start: 0, end: 5 }),
-            MaterialRange { start: 0, end: 5 },
-            Some(10),
-        );
-        match state.prepare_read(
-            0,
-            "d",
-            Some("v1".into()),
-            Some(MaterialRange { start: 0, end: 5 }),
-        ) {
-            ReadPreparation::AlreadyProvided(hint) => {
-                assert_eq!(hint.document_id, "d");
-                assert_eq!(hint.document_name, "文档");
-                assert_eq!(hint.version, "v1");
-                assert_eq!(hint.range, MaterialRange { start: 0, end: 5 });
-                assert_eq!(hint.turn_index, 0);
-            }
-            other => panic!("同版同范围应命中去重，实际 {other:?}"),
-        }
-        // 不同范围、不同版本形态（None ↔ Some）不命中。
-        assert!(matches!(
-            state.prepare_read(
-                0,
-                "d",
-                Some("v1".into()),
-                Some(MaterialRange { start: 5, end: 10 })
-            ),
-            ReadPreparation::Execute { .. }
-        ));
-        assert!(matches!(
-            state.prepare_read(0, "d", Some("v1".into()), None),
-            ReadPreparation::Execute { .. }
-        ));
-        // 跨轮：状态整体重置，同请求不屏蔽（D9）。
-        let mut fresh = RoundReadingState::default();
-        assert!(matches!(
-            fresh.prepare_read(
-                0,
-                "d",
-                Some("v1".into()),
-                Some(MaterialRange { start: 0, end: 5 })
-            ),
-            ReadPreparation::Execute { .. }
-        ));
-    }
-
-    /// 6.2 单元：按轮累计的阅读程度——半篇 + 另半篇 = 完整；仅检索命中 = 搜索片段；
-    /// 读取升级覆盖仅检索文档的程度；版本变化重置累计。
-    #[test]
-    fn round_state_judges_depth_by_cumulative_coverage() {
-        let mut state = RoundReadingState::default();
-        state.record_read_success(
-            "a",
-            "甲",
-            "v1".to_string(),
-            Some(MaterialRange { start: 0, end: 50 }),
-            MaterialRange { start: 0, end: 50 },
-            Some(100),
-        );
-        // 另一半：区间合并且重叠合并正确 → 覆盖全文。
-        state.record_read_success(
-            "a",
-            "甲",
-            "v1".to_string(),
-            Some(MaterialRange {
-                start: 50,
-                end: 100,
-            }),
-            MaterialRange {
-                start: 50,
-                end: 100,
-            },
-            Some(100),
-        );
-        // 仅检索命中（无读取覆盖）。
-        state.search_only.insert("b".to_string(), "vb".to_string());
-        let updates = state.cumulative_updates();
-        let depth_of = |doc: &str| {
-            updates
-                .iter()
-                .find(|(d, _, _)| d == doc)
-                .map(|(_, _, depth)| *depth)
-                .expect("应有该文档的累计条目")
-        };
-        assert_eq!(depth_of("a"), ReadingDepth::Full, "两半覆盖 = 完整阅读");
-        assert_eq!(depth_of("b"), ReadingDepth::SearchSnippet);
-
-        // 读取升级：b 从仅检索升级为局部 / 完整。
-        state.record_read_success(
-            "b",
-            "乙",
-            "vb".to_string(),
-            None,
-            MaterialRange { start: 0, end: 40 },
-            None,
-        );
-        let updates = state.cumulative_updates();
-        let depth_b = updates
-            .iter()
-            .find(|(d, _, _)| d == "b")
-            .map(|(_, _, depth)| *depth)
-            .expect("b 应保留累计条目");
-        assert_eq!(depth_b, ReadingDepth::Partial, "长度未知不冒充完整");
-
-        // 版本变化重置累计：旧区间不映射到新正文。
-        state.record_read_success(
-            "a",
-            "甲",
-            "v2".to_string(),
-            Some(MaterialRange { start: 0, end: 10 }),
-            MaterialRange { start: 0, end: 10 },
-            Some(100),
-        );
-        let updates = state.cumulative_updates();
-        let depth_a = updates
-            .iter()
-            .find(|(d, _, _)| d == "a")
-            .map(|(_, _, depth)| *depth)
-            .expect("a 应保留累计条目");
-        assert_eq!(depth_a, ReadingDepth::Partial, "版本变化后重新累计");
-    }
-
-    /// 6.4 单元：保险丝——到达计数越过阈值或累计时长超限后触发，触发后只影响
-    /// 该轮后续补读；控制工具不受影响（由通道的 is_reading_tool 分流保证）。
-    #[test]
-    fn round_state_fuse_trips_on_count_or_duration() {
-        let config = ReadingFuseConfig {
-            max_tool_calls: 2,
-            max_accumulated_duration: Duration::from_millis(100),
-        };
-        let mut state = RoundReadingState {
-            reading_calls: 1,
-            ..RoundReadingState::default()
-        };
-        state.note_reading_arrival_completed(Duration::ZERO, &config);
-        assert!(!state.fused, "未到阈值不触发");
-        state.reading_calls = 2;
-        state.note_reading_arrival_completed(Duration::ZERO, &config);
-        assert!(state.fused, "计数达到上限即触发（后续补读停止）");
-
-        // 时长维度独立触发。
-        let mut slow = RoundReadingState {
-            reading_calls: 1,
-            ..RoundReadingState::default()
-        };
-        slow.note_reading_arrival_completed(Duration::from_millis(150), &config);
-        assert!(slow.fused, "累计时长超限即触发");
-    }
 
     /// 6.1 集成：轮内版本固定全链路——首读固定；请求旧版 / 停读后任意读取 =
     /// story_version_changed；下一轮（新轮状态）读最新已保存版。

@@ -9,7 +9,12 @@ pub mod llm_config;
 pub mod project;
 pub mod recent_works;
 pub mod runtime_contract;
+// 按需补读的两个领域模块（fix-story-tool-channel-failures-and-split D3 自
+// story_tool_channel 拆分）：私有模块，公开项经 story_tool_channel 门面
+// re-export，外部路径（story_tool_channel::X）保持不变。
+mod story_tool_authorization;
 pub mod story_tool_channel;
+mod story_tool_round_state;
 pub mod story_tools;
 
 use std::path::PathBuf;

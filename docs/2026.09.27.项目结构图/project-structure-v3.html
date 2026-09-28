@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Next Story · 项目结构图 v3 · 2026-09-27</title>
+<style>
+:root{--paper:#F5F3EE;--ink:#23252A;--ink-2:#5B5D64;--ink-3:#8A8C93;--front-bd:#5C7B93;--front-bg:#E9EEF3;--front-dk:#2C4A63;--tauri-bd:#B9922F;--tauri-bg:#F6EED6;--tauri-dk:#7C6119;--rust-bd:#B05B49;--rust-bg:#F3E5E1;--rust-dk:#7E3627;--dsh-bd:#7D8B4B;--dsh-bg:#EBEEDA;--dsh-dk:#55632D;--store-bd:#5A5B63;--store-bg:#ECECEF;--store-dk:#3B3C42;--sec:#B3261E;--sec-bg:#F8E7E5;--plan-bd:#9AA6B5;--plan-bg:#EFF1F5;--plan-tx:#727C8A;--arrow:#5B5D64}
+*{box-sizing:border-box}html,body{margin:0px;padding:0px;background:var(--paper)}body{font-family:"Segoe UI","Microsoft YaHei","微软雅黑",sans-serif;color:var(--ink);font-size:13px;line-height:20px}h1,h2,h3,p{margin:0px}#canvas{position:relative;width:1920px;height:2472px;background:var(--paper);overflow:hidden}.abs,.panel,.cluster,.chip,.step,.label,.copy,.note,.arrow,.legend-item{position:absolute}.mono,code,.chip{font-family:Consolas,"Cascadia Mono",monospace}code{font-size:12px}.panel{border:1px solid var(--bd);border-radius:3px;background:var(--bg)}.front{--bd:var(--front-bd);--bg:var(--front-bg);--dk:var(--front-dk)}.tauri{--bd:var(--tauri-bd);--bg:var(--tauri-bg);--dk:var(--tauri-dk)}.rust{--bd:var(--rust-bd);--bg:var(--rust-bg);--dk:var(--rust-dk)}.dsh{--bd:var(--dsh-bd);--bg:var(--dsh-bg);--dk:var(--dsh-dk)}.store{--bd:var(--store-bd);--bg:var(--store-bg);--dk:var(--store-dk)}.security{--bd:var(--sec);--bg:var(--sec-bg);--dk:var(--sec)}.panel-title{position:absolute;left:0px;top:0px;height:38px;padding:8px 12px;border-bottom:1px solid var(--bd);color:var(--dk);font-size:16px;line-height:22px;font-weight:700}.cluster{background:rgba(255,255,255,.6);border:1px solid #D8D6D0;border-left:3px solid var(--bd);border-radius:3px}.label{left:10px;top:7px;font-size:12px;font-weight:700;line-height:18px;color:var(--dk)}.note{left:10px;top:26px;font-size:10.5px;line-height:16px;color:var(--ink-2)}.chip{height:20px;padding:0px 5px;font-size:11.5px;line-height:18px;background:#FFFFFF;border:1px solid #E2E0DA;border-radius:2px;white-space:nowrap;color:var(--ink)}.chip.legacy{border-style:dashed;border-color:var(--plan-bd);color:var(--plan-tx)}.copy{font-size:12px;line-height:20px;color:var(--ink-2);overflow-wrap:break-word}.count{font-weight:400;color:var(--ink-2)}.band-title{font-size:14px;font-weight:700;letter-spacing:.4px;color:var(--ink-2)}.legend-item{height:20px;padding-left:20px;font-size:12px;color:var(--ink-2);white-space:nowrap}.swatch{position:absolute;left:0px;top:4px;width:12px;height:12px;background:var(--bg);border:1px solid var(--bd);border-radius:2px}.step{border:1px solid var(--bd);background:var(--bg);border-radius:3px}.step-n{position:absolute;left:-11px;top:10px;width:22px;height:22px;background:var(--bd);border-radius:11px;color:#FFFFFF;font-size:12px;font-weight:700;line-height:22px;text-align:center}.step-title{position:absolute;left:18px;top:9px;font-size:13px;line-height:20px;color:var(--dk);font-weight:700}.step-copy{position:absolute;left:18px;top:34px;font-size:12px;line-height:20px;color:var(--ink-2)}.arrow{font-size:20px;line-height:24px;color:var(--arrow);text-align:center}.fine{font-size:11px;color:var(--ink-2)}.red{color:var(--sec)}
+.arrow{font-size:16px;line-height:20px}
+</style>
+</head>
+<body>
+<!-- Fixed capture contract: 1920 × 2472 CSS pixels. No viewport-relative layout. -->
+<main id="canvas" aria-label="Next Story 项目结构图 v3">
+<h1 class="abs" style="left:40px;top:32px;width:960px;height:42px;font-size:32px;line-height:42px;letter-spacing:.5px">Next Story · 项目结构图</h1>
+<p class="abs" style="left:40px;top:82px;width:1080px;height:24px;font-size:15px;line-height:24px;color:var(--ink-2)">运行层总览 + 关键链路 —— 常驻 AI 陪想与作品隔离边界</p>
+<p class="abs" style="left:1160px;top:28px;width:720px;height:88px;text-align:right;font-size:12px;line-height:22px;color:var(--ink-2)">结构快照 · 2026-09-27<br>98 归档 · 56 规格 · 0 进行中<br>Tauri 2 (WebView2) · Node 24.15.0 · DSH 0.1.0-rc.7<br>基于仓库实测（HEAD <code>65d6c8f</code>）</p>
+<div class="abs" aria-label="图例" style="left:40px;top:128px;width:1840px;height:22px">
+ <span class="legend-item front" style="left:0px;top:0px"><i class="swatch"></i>前端</span><span class="legend-item tauri" style="left:110px;top:0px"><i class="swatch"></i>Tauri IPC</span><span class="legend-item rust" style="left:244px;top:0px"><i class="swatch"></i>Rust 后端</span><span class="legend-item dsh" style="left:384px;top:0px"><i class="swatch"></i>DSH 驱动</span><span class="legend-item store" style="left:530px;top:0px"><i class="swatch"></i>作品存储</span><span class="legend-item security" style="left:672px;top:0px"><i class="swatch"></i>安全边界</span>
+ <span class="abs fine" style="left:850px;top:0px;width:650px;height:22px">实线 = 已实现 · 虚线 = 保留非主路径（底部红线与未实现条另有文字标识）</span>
+</div>
+<h2 class="abs band-title" style="left:40px;top:160px;width:1200px;height:22px">一 · 运行层总览（模块地图）</h2>
+
+<!-- FRONTEND: 6 fixed clusters, 68 individual file chips. -->
+<section class="panel front" id="frontend" aria-label="前端 68 模块" style="left:40px;top:188px;width:680px;height:1140px">
+ <h2 class="panel-title" style="width:678px">前端 <code>src/</code> <span class="count">· WebView2 · TypeScript · 68 模块</span></h2>
+ <div class="cluster" data-count="9" style="left:12px;top:50px;width:652px;height:156px">
+  <h3 class="label">装配与生命周期 <span class="count">· 9</span></h3><p class="note">启动装配与“打开 / 关闭 / 离开”的提交边界。</p>
+  <span class="chip" style="left:10px;top:44px">main.ts</span><span class="chip" style="left:328px;top:44px">workspace-project-flow.ts</span>
+  <span class="chip" style="left:10px;top:66px">workspace-tree-flow.ts</span><span class="chip" style="left:328px;top:66px">new-project-form.ts</span>
+  <span class="chip" style="left:10px;top:88px">close-guard.ts</span><span class="chip" style="left:328px;top:88px">leave-guard.ts</span>
+  <span class="chip" style="left:10px;top:110px">leave-dialog.ts</span><span class="chip" style="left:328px;top:110px">project-leave-flow.ts</span>
+  <span class="chip" style="left:10px;top:132px">app-dialog.ts</span>
+ </div>
+ <div class="cluster" data-count="20" style="left:12px;top:212px;width:652px;height:266px">
+  <h3 class="label">写作空间 <span class="count">· 20</span></h3><p class="note">Tiptap 编辑器域与文档模型。</p>
+  <span class="chip" style="left:10px;top:44px">rich-text-editor.ts</span><span class="chip" style="left:328px;top:44px">editor.ts</span>
+  <span class="chip" style="left:10px;top:66px">editor-context-menu.ts</span><span class="chip" style="left:328px;top:66px">editor-document-session.ts</span>
+  <span class="chip" style="left:10px;top:88px">editor-document-view.ts</span><span class="chip" style="left:328px;top:88px">editor-save-state.ts</span>
+  <span class="chip" style="left:10px;top:110px">editor-persistence.ts</span><span class="chip" style="left:328px;top:110px">editor-toolbar.ts</span>
+  <span class="chip" style="left:10px;top:132px">editor-find.ts</span><span class="chip" style="left:328px;top:132px">editor-keyboard.ts</span>
+  <span class="chip" style="left:10px;top:154px">editor-extensions.ts</span><span class="chip" style="left:328px;top:154px">editor-margin.ts</span>
+  <span class="chip" style="left:10px;top:176px">editor-link-actions.ts</span><span class="chip" style="left:328px;top:176px">editor-link-popover.ts</span>
+  <span class="chip" style="left:10px;top:198px">controlled-paste.ts</span><span class="chip" style="left:328px;top:198px">format-commands.ts</span>
+  <span class="chip" style="left:10px;top:220px">find-replace.ts</span><span class="chip" style="left:328px;top:220px">list-numbering.ts</span>
+  <span class="chip" style="left:10px;top:242px">structured-notebook.ts</span><span class="chip" style="left:328px;top:242px">document-memory.ts</span>
+ </div>
+ <div class="cluster" data-count="15" style="left:12px;top:484px;width:652px;height:222px">
+  <h3 class="label">AI 面板与讨论 <span class="count">· 15</span></h3><p class="note">显示层与传输层。</p>
+  <span class="chip" style="left:10px;top:44px">ai-dock.ts</span><span class="chip" style="left:328px;top:44px">ai-window.ts</span>
+  <span class="chip" style="left:10px;top:66px">ai-panel-reducer.ts</span><span class="chip" style="left:328px;top:66px">ai-panel-state.ts</span>
+  <span class="chip" style="left:10px;top:88px">ai-panel-view-model.ts</span><span class="chip" style="left:328px;top:88px">ai-panel-events.ts</span>
+  <span class="chip" style="left:10px;top:110px">ai-panel-request-state.ts</span><span class="chip" style="left:328px;top:110px">ai-panel-scroll.ts</span>
+  <span class="chip" style="left:10px;top:132px">ai-panel-conversation.ts</span><span class="chip" style="left:328px;top:132px">ai-panel-conversation-list.ts</span>
+  <span class="chip" style="left:10px;top:154px">ai-session-transport.ts</span><span class="chip" style="left:328px;top:154px">ai-request.ts</span>
+  <span class="chip" style="left:10px;top:176px">ai-request-scheduler.ts</span><span class="chip" style="left:328px;top:176px">ai-conversation-identity.ts</span>
+  <span class="chip" style="left:10px;top:198px">ai-timing.ts</span>
+ </div>
+ <div class="cluster" data-count="10" style="left:12px;top:712px;width:652px;height:156px">
+  <h3 class="label">AI 功能编排 <span class="count">· 10</span></h3><p class="note">功能组合根：把各项 AI 功能接成完整流程。</p>
+  <span class="chip" style="left:10px;top:44px">ai-feature.ts</span><span class="chip" style="left:328px;top:44px">ai-feature-context.ts</span>
+  <span class="chip" style="left:10px;top:66px">ai-feature-first-round.ts</span><span class="chip" style="left:328px;top:66px">ai-feature-follow-up.ts</span>
+  <span class="chip" style="left:10px;top:88px">ai-feature-direct-question.ts</span><span class="chip" style="left:328px;top:88px">ai-feature-on-demand-reading.ts</span>
+  <span class="chip" style="left:10px;top:110px">ai-feature-delete-undo.ts</span><span class="chip" style="left:328px;top:110px">ai-feature-request-gateway.ts</span>
+  <span class="chip" style="left:10px;top:132px">ai-feature-request-lifecycle.ts</span><span class="chip" style="left:328px;top:132px">ai-feature-request-materials.ts</span>
+ </div>
+ <div class="cluster" data-count="6" style="left:12px;top:874px;width:652px;height:112px">
+  <h3 class="label">作品 / 数据 / 选区 <span class="count">· 6</span></h3><p class="note">连接作品内容树、讨论档案与选区入口。</p>
+  <span class="chip" style="left:10px;top:44px">file-management.ts</span><span class="chip" style="left:328px;top:44px">content-tree.ts</span>
+  <span class="chip" style="left:10px;top:66px">project-api.ts</span><span class="chip" style="left:328px;top:66px">conversation-archive.ts</span>
+  <span class="chip" style="left:10px;top:88px">selection-adapter.ts</span><span class="chip" style="left:328px;top:88px">selection-entry.ts</span>
+ </div>
+ <div class="cluster" data-count="8" style="left:12px;top:992px;width:652px;height:134px">
+  <h3 class="label">配置与共享 <span class="count">· 8</span></h3><p class="note">模型配置、导出、页面切换与共享约定。</p>
+  <span class="chip" style="left:10px;top:44px">llm-config-form.ts</span><span class="chip" style="left:328px;top:44px">llm-config-state.ts</span>
+  <span class="chip" style="left:10px;top:66px">export-word.ts</span><span class="chip" style="left:328px;top:66px">dom.ts</span>
+  <span class="chip" style="left:10px;top:88px">views.ts</span><span class="chip" style="left:328px;top:88px">types.ts</span>
+  <span class="chip" style="left:10px;top:110px">shared-document-models.ts</span><span class="chip" style="left:328px;top:110px">shared-storage-and-selection-identity.ts</span>
+ </div>
+</section>
+<span class="arrow" style="left:720px;top:514px;width:24px;height:24px" aria-label="前端通过 IPC 请求">→</span>
+
+<!-- IPC examples are sampled from the registered command list, not new names. -->
+<section class="panel tauri" id="ipc" style="left:744px;top:188px;width:300px;height:730px">
+ <h2 class="panel-title" style="width:298px">Tauri IPC · 41 个命令</h2>
+ <div class="cluster" data-count="8" style="left:12px;top:50px;width:274px;height:142px"><h3 class="label">AI 会话与生成 · 8</h3><p class="copy mono" style="left:10px;top:34px;width:250px;height:84px">ai_send_message<br>ai_start_session<br>ai_cancel_message<br>ai_resolve_reading_request</p><p class="note" style="top:120px">含结束、重放与保留生成入口</p></div>
+ <div class="cluster" data-count="15" style="left:12px;top:202px;width:274px;height:130px"><h3 class="label">作品与文档 · 15</h3><p class="copy mono" style="left:10px;top:34px;width:250px;height:84px">open_project<br>open_content_tree<br>read_document<br>save_document</p></div>
+ <div class="cluster" data-count="10" style="left:12px;top:342px;width:274px;height:130px"><h3 class="label">讨论档案 · 10</h3><p class="copy mono" style="left:10px;top:34px;width:250px;height:84px">conversation_list<br>conversation_read<br>conversation_save<br>conversation_set_on_demand_reading</p></div>
+ <div class="cluster" data-count="2" style="left:12px;top:482px;width:274px;height:86px"><h3 class="label">导出 · 2</h3><p class="copy mono" style="left:10px;top:34px;width:250px;height:44px">export_project_to_word<br>export_wait_timing_json</p></div>
+ <div class="cluster" data-count="6" style="left:12px;top:578px;width:274px;height:108px"><h3 class="label">配置与最近作品 · 6</h3><p class="copy mono" style="left:10px;top:34px;width:250px;height:64px">save_llm_config<br>load_llm_config<br>load_recent_works</p></div>
+ <p class="copy" style="left:14px;top:696px;width:272px;height:20px;font-size:10.5px">每组列举示例；总数 8 + 15 + 10 + 2 + 6 = 41</p>
+</section>
+<span class="arrow" style="left:1044px;top:514px;width:24px;height:24px" aria-label="IPC 调用 Rust">→</span>
+
+<section class="panel rust" id="backend" style="left:1068px;top:188px;width:812px;height:730px">
+ <h2 class="panel-title" style="width:810px">Rust 后端 <code>src-tauri/src/</code> <span class="count">· 27 文件 · 作品保管与请求编排</span></h2>
+ <div class="cluster" data-count="2" style="left:12px;top:50px;width:386px;height:106px"><h3 class="label">IPC 面 · 2</h3><span class="chip" style="left:10px;top:34px">lib.rs</span><span class="chip" style="left:186px;top:34px">main.rs</span><p class="note" style="top:62px">41 命令注册　　　　　　　　进程入口</p></div>
+ <div class="cluster" data-count="6" style="left:12px;top:168px;width:386px;height:252px"><h3 class="label">AI 运行链 · 6</h3><p class="note">会话、驱动进程与版本管理。</p>
+  <span class="chip" style="left:10px;top:48px">ai_host.rs</span><span class="chip" style="left:10px;top:76px">ai_orchestration.rs</span><span class="chip" style="left:10px;top:104px">dsh_driver.rs</span><span class="chip legacy" style="left:10px;top:132px">dsh_sidecar.rs</span><span class="chip" style="left:10px;top:160px">dsh_version.rs</span><span class="chip" style="left:10px;top:188px">runtime_contract.rs</span>
+  <p class="copy" style="left:170px;top:104px;width:194px;height:112px;font-size:10.5px;line-height:28px">停滞看护 180s<br>旧一次性入口 · 非主路径<br>版本 / DSH_HOME / 回滚<br>宿主与 AI 核心契约</p><p class="note" style="top:224px">非用户驱动等待有界；等待授权不设时限。</p>
+ </div>
+ <div class="cluster security" data-count="4" style="left:12px;top:432px;width:386px;height:280px"><h3 class="label">权限闸门与工具链 · 4</h3><p class="note">工具请求 → 授权拦截 → 受控只读 → 回填。</p>
+  <span class="chip" style="left:10px;top:48px">capability_gateway.rs</span><span class="chip" style="left:10px;top:78px">story_tool_channel.rs</span><span class="chip" style="left:10px;top:108px">story_tools.rs</span><span class="chip" style="left:10px;top:138px">project/story_material.rs</span>
+  <p class="copy" style="left:10px;top:174px;width:354px;height:90px">只读白名单；未知工具一律拒绝。<br>逐项校验作品 / 文档身份、可见性、回收站、版本与快照。<br><strong class="red">AI 无作品写入通道。</strong></p>
+ </div>
+ <div class="cluster" data-count="9" style="left:410px;top:50px;width:386px;height:350px"><h3 class="label">作品服务 <code>project/</code> · 9</h3><p class="note">作品结构、正文格式、保存与导出。</p>
+  <span class="chip" data-file="project/operations.rs" style="left:10px;top:48px">operations.rs</span><span class="chip" data-file="project/content_tree.rs" style="left:10px;top:76px">content_tree.rs</span><span class="chip" data-file="project/notebook.rs" style="left:10px;top:104px">notebook.rs</span><span class="chip" data-file="project/migration.rs" style="left:10px;top:132px">migration.rs</span><span class="chip" data-file="project/story_search.rs" style="left:10px;top:160px">story_search.rs</span><span class="chip" data-file="project/export.rs" style="left:10px;top:188px">export.rs</span><span class="chip" data-file="project/docx_export.rs" style="left:10px;top:216px">docx_export.rs</span><span class="chip" data-file="project/validation.rs" style="left:10px;top:244px">validation.rs</span><span class="chip" data-file="project/mod.rs" style="left:10px;top:272px">mod.rs</span>
+  <p class="copy" style="left:172px;top:48px;width:190px;height:260px;font-size:11px;line-height:28px">保存事务 · 崩溃恢复<br>内容树 · AI 可见性<br>文档格式 v2 校验<br>作品结构版本迁移<br>确定性跨文档字面检索<br>内容树 → 导出序列<br>导出序列 → .docx<br>文件名 / 路径校验<br>模块入口与共享类型</p><p class="note" style="top:318px">原子替换 + sync_all；内容树 ≤1MiB。</p>
+ </div>
+ <div class="cluster" data-count="1" style="left:410px;top:412px;width:386px;height:116px"><h3 class="label">讨论档案 · 1</h3><span class="chip" style="left:10px;top:34px">conversation_store.rs</span><p class="copy" style="left:10px;top:62px;width:356px;height:44px;font-size:11px"><code>&lt;id&gt;.json + .meta.json + .trash</code><br>读取 / 写入同限 ≤8MiB · 权限锁存</p></div>
+ <div class="cluster" data-count="5" style="left:410px;top:540px;width:386px;height:172px"><h3 class="label">配置与杂项 · 5</h3>
+  <span class="chip" style="left:10px;top:34px">llm_config/mod.rs</span><span class="chip" style="left:10px;top:58px">llm_config/http.rs</span><span class="chip" style="left:10px;top:82px">llm_config/secret_store.rs</span><span class="chip legacy" style="left:10px;top:106px">llm_config/generate.rs</span><span class="chip" style="left:10px;top:130px">recent_works.rs</span>
+  <p class="copy" style="left:206px;top:34px;width:158px;height:122px;font-size:10.5px;line-height:24px">配置读取 ≤64KiB<br>连接测试 / HTTP 边界<br>系统钥匙串<br>旧生成 · 非主路径<br>最近作品</p>
+ </div>
+</section>
+<span class="arrow" style="left:1474px;top:919px;width:24px;height:16px;font-size:14px;line-height:16px" aria-label="Rust 与常驻驱动双向通信">↕</span>
+
+<section class="panel dsh" id="driver" style="left:744px;top:936px;width:1136px;height:392px">
+ <h2 class="panel-title" style="width:1134px">DSH 常驻驱动 <code>sidecar/</code> <span class="count">· 独立 Node 进程 · 行分隔 JSON 协议 v1</span></h2>
+ <div class="cluster" style="left:14px;top:52px;width:398px;height:322px"><h3 class="label"><code>driver/</code> · 常驻驱动</h3><span class="chip" style="left:10px;top:38px">driver.mjs</span><span class="chip" style="left:10px;top:68px">protocol.json</span><span class="chip" style="left:10px;top:98px">session-queue.mjs</span><p class="copy" style="left:10px;top:138px;width:370px;height:168px">常驻会话进程：流式 / 工具循环 / 自动压缩。<br>宿主通过 stdin / stdout 逐行通信。<br><code>protocol.json</code> 是协议单一真相源。<br><br>版本与独立 <code>DSH_HOME</code> 由<br><code>dsh_version.rs</code> 管理；升级可回滚。</p></div>
+ <div class="cluster" style="left:428px;top:52px;width:338px;height:152px"><h3 class="label"><code>probe/</code> · 探底实验</h3><p class="copy" style="left:10px;top:42px;width:308px;height:76px">探底 · 已归档。<br>不是常驻会话的生产主路径。</p></div>
+ <div class="cluster" style="left:780px;top:52px;width:338px;height:152px"><h3 class="label"><code>reliability/</code> · 回答可靠性测试器</h3><p class="copy" style="left:10px;top:42px;width:308px;height:76px">回答可靠性测试。<br>与作品正文的保存路径隔离。</p></div>
+ <div class="cluster" style="left:428px;top:218px;width:338px;height:156px"><h3 class="label"><code>validation/</code> · 离线协议验证</h3><p class="copy" style="left:10px;top:42px;width:308px;height:90px">离线协议验证。<br>不等同于真实模型链路验证。</p></div>
+ <div class="cluster" style="left:780px;top:218px;width:338px;height:156px"><h3 class="label"><code>node-runtime/</code> · 内置 Node</h3><p class="copy" style="left:10px;top:42px;width:308px;height:90px">Node <strong>24.15.0</strong><br>DSH 锁定 <strong>0.1.0-rc.7</strong><br>当前发行：Windows · MSI / NSIS</p></div>
+</section>
+
+<!-- STORAGE / EXTERNAL: one horizontal band, bounded text lines. -->
+<section class="abs" aria-label="存储与外部服务" style="left:40px;top:1348px;width:1840px;height:204px">
+ <div class="panel store" style="left:0px;top:0px;width:680px;height:204px"><h3 class="panel-title" style="width:678px">作品文件夹 <span class="count">· 正文与讨论分开保存</span></h3><p class="copy" style="left:14px;top:48px;width:648px;height:144px;font-size:11px;line-height:23px"><code>作品文本/documents/&lt;文档id&gt;.json</code> · 用户正文<br><code>next-story-system/</code><br><code>project.json</code> · 元信息；<code>content-tree.json</code> ≤1MiB<br><code>conversations/</code>：<code>&lt;id&gt;.json</code> ≤8MiB + <code>.meta.json</code> + <code>.trash</code><br><code>save-transaction/</code> · 保存事务与恢复<br><code>migrations/</code> · 迁移记录</p></div>
+ <div class="panel store" style="left:696px;top:0px;width:300px;height:204px"><h3 class="panel-title" style="width:298px">应用数据</h3><p class="copy" style="left:12px;top:48px;width:274px;height:144px;font-size:11px;line-height:23px"><code>%LOCALAPPDATA%\</code><br><code>com.nextstory.desktop\</code><br><code>llm-config.json</code> · 不含 API Key<br><code>recent-works.json</code> · 最近作品<br>配置读取上限 ≤64KiB</p></div>
+ <div class="panel security" style="left:1012px;top:0px;width:250px;height:204px"><h3 class="panel-title" style="width:248px">Windows 凭据管理器</h3><p class="copy" style="left:12px;top:50px;width:224px;height:120px">API Key<br>由系统钥匙串保管。<br><br><strong class="red">不落明文文件。</strong><br>不回填前端明文。</p></div>
+ <div class="panel store" style="left:1278px;top:0px;width:278px;height:204px"><h3 class="panel-title" style="width:276px">DSH 版本区</h3><p class="copy" style="left:12px;top:48px;width:252px;height:144px;line-height:23px"><code>versions/&lt;版本&gt;/</code> · 安装<br><code>homes/&lt;版本&gt;/</code> · 家目录<br><code>current.json</code> · 版本指针<br><br>独立安装；旧版保留可回滚。</p></div>
+ <div class="panel store" style="left:1572px;top:0px;width:268px;height:204px"><h3 class="panel-title" style="width:266px">外部 LLM</h3><p class="copy" style="left:12px;top:48px;width:242px;height:144px;line-height:23px">HTTPS<br>用户配置的 OpenAI 兼容端点<br><br>例如 DeepSeek / 智谱 GLM。<br>回应沿原通道返回。</p></div>
+</section>
+
+<h2 class="abs band-title" style="left:40px;top:1572px;width:1840px;height:22px">二 · 关键链路放大 <span class="count">｜箭头表示执行方向；补读是条件分支，不是必经步骤</span></h2>
+<!-- A: left main flow, right conditional branch. B/C: independent vertical flows. -->
+<section class="abs" id="chain-a" aria-label="链路 A 常规提问与追问" style="left:40px;top:1606px;width:912px;height:584px">
+ <h3 class="abs" style="left:0px;top:0px;width:912px;height:24px;font-size:15px;color:var(--front-dk)">链路 A · 常规提问与追问（含按需补读）</h3>
+ <div class="step front" style="left:10px;top:36px;width:426px;height:66px"><span class="step-n">1</span><h3 class="step-title">面板提问</h3><p class="step-copy" style="width:390px">选区可选作“请重点看这里”；不选也能直接提问。</p></div>
+ <span class="arrow" style="left:211px;top:102px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:124px;width:426px;height:112px"><span class="step-n">2</span><h3 class="step-title">前端装配材料</h3><p class="step-copy" style="width:390px">关注文档现场快照（含允许的未保存内容）<br>+ 允许目录投影 + 后端跨文档字面检索。<br><strong class="red">读取仍经 Rust 受控边界。</strong></p></div>
+ <span class="arrow" style="left:211px;top:236px;width:24px;height:22px">↓</span>
+ <div class="step rust" style="left:10px;top:258px;width:426px;height:88px"><span class="step-n">3</span><h3 class="step-title">Rust 编排与校验</h3><p class="step-copy" style="width:390px"><code>ai_send_message → ai_orchestration</code> 校验<br>→ <code>dsh_driver</code></p></div>
+ <span class="arrow" style="left:211px;top:346px;width:24px;height:22px">↓</span>
+ <div class="step dsh" style="left:10px;top:368px;width:426px;height:78px"><span class="step-n">4</span><h3 class="step-title">常驻驱动 → DSH 会话 → LLM</h3><p class="step-copy" style="width:390px">HTTPS 请求模型；会话承接历史与工具循环。</p></div>
+ <span class="arrow" style="left:211px;top:446px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:468px;width:426px;height:88px"><span class="step-n">5</span><h3 class="step-title">流式返回面板</h3><p class="step-copy" style="width:390px"><code>delta</code> 逐字呈现；<code>message_sent</code> 发送回执。<br>无发送回执，不伪造成功确认。</p></div>
+ <div class="step security" style="left:480px;top:36px;width:422px;height:390px"><span class="step-n">6</span><h3 class="step-title">条件分支 · 材料不足时按需补读</h3>
+  <p class="step-copy" style="width:386px;height:336px;line-height:24px"><code>story-request-reading</code><br>↓<br><strong class="red">宿主拦截 · 等待用户允许</strong><br>允许 / 拒绝 / 随时关闭；授权属于讨论，跨重启保留。<br>↓ 用户允许后<br><code>story-list / story-read / story-search</code><br>能力网关 + 受控只读校验后执行。<br>↓<br><code>tool_result</code> 回填 DSH，返回步骤 4。<br><strong>同轮继续，不另开一轮；回应仍流式返回。</strong><br>未获允许，不进入补读工具路径。</p>
+ </div>
+ <span class="arrow" style="left:439px;top:391px;width:38px;height:24px">→</span>
+ <span class="arrow" style="left:691px;top:426px;width:24px;height:22px">↓</span>
+ <div class="step store" style="left:480px;top:468px;width:422px;height:88px"><span class="step-n">7</span><h3 class="step-title">轮次结束 · 讨论档案落盘</h3><p class="step-copy" style="width:386px">保存轮次 / 出处 / 授权 / 锁存。<br><strong class="red">不写作品正文。</strong></p></div>
+ <span class="arrow" style="left:439px;top:502px;width:38px;height:24px">→</span>
+ <p class="abs fine" style="left:10px;top:564px;width:890px;height:20px">追问沿用常驻会话历史；停止只结束对应讨论的该轮，迟到结果丢弃。</p>
+</section>
+
+<section class="abs" id="chain-b" aria-label="链路 B 选区及时召唤" style="left:984px;top:1606px;width:432px;height:584px">
+ <h3 class="abs" style="left:0px;top:0px;width:432px;height:24px;font-size:15px;color:var(--front-dk)">链路 B · 选区及时召唤</h3>
+ <div class="step front" style="left:10px;top:36px;width:414px;height:66px"><span class="step-n">1</span><h3 class="step-title">选中文字</h3><p class="step-copy" style="width:378px">用户主动指定本次重点材料。</p></div>
+ <span class="arrow" style="left:205px;top:102px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:124px;width:414px;height:78px"><span class="step-n">2</span><h3 class="step-title">点击选区旁“AI”按钮</h3><p class="step-copy" style="width:378px"><code>selection-entry.ts</code> · 无需先输入问题。</p></div>
+ <span class="arrow" style="left:205px;top:202px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:224px;width:414px;height:66px"><span class="step-n">3</span><h3 class="step-title">冻结选区快照</h3><p class="step-copy" style="width:378px">以冻结选区与来源身份作为首轮材料。</p></div>
+ <span class="arrow" style="left:205px;top:290px;width:24px;height:22px">↓</span>
+ <div class="step dsh" style="left:10px;top:312px;width:414px;height:96px"><span class="step-n">4</span><h3 class="step-title">直接首轮 · 快车道</h3><p class="step-copy" style="width:378px">不等整篇检索；及时召唤首轮不补读。<br>仍受全局同时生成上限 4 与排队调度约束。</p></div>
+ <span class="arrow" style="left:205px;top:408px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:430px;width:414px;height:66px"><span class="step-n">5</span><h3 class="step-title">流式回应</h3><p class="step-copy" style="width:378px">逐字显示在讨论窗口；不是写入正文。</p></div>
+ <span class="arrow" style="left:205px;top:496px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:518px;width:414px;height:66px"><span class="step-n">6</span><h3 class="step-title">追问按常规规则</h3><p class="step-copy" style="width:378px">重复召唤 = 新讨论；已有讨论保留。</p></div>
+</section>
+
+<section class="abs" id="chain-c" aria-label="链路 C 作品打开编辑保存" style="left:1448px;top:1606px;width:432px;height:584px">
+ <h3 class="abs" style="left:0px;top:0px;width:432px;height:24px;font-size:15px;color:var(--store-dk)">链路 C · 作品打开 · 编辑 · 保存</h3>
+ <div class="step tauri" style="left:10px;top:36px;width:414px;height:88px"><span class="step-n">1</span><h3 class="step-title">打开作品</h3><p class="step-copy" style="width:378px"><code>open_project → open_content_tree</code><br>→ <code>read_document</code></p></div>
+ <span class="arrow" style="left:205px;top:124px;width:24px;height:22px">↓</span>
+ <div class="step front" style="left:10px;top:146px;width:414px;height:66px"><span class="step-n">2</span><h3 class="step-title">编辑器文档会话</h3><p class="step-copy" style="width:378px">用户亲手编辑；保留当前未保存现场。</p></div>
+ <span class="arrow" style="left:205px;top:212px;width:24px;height:22px">↓</span>
+ <div class="step tauri" style="left:10px;top:234px;width:414px;height:66px"><span class="step-n">3</span><h3 class="step-title"><code>save_document</code></h3><p class="step-copy" style="width:378px">通过 Tauri 命令交给 Rust 保存。</p></div>
+ <span class="arrow" style="left:205px;top:300px;width:24px;height:22px">↓</span>
+ <div class="step rust" style="left:10px;top:322px;width:414px;height:78px"><span class="step-n">4</span><h3 class="step-title">Rust 保存事务</h3><p class="step-copy" style="width:378px">原子替换 + <code>sync_all</code>，保证保存可靠性。</p></div>
+ <span class="arrow" style="left:205px;top:400px;width:24px;height:22px">↓</span>
+ <div class="step store" style="left:10px;top:422px;width:414px;height:78px"><span class="step-n">5</span><h3 class="step-title">作品正文落盘</h3><p class="step-copy" style="width:378px"><code>作品文本/documents/*.json</code></p></div>
+ <div class="cluster store" style="left:10px;top:518px;width:414px;height:66px"><p class="copy" style="left:10px;top:10px;width:386px;height:44px">崩溃恢复：<code>save-transaction/</code><br>回收站删除 / 恢复：<code>delete_node / restore_node</code></p></div>
+</section>
+
+<section class="panel store" aria-label="配置与安全支撑" style="left:40px;top:2206px;width:1840px;height:78px;background:#FFFFFF">
+ <h2 class="abs band-title" style="left:14px;top:8px;width:1800px;height:20px">配置 / 安全支撑</h2>
+ <p class="copy" style="left:14px;top:36px;width:490px;height:28px"><strong>能力网关 fail-closed</strong> · 只读白名单，未知工具一律拒绝</p>
+ <p class="copy" style="left:520px;top:36px;width:440px;height:28px"><strong>受控只读</strong> · 隐藏 / 回收站 / 越权读取被拒</p>
+ <p class="copy" style="left:976px;top:36px;width:510px;height:28px"><strong>系统钥匙串</strong> · 密钥不落明文，前端从不回填明文</p>
+ <p class="copy" style="left:1502px;top:36px;width:320px;height:28px"><strong>CSP 与本地文件边界</strong></p>
+</section>
+<section class="panel security" aria-label="永久红线" style="left:40px;top:2300px;width:1840px;height:86px;border:2px dashed var(--sec)">
+ <h2 class="abs" style="left:14px;top:10px;width:1806px;height:24px;font-size:16px;line-height:24px;color:var(--sec)">红线 · AI / DSH 永远不写用户文档 —— 任何版本、任何授权，无例外</h2>
+ <p class="copy" style="left:14px;top:42px;width:910px;height:24px">不插入、不追加、不替换、不修改、不删除、不移动、不拆分、不合并、不整理。</p>
+ <p class="copy" style="left:940px;top:42px;width:876px;height:24px"><strong class="red">AI 输出 = 临时材料</strong> · 用户亲手复制、编辑、保存后才进作品；<strong>判断权永远在用户。</strong></p>
+</section>
+<aside class="abs" style="left:40px;top:2402px;width:1840px;height:40px;border:1px dashed var(--plan-bd);border-radius:3px;background:var(--plan-bg)">
+ <p class="abs" style="left:14px;top:9px;width:1808px;height:20px;font-size:12px;line-height:20px;color:var(--plan-tx)">未实现：后台预加载 · 全文摘要 · 语义/向量检索 · 记忆 · 完整 Agent 自主循环。　当前行为以 openspec/specs/ 为准；本图为结构快照，不代表实时状态。</p>
+</aside>
+</main>
+</body>
+</html>

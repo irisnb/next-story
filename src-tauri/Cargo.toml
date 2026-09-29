@@ -17,6 +17,9 @@ tauri-build = { version = "~2.6.3", features = [] }
 [dependencies]
 tauri = { version = "~2.11.5", features = [] }
 tauri-plugin-dialog = "~2.7.1"
+# 应用单实例：重复启动不建窗口、立即退出并聚焦已有主窗口（enforce-single-instance）。
+# 锁 2.4.5：最新 2.5.0 依赖 tauri ^2.12，与当前 ~2.11.5 冲突；tauri 升 2.12 后随升。
+tauri-plugin-single-instance = "~2.4.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-normalization = "0.1"

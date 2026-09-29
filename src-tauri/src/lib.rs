@@ -773,6 +773,16 @@ async fn record_recent_work(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        // 单实例插件必须最先注册（官方要求：插件按注册顺序运行，第二实例
+        // 须在其余 setup 之前被拦截）。重复启动时不创建窗口、立即退出，
+        // 并把已有主窗口恢复置前（show 覆盖隐藏，unminimize 覆盖最小化）。
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         // 进程内作品锁注册表：同一作品的操作串行化。
         .manage(ProjectLocks::default())

@@ -15,6 +15,7 @@ import type {
 } from "../src/rich-text-editor.ts";
 import type { ContentTree, ContentTreeNode, ProjectTreeState } from "../src/types.ts";
 import { MARGIN_STORAGE_KEY } from "../src/editor-margin.ts";
+import { COLUMN_WIDTH_STORAGE_KEY } from "../src/editor-column-width.ts";
 import type { StorageLike } from "../src/shared-storage-and-selection-identity.ts";
 import { memoryStorageFixture } from "./memory-storage-fixture.ts";
 
@@ -249,6 +250,7 @@ const EDITOR_DOM_IDS = [
   "document-list", "writing-empty-state", "paragraph-style", "btn-bold",
   "btn-italic", "btn-bullet-list", "btn-ordered-list", "btn-toolbar-underline",
   "btn-toolbar-strike", "btn-undo", "btn-redo", "btn-find", "btn-margin",
+  "btn-column-width",
   "btn-format-drawer", "format-toolbar", "format-drawer", "btn-format-drawer-close",
   "btn-underline", "btn-strike", "btn-toggle-character-section",
   "btn-toggle-paragraph-section", "select-font-family", "select-font-size",
@@ -317,6 +319,7 @@ function fakeDom(): {
       btnRedo: elements.get("btn-redo") as unknown as HTMLButtonElement,
       btnFind: elements.get("btn-find") as unknown as HTMLButtonElement,
       btnMargin: elements.get("btn-margin") as unknown as HTMLButtonElement,
+      btnColumnWidth: elements.get("btn-column-width") as unknown as HTMLButtonElement,
       btnFormatDrawer: elements.get("btn-format-drawer") as unknown as HTMLButtonElement,
       formatToolbar: elements.get("format-toolbar") as unknown as HTMLElement,
       formatDrawer: elements.get("format-drawer") as unknown as HTMLElement,
@@ -449,7 +452,11 @@ interface Fixture {
 
 function editorFixture(
   initialContents: Record<string, string> = {},
-  extra: { marginStorage?: StorageLike | null; readDocument?: (path: string, id: string) => Promise<string> } = {},
+  extra: {
+    marginStorage?: StorageLike | null;
+    columnWidthStorage?: StorageLike | null;
+    readDocument?: (path: string, id: string) => Promise<string>;
+  } = {},
 ): Fixture {
   const ui = fakeDom();
   const editors: FakeRichTextEditor[] = [];
@@ -1250,6 +1257,62 @@ test("margin falls back to default and keeps working when storage is unavailable
   }
 });
 
+// ---- 写作宽度偏好：依赖注入与存储不可用 fallback（镜像留白偏好） ----
+
+test("column width preset is restored from injected storage on setup", async () => {
+  const columnWidth = memoryStorageFixture({ [COLUMN_WIDTH_STORAGE_KEY]: "wide" });
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") }, { columnWidthStorage: columnWidth });
+  try {
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+
+    assert.equal(fixture.ui.elements.get("editor-page")!.getAttribute("data-column-width"), "wide");
+    assert.equal(fixture.ui.elements.get("btn-column-width")!.textContent, "宽");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("column width button cycles presets and persists to injected storage", async () => {
+  const columnWidth = memoryStorageFixture();
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") }, { columnWidthStorage: columnWidth });
+  try {
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    const btnColumnWidth = fixture.ui.elements.get("btn-column-width")!;
+    const editorPage = fixture.ui.elements.get("editor-page")!;
+
+    assert.equal(editorPage.getAttribute("data-column-width"), "standard");
+    btnColumnWidth.click();
+    assert.equal(editorPage.getAttribute("data-column-width"), "wide");
+    assert.equal(columnWidth.data[COLUMN_WIDTH_STORAGE_KEY], "wide");
+    btnColumnWidth.click();
+    assert.equal(editorPage.getAttribute("data-column-width"), "narrow");
+    assert.equal(columnWidth.data[COLUMN_WIDTH_STORAGE_KEY], "narrow");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("column width falls back to default and keeps working when storage is unavailable", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") });
+  try {
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    const btnColumnWidth = fixture.ui.elements.get("btn-column-width")!;
+    const editorPage = fixture.ui.elements.get("editor-page")!;
+
+    // 未注入 columnWidthStorage 且测试环境无 window：共享解析入口返回 null，回退默认档。
+    assert.equal(editorPage.getAttribute("data-column-width"), "standard");
+    btnColumnWidth.click();
+    assert.equal(editorPage.getAttribute("data-column-width"), "wide");
+    btnColumnWidth.click();
+    assert.equal(editorPage.getAttribute("data-column-width"), "narrow");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
 // ---- 查找替换模块：生命周期接线 ----
 
 test("unload disposes the find module and hides the find bar", async () => {
@@ -1320,6 +1383,25 @@ test("toolbar module is re-created on reopening a project and re-reads the margi
     fixture.editor.unload();
     await fixture.editor.showProject(projectState("作品", tree));
     assert.equal(editorPage.getAttribute("data-margin"), "loose");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("toolbar module is re-created on reopening a project and re-reads the column width preset", async () => {
+  const columnWidth = memoryStorageFixture();
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") }, { columnWidthStorage: columnWidth });
+  try {
+    const tree = treeFrom([docNode("doc-1", "未命名文档")]);
+    await fixture.editor.showProject(projectState("作品", tree));
+    const editorPage = fixture.ui.elements.get("editor-page")!;
+    assert.equal(editorPage.getAttribute("data-column-width"), "standard");
+
+    // 外部修改存储后重新打开作品：工具栏模块重建时重新读取写作宽度偏好。
+    columnWidth.data[COLUMN_WIDTH_STORAGE_KEY] = "wide";
+    fixture.editor.unload();
+    await fixture.editor.showProject(projectState("作品", tree));
+    assert.equal(editorPage.getAttribute("data-column-width"), "wide");
   } finally {
     fixture.ui.restore();
   }

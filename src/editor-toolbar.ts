@@ -1,5 +1,5 @@
 // 工具栏与格式抽屉：格式命令按钮、段落样式、格式抽屉开关/折叠/自动隐藏、
-// 留白预设档位与持久化。只依赖工具栏/抽屉 DOM 节点与编辑器窄能力
+// 留白与写作宽度预设档位与持久化。只依赖工具栏/抽屉 DOM 节点与编辑器窄能力
 // （getSelection/getDocument/runCommand/canUndo/canRedo），不依赖完整编辑器控制器。
 
 import type { JSONContent } from "@tiptap/core";
@@ -14,12 +14,25 @@ import {
   writeMarginPreset,
   type MarginPreset,
 } from "./editor-margin.ts";
+import {
+  DEFAULT_COLUMN_WIDTH_PRESET,
+  nextColumnWidthPreset,
+  readColumnWidthPreset,
+  writeColumnWidthPreset,
+  type ColumnWidthPreset,
+} from "./editor-column-width.ts";
 import type { StorageLike } from "./shared-storage-and-selection-identity.ts";
 
 const MARGIN_LABELS: Record<MarginPreset, string> = {
   compact: "紧凑",
   standard: "标准",
   loose: "宽松",
+};
+
+const COLUMN_WIDTH_LABELS: Record<ColumnWidthPreset, string> = {
+  narrow: "窄",
+  standard: "标准",
+  wide: "宽",
 };
 
 const DRAWER_CLOSE_DELAY_MS = 350;
@@ -46,6 +59,7 @@ export interface EditorToolbarDeps {
     | "btnUndo"
     | "btnRedo"
     | "btnMargin"
+    | "btnColumnWidth"
     | "editorPage"
     | "btnFormatDrawer"
     | "formatDrawer"
@@ -77,6 +91,8 @@ export interface EditorToolbarDeps {
   getEditor(): ToolbarEditorCapabilities | null;
   /** 留白偏好存储；null 时回退默认档位且不持久化。 */
   marginStorage: StorageLike | null;
+  /** 写作宽度偏好存储；null 时回退默认档位且不持久化。 */
+  columnWidthStorage: StorageLike | null;
 }
 
 export interface EditorToolbar {
@@ -93,6 +109,7 @@ export interface EditorToolbar {
 export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
   const { dom } = deps;
   let marginPreset: MarginPreset = DEFAULT_MARGIN_PRESET;
+  let columnWidthPreset: ColumnWidthPreset = DEFAULT_COLUMN_WIDTH_PRESET;
   let drawerCloseTimer: ReturnType<typeof setTimeout> | null = null;
   const cleanup: Array<() => void> = [];
 
@@ -303,6 +320,24 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     const next = nextMarginPreset(marginPreset);
     applyMarginPreset(next);
     if (deps.marginStorage) writeMarginPreset(deps.marginStorage, next);
+  });
+
+  // ---- 写作宽度（显示偏好，持久化到共享存储适配，缺失回退默认档） ----
+
+  function applyColumnWidthPreset(preset: ColumnWidthPreset): void {
+    columnWidthPreset = preset;
+    dom.editorPage.setAttribute("data-column-width", preset);
+    dom.btnColumnWidth.textContent = COLUMN_WIDTH_LABELS[preset];
+  }
+
+  applyColumnWidthPreset(
+    deps.columnWidthStorage ? readColumnWidthPreset(deps.columnWidthStorage) : DEFAULT_COLUMN_WIDTH_PRESET,
+  );
+
+  bind(dom.btnColumnWidth, "click", () => {
+    const next = nextColumnWidthPreset(columnWidthPreset);
+    applyColumnWidthPreset(next);
+    if (deps.columnWidthStorage) writeColumnWidthPreset(deps.columnWidthStorage, next);
   });
 
   // ---- 抽屉：字符格式 ----

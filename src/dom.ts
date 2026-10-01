@@ -161,6 +161,7 @@ export interface AppDom {
   btnRedo: HTMLButtonElement;
   btnFind: HTMLButtonElement;
   btnMargin: HTMLButtonElement;
+  btnColumnWidth: HTMLButtonElement;
   btnFormatDrawer: HTMLButtonElement;
   formatToolbar: HTMLElement;
   formatDrawer: HTMLElement;
@@ -375,6 +376,7 @@ export function getAppDom(): AppDom {
     btnRedo: requireElement("btn-redo"),
     btnFind: requireElement("btn-find"),
     btnMargin: requireElement("btn-margin"),
+    btnColumnWidth: requireElement("btn-column-width"),
     btnFormatDrawer: requireElement("btn-format-drawer"),
     formatToolbar: requireElement("format-toolbar"),
     formatDrawer: requireElement("format-drawer"),

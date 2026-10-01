@@ -10,6 +10,7 @@ import {
 } from "../src/editor-toolbar.ts";
 import type { FormatCommand } from "../src/format-commands.ts";
 import { MARGIN_STORAGE_KEY } from "../src/editor-margin.ts";
+import { COLUMN_WIDTH_STORAGE_KEY } from "../src/editor-column-width.ts";
 import { memoryStorageFixture } from "./memory-storage-fixture.ts";
 
 type Listener = () => void;
@@ -111,12 +112,15 @@ interface ToolbarFixture {
 }
 
 function toolbarFixture(
-  extra: { marginStorage?: ReturnType<typeof memoryStorageFixture> | null } = {},
+  extra: {
+    marginStorage?: ReturnType<typeof memoryStorageFixture> | null;
+    columnWidthStorage?: ReturnType<typeof memoryStorageFixture> | null;
+  } = {},
 ): ToolbarFixture {
   const ids = [
     "paragraphStyle", "btnBold", "btnItalic", "btnToolbarUnderline",
     "btnToolbarStrike", "btnBulletList", "btnOrderedList", "btnUndo",
-    "btnRedo", "btnMargin", "editorPage", "btnFormatDrawer",
+    "btnRedo", "btnMargin", "btnColumnWidth", "editorPage", "btnFormatDrawer",
     "formatDrawer", "btnFormatDrawerClose", "btnToggleCharacterSection",
     "btnToggleParagraphSection", "btnUnderline", "btnStrike",
     "selectFontFamily", "selectFontSize", "inputTextColor",
@@ -133,6 +137,7 @@ function toolbarFixture(
     dom: elements as unknown as EditorToolbarDeps["dom"],
     getEditor: () => editor,
     marginStorage: extra.marginStorage ?? null,
+    columnWidthStorage: extra.columnWidthStorage ?? null,
   });
   return { elements, editor, toolbar };
 }
@@ -239,6 +244,28 @@ test("margin falls back to the default preset without storage", () => {
 
   elements["btnMargin"].dispatch("click");
   assert.equal(elements["editorPage"].getAttribute("data-margin"), "loose");
+});
+
+test("column width preset is restored from storage and cycles on click", () => {
+  const columnWidth = memoryStorageFixture({ [COLUMN_WIDTH_STORAGE_KEY]: "wide" });
+  const { elements } = toolbarFixture({ columnWidthStorage: columnWidth });
+
+  assert.equal(elements["editorPage"].getAttribute("data-column-width"), "wide");
+  assert.equal(elements["btnColumnWidth"].textContent, "宽");
+
+  elements["btnColumnWidth"].dispatch("click");
+  assert.equal(elements["editorPage"].getAttribute("data-column-width"), "narrow");
+  assert.equal(columnWidth.data[COLUMN_WIDTH_STORAGE_KEY], "narrow");
+});
+
+test("column width falls back to the default preset without storage", () => {
+  const { elements } = toolbarFixture();
+
+  assert.equal(elements["editorPage"].getAttribute("data-column-width"), "standard");
+  assert.equal(elements["btnColumnWidth"].textContent, "标准");
+
+  elements["btnColumnWidth"].dispatch("click");
+  assert.equal(elements["editorPage"].getAttribute("data-column-width"), "wide");
 });
 
 test("dispose removes listeners so buttons no longer run commands", () => {

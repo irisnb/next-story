@@ -55,6 +55,12 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
+  /* —— 稳定写作宽度（稿纸化）：正文列固定宽度档位，全部视觉值唯一事实源在此 —— */
+  --editor-column-width: 720px;              /* 当前生效列宽（默认标准档，data-column-width 切换） */
+  --editor-column-width-narrow: 640px;       /* 窄档：约 40 字/行 */
+  --editor-column-width-standard: 720px;     /* 标准档：约 45 字/行（默认） */
+  --editor-column-width-wide: 860px;         /* 宽档：约 53 字/行 */
+
   /* —— AI 停靠区 / 窗口（多窗口，阶段 3） —— */
   --dock-width: 420px;
   --window-titlebar-h: 32px;
@@ -545,6 +551,10 @@
 .notebook-textarea {
   display: flex;
   width: 100%;
+  /* 稿纸化：正文列固定宽度居中，空间不足时收缩到可用宽度（max-width 无状态覆盖窗口缩放与 AI 面板三态） */
+  max-width: var(--editor-column-width);
+  margin-inline: auto;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   border: var(--border-editor);
@@ -600,6 +610,11 @@
 .editor-page[data-margin="compact"] .editor-notebooks { padding: 1rem; }
 .editor-page[data-margin="standard"] .editor-notebooks { padding: 2rem; }
 .editor-page[data-margin="loose"] .editor-notebooks { padding: 3rem; }
+
+/* 写作宽度：稿纸列固定宽度档位（切换 --editor-column-width 令牌值），纯显示层 */
+.editor-page[data-column-width="narrow"] { --editor-column-width: var(--editor-column-width-narrow); }
+.editor-page[data-column-width="standard"] { --editor-column-width: var(--editor-column-width-standard); }
+.editor-page[data-column-width="wide"] { --editor-column-width: var(--editor-column-width-wide); }
 
 .editor-notebooks .notebook-textarea {
   flex: 1;

@@ -109,6 +109,8 @@ interface EditorDependencies {
   memoryStorage?: StorageLike | null;
   /** 留白偏好存储；未注入时由 setupEditor 调用共享解析入口。 */
   marginStorage?: StorageLike | null;
+  /** 写作宽度偏好存储；未注入时由 setupEditor 调用共享解析入口。 */
+  columnWidthStorage?: StorageLike | null;
 }
 
 const defaultDependencies: EditorDependencies = {
@@ -130,6 +132,10 @@ export function setupEditor(
   const marginStorage: StorageLike | null =
     dependencies.marginStorage !== undefined
       ? dependencies.marginStorage
+      : resolveLocalStorage();
+  const columnWidthStorage: StorageLike | null =
+    dependencies.columnWidthStorage !== undefined
+      ? dependencies.columnWidthStorage
       : resolveLocalStorage();
   let currentState: ProjectTreeState | null = null;
   let currentDocumentId: string | null = null;
@@ -268,6 +274,7 @@ export function setupEditor(
       dom,
       getEditor: currentEditorAdapter,
       marginStorage,
+      columnWidthStorage,
     });
   }
 
@@ -667,6 +674,7 @@ export function setupEditor(
     dom.btnRedo,
     dom.btnFind,
     dom.btnMargin,
+    dom.btnColumnWidth,
     dom.btnFormatDrawer,
     dom.btnFormatDrawerClose,
     dom.btnUnderline,

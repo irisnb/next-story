@@ -213,16 +213,67 @@ function pagedGlobal(): PagedGlobal {
   return global;
 }
 
+/** 把 CSS 文本里的相对 url(...) 以 base 解析为绝对地址。blob: 不是层级 URL，
+ *  不能当解析基底（Paged.js 会拿样式表 URL 作 base 去 new URL 相对路径，必抛
+ *  Invalid URL）；进 blob 前全部绝对化，釜底抽薪。已绝对/非路径值原样保留。 */
+function absolutizeUrls(cssText: string, base: string): string {
+  return cssText.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (match, quote: string, target: string) => {
+    if (/^(https?:|data:|asset:|blob:|#)/i.test(target)) return match;
+    try {
+      return `url(${quote}${new URL(target, base).href}${quote})`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/**
+ * 从 `document.styleSheets` 直读当前文档的全部 CSS 规则文本（含 @font-face 与
+ * @page）。真机验收发现：生产 CSP 的 `connect-src` 只放行 IPC，不含同源资产，
+ * Paged.js 的 `preview()` 内部会 fetch 样式表 URL——直接把 link 的 href 传给它
+ * 必然 "Failed to fetch"。改为从 DOM 读出样式文本、经 blob URL 交给 Paged.js，
+ * 零网络请求。同源样式表可读；单张表读取抛异常（如跨源受限）就跳过该表继续，
+ * 不让整条分页链失败。相对 url(...) 先以 document.baseURI 绝对化——blob: URL
+ * 不能作相对路径的解析基底，否则 Paged.js 内部 new URL(相对路径, blobURL) 抛
+ * Invalid URL。
+ */
+function collectCssTextFromDocument(): string[] {
+  const texts: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue; // 受限样式表：跳过，不让单表失败拖垮整链
+    }
+    const parts: string[] = [];
+    for (const rule of Array.from(rules)) {
+      parts.push(rule.cssText);
+    }
+    if (parts.length > 0) {
+      texts.push(absolutizeUrls(parts.join("\n"), document.baseURI));
+    }
+  }
+  return texts;
+}
+
 async function runPrintJob(payload: PrintPayload): Promise<void> {
   const content = renderProject(payload.project);
   // 信号 2：字体加载定稿后再分页，避免以回退字体度量分页导致观感漂移。
   await document.fonts.ready;
   // 信号 3：Paged.js 按 @page 规则生成分页页盒（A4、统一边距、底部居中页码）。
   await loadPagedJs();
-  const stylesheets = Array.from(
-    document.querySelectorAll<HTMLLinkElement>("link[rel=\"stylesheet\"]"),
-  ).map((link) => link.href);
-  await new (pagedGlobal().Previewer)().preview(content, stylesheets, document.body);
+  // 样式文本从 DOM 直读后包成 blob URL（页面自建、零外部网络），代替会触发
+  // fetch 的 link href；CSP connect-src 已为页面自建 blob 放行 blob:。
+  const blobUrls = collectCssTextFromDocument().map((text) =>
+    URL.createObjectURL(new Blob([text], { type: "text/css" })),
+  );
+  try {
+    await new (pagedGlobal().Previewer)().preview(content, blobUrls, document.body);
+  } finally {
+    // 无论分页成败都释放 blob URL，避免常驻打印窗口反复导出时累积内存。
+    for (const url of blobUrls) URL.revokeObjectURL(url);
+  }
 }
 
 async function main(): Promise<void> {

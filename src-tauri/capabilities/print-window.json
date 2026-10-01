@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "print-window",
+  "description": "打印窗口（print-window）的最小事件授权：仅 core:default（含 core:event 的 listen/emit，供打印页接收导出载荷并回发就绪信号）。不给对话框或窗口销毁权限——窗口销毁由 Rust 侧发起，打印页无需任何 JS 权限。",
+  "windows": ["print-window"],
+  "permissions": [
+    "core:default"
+  ]
+}

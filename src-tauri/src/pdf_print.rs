@@ -3,9 +3,12 @@
 //! 流程（全局串行队列，同一时间仅一个打印任务）：
 //! 1. 复用（或首次创建）隐藏的 `print-window`，加载应用自身前端的打印页
 //!    `print.html`（同源、字体与 Paged.js 走捆绑资产，零 CSP 改动）；
-//! 2. 首次创建时等待页面 `print-page-boot`（页面脚本已就绪——它蕴含导航完成，
-//!    且复用窗口时不重复导航，固定等待 NavigationCompleted 反而不成立）；
-//! 3. 经 Tauri 事件把导出投影（范围过滤后的已保存内容）发往打印页；
+//! 2. **每个任务**发送载荷前先 `location.reload()` 重载打印页并等待
+//!    `print-page-boot`（常驻页面被 Paged.js 分页改造后二次 preview 会静默失效，
+//!    输出陈旧内容——真机验收第 4 个 P0；窗口常驻复用，页面每任务刷新）；
+//! 3. 经 Tauri 事件把导出投影（范围过滤后的已保存内容）发往打印页
+//!    （boot 蕴含导航完成与载荷监听就绪；复用窗口时不重复导航，固定等待
+//!    NavigationCompleted 反而不成立）；
 //! 4. 等待页面 `print-ready`（页面在 `document.fonts.ready` ＋ Paged.js 分页完成
 //!    后回发，事件驱动，不做固定延时），载荷带任务号防串台；
 //! 5. `with_webview` → `ICoreWebView2_7::PrintToPdf`：页尺寸 8.27×11.69 英寸
@@ -70,6 +73,15 @@ pub fn run_print_job(
         Err(failure) => return failure,
     };
 
+    // 每个任务发送载荷前先重载打印页并等待 boot：真机验收（第 4 个 P0）发现
+    // 常驻页面在已被 Paged.js 分页改造过的 document.body 上二次 preview 会静默
+    // 失效（print-ready 却照常回发），PrintToPdf 便输出上一个任务的陈旧内容。
+    // 每任务 reload 让页面回到干净的初始态（main()：注册载荷监听→回发 boot）；
+    // 窗口本身常驻复用不销毁，每任务多几百毫秒是接受过的代价。
+    if let Err(failure) = reload_print_page(app, &window) {
+        return failure;
+    }
+
     let job = JOB_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let payload = serde_json::json!({ "job": job, "project": export_project });
 
@@ -110,6 +122,30 @@ pub fn run_print_job(
     result
 }
 
+/// 「先注册 boot 监听，再触发动作，最后等待 boot 到达」的共用骨架（创建与重载
+/// 两处复用）。先注册后触发杜绝「页面先发信号、监听后注册」的竞态；超时报错
+/// 文案由调用方给出（中文）。
+fn with_boot_signal<T>(
+    app: &AppHandle,
+    trigger: impl FnOnce() -> Result<T, ExportFileResult>,
+    timeout_message: &str,
+) -> Result<T, ExportFileResult> {
+    let (boot_tx, boot_rx) = mpsc::channel::<()>();
+    let boot_listener = app.once("print-page-boot", move |_event| {
+        let _ = boot_tx.send(());
+    });
+
+    let outcome = trigger().and_then(|value| {
+        boot_rx
+            .recv_timeout(PAGE_READY_TIMEOUT)
+            .map(|()| value)
+            .map_err(|_| ExportFileResult::failure(timeout_message.to_string()))
+    });
+
+    app.unlisten(boot_listener);
+    outcome
+}
+
 /// 复用或创建隐藏打印窗口。首次创建时等待页面 boot 信号（脚本与事件监听已就绪）。
 fn ensure_print_window(app: &AppHandle) -> Result<WebviewWindow, ExportFileResult> {
     if let Some(window) = app.get_webview_window(PRINT_WINDOW_LABEL) {
@@ -117,40 +153,36 @@ fn ensure_print_window(app: &AppHandle) -> Result<WebviewWindow, ExportFileResul
     }
 
     // 注册 boot 监听须先于窗口创建：页面加载完成后随时可能回发 boot。
-    let (boot_tx, boot_rx) = mpsc::channel::<()>();
-    let boot_listener = app.once("print-page-boot", move |_event| {
-        let _ = boot_tx.send(());
-    });
-
-    let built = tauri::webview::WebviewWindowBuilder::new(
+    with_boot_signal(
         app,
-        PRINT_WINDOW_LABEL,
-        tauri::WebviewUrl::App(PathBuf::from(PRINT_PAGE_PATH)),
+        || {
+            tauri::webview::WebviewWindowBuilder::new(
+                app,
+                PRINT_WINDOW_LABEL,
+                tauri::WebviewUrl::App(PathBuf::from(PRINT_PAGE_PATH)),
+            )
+            .title("Next Story 打印导出")
+            .inner_size(1000.0, 1400.0)
+            .visible(false)
+            .skip_taskbar(true)
+            .build()
+            .map_err(|error| ExportFileResult::failure(format!("无法创建打印窗口: {error}")))
+        },
+        "打印页面加载超时，请重试",
     )
-    .title("Next Story 打印导出")
-    .inner_size(1000.0, 1400.0)
-    .visible(false)
-    .skip_taskbar(true)
-    .build();
+}
 
-    let window = match built {
-        Ok(window) => window,
-        Err(error) => {
-            app.unlisten(boot_listener);
-            return Err(ExportFileResult::failure(format!(
-                "无法创建打印窗口: {error}"
-            )));
-        }
-    };
-
-    let result = match boot_rx.recv_timeout(PAGE_READY_TIMEOUT) {
-        Ok(()) => Ok(window),
-        Err(_) => Err(ExportFileResult::failure(
-            "打印页面加载超时，请重试".to_string(),
-        )),
-    };
-    app.unlisten(boot_listener);
-    result
+/// 每个打印任务前重载打印页并等待 boot（确定性恢复页面初始态；窗口常驻复用）。
+fn reload_print_page(app: &AppHandle, window: &WebviewWindow) -> Result<(), ExportFileResult> {
+    with_boot_signal(
+        app,
+        || {
+            window
+                .eval("location.reload()")
+                .map_err(|error| ExportFileResult::failure(format!("无法重载打印页面: {error}")))
+        },
+        "打印页面重载超时，请重试",
+    )
 }
 
 /// 打印过程中的两类信号：PrintToPdf 调用本身同步返回（是否成功受理），

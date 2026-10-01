@@ -1,7 +1,10 @@
 import { defineConfig } from "vite";
 import process from "node:process";
+import { resolve } from "node:path";
+import { fileURLToPath, URL } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -28,10 +31,14 @@ export default defineConfig(async () => ({
     },
   },
 
-  // P2-14 队列 8e：按依赖域静态分片（编辑器栈 / Tauri API / 应用默认包），
-  // 单包保持 500 kB 警戒线之下；规格见 frontend-bundle-structure。
+  // 多页入口：主应用 index.html ＋ PDF 打印页 print.html（隐藏 print-window 加载，
+  // add-pdf-and-markdown-export design 决策 3：打印页与应用同源、共用捆绑资产）。
   build: {
     rollupOptions: {
+      input: {
+        main: resolve(projectRoot, "index.html"),
+        print: resolve(projectRoot, "print.html"),
+      },
       output: {
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return undefined; // 应用代码走默认包

@@ -6,6 +6,7 @@ pub mod dsh_driver;
 pub mod dsh_sidecar;
 pub mod dsh_version;
 pub mod llm_config;
+pub mod pdf_print;
 pub mod project;
 pub mod recent_works;
 pub mod runtime_contract;
@@ -23,7 +24,8 @@ use tauri::Manager;
 
 use llm_config::{LlmConfig, LlmConfigSummary};
 use project::{
-    ContentTree, CreateProjectParams, ExportWordResult, ProjectLocks, ProjectOpenResult,
+    ContentTree, CreateProjectParams, ExportFileResult, ExportScope, ProjectLocks,
+    ProjectOpenResult,
 };
 
 #[cfg(test)]
@@ -632,30 +634,92 @@ async fn conversation_on_demand_reading(
     .map_err(|e| format!("读取按需补读状态任务执行失败: {e}"))?
 }
 
-/// 导出当前作品为 Word 文档：只读取已保存内容，生成真正的 `.docx` 并写入
-/// 用户选择的目标路径。命令始终返回稳定的 `ExportWordResult`（成功 / 失败
-/// 都带中文说明），前端据此区分结果，不依赖 Tauri 错误序列化细节。
+/// 按所选范围导出作品为 Word 文档：只读取已保存内容，生成真正的 `.docx` 并写入
+/// 用户选择的目标路径。命令始终返回稳定的 `ExportFileResult`（成功 / 失败都带中文
+/// 说明），前端据此区分结果，不依赖 Tauri 错误序列化细节。
 #[tauri::command]
 async fn export_project_to_word(
     app: tauri::AppHandle,
     project_path: String,
+    scope: ExportScope,
     target_path: String,
-) -> Result<ExportWordResult, String> {
+) -> Result<ExportFileResult, String> {
     let project_root = PathBuf::from(&project_path);
     let target = PathBuf::from(&target_path);
     let locks = app.state::<ProjectLocks>().inner().clone();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _guard = locks.acquire(&project_root)?;
-        project::export_project_to_word(&project_root, &target)
+        project::export_project_to_word(&project_root, &scope, &target)
     })
     .await
     .map_err(|e| format!("导出作品任务执行失败: {e}"))?;
 
     Ok(match result {
         Ok(success) => success,
-        Err(error) => ExportWordResult::failure(error.to_string()),
+        Err(error) => ExportFileResult::failure(error.to_string()),
     })
+}
+
+/// 按所选范围导出作品为 Markdown 文件：只读取已保存内容，UTF-8 单文件原子写入。
+/// 返回契约与 Word 导出一致。
+#[tauri::command]
+async fn export_project_to_markdown(
+    app: tauri::AppHandle,
+    project_path: String,
+    scope: ExportScope,
+    target_path: String,
+) -> Result<ExportFileResult, String> {
+    let project_root = PathBuf::from(&project_path);
+    let target = PathBuf::from(&target_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::export_project_to_markdown(&project_root, &scope, &target)
+    })
+    .await
+    .map_err(|e| format!("导出作品任务执行失败: {e}"))?;
+
+    Ok(match result {
+        Ok(success) => success,
+        Err(error) => ExportFileResult::failure(error.to_string()),
+    })
+}
+
+/// 按所选范围导出作品为 PDF：作品锁内完成只读范围投影，再经全局串行打印队列在
+/// 常驻隐藏打印窗口上执行 WebView2 `PrintToPdf`（见 `pdf_print` 模块）。错误一律
+/// 折进稳定结果结构（中文说明）。
+#[tauri::command]
+async fn export_project_to_pdf(
+    app: tauri::AppHandle,
+    project_path: String,
+    scope: ExportScope,
+    target_path: String,
+) -> Result<ExportFileResult, String> {
+    let project_root = PathBuf::from(&project_path);
+    let target = PathBuf::from(&target_path);
+    let locks = app.state::<ProjectLocks>().inner().clone();
+
+    let projection = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = locks.acquire(&project_root)?;
+        project::load_scoped_export_project(&project_root, &scope)
+    })
+    .await
+    .map_err(|e| format!("导出 PDF 任务执行失败: {e}"))?;
+
+    let export_project = match projection {
+        Ok(export_project) => export_project,
+        Err(error) => return Ok(ExportFileResult::failure(error.to_string())),
+    };
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        pdf_print::run_print_job(&app, &export_project, &target)
+    })
+    .await
+    .map_err(|e| format!("导出 PDF 任务执行失败: {e}"))?;
+
+    Ok(result)
 }
 
 /// 导出等待计时 JSON 的稳定返回结果（与 `ExportWordResult` 同形契约）：命令始终
@@ -792,6 +856,19 @@ pub fn run() {
             // resident-ai-session 任务 3.4 / 4.4）。
             ai_host::install_driver_event_bridge(app.handle());
 
+            // 主窗口销毁时同步销毁常驻隐藏打印窗口：Tauri 在全部窗口关闭后才退出，
+            // 不清理会把应用生命周期拖在不可见的 print-window 上。
+            if let Some(main_window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                main_window.on_window_event(move |event| {
+                    if matches!(event, tauri::WindowEvent::Destroyed) {
+                        if let Some(print_window) = app_handle.get_webview_window("print-window") {
+                            let _ = print_window.destroy();
+                        }
+                    }
+                });
+            }
+
             #[cfg(windows)]
             {
                 if let Some(window) = app.get_webview_window("main") {
@@ -837,6 +914,8 @@ pub fn run() {
             ai_directory_projection,
             read_material,
             export_project_to_word,
+            export_project_to_markdown,
+            export_project_to_pdf,
             export_wait_timing_json,
             open_url,
             save_llm_config,

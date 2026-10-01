@@ -8,7 +8,7 @@ import {
 } from "./close-guard";
 import { getAppDom } from "./dom";
 import { setupEditor } from "./editor";
-import { setupExportWord } from "./export-word";
+import { setupExport } from "./export";
 import { setupFileManagement } from "./file-management";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
@@ -61,12 +61,14 @@ window.addEventListener("DOMContentLoaded", () => {
     onTreeChanged: createWorkspaceTreeReceiver(editor, () => { ai?.recomputeRestrictions(); }),
   });
 
-  const exportWord = setupExportWord(dom, {
+  const exportController = setupExport(dom, {
     getProjectPath: () => editor.getProjectPath(),
     getProjectName: () => {
       const state = editor.getTree();
       return state === null ? null : dom.currentProjectName.textContent;
     },
+    getTree: () => editor.getTree(),
+    getCurrentDocumentId: () => editor.getCurrentDocumentId(),
     hasUnsavedChanges: () => editor.hasUnsavedChanges(),
   });
 
@@ -111,7 +113,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const projectFlow = setupWorkspaceProjectFlow(dom, {
     editor, files: fileManagement,
     showWriting: () => setModule("writing"),
-    unloadExport: () => exportWord.unload(),
+    unloadExport: () => exportController.unload(),
   });
 
   const appWindow = getCurrentWindow();

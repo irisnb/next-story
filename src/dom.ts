@@ -139,7 +139,14 @@ export interface AppDom {
   currentDocumentName: HTMLElement;
   documentList: HTMLElement;
   writingEmptyState: HTMLElement;
-  btnExportWord: HTMLButtonElement;
+  btnExport: HTMLButtonElement;
+  /** 统一导出对话框（格式 × 范围 × 文件名，见 src/export.ts）。 */
+  exportDialog: HTMLDialogElement;
+  exportFormatOptions: HTMLElement;
+  exportScope: HTMLSelectElement;
+  exportFilename: HTMLInputElement;
+  btnExportConfirm: HTMLButtonElement;
+  btnExportCancel: HTMLButtonElement;
   fmNewDocument: HTMLButtonElement;
   fmNewFolder: HTMLButtonElement;
   fmStatus: HTMLElement;
@@ -355,7 +362,13 @@ export function getAppDom(): AppDom {
     currentDocumentName: requireElement("current-document-name"),
     documentList: requireElement("document-list"),
     writingEmptyState: requireElement("writing-empty-state"),
-    btnExportWord: requireElement("btn-export-word"),
+    btnExport: requireElement("btn-export"),
+    exportDialog: requireElement("export-dialog"),
+    exportFormatOptions: requireElement("export-format-options"),
+    exportScope: requireElement("export-scope"),
+    exportFilename: requireElement("export-filename"),
+    btnExportConfirm: requireElement("btn-export-confirm"),
+    btnExportCancel: requireElement("btn-export-cancel"),
     fmNewDocument: requireElement("fm-new-document"),
     fmNewFolder: requireElement("fm-new-folder"),
     fmStatus: requireElement("fm-status"),

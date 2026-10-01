@@ -54,35 +54,65 @@ export async function selectDirectory(
 }
 
 /**
- * 导出命令的稳定返回契约（后端 `ExportWordResult` 的 serde 序列化）。
- * `cancelled` 仅由前端在用户关闭保存对话框时设置，后端不返回该字段。
+ * 统一导出命令的稳定返回契约（后端 `ExportFileResult` 的 serde 序列化，三种格式
+ * 同形）。`cancelled` 仅由前端在用户关闭保存对话框时设置，后端不返回该字段。
  */
-export interface ExportWordResult {
+export interface ExportFileResult {
   ok: boolean;
   cancelled?: boolean;
   path: string | null;
   message: string | null;
 }
 
+/** 导出格式：Word / PDF / Markdown（统一导出对话框三选一，默认 Word）。 */
+export type ExportFormat = "word" | "pdf" | "markdown";
+
 /**
- * 导出当前作品为 Word 文档：先弹出保存对话框（默认建议作品名称 `.docx`），
- * 用户取消时返回 `{ ok: false, cancelled: true }` 且不产生文件；确认后调用
- * 后端只读导出命令，返回稳定成功/失败结果（中文说明）。
+ * 导出范围（后端 `ExportScope` 的 serde 契约，内部标签 `type`）：
+ * - `{ type: "work" }` 整个作品；
+ * - `{ type: "document", id }` 单篇文档；
+ * - `{ type: "folder", id }` 文件夹子树（含嵌套）。
  */
-export async function exportProjectToWord(
+export type ExportScope =
+  | { type: "work" }
+  | { type: "document"; id: string }
+  | { type: "folder"; id: string };
+
+/** 各格式的保存对话框过滤器与后端命令名（唯一事实源）。 */
+const EXPORT_FORMATS: Record<
+  ExportFormat,
+  { filterName: string; extension: string; command: string }
+> = {
+  word: { filterName: "Word 文档", extension: "docx", command: "export_project_to_word" },
+  pdf: { filterName: "PDF 文档", extension: "pdf", command: "export_project_to_pdf" },
+  markdown: { filterName: "Markdown 文档", extension: "md", command: "export_project_to_markdown" },
+};
+
+/**
+ * 统一导出：先弹出保存对话框（默认文件名按导出范围根生成、过滤器随格式），
+ * 用户取消时返回 `{ ok: false, cancelled: true }` 且不产生文件；确认后按格式调用
+ * 对应后端只读导出命令（带范围参数），返回稳定成功/失败结果（中文说明）。
+ */
+export async function exportProject(
+  format: ExportFormat,
   projectPath: string,
-  projectName: string,
-): Promise<ExportWordResult> {
-  const target = await save({
-    defaultPath: `${projectName}.docx`,
-    filters: [{ name: "Word 文档", extensions: ["docx"] }],
+  scope: ExportScope,
+  defaultFileName: string,
+  saveDialog: SaveDialogFn = defaultSaveDialog,
+  call: InvokeFn = defaultInvoke,
+): Promise<ExportFileResult> {
+  const spec = EXPORT_FORMATS[format];
+  const target = await saveDialog({
+    defaultPath: `${defaultFileName}.${spec.extension}`,
+    filters: [{ name: spec.filterName, extensions: [spec.extension] }],
   });
   if (target === null) {
     return { ok: false, cancelled: true, path: null, message: null };
   }
-  return tauriInvoke<ExportWordResult>("export_project_to_word", {
+  return call<ExportFileResult>(spec.command, {
     projectPath,
     targetPath: target,
+    scope,
   });
 }
 

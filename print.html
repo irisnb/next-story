@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 与编辑器共用同一份令牌与 @font-face 注册（styles.css），保证「所见即所得」；
+         print.css 仅补充 A4 页盒、统一边距与底部页码（Paged.js 分页）。 -->
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/print.css" />
+    <title>Next Story 打印导出</title>
+    <script type="module" src="/src/print-page.ts" defer></script>
+  </head>
+
+  <body>
+    <div id="print-root" class="print-root"></div>
+  </body>
+</html>

@@ -21,8 +21,22 @@ test("writing module exposes a lightweight document switcher and empty state", (
   assert.match(html, /<div\b[^>]*\bid="writing-empty-state"[^>]*>[^<]*去文件管理新建一篇/);
 });
 
-test("writing module exposes a Word export entry", () => {
-  assert.match(html, /<button\b[^>]*\bid="btn-export-word"[^>]*>导出 Word<\/button>/);
+test("writing module exposes a unified export entry with format/scope/filename dialog", () => {
+  assert.match(html, /<button\b[^>]*\bid="btn-export"[^>]*>导出<\/button>/);
+  assert.doesNotMatch(html, /\bid="btn-export-word"/);
+  // 统一导出对话框：格式三选一（Word 默认选中）、范围选择器、文件名建议输入。
+  assert.match(html, /\bid="export-dialog"/);
+  assert.match(
+    html,
+    /<input type="radio" name="export-format" value="word" checked>/,
+    "Word 应为默认格式",
+  );
+  assert.match(html, /<input type="radio" name="export-format" value="pdf">/);
+  assert.match(html, /<input type="radio" name="export-format" value="markdown">/);
+  assert.match(html, /\bid="export-scope"/);
+  assert.match(html, /\bid="export-filename"/);
+  assert.match(html, /\bid="btn-export-confirm"/);
+  assert.match(html, /\bid="btn-export-cancel"/);
 });
 
 test("LLM config lives inside the settings module, not a standalone page", () => {

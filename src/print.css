@@ -1,0 +1,39 @@
+/* 打印页专属样式（add-pdf-and-markdown-export design 决策 3）：
+   正文排版与令牌来自共享的 styles.css（同一 @font-face、同一字体字号颜色），
+   本文件只补充分页页盒与页码——块级排版（段落 / 标题 / 列表 / 标记）沿用与
+   编辑器一致的浏览器默认呈现，保证「所见即所得」。 */
+
+/* A4 页盒：统一 20mm 边距，底部居中页码由 Paged.js 在 DOM 层实现
+   （Chromium 原生不支持 @page margin boxes）。打印设置侧 PrintToPdf 使用
+   8.27×11.69 英寸页尺寸＋零边距透传，页盒即最终打印页。 */
+@page {
+  size: A4;
+  margin: 20mm;
+  @bottom-center {
+    content: counter(page);
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-surface);
+  /* 隐藏窗口内不显示滚动条：页盒依次排列，仅供打印读取 */
+  overflow: hidden;
+}
+
+/* 与编辑器 .ProseMirror 的正文度量一致（16px / 1.5 倍行距 / 正文字色）。 */
+.print-root {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-body);
+}
+
+/* Paged.js 分页容器：页盒间留白仅供屏内检视，不参与打印。 */
+.pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}

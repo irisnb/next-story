@@ -1,6 +1,7 @@
 mod content_tree;
 mod docx_export;
 mod export;
+mod markdown_export;
 mod migration;
 mod notebook;
 mod operations;
@@ -11,9 +12,11 @@ mod validation;
 pub use content_tree::*;
 pub use docx_export::render_docx;
 pub use export::{
-    build_export_project, export_project_to_word, ExportBlock, ExportListItem, ExportMark,
-    ExportNode, ExportProject, ExportText, ExportWordResult,
+    build_export_project, export_project_to_markdown, export_project_to_word, ExportAlign,
+    ExportBlock, ExportFileResult, ExportListItem, ExportMark, ExportNode, ExportProject,
+    ExportScope, ExportText, ExportWordResult,
 };
+pub use markdown_export::render_markdown;
 pub use notebook::*;
 pub use operations::{
     create_document, create_folder, delete_node, move_node, read_document,
@@ -23,6 +26,8 @@ pub use operations::{
 // 讨论档案存储复用底层事务工具：有界读取 + 原子写入（tempfile + persist），
 // 不重复造事务框架（见 `conversation_store` 模块）。
 pub(crate) use operations::{read_bounded_string, write_file_atomically};
+// PDF 打印管线在作品锁内复用同一份只读范围投影（见 `pdf_print` 模块）。
+pub(crate) use export::load_scoped_export_project;
 pub use story_material::*;
 pub use story_search::*;
 // 常规取材组装只在 crate 内（lib.rs 命令层）使用，不对外导出。

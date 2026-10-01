@@ -109,7 +109,7 @@
             <span class="current-doc-caret" aria-hidden="true"></span>
           </button>
           <div id="document-list" class="document-list hidden" role="menu"></div>
-          <button id="btn-export-word" class="save-btn export-word-btn" type="button">导出 Word</button>
+          <button id="btn-export" class="save-btn export-word-btn" type="button">导出</button>
         </div>
 
         <div id="find-bar" class="find-bar hidden" role="search" aria-label="查找替换">
@@ -570,6 +570,35 @@
           <button id="btn-save-and-leave" class="btn-primary">保存并离开</button>
           <button id="btn-discard-and-leave" class="btn-secondary danger">不保存并离开</button>
           <button id="btn-cancel-leave" class="btn-secondary">取消</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 统一导出对话框（add-pdf-and-markdown-export design 决策 2）：格式三选一
+         （默认 Word）、范围三选一（默认当前文档，含文件夹树选择器）、文件名自动
+         建议可改；确认后再弹原生保存对话框（过滤器随格式）。 -->
+    <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
+      <div class="export-dialog-content">
+        <h2 id="export-dialog-title" class="form-title">导出</h2>
+        <div class="export-dialog-field">
+          <span class="drawer-label">格式</span>
+          <div id="export-format-options" class="export-dialog-inline">
+            <label class="export-format-option"><input type="radio" name="export-format" value="word" checked> Word</label>
+            <label class="export-format-option"><input type="radio" name="export-format" value="pdf"> PDF</label>
+            <label class="export-format-option"><input type="radio" name="export-format" value="markdown"> Markdown</label>
+          </div>
+        </div>
+        <div class="export-dialog-field">
+          <label class="drawer-label" for="export-scope">范围</label>
+          <select id="export-scope" class="drawer-select"></select>
+        </div>
+        <div class="export-dialog-field">
+          <label class="drawer-label" for="export-filename">文件名</label>
+          <input type="text" id="export-filename" class="form-input" placeholder="导出文件名" />
+        </div>
+        <div class="export-dialog-actions">
+          <button id="btn-export-cancel" class="btn-secondary" type="button">取消</button>
+          <button id="btn-export-confirm" class="btn-primary" type="button">导出</button>
         </div>
       </div>
     </dialog>

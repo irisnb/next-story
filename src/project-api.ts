@@ -65,9 +65,9 @@ export type OpenDialogFn = (options: {
 const defaultOpenDialog: OpenDialogFn = open as unknown as OpenDialogFn;
 
 /**
- * 弹出文件选择对话框选择单个要导入的文档（`.docx` / `.md`）：按扩展名过滤，
- * 不依赖系统 MIME（WPS 保存的 `.docx` 报告非标准 MIME，add-word-import design D5.1）；
- * 取消返回 null。
+ * 弹出文件选择对话框选择单个要导入的文档（`.docx` / `.md` / `.fdx`）：按扩展名
+ * 过滤，不依赖系统 MIME（WPS 保存的 `.docx` 报告非标准 MIME，add-word-import
+ * design D5.1）；取消返回 null。
  */
 export async function selectDocumentFile(
   openDialog: OpenDialogFn = defaultOpenDialog,
@@ -75,14 +75,14 @@ export async function selectDocumentFile(
   const selected = await openDialog({
     title: "选择要导入的文档",
     multiple: false,
-    filters: [{ name: "Word / Markdown 文档", extensions: ["docx", "md"] }],
+    filters: [{ name: "Word / Markdown / Final Draft 文档", extensions: ["docx", "md", "fdx"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
 
 /**
  * 单项损耗（后端 `ImportLoss` 的 serde 序列化，字段与 add-word-import design
- * 「Spike 补记」契约逐字对齐；kind 集合随 add-markdown-import 扩充）。
+ * 「Spike 补记」契约逐字对齐；kind 集合随 add-markdown-import、add-fdx-import 扩充）。
  */
 export interface ImportLoss {
   kind:
@@ -98,6 +98,12 @@ export interface ImportLoss {
     | "hr_dropped"
     | "html_stripped"
     | "frontmatter_dropped"
+    | "dual_dialogue_degraded"
+    | "titlepage_inlined"
+    | "scene_metadata_dropped"
+    | "scriptnote_dropped"
+    | "revision_marks_ignored"
+    | "unknown_element_skipped"
     | "block_skipped";
   count: number;
   note: string;

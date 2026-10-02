@@ -3,6 +3,7 @@ mod docx_export;
 mod docx_import;
 mod document_import;
 mod export;
+mod fdx_import;
 mod markdown_export;
 mod md_import;
 mod migration;

@@ -115,13 +115,13 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   restore(): void;
 } {
   const ids = [
-    "fm-new-document", "fm-new-folder", "fm-import-word", "fm-status", "fm-file-tree",
+    "fm-new-document", "fm-new-folder", "fm-import-document", "fm-status", "fm-file-tree",
     "fm-open-recycle-bin", "fm-recycle-bin", "fm-back-from-recycle", "fm-recycle-list",
-    "word-import-dialog", "word-import-conclusion", "word-import-structure",
-    "word-import-note", "word-import-losses", "word-import-loss-list",
-    "word-import-split-field", "word-import-split-whole", "word-import-split-by-marker",
-    "word-import-split-marker-label", "word-import-target", "word-import-error",
-    "btn-word-import-confirm", "btn-word-import-cancel",
+    "document-import-dialog", "document-import-conclusion", "document-import-structure",
+    "document-import-note", "document-import-losses", "document-import-loss-list",
+    "document-import-split-field", "document-import-split-whole", "document-import-split-by-marker",
+    "document-import-split-marker-label", "document-import-target", "document-import-error",
+    "btn-document-import-confirm", "btn-document-import-cancel",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement()]));
   const previousDocument = globalThis.document;
@@ -138,27 +138,27 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   const dom = {
     fmNewDocument: elements.get("fm-new-document") as unknown as HTMLButtonElement,
     fmNewFolder: elements.get("fm-new-folder") as unknown as HTMLButtonElement,
-    fmImportWord: elements.get("fm-import-word") as unknown as HTMLButtonElement,
+    fmImportDocument: elements.get("fm-import-document") as unknown as HTMLButtonElement,
     fmStatus: elements.get("fm-status") as unknown as HTMLElement,
     fmFileTree: elements.get("fm-file-tree") as unknown as HTMLElement,
     fmOpenRecycleBin: elements.get("fm-open-recycle-bin") as unknown as HTMLButtonElement,
     fmRecycleBin: elements.get("fm-recycle-bin") as unknown as HTMLElement,
     fmBackFromRecycle: elements.get("fm-back-from-recycle") as unknown as HTMLButtonElement,
     fmRecycleList: elements.get("fm-recycle-list") as unknown as HTMLElement,
-    wordImportDialog: elements.get("word-import-dialog") as unknown as HTMLDialogElement,
-    wordImportConclusion: elements.get("word-import-conclusion") as unknown as HTMLElement,
-    wordImportStructure: elements.get("word-import-structure") as unknown as HTMLElement,
-    wordImportNote: elements.get("word-import-note") as unknown as HTMLElement,
-    wordImportLosses: elements.get("word-import-losses") as unknown as HTMLElement,
-    wordImportLossList: elements.get("word-import-loss-list") as unknown as HTMLElement,
-    wordImportSplitField: elements.get("word-import-split-field") as unknown as HTMLElement,
-    wordImportSplitWhole: elements.get("word-import-split-whole") as unknown as HTMLInputElement,
-    wordImportSplitByMarker: elements.get("word-import-split-by-marker") as unknown as HTMLInputElement,
-    wordImportSplitMarkerLabel: elements.get("word-import-split-marker-label") as unknown as HTMLElement,
-    wordImportTarget: elements.get("word-import-target") as unknown as HTMLSelectElement,
-    wordImportError: elements.get("word-import-error") as unknown as HTMLElement,
-    btnWordImportConfirm: elements.get("btn-word-import-confirm") as unknown as HTMLButtonElement,
-    btnWordImportCancel: elements.get("btn-word-import-cancel") as unknown as HTMLButtonElement,
+    documentImportDialog: elements.get("document-import-dialog") as unknown as HTMLDialogElement,
+    documentImportConclusion: elements.get("document-import-conclusion") as unknown as HTMLElement,
+    documentImportStructure: elements.get("document-import-structure") as unknown as HTMLElement,
+    documentImportNote: elements.get("document-import-note") as unknown as HTMLElement,
+    documentImportLosses: elements.get("document-import-losses") as unknown as HTMLElement,
+    documentImportLossList: elements.get("document-import-loss-list") as unknown as HTMLElement,
+    documentImportSplitField: elements.get("document-import-split-field") as unknown as HTMLElement,
+    documentImportSplitWhole: elements.get("document-import-split-whole") as unknown as HTMLInputElement,
+    documentImportSplitByMarker: elements.get("document-import-split-by-marker") as unknown as HTMLInputElement,
+    documentImportSplitMarkerLabel: elements.get("document-import-split-marker-label") as unknown as HTMLElement,
+    documentImportTarget: elements.get("document-import-target") as unknown as HTMLSelectElement,
+    documentImportError: elements.get("document-import-error") as unknown as HTMLElement,
+    btnDocumentImportConfirm: elements.get("btn-document-import-confirm") as unknown as HTMLButtonElement,
+    btnDocumentImportCancel: elements.get("btn-document-import-cancel") as unknown as HTMLButtonElement,
   } as unknown as AppDom;
 
   const services: FileManagementServices = {
@@ -269,10 +269,10 @@ test("new document at root invokes createDocument and refreshes the tree", async
   }
 });
 
-test("word import entry is disabled without a project and enabled after opening one", () => {
+test("document import entry is disabled without a project and enabled after opening one", () => {
   const h = makeHarness(TREE);
   try {
-    const entry = h.elements.get("fm-import-word")!;
+    const entry = h.elements.get("fm-import-document")!;
     // 打开作品后入口可用。
     assert.equal(entry.disabled, false);
     assert.equal(entry.title, "");

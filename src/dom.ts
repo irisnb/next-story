@@ -149,24 +149,24 @@ export interface AppDom {
   btnExportCancel: HTMLButtonElement;
   fmNewDocument: HTMLButtonElement;
   fmNewFolder: HTMLButtonElement;
-  /** 文件管理区「导入文档」入口（add-word-import 建立，add-markdown-import 泛化；见 src/word-import.ts）。 */
-  fmImportWord: HTMLButtonElement;
+  /** 文件管理区「导入文档」入口（add-word-import 建立，add-markdown-import 泛化；见 src/document-import.ts）。 */
+  fmImportDocument: HTMLButtonElement;
   /** 文档导入预检对话框。 */
-  wordImportDialog: HTMLDialogElement;
-  wordImportConclusion: HTMLElement;
-  wordImportStructure: HTMLElement;
+  documentImportDialog: HTMLDialogElement;
+  documentImportConclusion: HTMLElement;
+  documentImportStructure: HTMLElement;
   /** md 文件的软换行接合说明行（仅 .md 时可见）。 */
-  wordImportNote: HTMLElement;
-  wordImportLosses: HTMLElement;
-  wordImportLossList: HTMLElement;
-  wordImportSplitField: HTMLElement;
-  wordImportSplitWhole: HTMLInputElement;
-  wordImportSplitByMarker: HTMLInputElement;
-  wordImportSplitMarkerLabel: HTMLElement;
-  wordImportTarget: HTMLSelectElement;
-  wordImportError: HTMLElement;
-  btnWordImportConfirm: HTMLButtonElement;
-  btnWordImportCancel: HTMLButtonElement;
+  documentImportNote: HTMLElement;
+  documentImportLosses: HTMLElement;
+  documentImportLossList: HTMLElement;
+  documentImportSplitField: HTMLElement;
+  documentImportSplitWhole: HTMLInputElement;
+  documentImportSplitByMarker: HTMLInputElement;
+  documentImportSplitMarkerLabel: HTMLElement;
+  documentImportTarget: HTMLSelectElement;
+  documentImportError: HTMLElement;
+  btnDocumentImportConfirm: HTMLButtonElement;
+  btnDocumentImportCancel: HTMLButtonElement;
   fmStatus: HTMLElement;
   fmFileTree: HTMLElement;
   fmOpenRecycleBin: HTMLButtonElement;
@@ -389,21 +389,21 @@ export function getAppDom(): AppDom {
     btnExportCancel: requireElement("btn-export-cancel"),
     fmNewDocument: requireElement("fm-new-document"),
     fmNewFolder: requireElement("fm-new-folder"),
-    fmImportWord: requireElement("fm-import-word"),
-    wordImportDialog: requireElement("word-import-dialog"),
-    wordImportConclusion: requireElement("word-import-conclusion"),
-    wordImportStructure: requireElement("word-import-structure"),
-    wordImportNote: requireElement("word-import-note"),
-    wordImportLosses: requireElement("word-import-losses"),
-    wordImportLossList: requireElement("word-import-loss-list"),
-    wordImportSplitField: requireElement("word-import-split-field"),
-    wordImportSplitWhole: requireElement("word-import-split-whole"),
-    wordImportSplitByMarker: requireElement("word-import-split-by-marker"),
-    wordImportSplitMarkerLabel: requireElement("word-import-split-marker-label"),
-    wordImportTarget: requireElement("word-import-target"),
-    wordImportError: requireElement("word-import-error"),
-    btnWordImportConfirm: requireElement("btn-word-import-confirm"),
-    btnWordImportCancel: requireElement("btn-word-import-cancel"),
+    fmImportDocument: requireElement("fm-import-document"),
+    documentImportDialog: requireElement("document-import-dialog"),
+    documentImportConclusion: requireElement("document-import-conclusion"),
+    documentImportStructure: requireElement("document-import-structure"),
+    documentImportNote: requireElement("document-import-note"),
+    documentImportLosses: requireElement("document-import-losses"),
+    documentImportLossList: requireElement("document-import-loss-list"),
+    documentImportSplitField: requireElement("document-import-split-field"),
+    documentImportSplitWhole: requireElement("document-import-split-whole"),
+    documentImportSplitByMarker: requireElement("document-import-split-by-marker"),
+    documentImportSplitMarkerLabel: requireElement("document-import-split-marker-label"),
+    documentImportTarget: requireElement("document-import-target"),
+    documentImportError: requireElement("document-import-error"),
+    btnDocumentImportConfirm: requireElement("btn-document-import-confirm"),
+    btnDocumentImportCancel: requireElement("btn-document-import-cancel"),
     fmStatus: requireElement("fm-status"),
     fmFileTree: requireElement("fm-file-tree"),
     fmOpenRecycleBin: requireElement("fm-open-recycle-bin"),

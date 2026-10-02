@@ -19,7 +19,7 @@ import {
   setDocumentAiVisibility,
   type ImportCommitResult,
 } from "./project-api.ts";
-import { setupWordImport } from "./word-import.ts";
+import { setupDocumentImport } from "./document-import.ts";
 import type { ContentTree, ProjectLoadIdentity, ProjectTreeState, TreeRefreshAcceptance } from "./types.ts";
 import type { SessionResult } from "./editor-document-session.ts";
 import { isDocumentAiVisible } from "./types.ts";
@@ -66,12 +66,12 @@ const defaultServices: FileManagementServices = {
 
 type FileManagementDom = Pick<
   AppDom,
-  "fmNewDocument" | "fmNewFolder" | "fmImportWord" | "fmStatus" | "fmFileTree" | "fmOpenRecycleBin" |
+  "fmNewDocument" | "fmNewFolder" | "fmImportDocument" | "fmStatus" | "fmFileTree" | "fmOpenRecycleBin" |
   "fmRecycleBin" | "fmBackFromRecycle" | "fmRecycleList" |
-  "wordImportDialog" | "wordImportConclusion" | "wordImportStructure" | "wordImportNote" |
-  "wordImportLosses" | "wordImportLossList" | "wordImportSplitField" | "wordImportSplitWhole" |
-  "wordImportSplitByMarker" | "wordImportSplitMarkerLabel" | "wordImportTarget" | "wordImportError" |
-  "btnWordImportConfirm" | "btnWordImportCancel"
+  "documentImportDialog" | "documentImportConclusion" | "documentImportStructure" | "documentImportNote" |
+  "documentImportLosses" | "documentImportLossList" | "documentImportSplitField" | "documentImportSplitWhole" |
+  "documentImportSplitByMarker" | "documentImportSplitMarkerLabel" | "documentImportTarget" | "documentImportError" |
+  "btnDocumentImportConfirm" | "btnDocumentImportCancel"
 >;
 
 export function setupFileManagement(
@@ -452,7 +452,7 @@ export function setupFileManagement(
   dom.fmOpenRecycleBin.addEventListener("click", openRecycleBin);
   dom.fmBackFromRecycle.addEventListener("click", backFromRecycle);
 
-  // ===== 文档导入入口（add-word-import 建立，add-markdown-import 泛化）=====
+  // ===== 文档导入入口（add-word-import 建立，add-markdown-import / add-fdx-import 接入）=====
 
   const IMPORT_ENTRY_LABEL = "导入文档";
   const IMPORT_ENTRY_HINT = "先打开作品，才能导入文档";
@@ -460,8 +460,8 @@ export function setupFileManagement(
   /** 同步导入入口的可用态：未打开作品或工作区暂停时禁用并提示。 */
   function syncImportEntry(): void {
     const enabled = projectPath !== null && !workspacePaused;
-    dom.fmImportWord.disabled = !enabled;
-    dom.fmImportWord.title = enabled ? "" : IMPORT_ENTRY_HINT;
+    dom.fmImportDocument.disabled = !enabled;
+    dom.fmImportDocument.title = enabled ? "" : IMPORT_ENTRY_HINT;
   }
 
   /** 导入成功收尾：展开新建的文件夹并刷新内容树，让新文档立即可见。 */
@@ -470,22 +470,22 @@ export function setupFileManagement(
     await refreshTree();
   }
 
-  const wordImport = setupWordImport(
+  const documentImport = setupDocumentImport(
     {
-      dialog: dom.wordImportDialog,
-      conclusion: dom.wordImportConclusion,
-      structure: dom.wordImportStructure,
-      lossesBlock: dom.wordImportLosses,
-      lossList: dom.wordImportLossList,
-      splitField: dom.wordImportSplitField,
-      splitWhole: dom.wordImportSplitWhole,
-      splitByMarker: dom.wordImportSplitByMarker,
-      splitMarkerLabel: dom.wordImportSplitMarkerLabel,
-      targetSelect: dom.wordImportTarget,
-      mdNote: dom.wordImportNote,
-      errorLine: dom.wordImportError,
-      btnConfirm: dom.btnWordImportConfirm,
-      btnCancel: dom.btnWordImportCancel,
+      dialog: dom.documentImportDialog,
+      conclusion: dom.documentImportConclusion,
+      structure: dom.documentImportStructure,
+      lossesBlock: dom.documentImportLosses,
+      lossList: dom.documentImportLossList,
+      splitField: dom.documentImportSplitField,
+      splitWhole: dom.documentImportSplitWhole,
+      splitByMarker: dom.documentImportSplitByMarker,
+      splitMarkerLabel: dom.documentImportSplitMarkerLabel,
+      targetSelect: dom.documentImportTarget,
+      mdNote: dom.documentImportNote,
+      errorLine: dom.documentImportError,
+      btnConfirm: dom.btnDocumentImportConfirm,
+      btnCancel: dom.btnDocumentImportCancel,
     },
     {
       getProjectState: () =>
@@ -493,16 +493,16 @@ export function setupFileManagement(
       onImported: (result) => finishImport(result),
       setEntryBusy(busy) {
         if (busy) {
-          dom.fmImportWord.disabled = true;
-          dom.fmImportWord.textContent = "导入中...";
+          dom.fmImportDocument.disabled = true;
+          dom.fmImportDocument.textContent = "导入中...";
           return;
         }
-        dom.fmImportWord.textContent = IMPORT_ENTRY_LABEL;
+        dom.fmImportDocument.textContent = IMPORT_ENTRY_LABEL;
         syncImportEntry();
       },
     },
   );
-  dom.fmImportWord.addEventListener("click", () => wordImport.run());
+  dom.fmImportDocument.addEventListener("click", () => documentImport.run());
   syncImportEntry();
 
   function commitProject(projectState: ProjectTreeState): void {

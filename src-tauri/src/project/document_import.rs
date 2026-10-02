@@ -1,6 +1,6 @@
-//! 文档导入共享管线（add-markdown-import 任务组 3）：按扩展名分发到格式分支
-//! 的「文档导入」入口（`.docx` → [`super::docx_import`]，`.md` →
-//! [`super::md_import`]），以及两种格式复用的全部骨架。
+//! 文档导入共享管线：按扩展名分发到格式分支的「文档导入」入口（`.docx` →
+//! [`super::docx_import`]，`.md` → [`super::md_import`]，`.fdx` →
+//! [`super::fdx_import`]；`.fdr` 直接拒绝），以及各格式复用的全部骨架。
 //!
 //! 复用骨架（add-word-import 建立，本 change 泛化）：
 //! - **契约结构**：`ImportPreview` / `ImportCommitResult` / `ImportLoss` /
@@ -34,6 +34,8 @@ use super::{ContentTree, NodeKind, ProjectError, ProjectMetadata, ProjectPaths};
 pub(crate) const MAX_DOCX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 /// md 输入文件字节上限（纯文本，design D5：约千万字级，宽松于 docx）。
 pub(crate) const MAX_MD_INPUT_BYTES: u64 = 16 * 1024 * 1024;
+/// fdx 输入文件字节上限（明文 XML，同 md 口径，add-fdx-import design D2）。
+pub(crate) const MAX_FDX_INPUT_BYTES: u64 = 16 * 1024 * 1024;
 
 /// 序列标记（拆分建议）识别参数（docx/md 共用；design D4：保守规则）。
 const MARKER_LENGTH_RANGE: std::ops::RangeInclusive<usize> = 3..=14;
@@ -108,6 +110,21 @@ pub(crate) struct LossCounter {
     pub(crate) tasklists: usize,
     /// docx：缺 Fallback 的 AlternateContent 兼容块。
     pub(crate) block_skipped: usize,
+    /// fdx：双栏对白拆为先后两组段落。
+    pub(crate) dual_dialogue: usize,
+    /// fdx：标题页并入文档开头。
+    pub(crate) titlepage: usize,
+    /// fdx：场景元数据（SceneProperties 及 Story Map 数据）丢弃。
+    pub(crate) scene_metadata: usize,
+    /// fdx：剧注丢弃。
+    pub(crate) scriptnote: usize,
+    /// fdx：修订标记忽略（样式定义与行内标记，文字无损）。
+    pub(crate) revision_marks: usize,
+    /// fdx：白名单外的未知元素跳过计数（design D1「未知元素忽略＋计数」；
+    /// 机器家具白名单维持静默，不计入）。
+    pub(crate) unknown_elements: usize,
+    /// fdx：未知元素的去重名称清单（进入告知 note，便于新样本轮排查）。
+    pub(crate) unknown_element_names: Vec<String>,
 }
 
 impl LossCounter {
@@ -191,6 +208,58 @@ impl LossCounter {
             format!(
                 "{} 个兼容块（AlternateContent）缺少回退内容，已跳过",
                 self.block_skipped
+            ),
+        );
+        push(
+            "dual_dialogue_degraded",
+            self.dual_dialogue,
+            format!(
+                "{} 处双栏对白已拆为先后两组段落（文字与顺序保留）",
+                self.dual_dialogue
+            ),
+        );
+        push(
+            "titlepage_inlined",
+            self.titlepage,
+            format!("{} 个标题页已并入文档开头（文字保留）", self.titlepage),
+        );
+        push(
+            "scene_metadata_dropped",
+            self.scene_metadata,
+            format!("{} 组场景元数据（含 Story Map 场景数据）不导入", self.scene_metadata),
+        );
+        push(
+            "scriptnote_dropped",
+            self.scriptnote,
+            format!("{} 条剧注不导入", self.scriptnote),
+        );
+        push(
+            "revision_marks_ignored",
+            self.revision_marks,
+            format!("{} 处修订标记已忽略（全部文字无损导入）", self.revision_marks),
+        );
+        push(
+            "unknown_element_skipped",
+            self.unknown_elements,
+            format!(
+                "{} 个未知元素已跳过，不影响导入文字（如：{}）",
+                self.unknown_elements,
+                if self.unknown_element_names.is_empty() {
+                    "无".to_string()
+                } else {
+                    let preview: Vec<&str> = self
+                        .unknown_element_names
+                        .iter()
+                        .take(3)
+                        .map(String::as_str)
+                        .collect();
+                    let suffix = if self.unknown_element_names.len() > 3 {
+                        format!(" 等 {} 种", self.unknown_element_names.len())
+                    } else {
+                        String::new()
+                    };
+                    format!("{}{suffix}", preview.join("、"))
+                }
             ),
         );
         out
@@ -414,11 +483,13 @@ fn unique_among(used: &mut HashSet<String>, base: String) -> String {
 
 // ========== 格式分发与读取（design D2 / D5） ==========
 
-/// 导入格式：按扩展名分发（`.docx` ZIP 结构校验不变；`.md` 走 md 分支）。
+/// 导入格式：按扩展名分发（`.docx` ZIP 结构校验不变；`.md`/`.fdx` 走各自
+/// 分支；`.fdr` 是 Final Draft 1–7 私有二进制老格式，直接拒绝并提示另存）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ImportFormat {
     Docx,
     Markdown,
+    Fdx,
 }
 
 impl ImportFormat {
@@ -426,6 +497,7 @@ impl ImportFormat {
         match self {
             ImportFormat::Docx => MAX_DOCX_INPUT_BYTES,
             ImportFormat::Markdown => MAX_MD_INPUT_BYTES,
+            ImportFormat::Fdx => MAX_FDX_INPUT_BYTES,
         }
     }
 }
@@ -438,8 +510,13 @@ fn detect_import_format(file_path: &Path) -> Result<ImportFormat, ProjectError> 
     match extension.as_deref() {
         Some("docx") => Ok(ImportFormat::Docx),
         Some("md") => Ok(ImportFormat::Markdown),
+        Some("fdx") => Ok(ImportFormat::Fdx),
+        // Final Draft 1–7 私有二进制老格式：不尝试解析，提示另存为 .fdx。
+        Some("fdr") => Err(ProjectError::ImportRejected(
+            "Final Draft 1–7 老格式（.fdr）不支持：请在 Final Draft 中打开并另存为 .fdx 后导入".to_string(),
+        )),
         _ => Err(ProjectError::ImportRejected(
-            "只支持 .docx 与 .md 文件；.doc 老格式请先在 Word 或 WPS 中另存为 .docx".to_string(),
+            "只支持 .docx、.md 与 .fdx 文件；.doc 老格式请先在 Word 或 WPS 中另存为 .docx".to_string(),
         )),
     }
 }
@@ -448,6 +525,7 @@ fn parse_by_format(format: ImportFormat, bytes: &[u8]) -> Result<ParsedDocument,
     match format {
         ImportFormat::Docx => super::docx_import::parse_docx(bytes),
         ImportFormat::Markdown => super::md_import::parse_md(bytes),
+        ImportFormat::Fdx => super::fdx_import::parse_fdx(bytes),
     }
 }
 

@@ -156,23 +156,23 @@ test("hash_mismatch 前缀错误原样透传给调用方（协议随泛化不变
   }
 });
 
-test("selectDocumentFile 弹文件选择对话框：.docx 与 .md 过滤、单选、不依赖 MIME", async () => {
+test("selectDocumentFile 弹文件选择对话框：.docx / .md / .fdx 过滤、单选、不依赖 MIME", async () => {
   const calls: { cmd: string; payload: unknown }[] = [];
   installWindow();
   try {
     mockIPC((cmd, payload) => {
       calls.push({ cmd, payload });
-      if (cmd === "plugin:dialog|open") return "D:\\笔记\\大纲.md";
+      if (cmd === "plugin:dialog|open") return "D:\\剧本\\table-read.fdx";
       return undefined;
     });
 
     const selected = await selectDocumentFile();
-    assert.equal(selected, "D:\\笔记\\大纲.md");
+    assert.equal(selected, "D:\\剧本\\table-read.fdx");
     assert.equal(calls[0]!.cmd, "plugin:dialog|open");
     const options = (calls[0]!.payload as { options?: Record<string, unknown> }).options ?? {};
     assert.equal(options.multiple, false);
     assert.deepEqual(options.filters, [
-      { name: "Word / Markdown 文档", extensions: ["docx", "md"] },
+      { name: "Word / Markdown / Final Draft 文档", extensions: ["docx", "md", "fdx"] },
     ]);
   } finally {
     clearMocks();

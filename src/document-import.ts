@@ -10,11 +10,13 @@ import {
 import type { ContentTree } from "./types.ts";
 
 /**
- * 文档导入预检对话框（add-word-import design D6 建立管线，add-markdown-import
- * 泛化为 .docx / .md 共用）：一句话结论 → 可折叠损耗明细（完整呈现、绝不省略）
- * → 拆分二选一（默认不拆）→ 目标位置（默认根级）→ 确认导入。任何一步取消＝零副作用；
- * 确认后文件被改动（哈希不一致）时留在对话框内重新预检，由用户再次拍板。
- * .md 文件额外面呈一行软换行接合说明（design D3：规则须在预检告知）。
+ * 文档导入预检对话框（add-word-import design D6 建立管线，add-markdown-import、
+ * add-fdx-import 先后接入 .md 与 .fdx）：一句话结论 → 可折叠损耗明细（完整呈现、
+ * 绝不省略）→ 拆分二选一（默认不拆）→ 目标位置（默认根级）→ 确认导入。
+ * 任何一步取消＝零副作用；确认后文件被改动（哈希不一致）时留在对话框内重新预检，
+ * 由用户再次拍板。.md 文件额外面呈一行软换行接合说明（add-markdown-import design D3：
+ * 该规则不属于损耗、不在损耗清单内，故单独告知）；.fdx 的全部变化都在损耗清单内，
+ * 无需额外说明。
  */
 
 /** 后端「预览与提交之间文件已变化」错误的固定前缀（add-word-import design D1）。 */
@@ -22,7 +24,8 @@ export const HASH_MISMATCH_PREFIX = "hash_mismatch:";
 
 /**
  * 损耗类型的中文标签——明细完整呈现、绝不省略（简化的是路径，不是诚实）。
- * 前六类来自 docx 管线；后六类随 add-markdown-import 的 md 解析分支扩充。
+ * docx 管线六类（add-word-import）；md 分支六类（add-markdown-import）；
+ * fdx 分支六类（add-fdx-import）。
  */
 export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   table_flattened: "表格拍平保文字",
@@ -37,6 +40,12 @@ export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   hr_dropped: "分隔线丢弃",
   html_stripped: "HTML 标签剥除保文字",
   frontmatter_dropped: "文件头信息剥离",
+  dual_dialogue_degraded: "双栏对白拆为先后段落",
+  titlepage_inlined: "标题页并入正文开头",
+  scene_metadata_dropped: "场景元数据丢弃",
+  scriptnote_dropped: "剧注丢弃",
+  revision_marks_ignored: "修订标记忽略，文字无损",
+  unknown_element_skipped: "未知元素已跳过（不影响文字）",
   block_skipped: "无法识别的块跳过",
 };
 
@@ -104,7 +113,7 @@ export function buildTargetOptions(tree: ContentTree): TargetOption[] {
 }
 
 /** 预检对话框的显式 DOM 依赖契约。 */
-export interface WordImportDom {
+export interface DocumentImportDom {
   dialog: HTMLDialogElement;
   /** 一句话结论。 */
   conclusion: HTMLElement;
@@ -132,7 +141,7 @@ export interface WordImportDom {
 }
 
 /** 导入链服务：文件选择、预检、提交三个阶段都可注入替换（测试用）。 */
-export interface WordImportServices {
+export interface DocumentImportServices {
   /** 打开系统文件选择对话框；取消返回 null。 */
   selectFile(): Promise<string | null>;
   /** 预检（后端只读解析，零副作用）。 */
@@ -148,7 +157,7 @@ export interface WordImportServices {
 }
 
 /** 当前作品状态（未打开作品时为 null；入口本应禁用，此处兜底防误触）。 */
-export interface WordImportProjectState {
+export interface DocumentImportProjectState {
   projectPath: string;
   tree: ContentTree;
 }
@@ -158,18 +167,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function setupWordImport(
-  dom: WordImportDom,
+export function setupDocumentImport(
+  dom: DocumentImportDom,
   options: {
-    getProjectState(): WordImportProjectState | null;
+    getProjectState(): DocumentImportProjectState | null;
     /** 导入成功后的收尾（刷新内容树、展开新文件夹）。 */
     onImported(result: ImportCommitResult): Promise<void> | void;
     /** 入口按钮忙碌态（文案与禁用策略由文件管理区统一管理）。 */
     setEntryBusy(busy: boolean): void;
-    services?: Partial<WordImportServices>;
+    services?: Partial<DocumentImportServices>;
   },
 ): { run(): void } {
-  const services: WordImportServices = {
+  const services: DocumentImportServices = {
     selectFile: () => selectDocumentFile(),
     preview: importDocumentPreview,
     commit: importDocumentCommit,

@@ -9,12 +9,12 @@ import {
   lossItemText,
   MARKDOWN_LINE_BREAK_NOTE,
   previewConclusion,
-  setupWordImport,
+  setupDocumentImport,
   splitOptionLabel,
   structureLine,
   isMarkdownFile,
-  type WordImportDom,
-} from "../src/word-import.ts";
+  type DocumentImportDom,
+} from "../src/document-import.ts";
 
 type Listener = () => void;
 
@@ -119,7 +119,7 @@ interface CommitRecord {
 }
 
 interface Harness {
-  dom: WordImportDom;
+  dom: DocumentImportDom;
   elements: Record<string, FakeElement>;
   run(): void;
   previewRequests: string[];
@@ -166,7 +166,7 @@ function makeHarness(options: {
     errorLine: element("errorLine"),
     btnConfirm: element("btnConfirm"),
     btnCancel: element("btnCancel"),
-  } as unknown as WordImportDom;
+  } as unknown as DocumentImportDom;
 
   const previewRequests: string[] = [];
   const commitRequests: CommitRecord[] = [];
@@ -183,14 +183,14 @@ function makeHarness(options: {
     createElement: () => new FakeElement(),
   } as unknown as Document;
 
-  const controller = setupWordImport(dom, {
+  const controller = setupDocumentImport(dom, {
     getProjectState: () => ({ projectPath: PROJECT_PATH, tree: TREE }),
     onImported: (result) => { imported.push(result); },
     setEntryBusy: (busy) => { busyLog.push(busy); },
     services: {
       selectFile: async () => options.selectedFile === undefined ? FILE_PATH : options.selectedFile,
       preview: async (_projectPath, filePath) => {
-        if (options.previewThrows) throw new Error("文件不是有效的 Word 文档");
+        if (options.previewThrows) throw new Error("文件不是有效的文档");
         previewRequests.push(filePath);
         const next = options.previews[previewCount];
         previewCount += 1;
@@ -320,6 +320,34 @@ test("损耗标签表：md 分支新增 kind 全部有平实中文标签", () =>
   );
 });
 
+test("损耗标签表：fdx 分支新增 kind 全部有平实中文标签", () => {
+  // add-fdx-import 扩充的五类结构性降级 / 丢弃 / 忽略。
+  assert.equal(
+    lossItemText({ kind: "dual_dialogue_degraded", count: 2, note: "" }),
+    "双栏对白拆为先后段落：2 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "titlepage_inlined", count: 1, note: "" }),
+    "标题页并入正文开头：1 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "scene_metadata_dropped", count: 12, note: "" }),
+    "场景元数据丢弃：12 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "scriptnote_dropped", count: 3, note: "" }),
+    "剧注丢弃：3 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "revision_marks_ignored", count: 5, note: "" }),
+    "修订标记忽略，文字无损：5 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "unknown_element_skipped", count: 4, note: "BeatBoard" }),
+    "未知元素已跳过（不影响文字）：4 处（BeatBoard）",
+  );
+});
+
 test("isMarkdownFile 按扩展名判断且大小写不敏感", () => {
   assert.equal(isMarkdownFile("D:\\笔记.md"), true);
   assert.equal(isMarkdownFile("D:\\笔记.MD"), true);
@@ -402,7 +430,7 @@ test("预检呈现：无损耗文件显示全部保留，损耗区与拆分区�
   }
 });
 
-test("预检呈现：选中 .md 文件时呈现软换行接合说明，.docx 不出现", async () => {
+test("预检呈现：选中 .md 文件时呈现软换行接合说明，.docx 与 .fdx 不出现", async () => {
   const md = makeHarness({ previews: [makePreview()], selectedFile: "D:\\笔记\\大纲.md" });
   try {
     md.run();
@@ -429,6 +457,21 @@ test("预检呈现：选中 .md 文件时呈现软换行接合说明，.docx 不
     assert.equal(docx.elements["mdNote"]!.textContent, "");
   } finally {
     docx.restore();
+  }
+
+  // .fdx 的全部变化都在损耗清单内如实枚举，无需额外说明行（add-fdx-import）。
+  const fdx = makeHarness({ previews: [makePreview()], selectedFile: "D:\\剧本\\table-read.fdx" });
+  try {
+    fdx.run();
+    await flushUntil(() => fdx.elements["dialog"]!.open);
+    assert.equal(
+      fdx.elements["mdNote"]!.classList.contains("hidden"),
+      true,
+      ".fdx 文件不应出现换行接合说明",
+    );
+    assert.equal(fdx.elements["mdNote"]!.textContent, "");
+  } finally {
+    fdx.restore();
   }
 });
 
@@ -583,7 +626,7 @@ test("预检失败（如畸形文件）：中文报错、不弹对话框、零�
     await flushUntil(() => h.busyLog[h.busyLog.length - 1] === false);
     assert.equal(h.elements["dialog"]!.open, false);
     assert.equal(h.commitRequests.length, 0);
-    assert.deepEqual(h.alerts, ["导入失败：文件不是有效的 Word 文档"]);
+    assert.deepEqual(h.alerts, ["导入失败：文件不是有效的文档"]);
   } finally {
     h.restore();
   }

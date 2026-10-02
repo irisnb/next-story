@@ -17,7 +17,9 @@ import {
   renameNode,
   restoreNode,
   setDocumentAiVisibility,
+  type ImportCommitResult,
 } from "./project-api.ts";
+import { setupWordImport } from "./word-import.ts";
 import type { ContentTree, ProjectLoadIdentity, ProjectTreeState, TreeRefreshAcceptance } from "./types.ts";
 import type { SessionResult } from "./editor-document-session.ts";
 import { isDocumentAiVisible } from "./types.ts";
@@ -64,8 +66,12 @@ const defaultServices: FileManagementServices = {
 
 type FileManagementDom = Pick<
   AppDom,
-  "fmNewDocument" | "fmNewFolder" | "fmStatus" | "fmFileTree" | "fmOpenRecycleBin" |
-  "fmRecycleBin" | "fmBackFromRecycle" | "fmRecycleList"
+  "fmNewDocument" | "fmNewFolder" | "fmImportWord" | "fmStatus" | "fmFileTree" | "fmOpenRecycleBin" |
+  "fmRecycleBin" | "fmBackFromRecycle" | "fmRecycleList" |
+  "wordImportDialog" | "wordImportConclusion" | "wordImportStructure" | "wordImportLosses" |
+  "wordImportLossList" | "wordImportSplitField" | "wordImportSplitWhole" | "wordImportSplitByMarker" |
+  "wordImportSplitMarkerLabel" | "wordImportTarget" | "wordImportError" |
+  "btnWordImportConfirm" | "btnWordImportCancel"
 >;
 
 export function setupFileManagement(
@@ -446,6 +452,58 @@ export function setupFileManagement(
   dom.fmOpenRecycleBin.addEventListener("click", openRecycleBin);
   dom.fmBackFromRecycle.addEventListener("click", backFromRecycle);
 
+  // ===== Word 导入入口（add-word-import）=====
+
+  const IMPORT_ENTRY_LABEL = "导入 Word 文档";
+  const IMPORT_ENTRY_HINT = "先打开作品，才能导入 Word 文档";
+
+  /** 同步导入入口的可用态：未打开作品或工作区暂停时禁用并提示。 */
+  function syncImportEntry(): void {
+    const enabled = projectPath !== null && !workspacePaused;
+    dom.fmImportWord.disabled = !enabled;
+    dom.fmImportWord.title = enabled ? "" : IMPORT_ENTRY_HINT;
+  }
+
+  /** 导入成功收尾：展开新建的文件夹并刷新内容树，让新文档立即可见。 */
+  async function finishImport(result: ImportCommitResult): Promise<void> {
+    if (result.created_folder_id !== null) expanded.add(result.created_folder_id);
+    await refreshTree();
+  }
+
+  const wordImport = setupWordImport(
+    {
+      dialog: dom.wordImportDialog,
+      conclusion: dom.wordImportConclusion,
+      structure: dom.wordImportStructure,
+      lossesBlock: dom.wordImportLosses,
+      lossList: dom.wordImportLossList,
+      splitField: dom.wordImportSplitField,
+      splitWhole: dom.wordImportSplitWhole,
+      splitByMarker: dom.wordImportSplitByMarker,
+      splitMarkerLabel: dom.wordImportSplitMarkerLabel,
+      targetSelect: dom.wordImportTarget,
+      errorLine: dom.wordImportError,
+      btnConfirm: dom.btnWordImportConfirm,
+      btnCancel: dom.btnWordImportCancel,
+    },
+    {
+      getProjectState: () =>
+        projectPath !== null && tree !== null ? { projectPath, tree } : null,
+      onImported: (result) => finishImport(result),
+      setEntryBusy(busy) {
+        if (busy) {
+          dom.fmImportWord.disabled = true;
+          dom.fmImportWord.textContent = "导入中...";
+          return;
+        }
+        dom.fmImportWord.textContent = IMPORT_ENTRY_LABEL;
+        syncImportEntry();
+      },
+    },
+  );
+  dom.fmImportWord.addEventListener("click", () => wordImport.run());
+  syncImportEntry();
+
   function commitProject(projectState: ProjectTreeState): void {
     loadGeneration = projectState.loadIdentity?.loadGeneration ?? ++allocatedLoadGeneration;
     refreshSequence += 1;
@@ -458,6 +516,7 @@ export function setupFileManagement(
     view = "tree";
     render();
     setStatus("", "idle");
+    syncImportEntry();
   }
 
   return {
@@ -475,6 +534,7 @@ export function setupFileManagement(
       workspacePaused = paused;
       dom.fmNewDocument.disabled = paused;
       dom.fmNewFolder.disabled = paused;
+      syncImportEntry();
       // 退出通知先完成，再用原身份/刷新序号重新走同一接受协议，不另造刷新代次。
       if (!paused && deferredTree) {
         const pending = deferredTree; deferredTree = null;
@@ -503,6 +563,7 @@ export function setupFileManagement(
       dom.fmRecycleBin.classList.add("hidden");
       dom.fmFileTree.classList.remove("hidden");
       setStatus("", "idle");
+      syncImportEntry();
     },
   };
 }

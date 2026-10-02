@@ -32,6 +32,13 @@ open = "5"
 # 见 change swap-docx-and-split-js-bundle）。不嵌图：关默认 image feature，
 # XML 渲染与 zip 打包核心路径不依赖它；精确锁版，升级经 Dependabot 递单人工审。
 docx-rs = { version = "=0.4.22", default-features = false }
+# Word 导入（add-word-import）解压防护预扫描：docx-rs 内部自行解压、无法注入逐
+# 条目限额，调用 read_docx 前用 zip 流式预扫描执行单条目与总量上限。zip 已是
+# docx-rs 的传递依赖（同一棵 8.x 树），提为直接依赖不引入新版本；只开 deflate。
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+# Word 导入内容哈希（预览-提交一致性校验）。sha2 0.10 已在依赖树内（reqwest
+# 传递引入），提为直接依赖不引入新的外部 crate 或新版本。
+sha2 = "0.10"
 # P2-12 锁回收：作品锁 guard 需自持锁所有权（`lock_arc` / `ArcMutexGuard`），
 # 须启用 `arc_lock` feature；parking_lot 0.12.5 已在依赖树内（tauri 生态传递引入），
 # 提为直接依赖不引入新的外部 crate 或新版本。
@@ -39,9 +46,8 @@ parking_lot = { version = "0.12", features = ["arc_lock"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# 测试中解包生成的 .docx（zip 容器）以校验内容；与 docx-rs 内部 zip 同为 8.x 线，
-# 只开 deflate（关默认 features 顺带把 time 0.1 挡在 dev 树外）。
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+# 测试中解包生成的 .docx（zip 容器）以校验内容；zip 已提为直接依赖（Word 导入
+# 预扫描），此处不再重复声明。
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

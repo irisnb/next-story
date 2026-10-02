@@ -494,6 +494,7 @@
           <div class="file-manager-toolbar">
             <button id="fm-new-document" class="file-action-btn" type="button">新建文档</button>
             <button id="fm-new-folder" class="file-action-btn" type="button">新建文件夹</button>
+            <button id="fm-import-word" class="file-action-btn" type="button">导入 Word 文档</button>
             <span id="fm-status" class="fm-status" aria-live="polite"></span>
           </div>
           <p id="fm-ai-visibility-help" class="fm-ai-visibility-help">每篇文档可单独设置是否允许 AI 查看；关闭后，AI 面板、及时召唤和讨论都不会读取该文档内容。文件夹不单独设置。</p>
@@ -599,6 +600,37 @@
         <div class="export-dialog-actions">
           <button id="btn-export-cancel" class="btn-secondary" type="button">取消</button>
           <button id="btn-export-confirm" class="btn-primary" type="button">导出</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Word 导入预检对话框（add-word-import design D6）：一句话结论＋可折叠损耗
+         明细（完整呈现、绝不省略）＋拆分二选一（默认不拆）＋目标位置（默认根级）；
+         确认前不写入任何内容，取消＝零副作用。骨架复用统一导出对话框。 -->
+    <dialog id="word-import-dialog" class="export-dialog" aria-labelledby="word-import-dialog-title">
+      <div class="export-dialog-content">
+        <h2 id="word-import-dialog-title" class="form-title">导入 Word 文档</h2>
+        <p id="word-import-conclusion" class="word-import-conclusion"></p>
+        <p id="word-import-structure" class="word-import-structure"></p>
+        <details id="word-import-losses" class="word-import-losses hidden">
+          <summary>有内容需要降级或丢弃（点开查看明细）</summary>
+          <ul id="word-import-loss-list" class="word-import-loss-list"></ul>
+        </details>
+        <div id="word-import-split-field" class="export-dialog-field hidden">
+          <span class="drawer-label">拆分方式</span>
+          <div class="export-dialog-inline">
+            <label class="export-format-option"><input type="radio" name="word-import-split" value="whole" id="word-import-split-whole" checked> 不拆分，整个文件作为一个文档</label>
+            <label class="export-format-option"><input type="radio" name="word-import-split" value="split" id="word-import-split-by-marker"> <span id="word-import-split-marker-label"></span></label>
+          </div>
+        </div>
+        <div class="export-dialog-field">
+          <label class="drawer-label" for="word-import-target">导入到</label>
+          <select id="word-import-target" class="drawer-select"></select>
+        </div>
+        <p id="word-import-error" class="error-message hidden"></p>
+        <div class="export-dialog-actions">
+          <button id="btn-word-import-cancel" class="btn-secondary" type="button">取消</button>
+          <button id="btn-word-import-confirm" class="btn-primary" type="button">确认导入</button>
         </div>
       </div>
     </dialog>

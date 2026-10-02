@@ -53,6 +53,108 @@ export async function selectDirectory(
   return typeof selected === "string" ? selected : null;
 }
 
+// ========== Word 文档导入（change: add-word-import） ==========
+
+/** 与 Tauri `open` 文件选择对话框同形的窄类型，便于在测试中注入假实现。 */
+export type OpenDialogFn = (options: {
+  title?: string;
+  multiple?: boolean;
+  filters?: ReadonlyArray<{ name: string; extensions: readonly string[] }>;
+}) => Promise<string | null>;
+
+const defaultOpenDialog: OpenDialogFn = open as unknown as OpenDialogFn;
+
+/**
+ * 弹出文件选择对话框选择单个 `.docx`：按扩展名过滤，不依赖系统 MIME
+ * （WPS 保存的 `.docx` 报告非标准 MIME，design D5.1）；取消返回 null。
+ */
+export async function selectDocxFile(
+  openDialog: OpenDialogFn = defaultOpenDialog,
+): Promise<string | null> {
+  const selected = await openDialog({
+    title: "选择要导入的 Word 文档",
+    multiple: false,
+    filters: [{ name: "Word 文档", extensions: ["docx"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+/**
+ * 单项损耗（后端 `ImportLoss` 的 serde 序列化，字段与 design「Spike 补记」
+ * 契约逐字对齐）。
+ */
+export interface ImportLoss {
+  kind:
+    | "table_flattened"
+    | "image_dropped"
+    | "footnote_dropped"
+    | "comment_dropped"
+    | "revision_finalized"
+    | "numbering_degraded"
+    | "block_skipped";
+  count: number;
+  note: string;
+}
+
+/** 拆分建议（后端 `SplitSuggestion`）。 */
+export interface SplitSuggestion {
+  /** 标记样例（如「第X集」）。 */
+  marker_sample: string;
+  count: number;
+  doc_names: string[];
+}
+
+/** 预检结果（后端 `ImportPreview`）。 */
+export interface ImportPreview {
+  char_count: number;
+  paragraph_count: number;
+  /** 默认文档名（文件名去扩展名）。 */
+  default_doc_name: string;
+  losses: ImportLoss[];
+  split_suggestion: SplitSuggestion | null;
+  /** 文件字节 sha256；commit 时回传校验，不一致后端以 `hash_mismatch:` 前缀拒绝。 */
+  content_hash: string;
+  /** docProps 生成器印记（样本归因用，可空）。 */
+  generator: string | null;
+}
+
+/** 提交结果（后端 `ImportCommitResult`）。 */
+export interface ImportCommitResult {
+  created_doc_ids: string[];
+  created_folder_id: string | null;
+}
+
+/** 预检：只读解析 `.docx`，返回字数、拟创建结构、损耗清单与拆分建议；零副作用。 */
+export async function importDocxPreview(
+  projectPath: string,
+  filePath: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<ImportPreview> {
+  return call<ImportPreview>("import_docx_preview", { projectPath, filePath });
+}
+
+/**
+ * 提交导入：后端重新解析并落盘，只创建新文档（`parentId` 为 null 表示根级）。
+ * 预览与提交之间文件内容变化时后端拒绝，错误信息以 `hash_mismatch:` 为前缀，
+ * 调用方应引导用户重新预检。
+ */
+export async function importDocxCommit(
+  projectPath: string,
+  filePath: string,
+  parentId: string | null,
+  split: boolean,
+  expectedHash: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<ImportCommitResult> {
+  return call<ImportCommitResult>("import_docx_commit", {
+    projectPath,
+    filePath,
+    parentId,
+    split,
+    expectedHash,
+  });
+}
+
 /**
  * 统一导出命令的稳定返回契约（后端 `ExportFileResult` 的 serde 序列化，三种格式
  * 同形）。`cancelled` 仅由前端在用户关闭保存对话框时设置，后端不返回该字段。

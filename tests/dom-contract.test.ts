@@ -51,9 +51,33 @@ test("LLM config lives inside the settings module, not a standalone page", () =>
 test("file management module exposes tree, recycle bin, and new-node actions", () => {
   assert.match(html, /<button\b[^>]*\bid="fm-new-document"[^>]*>新建文档<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-new-folder"[^>]*>新建文件夹<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="fm-import-word"[^>]*>导入 Word 文档<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-open-recycle-bin"[^>]*>回收站<\/button>/);
   assert.match(html, /<div\b[^>]*\bid="fm-file-tree"/);
   assert.match(html, /<div\b[^>]*\bid="fm-recycle-list"/);
+});
+
+test("word import dialog exposes conclusion, collapsible losses, split choice, and target", () => {
+  // add-word-import：预检对话框骨架（复用导出对话框的 .export-dialog）。
+  assert.match(html, /<dialog\b[^>]*\bid="word-import-dialog"/);
+  assert.match(html, /\bid="word-import-conclusion"/);
+  assert.match(html, /\bid="word-import-structure"/);
+  // 损耗明细可折叠（details/summary），明细列表完整呈现。
+  assert.match(html, /<details\b[^>]*\bid="word-import-losses"[^>]*class="[^"]*hidden/);
+  assert.match(html, /\bid="word-import-loss-list"/);
+  // 拆分二选一：默认不拆（whole 选中），无建议时整个字段隐藏。
+  assert.match(html, /\bid="word-import-split-field"[^>]*class="[^"]*hidden/);
+  assert.match(
+    html,
+    /<input type="radio" name="word-import-split" value="whole" id="word-import-split-whole" checked>/,
+    "默认不拆分",
+  );
+  assert.match(html, /\bid="word-import-split-by-marker"/);
+  assert.match(html, /\bid="word-import-split-marker-label"/);
+  // 目标位置默认根级，取消 / 确认按钮层级与导出对话框一致。
+  assert.match(html, /\bid="word-import-target"/);
+  assert.match(html, /\bid="btn-word-import-cancel"/);
+  assert.match(html, /\bid="btn-word-import-confirm"/);
 });
 
 test("AI dock header exposes new-conversation and collapse entries", () => {

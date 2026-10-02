@@ -28,7 +28,9 @@ class FakeElement {
   textContent = "";
   value = "";
   type = "";
+  title = "";
   selected = false;
+  disabled = false;
 
   addEventListener(type: string, listener: Listener): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -113,8 +115,12 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   restore(): void;
 } {
   const ids = [
-    "fm-new-document", "fm-new-folder", "fm-status", "fm-file-tree",
+    "fm-new-document", "fm-new-folder", "fm-import-word", "fm-status", "fm-file-tree",
     "fm-open-recycle-bin", "fm-recycle-bin", "fm-back-from-recycle", "fm-recycle-list",
+    "word-import-dialog", "word-import-conclusion", "word-import-structure",
+    "word-import-losses", "word-import-loss-list", "word-import-split-field",
+    "word-import-split-whole", "word-import-split-by-marker", "word-import-split-marker-label",
+    "word-import-target", "word-import-error", "btn-word-import-confirm", "btn-word-import-cancel",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement()]));
   const previousDocument = globalThis.document;
@@ -131,12 +137,26 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   const dom = {
     fmNewDocument: elements.get("fm-new-document") as unknown as HTMLButtonElement,
     fmNewFolder: elements.get("fm-new-folder") as unknown as HTMLButtonElement,
+    fmImportWord: elements.get("fm-import-word") as unknown as HTMLButtonElement,
     fmStatus: elements.get("fm-status") as unknown as HTMLElement,
     fmFileTree: elements.get("fm-file-tree") as unknown as HTMLElement,
     fmOpenRecycleBin: elements.get("fm-open-recycle-bin") as unknown as HTMLButtonElement,
     fmRecycleBin: elements.get("fm-recycle-bin") as unknown as HTMLElement,
     fmBackFromRecycle: elements.get("fm-back-from-recycle") as unknown as HTMLButtonElement,
     fmRecycleList: elements.get("fm-recycle-list") as unknown as HTMLElement,
+    wordImportDialog: elements.get("word-import-dialog") as unknown as HTMLDialogElement,
+    wordImportConclusion: elements.get("word-import-conclusion") as unknown as HTMLElement,
+    wordImportStructure: elements.get("word-import-structure") as unknown as HTMLElement,
+    wordImportLosses: elements.get("word-import-losses") as unknown as HTMLElement,
+    wordImportLossList: elements.get("word-import-loss-list") as unknown as HTMLElement,
+    wordImportSplitField: elements.get("word-import-split-field") as unknown as HTMLElement,
+    wordImportSplitWhole: elements.get("word-import-split-whole") as unknown as HTMLInputElement,
+    wordImportSplitByMarker: elements.get("word-import-split-by-marker") as unknown as HTMLInputElement,
+    wordImportSplitMarkerLabel: elements.get("word-import-split-marker-label") as unknown as HTMLElement,
+    wordImportTarget: elements.get("word-import-target") as unknown as HTMLSelectElement,
+    wordImportError: elements.get("word-import-error") as unknown as HTMLElement,
+    btnWordImportConfirm: elements.get("btn-word-import-confirm") as unknown as HTMLButtonElement,
+    btnWordImportCancel: elements.get("btn-word-import-cancel") as unknown as HTMLButtonElement,
   } as unknown as AppDom;
 
   const services: FileManagementServices = {
@@ -242,6 +262,28 @@ test("new document at root invokes createDocument and refreshes the tree", async
     await Promise.resolve();
     assert.ok(h.calls.includes("create_document"));
     assert.ok(h.calls.includes("open_content_tree"));
+  } finally {
+    h.restore();
+  }
+});
+
+test("word import entry is disabled without a project and enabled after opening one", () => {
+  const h = makeHarness(TREE);
+  try {
+    const entry = h.elements.get("fm-import-word")!;
+    // 打开作品后入口可用。
+    assert.equal(entry.disabled, false);
+    assert.equal(entry.title, "");
+
+    // 卸载作品后禁用并提示需先打开作品。
+    h.controller.unload();
+    assert.equal(entry.disabled, true, "未打开作品时导入入口应禁用");
+    assert.match(entry.title, /先打开作品/);
+
+    // 重新打开作品后恢复可用。
+    h.controller.showProject({ projectPath: "D:\\作品B", projectName: "B", tree: TREE });
+    assert.equal(entry.disabled, false);
+    assert.equal(entry.title, "");
   } finally {
     h.restore();
   }

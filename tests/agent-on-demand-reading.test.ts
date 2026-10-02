@@ -737,8 +737,12 @@ function visibilityHarness(options: {
   usageFails?: boolean;
 }): VisibilityHarness {
   const ids = [
-    "fm-new-document", "fm-new-folder", "fm-status", "fm-file-tree",
+    "fm-new-document", "fm-new-folder", "fm-import-word", "fm-status", "fm-file-tree",
     "fm-open-recycle-bin", "fm-recycle-bin", "fm-back-from-recycle", "fm-recycle-list",
+    "word-import-dialog", "word-import-conclusion", "word-import-structure",
+    "word-import-losses", "word-import-loss-list", "word-import-split-field",
+    "word-import-split-whole", "word-import-split-by-marker", "word-import-split-marker-label",
+    "word-import-target", "word-import-error", "btn-word-import-confirm", "btn-word-import-cancel",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
   const previousDocument = globalThis.document;
@@ -752,12 +756,26 @@ function visibilityHarness(options: {
   const dom = {
     fmNewDocument: elements.get("fm-new-document"),
     fmNewFolder: elements.get("fm-new-folder"),
+    fmImportWord: elements.get("fm-import-word"),
     fmStatus: elements.get("fm-status"),
     fmFileTree: elements.get("fm-file-tree"),
     fmOpenRecycleBin: elements.get("fm-open-recycle-bin"),
     fmRecycleBin: elements.get("fm-recycle-bin"),
     fmBackFromRecycle: elements.get("fm-back-from-recycle"),
     fmRecycleList: elements.get("fm-recycle-list"),
+    wordImportDialog: elements.get("word-import-dialog"),
+    wordImportConclusion: elements.get("word-import-conclusion"),
+    wordImportStructure: elements.get("word-import-structure"),
+    wordImportLosses: elements.get("word-import-losses"),
+    wordImportLossList: elements.get("word-import-loss-list"),
+    wordImportSplitField: elements.get("word-import-split-field"),
+    wordImportSplitWhole: elements.get("word-import-split-whole"),
+    wordImportSplitByMarker: elements.get("word-import-split-by-marker"),
+    wordImportSplitMarkerLabel: elements.get("word-import-split-marker-label"),
+    wordImportTarget: elements.get("word-import-target"),
+    wordImportError: elements.get("word-import-error"),
+    btnWordImportConfirm: elements.get("btn-word-import-confirm"),
+    btnWordImportCancel: elements.get("btn-word-import-cancel"),
   } as unknown as Parameters<typeof setupFileManagement>[0];
 
   const controller = setupFileManagement(dom, {

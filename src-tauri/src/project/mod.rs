@@ -1,5 +1,6 @@
 mod content_tree;
 mod docx_export;
+mod docx_import;
 mod export;
 mod markdown_export;
 mod migration;
@@ -11,6 +12,10 @@ mod validation;
 
 pub use content_tree::*;
 pub use docx_export::render_docx;
+pub use docx_import::{
+    import_docx_commit, import_docx_preview, ImportCommitResult, ImportLoss, ImportPreview,
+    SplitSuggestion,
+};
 pub use export::{
     build_export_project, export_project_to_markdown, export_project_to_word, ExportAlign,
     ExportBlock, ExportFileResult, ExportListItem, ExportMark, ExportNode, ExportProject,
@@ -105,6 +110,12 @@ pub enum ProjectError {
     ContentTooLarge(String),
     /// 作品存在待恢复事务现场；严格只读路径失败关闭时使用（用户路径应先恢复再读取）。
     RecoveryRequired,
+    /// Word 导入被拒绝（add-word-import）：负载为完整中文说明（文件非法、
+    /// 超限、映射失败等用户文件侧错误，不与作品结构混淆）。
+    ImportRejected(String),
+    /// Word 导入提交时内容哈希与预览不一致：预览与提交之间文件被修改，
+    /// 错误信息以 `hash_mismatch:` 前缀返回（前后端契约）。
+    ImportHashMismatch,
 }
 
 impl std::fmt::Display for ProjectError {
@@ -124,6 +135,12 @@ impl std::fmt::Display for ProjectError {
             ProjectError::ContentTooLarge(_) => write!(f, "内容超过大小上限，请精简后重试"),
             ProjectError::RecoveryRequired => {
                 write!(f, "作品有未完成的保存，请重新打开作品完成恢复后再试")
+            }
+            // Word 导入错误面向用户文件，直接呈现完整中文说明。
+            ProjectError::ImportRejected(message) => write!(f, "{message}"),
+            // 前缀是前后端契约（前端据此提示重新预检），不得改动。
+            ProjectError::ImportHashMismatch => {
+                write!(f, "hash_mismatch: 文件在预览后发生了变化，请重新预检")
             }
         }
     }

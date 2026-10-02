@@ -7,10 +7,12 @@ import {
   buildTargetOptions,
   formatCount,
   lossItemText,
+  MARKDOWN_LINE_BREAK_NOTE,
   previewConclusion,
   setupWordImport,
   splitOptionLabel,
   structureLine,
+  isMarkdownFile,
   type WordImportDom,
 } from "../src/word-import.ts";
 
@@ -139,7 +141,7 @@ function makeHarness(options: {
   previewThrows?: boolean;
 }): Harness {
   const elementIds = [
-    "dialog", "conclusion", "structure", "lossesBlock", "lossList",
+    "dialog", "conclusion", "structure", "mdNote", "lossesBlock", "lossList",
     "splitField", "splitWhole", "splitByMarker", "splitMarkerLabel",
     "targetSelect", "errorLine", "btnConfirm", "btnCancel",
   ];
@@ -153,6 +155,7 @@ function makeHarness(options: {
     dialog: element("dialog"),
     conclusion: element("conclusion"),
     structure: element("structure"),
+    mdNote: element("mdNote"),
     lossesBlock: element("lossesBlock"),
     lossList: element("lossList"),
     splitField: element("splitField"),
@@ -284,6 +287,46 @@ test("损耗条目：中文标签＋数量，备注为空时不追加括号", ()
   );
 });
 
+test("损耗标签表：md 分支新增 kind 全部有平实中文标签", () => {
+  // add-markdown-import 扩充的六类降级/丢弃。
+  assert.equal(
+    lossItemText({ kind: "code_degraded", count: 4, note: "" }),
+    "代码降级为纯文字：4 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "quote_degraded", count: 2, note: "" }),
+    "引用块降级为普通段落：2 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "tasklist_degraded", count: 3, note: "" }),
+    "任务列表转为列表（勾选框保留为文字）：3 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "hr_dropped", count: 1, note: "" }),
+    "分隔线丢弃：1 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "html_stripped", count: 5, note: "" }),
+    "HTML 标签剥除保文字：5 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "frontmatter_dropped", count: 1, note: "" }),
+    "文件头信息剥离：1 处",
+  );
+  // docx 管线的编号降级（复杂编号体系转普通段落）。
+  assert.equal(
+    lossItemText({ kind: "numbering_degraded", count: 7, note: "" }),
+    "编号降级为普通段落：7 处",
+  );
+});
+
+test("isMarkdownFile 按扩展名判断且大小写不敏感", () => {
+  assert.equal(isMarkdownFile("D:\\笔记.md"), true);
+  assert.equal(isMarkdownFile("D:\\笔记.MD"), true);
+  assert.equal(isMarkdownFile("D:\\剧本\\61集.docx"), false);
+  assert.equal(isMarkdownFile("D:\\剧本\\readme.md.bak"), false);
+});
+
 test("目标位置选项：根级默认在首位，其后按树序缩进列出文件夹", () => {
   const options = buildTargetOptions(TREE);
   assert.deepEqual(
@@ -356,6 +399,36 @@ test("预检呈现：无损耗文件显示全部保留，损耗区与拆分区�
     assert.deepEqual(h.elements["lossList"]!.children, []);
   } finally {
     h.restore();
+  }
+});
+
+test("预检呈现：选中 .md 文件时呈现软换行接合说明，.docx 不出现", async () => {
+  const md = makeHarness({ previews: [makePreview()], selectedFile: "D:\\笔记\\大纲.md" });
+  try {
+    md.run();
+    await flushUntil(() => md.elements["dialog"]!.open);
+    assert.equal(
+      md.elements["mdNote"]!.classList.contains("hidden"),
+      false,
+      "md 文件应呈现换行接合说明",
+    );
+    assert.equal(md.elements["mdNote"]!.textContent, MARKDOWN_LINE_BREAK_NOTE);
+  } finally {
+    md.restore();
+  }
+
+  const docx = makeHarness({ previews: [makePreview()] });
+  try {
+    docx.run();
+    await flushUntil(() => docx.elements["dialog"]!.open);
+    assert.equal(
+      docx.elements["mdNote"]!.classList.contains("hidden"),
+      true,
+      ".docx 文件不应出现换行接合说明",
+    );
+    assert.equal(docx.elements["mdNote"]!.textContent, "");
+  } finally {
+    docx.restore();
   }
 });
 

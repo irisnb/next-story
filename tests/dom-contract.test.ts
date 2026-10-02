@@ -51,7 +51,8 @@ test("LLM config lives inside the settings module, not a standalone page", () =>
 test("file management module exposes tree, recycle bin, and new-node actions", () => {
   assert.match(html, /<button\b[^>]*\bid="fm-new-document"[^>]*>新建文档<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-new-folder"[^>]*>新建文件夹<\/button>/);
-  assert.match(html, /<button\b[^>]*\bid="fm-import-word"[^>]*>导入 Word 文档<\/button>/);
+  // add-markdown-import：入口泛化为「导入文档」（.docx / .md 共用）。
+  assert.match(html, /<button\b[^>]*\bid="fm-import-word"[^>]*>导入文档<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-open-recycle-bin"[^>]*>回收站<\/button>/);
   assert.match(html, /<div\b[^>]*\bid="fm-file-tree"/);
   assert.match(html, /<div\b[^>]*\bid="fm-recycle-list"/);
@@ -62,6 +63,8 @@ test("word import dialog exposes conclusion, collapsible losses, split choice, a
   assert.match(html, /<dialog\b[^>]*\bid="word-import-dialog"/);
   assert.match(html, /\bid="word-import-conclusion"/);
   assert.match(html, /\bid="word-import-structure"/);
+  // add-markdown-import：md 文件的软换行接合说明行（默认隐藏，选中 .md 时呈现）。
+  assert.match(html, /<p\b[^>]*\bid="word-import-note"[^>]*class="[^"]*hidden/);
   // 损耗明细可折叠（details/summary），明细列表完整呈现。
   assert.match(html, /<details\b[^>]*\bid="word-import-losses"[^>]*class="[^"]*hidden/);
   assert.match(html, /\bid="word-import-loss-list"/);

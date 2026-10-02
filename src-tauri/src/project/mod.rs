@@ -1,8 +1,10 @@
 mod content_tree;
 mod docx_export;
 mod docx_import;
+mod document_import;
 mod export;
 mod markdown_export;
+mod md_import;
 mod migration;
 mod notebook;
 mod operations;
@@ -12,9 +14,11 @@ mod validation;
 
 pub use content_tree::*;
 pub use docx_export::render_docx;
-pub use docx_import::{
-    import_docx_commit, import_docx_preview, ImportCommitResult, ImportLoss, ImportPreview,
-    SplitSuggestion,
+// 文档导入（add-markdown-import D2 命令泛化）：docx / md 两个私有分支经
+// document_import 门面按扩展名分发，公开项从这里导出。
+pub use document_import::{
+    import_document_commit, import_document_preview, ImportCommitResult, ImportLoss,
+    ImportPreview, SplitSuggestion,
 };
 pub use export::{
     build_export_project, export_project_to_markdown, export_project_to_word, ExportAlign,

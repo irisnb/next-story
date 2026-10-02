@@ -118,9 +118,10 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     "fm-new-document", "fm-new-folder", "fm-import-word", "fm-status", "fm-file-tree",
     "fm-open-recycle-bin", "fm-recycle-bin", "fm-back-from-recycle", "fm-recycle-list",
     "word-import-dialog", "word-import-conclusion", "word-import-structure",
-    "word-import-losses", "word-import-loss-list", "word-import-split-field",
-    "word-import-split-whole", "word-import-split-by-marker", "word-import-split-marker-label",
-    "word-import-target", "word-import-error", "btn-word-import-confirm", "btn-word-import-cancel",
+    "word-import-note", "word-import-losses", "word-import-loss-list",
+    "word-import-split-field", "word-import-split-whole", "word-import-split-by-marker",
+    "word-import-split-marker-label", "word-import-target", "word-import-error",
+    "btn-word-import-confirm", "btn-word-import-cancel",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement()]));
   const previousDocument = globalThis.document;
@@ -147,6 +148,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     wordImportDialog: elements.get("word-import-dialog") as unknown as HTMLDialogElement,
     wordImportConclusion: elements.get("word-import-conclusion") as unknown as HTMLElement,
     wordImportStructure: elements.get("word-import-structure") as unknown as HTMLElement,
+    wordImportNote: elements.get("word-import-note") as unknown as HTMLElement,
     wordImportLosses: elements.get("word-import-losses") as unknown as HTMLElement,
     wordImportLossList: elements.get("word-import-loss-list") as unknown as HTMLElement,
     wordImportSplitField: elements.get("word-import-split-field") as unknown as HTMLElement,

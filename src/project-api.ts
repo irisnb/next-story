@@ -53,7 +53,7 @@ export async function selectDirectory(
   return typeof selected === "string" ? selected : null;
 }
 
-// ========== Word 文档导入（change: add-word-import） ==========
+// ========== 文档导入（add-word-import 建立管线，add-markdown-import 泛化） ==========
 
 /** 与 Tauri `open` 文件选择对话框同形的窄类型，便于在测试中注入假实现。 */
 export type OpenDialogFn = (options: {
@@ -65,23 +65,24 @@ export type OpenDialogFn = (options: {
 const defaultOpenDialog: OpenDialogFn = open as unknown as OpenDialogFn;
 
 /**
- * 弹出文件选择对话框选择单个 `.docx`：按扩展名过滤，不依赖系统 MIME
- * （WPS 保存的 `.docx` 报告非标准 MIME，design D5.1）；取消返回 null。
+ * 弹出文件选择对话框选择单个要导入的文档（`.docx` / `.md`）：按扩展名过滤，
+ * 不依赖系统 MIME（WPS 保存的 `.docx` 报告非标准 MIME，add-word-import design D5.1）；
+ * 取消返回 null。
  */
-export async function selectDocxFile(
+export async function selectDocumentFile(
   openDialog: OpenDialogFn = defaultOpenDialog,
 ): Promise<string | null> {
   const selected = await openDialog({
-    title: "选择要导入的 Word 文档",
+    title: "选择要导入的文档",
     multiple: false,
-    filters: [{ name: "Word 文档", extensions: ["docx"] }],
+    filters: [{ name: "Word / Markdown 文档", extensions: ["docx", "md"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
 
 /**
- * 单项损耗（后端 `ImportLoss` 的 serde 序列化，字段与 design「Spike 补记」
- * 契约逐字对齐）。
+ * 单项损耗（后端 `ImportLoss` 的 serde 序列化，字段与 add-word-import design
+ * 「Spike 补记」契约逐字对齐；kind 集合随 add-markdown-import 扩充）。
  */
 export interface ImportLoss {
   kind:
@@ -91,6 +92,12 @@ export interface ImportLoss {
     | "comment_dropped"
     | "revision_finalized"
     | "numbering_degraded"
+    | "code_degraded"
+    | "quote_degraded"
+    | "tasklist_degraded"
+    | "hr_dropped"
+    | "html_stripped"
+    | "frontmatter_dropped"
     | "block_skipped";
   count: number;
   note: string;
@@ -124,13 +131,13 @@ export interface ImportCommitResult {
   created_folder_id: string | null;
 }
 
-/** 预检：只读解析 `.docx`，返回字数、拟创建结构、损耗清单与拆分建议；零副作用。 */
-export async function importDocxPreview(
+/** 预检：只读解析选定文档（`.docx` / `.md` 按扩展名分发），返回字数、拟创建结构、损耗清单与拆分建议；零副作用。 */
+export async function importDocumentPreview(
   projectPath: string,
   filePath: string,
   call: InvokeFn = defaultInvoke,
 ): Promise<ImportPreview> {
-  return call<ImportPreview>("import_docx_preview", { projectPath, filePath });
+  return call<ImportPreview>("import_document_preview", { projectPath, filePath });
 }
 
 /**
@@ -138,7 +145,7 @@ export async function importDocxPreview(
  * 预览与提交之间文件内容变化时后端拒绝，错误信息以 `hash_mismatch:` 为前缀，
  * 调用方应引导用户重新预检。
  */
-export async function importDocxCommit(
+export async function importDocumentCommit(
   projectPath: string,
   filePath: string,
   parentId: string | null,
@@ -146,7 +153,7 @@ export async function importDocxCommit(
   expectedHash: string,
   call: InvokeFn = defaultInvoke,
 ): Promise<ImportCommitResult> {
-  return call<ImportCommitResult>("import_docx_commit", {
+  return call<ImportCommitResult>("import_document_commit", {
     projectPath,
     filePath,
     parentId,

@@ -43,6 +43,10 @@ sha2 = "0.10"
 # 须启用 `arc_lock` feature；parking_lot 0.12.5 已在依赖树内（tauri 生态传递引入），
 # 提为直接依赖不引入新的外部 crate 或新版本。
 parking_lot = { version = "0.12", features = ["arc_lock"] }
+# Markdown 导入（add-markdown-import）解析：pulldown-cmark 事件流单遍映射到
+# 自家语法；0.13.x 活跃维护（2026-05 发布 0.13.4），传递依赖仅
+# bitflags/memchr/unicase；选项启用 TABLES/STRIKETHROUGH/TASKLISTS/FOOTNOTES。
+pulldown-cmark = "0.13"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -181,9 +181,11 @@
 .export-dialog-actions .btn-primary,
 .export-dialog-actions .btn-secondary { flex: none; width: auto; }
 
-/* Word 导入预检对话框（add-word-import）：骨架复用 .export-dialog，仅补充内容元素 */
+/* 文档导入预检对话框（add-word-import 建立，add-markdown-import 泛化）：
+   骨架复用 .export-dialog，仅补充内容元素 */
 .word-import-conclusion { font-weight: 700; color: var(--color-ink); }
 .word-import-structure { color: var(--color-muted); }
+.word-import-note { color: var(--color-muted); }
 .word-import-losses {
   border: var(--hairline);
   background: var(--color-surface-subtle);

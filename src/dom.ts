@@ -149,12 +149,14 @@ export interface AppDom {
   btnExportCancel: HTMLButtonElement;
   fmNewDocument: HTMLButtonElement;
   fmNewFolder: HTMLButtonElement;
-  /** 文件管理区「导入 Word 文档」入口（add-word-import，见 src/word-import.ts）。 */
+  /** 文件管理区「导入文档」入口（add-word-import 建立，add-markdown-import 泛化；见 src/word-import.ts）。 */
   fmImportWord: HTMLButtonElement;
-  /** Word 导入预检对话框。 */
+  /** 文档导入预检对话框。 */
   wordImportDialog: HTMLDialogElement;
   wordImportConclusion: HTMLElement;
   wordImportStructure: HTMLElement;
+  /** md 文件的软换行接合说明行（仅 .md 时可见）。 */
+  wordImportNote: HTMLElement;
   wordImportLosses: HTMLElement;
   wordImportLossList: HTMLElement;
   wordImportSplitField: HTMLElement;
@@ -391,6 +393,7 @@ export function getAppDom(): AppDom {
     wordImportDialog: requireElement("word-import-dialog"),
     wordImportConclusion: requireElement("word-import-conclusion"),
     wordImportStructure: requireElement("word-import-structure"),
+    wordImportNote: requireElement("word-import-note"),
     wordImportLosses: requireElement("word-import-losses"),
     wordImportLossList: requireElement("word-import-loss-list"),
     wordImportSplitField: requireElement("word-import-split-field"),

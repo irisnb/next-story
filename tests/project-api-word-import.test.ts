@@ -4,14 +4,15 @@ import test from "node:test";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 
 import {
-  importDocxCommit,
-  importDocxPreview,
-  selectDocxFile,
+  importDocumentCommit,
+  importDocumentPreview,
+  selectDocumentFile,
   type ImportCommitResult,
   type ImportPreview,
 } from "../src/project-api.ts";
 
-// 契约依据：openspec/changes/add-word-import/design.md「Spike 补记」。
+// 契约依据：add-word-import design.md「Spike 补记」（字段不变）＋
+// add-markdown-import design D2（命令泛化改名，按扩展名分发）。
 // Tauri 会把 camelCase 顶层参数自动映射为后端 snake_case 参数（projectPath → project_path），
 // 与 open_project / export_project_to_* 等既有命令同法；字段值逐字断言防漂移。
 
@@ -53,20 +54,20 @@ const COMMIT_RESULT: ImportCommitResult = {
   created_folder_id: "folder-new",
 };
 
-test("importDocxPreview 按契约调用 import_docx_preview 并透传预检结果", async () => {
+test("importDocumentPreview 按契约调用 import_document_preview 并透传预检结果", async () => {
   const calls: { cmd: string; payload: unknown }[] = [];
   installWindow();
   try {
     mockIPC((cmd, payload) => {
       calls.push({ cmd, payload });
-      if (cmd === "import_docx_preview") return PREVIEW;
+      if (cmd === "import_document_preview") return PREVIEW;
       return undefined;
     });
 
-    const result = await importDocxPreview("/作品/我的剧本", "D:\\剧本\\61集.docx");
+    const result = await importDocumentPreview("/作品/我的剧本", "D:\\剧本\\61集.docx");
     assert.deepEqual(result, PREVIEW, "预检结果字段应与契约同形（snake_case）");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.cmd, "import_docx_preview");
+    assert.equal(calls[0]!.cmd, "import_document_preview");
     assert.deepEqual(calls[0]!.payload, {
       projectPath: "/作品/我的剧本",
       filePath: "D:\\剧本\\61集.docx",
@@ -77,17 +78,17 @@ test("importDocxPreview 按契约调用 import_docx_preview 并透传预检结�
   }
 });
 
-test("importDocxCommit 按契约调用 import_docx_commit（folder / split）", async () => {
+test("importDocumentCommit 按契约调用 import_document_commit（folder / split）", async () => {
   const calls: { cmd: string; payload: unknown }[] = [];
   installWindow();
   try {
     mockIPC((cmd, payload) => {
       calls.push({ cmd, payload });
-      if (cmd === "import_docx_commit") return COMMIT_RESULT;
+      if (cmd === "import_document_commit") return COMMIT_RESULT;
       return undefined;
     });
 
-    const result = await importDocxCommit(
+    const result = await importDocumentCommit(
       "/作品/我的剧本",
       "D:\\剧本\\61集.docx",
       "folder-1",
@@ -108,20 +109,20 @@ test("importDocxCommit 按契约调用 import_docx_commit（folder / split）", 
   }
 });
 
-test("importDocxCommit 根级目标 parent 为 null、默认不拆分", async () => {
+test("importDocumentCommit 根级目标 parent 为 null、默认不拆分", async () => {
   const calls: { cmd: string; payload: unknown }[] = [];
   installWindow();
   try {
     mockIPC((cmd, payload) => {
       calls.push({ cmd, payload });
-      if (cmd === "import_docx_commit") return COMMIT_RESULT;
+      if (cmd === "import_document_commit") return COMMIT_RESULT;
       return undefined;
     });
 
-    await importDocxCommit("/作品/我的剧本", "D:\\剧本\\61集.docx", null, false, "sha256-abc");
+    await importDocumentCommit("/作品/我的剧本", "D:\\笔记\\大纲.md", null, false, "sha256-abc");
     assert.deepEqual(calls[0]!.payload, {
       projectPath: "/作品/我的剧本",
-      filePath: "D:\\剧本\\61集.docx",
+      filePath: "D:\\笔记\\大纲.md",
       parentId: null,
       split: false,
       expectedHash: "sha256-abc",
@@ -132,11 +133,11 @@ test("importDocxCommit 根级目标 parent 为 null、默认不拆分", async ()
   }
 });
 
-test("hash_mismatch 前缀错误原样透传给调用方", async () => {
+test("hash_mismatch 前缀错误原样透传给调用方（协议随泛化不变）", async () => {
   installWindow();
   try {
     mockIPC((cmd) => {
-      if (cmd === "import_docx_commit") {
+      if (cmd === "import_document_commit") {
         throw "hash_mismatch: expected=sha256-abc got=sha256-def";
       }
       return undefined;
@@ -144,7 +145,7 @@ test("hash_mismatch 前缀错误原样透传给调用方", async () => {
 
     let caught: unknown;
     try {
-      await importDocxCommit("/作品", "D:\\剧本.docx", null, false, "sha256-abc");
+      await importDocumentCommit("/作品", "D:\\剧本.docx", null, false, "sha256-abc");
     } catch (error) {
       caught = error;
     }
@@ -155,36 +156,38 @@ test("hash_mismatch 前缀错误原样透传给调用方", async () => {
   }
 });
 
-test("selectDocxFile 弹文件选择对话框：.docx 过滤、单选、不依赖 MIME", async () => {
+test("selectDocumentFile 弹文件选择对话框：.docx 与 .md 过滤、单选、不依赖 MIME", async () => {
   const calls: { cmd: string; payload: unknown }[] = [];
   installWindow();
   try {
     mockIPC((cmd, payload) => {
       calls.push({ cmd, payload });
-      if (cmd === "plugin:dialog|open") return "D:\\剧本\\61集.docx";
+      if (cmd === "plugin:dialog|open") return "D:\\笔记\\大纲.md";
       return undefined;
     });
 
-    const selected = await selectDocxFile();
-    assert.equal(selected, "D:\\剧本\\61集.docx");
+    const selected = await selectDocumentFile();
+    assert.equal(selected, "D:\\笔记\\大纲.md");
     assert.equal(calls[0]!.cmd, "plugin:dialog|open");
     const options = (calls[0]!.payload as { options?: Record<string, unknown> }).options ?? {};
     assert.equal(options.multiple, false);
-    assert.deepEqual(options.filters, [{ name: "Word 文档", extensions: ["docx"] }]);
+    assert.deepEqual(options.filters, [
+      { name: "Word / Markdown 文档", extensions: ["docx", "md"] },
+    ]);
   } finally {
     clearMocks();
     restoreWindow();
   }
 });
 
-test("selectDocxFile 用户取消返回 null", async () => {
+test("selectDocumentFile 用户取消返回 null", async () => {
   installWindow();
   try {
     mockIPC((cmd) => {
       if (cmd === "plugin:dialog|open") return null;
       return undefined;
     });
-    assert.equal(await selectDocxFile(), null);
+    assert.equal(await selectDocumentFile(), null);
   } finally {
     clearMocks();
     restoreWindow();

@@ -722,12 +722,13 @@ async fn export_project_to_pdf(
     Ok(result)
 }
 
-// ========== Word 导入命令（add-word-import 任务组 3） ==========
+// ========== 文档导入命令（add-word-import 建立，add-markdown-import 泛化） ==========
 
-/// Word 导入预检：解析 .docx 并返回预览（字数、拟创建结构、损耗清单、拆分
-/// 建议、内容哈希），零写入。作品锁内走严格只读校验，任何取消／失败都无副作用。
+/// 文档导入预检：按扩展名分发（`.docx`→ZIP 校验＋docx 管线，`.md`→UTF-8＋
+/// Markdown 管线），解析并返回预览（字数、拟创建结构、损耗清单、拆分建议、
+/// 内容哈希），零写入。作品锁内走严格只读校验，任何取消／失败都无副作用。
 #[tauri::command]
-async fn import_docx_preview(
+async fn import_document_preview(
     app: tauri::AppHandle,
     project_path: String,
     file_path: String,
@@ -738,17 +739,17 @@ async fn import_docx_preview(
 
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = locks.acquire(&project_root)?;
-        project::import_docx_preview(&project_root, &file)
+        project::import_document_preview(&project_root, &file)
     })
     .await
     .map_err(|e| format!("导入预检任务执行失败: {e}"))?
     .map_err(|e| e.to_string())
 }
 
-/// Word 导入提交：重新解析并校验内容哈希（不一致返回 `hash_mismatch:` 前缀
+/// 文档导入提交：重新解析并校验内容哈希（不一致返回 `hash_mismatch:` 前缀
 /// 错误，前端提示重新预检），经单次映射式事务创建文档落盘，失败无残留。
 #[tauri::command]
-async fn import_docx_commit(
+async fn import_document_commit(
     app: tauri::AppHandle,
     project_path: String,
     file_path: String,
@@ -762,7 +763,13 @@ async fn import_docx_commit(
 
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = locks.acquire(&project_root)?;
-        project::import_docx_commit(&project_root, &file, parent_id.as_deref(), split, &expected_hash)
+        project::import_document_commit(
+            &project_root,
+            &file,
+            parent_id.as_deref(),
+            split,
+            &expected_hash,
+        )
     })
     .await
     .map_err(|e| format!("导入落盘任务执行失败: {e}"))?
@@ -964,8 +971,8 @@ pub fn run() {
             export_project_to_markdown,
             export_project_to_pdf,
             export_wait_timing_json,
-            import_docx_preview,
-            import_docx_commit,
+            import_document_preview,
+            import_document_commit,
             open_url,
             save_llm_config,
             load_llm_config,

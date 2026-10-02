@@ -68,9 +68,9 @@ type FileManagementDom = Pick<
   AppDom,
   "fmNewDocument" | "fmNewFolder" | "fmImportWord" | "fmStatus" | "fmFileTree" | "fmOpenRecycleBin" |
   "fmRecycleBin" | "fmBackFromRecycle" | "fmRecycleList" |
-  "wordImportDialog" | "wordImportConclusion" | "wordImportStructure" | "wordImportLosses" |
-  "wordImportLossList" | "wordImportSplitField" | "wordImportSplitWhole" | "wordImportSplitByMarker" |
-  "wordImportSplitMarkerLabel" | "wordImportTarget" | "wordImportError" |
+  "wordImportDialog" | "wordImportConclusion" | "wordImportStructure" | "wordImportNote" |
+  "wordImportLosses" | "wordImportLossList" | "wordImportSplitField" | "wordImportSplitWhole" |
+  "wordImportSplitByMarker" | "wordImportSplitMarkerLabel" | "wordImportTarget" | "wordImportError" |
   "btnWordImportConfirm" | "btnWordImportCancel"
 >;
 
@@ -452,10 +452,10 @@ export function setupFileManagement(
   dom.fmOpenRecycleBin.addEventListener("click", openRecycleBin);
   dom.fmBackFromRecycle.addEventListener("click", backFromRecycle);
 
-  // ===== Word 导入入口（add-word-import）=====
+  // ===== 文档导入入口（add-word-import 建立，add-markdown-import 泛化）=====
 
-  const IMPORT_ENTRY_LABEL = "导入 Word 文档";
-  const IMPORT_ENTRY_HINT = "先打开作品，才能导入 Word 文档";
+  const IMPORT_ENTRY_LABEL = "导入文档";
+  const IMPORT_ENTRY_HINT = "先打开作品，才能导入文档";
 
   /** 同步导入入口的可用态：未打开作品或工作区暂停时禁用并提示。 */
   function syncImportEntry(): void {
@@ -482,6 +482,7 @@ export function setupFileManagement(
       splitByMarker: dom.wordImportSplitByMarker,
       splitMarkerLabel: dom.wordImportSplitMarkerLabel,
       targetSelect: dom.wordImportTarget,
+      mdNote: dom.wordImportNote,
       errorLine: dom.wordImportError,
       btnConfirm: dom.btnWordImportConfirm,
       btnCancel: dom.btnWordImportCancel,

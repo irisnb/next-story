@@ -1,8 +1,8 @@
 import { showMessage } from "./app-dialog.ts";
 import {
-  importDocxCommit,
-  importDocxPreview,
-  selectDocxFile,
+  importDocumentCommit,
+  importDocumentPreview,
+  selectDocumentFile,
   type ImportCommitResult,
   type ImportLoss,
   type ImportPreview,
@@ -10,16 +10,20 @@ import {
 import type { ContentTree } from "./types.ts";
 
 /**
- * Word 导入预检对话框（add-word-import design D6）：
- * 一句话结论 → 可折叠损耗明细（完整呈现、绝不省略）→ 拆分二选一（默认不拆）
- * → 目标位置（默认根级）→ 确认导入。任何一步取消＝零副作用；
+ * 文档导入预检对话框（add-word-import design D6 建立管线，add-markdown-import
+ * 泛化为 .docx / .md 共用）：一句话结论 → 可折叠损耗明细（完整呈现、绝不省略）
+ * → 拆分二选一（默认不拆）→ 目标位置（默认根级）→ 确认导入。任何一步取消＝零副作用；
  * 确认后文件被改动（哈希不一致）时留在对话框内重新预检，由用户再次拍板。
+ * .md 文件额外面呈一行软换行接合说明（design D3：规则须在预检告知）。
  */
 
-/** 后端「预览与提交之间文件已变化」错误的固定前缀（design D1）。 */
+/** 后端「预览与提交之间文件已变化」错误的固定前缀（add-word-import design D1）。 */
 export const HASH_MISMATCH_PREFIX = "hash_mismatch:";
 
-/** 损耗类型的中文标签——明细完整呈现、绝不省略（简化的是路径，不是诚实）。 */
+/**
+ * 损耗类型的中文标签——明细完整呈现、绝不省略（简化的是路径，不是诚实）。
+ * 前六类来自 docx 管线；后六类随 add-markdown-import 的 md 解析分支扩充。
+ */
 export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   table_flattened: "表格拍平保文字",
   image_dropped: "图片丢弃",
@@ -27,8 +31,22 @@ export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   comment_dropped: "批注丢弃",
   revision_finalized: "修订取最终态",
   numbering_degraded: "编号降级为普通段落",
+  code_degraded: "代码降级为纯文字",
+  quote_degraded: "引用块降级为普通段落",
+  tasklist_degraded: "任务列表转为列表（勾选框保留为文字）",
+  hr_dropped: "分隔线丢弃",
+  html_stripped: "HTML 标签剥除保文字",
+  frontmatter_dropped: "文件头信息剥离",
   block_skipped: "无法识别的块跳过",
 };
+
+/** 选中 .md 文件时预检对话框呈现的软换行接合说明（add-markdown-import design D3）。 */
+export const MARKDOWN_LINE_BREAK_NOTE = "换行按文字接合处理";
+
+/** 判断选中的文件是否 Markdown（决定是否呈现软换行接合说明）。 */
+export function isMarkdownFile(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".md");
+}
 
 /** 千位分隔（确定性实现，不依赖运行环境的 toLocaleString 行为）。 */
 export function formatCount(value: number): string {
@@ -105,6 +123,8 @@ export interface WordImportDom {
   splitMarkerLabel: HTMLElement;
   /** 目标位置（根级＋文件夹，默认根级）。 */
   targetSelect: HTMLSelectElement;
+  /** md 文件的软换行接合说明行（仅选中 .md 时可见）。 */
+  mdNote: HTMLElement;
   /** 对话框内错误行（哈希不一致等，留场提示）。 */
   errorLine: HTMLElement;
   btnConfirm: HTMLButtonElement;
@@ -150,9 +170,9 @@ export function setupWordImport(
   },
 ): { run(): void } {
   const services: WordImportServices = {
-    selectFile: () => selectDocxFile(),
-    preview: importDocxPreview,
-    commit: importDocxCommit,
+    selectFile: () => selectDocumentFile(),
+    preview: importDocumentPreview,
+    commit: importDocumentCommit,
     ...options.services,
   };
 
@@ -245,6 +265,14 @@ export function setupWordImport(
     try {
       const filePath = await services.selectFile();
       if (filePath === null) return; // 取消选择＝零副作用
+      // md 文件的软换行接合说明（design D3：规则在预检告知；.docx 不出现）。
+      if (isMarkdownFile(filePath)) {
+        dom.mdNote.textContent = MARKDOWN_LINE_BREAK_NOTE;
+        dom.mdNote.classList.remove("hidden");
+      } else {
+        dom.mdNote.textContent = "";
+        dom.mdNote.classList.add("hidden");
+      }
       let preview = await services.preview(state.projectPath, filePath);
       hideError();
       for (;;) {

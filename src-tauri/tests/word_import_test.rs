@@ -1,7 +1,7 @@
 //! add-word-import 任务 5.3 / 5.4：补充样本测试与「导出→导入」往返差异测试。
 //!
 //! - 5.3：用 docx-rs 写侧 API 在测试内合成含图片 / 脚注 / 批注 / 表格的
-//!   `.docx`，走 `import_docx_preview` 断言损耗计数如实、正文文字逐字保留。
+//!   `.docx`，走 `import_document_preview` 断言损耗计数如实、正文文字逐字保留。
 //! - 5.4：构造富文档（段落、多级标题、无序/有序列表、加粗/斜体/颜色/高亮/
 //!   链接）→ 既有 `export_project_to_word` 导出 → `import_docx_*` 重新导入，
 //!   断言可见文字逐字保留、差异恰好落在既有导出侧降级的可枚举清单内
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use docx_rs::{Comment, Docx, Footnote, Paragraph, Pic, Run, Table, TableCell, TableRow};
 use next_story_lib::project::{
-    self, export_project_to_word, import_docx_commit, import_docx_preview, validate_notebook_document,
+    self, export_project_to_word, import_document_commit, import_document_preview, validate_notebook_document,
     CreateProjectParams, ExportScope, ImportPreview, ProjectPaths,
 };
 use serde_json::Value;
@@ -63,7 +63,7 @@ fn loss_count(preview: &ImportPreview, kind: &str) -> usize {
 
 /// 预览 + 断言无拆分建议（这些夹具都不含序列标记）。
 fn preview_of(root: &Path, file: &Path) -> ImportPreview {
-    let preview = import_docx_preview(root, file).expect("预览必须成功");
+    let preview = import_document_preview(root, file).expect("预览必须成功");
     assert!(
         preview.split_suggestion.is_none(),
         "夹具不含序列标记，不应产生拆分建议：{:?}",
@@ -235,7 +235,7 @@ fn mixed_document_counts_each_loss_kind_independently() {
     );
 
     // 提交后逐块核对文字与顺序。
-    let commit = import_docx_commit(&root, &file, None, false, &preview.content_hash)
+    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
         .expect("混合样本提交");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
     let texts: Vec<String> = blocks.iter().map(block_text).collect();
@@ -418,7 +418,7 @@ fn export_import_roundtrip_diffs_are_enumerable() {
         "往返产物的损耗必须为空：{:?}",
         preview.losses
     );
-    let commit = import_docx_commit(&root, &target, None, false, &preview.content_hash)
+    let commit = import_document_commit(&root, &target, None, false, &preview.content_hash)
         .expect("往返提交必须成功");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
 

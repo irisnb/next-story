@@ -1,160 +1,49 @@
-//! Word 导入（add-word-import 任务组 2/3）：`.docx` → canonical Tiptap JSON v2。
+//! Word 导入分支（add-word-import 建立并归档；add-markdown-import 泛化为
+//! 文档导入的 `.docx` 分支）：`.docx` → canonical Tiptap JSON v2。
 //!
-//! 分层与边界：
-//! - **文件识别与防护**（design D5）：按扩展名 `.docx` + ZIP 结构（存在
-//!   `[Content_Types].xml`）判断，不信任系统 MIME；输入字节、单条目解压量、
-//!   解压总量三重上限（防压缩炸弹，参照 xerj 前例），超限中文报错、不崩溃。
-//! - **解析**：docx-rs 0.4.22 读侧 API（路线 A，spike 已实证对真实 WPS 文件
-//!   兼容）。docx-rs 内部自行解压、无法注入逐条目限额，因此解压上限在调用
-//!   `read_docx` 之前用 zip crate 流式预扫描执行（真实读出量而非声明量）。
-//! - **映射**（design D3）：段落 / Heading 样式→标题 / 有效可见编号→列表
-//!   （`numId=0` 墓碑与不可见定义一律普通段落）/ 表格逐格拍平 / 空段落保留 /
-//!   run 级 bold·italic·underline·strike·color·sz·rFonts·highlight / 超链接 /
-//!   对齐缩进行距段距 / 修订取最终态（留 ins 去 del）/ 缺 Fallback 的
-//!   AlternateContent 与脚注引用在 document.xml 上按本地名扫描计数
-//!   （docx-rs 读侧对两者分别缺少解析与完全不解析）/ `wpsCustomData` 等私货
-//!   不解析。
-//! - **落盘**（design D1）：两步无状态命令——preview 解析返回预览，commit
-//!   重新解析并校验内容哈希后经映射式事务一次性提交（失败无残留）。
-//! - **合宪性**（design D7）：导入文字 100% 逐字来自用户选定文件，映射只搬
-//!   运格式不改字符；只创建新文档，不修改任何既有文档。
+//! 入口与共享管线（契约结构、损耗记账、拆分建议、事务落盘、命名与哈希）
+//! 见 [`super::document_import`]；本模块只负责 docx 特有的读取防护与映射：
+//! - **读取防护**：ZIP 结构判定（存在 `[Content_Types].xml`，不信任系统
+//!   MIME）；单条目解压量与解压总量上限按**真实读出量**在调用 read_docx 前
+//!   用 zip crate 流式预扫描执行（防压缩炸弹，参照 xerj 前例）。
+//! - **解析**：docx-rs 0.4.22 读侧 API（spike 已实证对真实 WPS 文件兼容）。
+//! - **映射**（add-word-import design D3）：段落 / Heading 样式→标题 /
+//!   有效可见编号→列表（`numId=0` 墓碑与不可见定义一律普通段落）/ 表格逐格
+//!   拍平 / 空段落保留 / run 级 bold·italic·underline·strike·color·sz·
+//!   rFonts·highlight / 超链接 / 对齐缩进行距段距 / 修订取最终态（留 ins 去
+//!   del）/ 缺 Fallback 的 AlternateContent 与脚注引用在 document.xml 上按
+//!   本地名扫描计数（docx-rs 读侧对两者分别缺少解析与完全不解析）/
+//!   `wpsCustomData` 等私货不解析。
 //!
 //! 值约定（与前端编辑器 CSS 值一致）：fontSize/spacing 用 pt（如 `12pt`），
 //! 行距 auto 规则为无单位倍数（如 `1.5`），缩进优先用字符单位 em
 //! （`firstLineChars`/`startChars` 的 1/100 字符），无字符单位时退回 pt。
 
-use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::collections::HashMap;
 use std::io::{Cursor, Read};
-use std::path::Path;
 
 use docx_rs::{
     read_docx_with_options, Docx, DocumentChild, HyperlinkData, Paragraph, ParagraphChild,
     ParagraphStyle, ReadDocxOptions, Run, RunChild, RunProperty, SpecialIndentType, StructuredDataTag,
     Table, TableCellContent, TableChild,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 
-use super::operations::{
-    read_bounded_string, recover_interrupted_save, transactional_write_mapped, ManifestPurpose,
-    StagedAction, StagedFile, MAX_METADATA_BYTES, MAX_NOTEBOOK_BYTES,
+use super::document_import::{
+    merge_inline_runs, parse_marker_family, InlineRun, LossCounter, ParsedDocument,
 };
-use super::{ContentTree, NodeKind, ProjectError, ProjectMetadata, ProjectPaths};
+use super::ProjectError;
 
-/// 输入文件整体字节上限（design D5.3：超大文件拒绝）。
-pub const MAX_IMPORT_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 /// 单个 ZIP 条目解压后字节上限（防压缩炸弹；正常剧本 document.xml 为个位数 MB）。
 const MAX_IMPORT_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
 /// 全部条目解压总量上限（docx-rs 会把 media 一并读入内存，总量须有界）。
 const MAX_IMPORT_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 
-/// 序列标记（拆分建议）识别参数（design D4：保守规则）。
-const MARKER_LENGTH_RANGE: std::ops::RangeInclusive<usize> = 3..=14;
-const MARKER_CN_NUMERALS: &str = "一二三四五六七八九十百零两";
-const MARKER_CN_UNITS: &str = "集章回部卷";
-const MARKER_MIN_REPEAT: usize = 3;
-
-// ========== 对外契约结构（前后端共同依据，字段名与 design.md 逐字一致） ==========
-
-/// 单项损耗告知：kind 见 design.md 契约（另补充 `numbering_degraded`，见模块文档）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportLoss {
-    pub kind: String,
-    pub count: usize,
-    pub note: String,
-}
-
-/// 拆分建议：识别到的规整序列标记（是否拆分由用户拍板，默认不拆）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SplitSuggestion {
-    pub marker_sample: String,
-    pub count: usize,
-    pub doc_names: Vec<String>,
-}
-
-/// 预检结果。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportPreview {
-    pub char_count: usize,
-    pub paragraph_count: usize,
-    pub default_doc_name: String,
-    pub losses: Vec<ImportLoss>,
-    pub split_suggestion: Option<SplitSuggestion>,
-    pub content_hash: String,
-    pub generator: Option<String>,
-}
-
-/// 提交结果。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportCommitResult {
-    pub created_doc_ids: Vec<String>,
-    pub created_folder_id: Option<String>,
-}
-
-// ========== 损耗计数 ==========
-
-#[derive(Default)]
-struct LossCounter {
-    tables: usize,
-    images: usize,
-    footnotes: usize,
-    comments: usize,
-    revisions: usize,
-    numbering_degraded: usize,
-}
-
-impl LossCounter {
-    fn into_losses(self) -> Vec<ImportLoss> {
-        let mut out = Vec::new();
-        let mut push = |kind: &str, count: usize, note: String| {
-            if count > 0 {
-                out.push(ImportLoss {
-                    kind: kind.to_string(),
-                    count,
-                    note,
-                });
-            }
-        };
-        push(
-            "table_flattened",
-            self.tables,
-            format!("{} 个表格按「每格一段」拍平：文字保留，表格结构不保留", self.tables),
-        );
-        push(
-            "image_dropped",
-            self.images,
-            format!("{} 处图片或图形不导入", self.images),
-        );
-        push(
-            "footnote_dropped",
-            self.footnotes,
-            format!("{} 处脚注不导入", self.footnotes),
-        );
-        push(
-            "comment_dropped",
-            self.comments,
-            format!("{} 处批注不导入", self.comments),
-        );
-        push(
-            "revision_finalized",
-            self.revisions,
-            format!("{} 处修订标记按最终状态导入（保留新增、丢弃删除）", self.revisions),
-        );
-        push(
-            "numbering_degraded",
-            self.numbering_degraded,
-            format!("{} 个段落的编号定义无法映射为列表，按普通段落导入", self.numbering_degraded),
-        );
-        out
-    }
-}
-
 // ========== 编号定义索引 ==========
 
 /// 单个编号层级的可见性与形态。`visible=false` 表示编号不可见（numFmt=none、
-/// lvlText 为空或定义缺失），按普通段落处理（design D3 编号可见性规则）。
+/// lvlText 为空或定义缺失），按普通段落处理（编号可见性规则）。
 #[derive(Debug, Clone)]
 struct LevelInfo {
     visible: bool,
@@ -163,7 +52,7 @@ struct LevelInfo {
 }
 
 /// numId → 各层级定义（按 ilvl 下标）。仅解析 num/abstractNum 两级引用；
-/// lvlOverride 与样式链编号（numStyleLink）v1 不解析，解析不到按降级告知。
+/// lvlOverride 与样式链编号（numStyleLink）不解析，解析不到按降级告知。
 #[derive(Default)]
 struct NumberingIndex {
     map: HashMap<usize, Vec<Option<LevelInfo>>>,
@@ -237,27 +126,14 @@ impl ParaAccum {
     }
 }
 
-struct InlineRun {
-    text: String,
-    marks: Vec<Value>,
-}
-
 /// 转换完成的一个块级段落：完整块节点 + 列表归组信息 + 序列标记识别结果。
 #[derive(Clone)]
 struct ParaOut {
     node: Value,
     /// (numId, ordered, start)：参与列表归组的段落携带。
     list: Option<(usize, bool, u64)>,
-    /// (family_key, trimmed text)：仅顶层段落且全加粗时识别。
+    /// (family_key, trimmed text)：仅顶层、非列表、全加粗段落识别。
     marker: Option<(String, String)>,
-}
-
-/// 一次解析的全部产物。
-struct ParsedDocx {
-    paras: Vec<ParaOut>,
-    losses: LossCounter,
-    char_count: usize,
-    paragraph_count: usize,
 }
 
 // ========== 转换器 ==========
@@ -323,8 +199,8 @@ impl Converter {
         }
     }
 
-    /// 表格拍平（design D3）：逐格逐段输出普通段落；嵌套表格递归拍平；
-    /// 单元格内段落不转列表（拍平语义），有效编号按降级告知。
+    /// 表格拍平：逐格逐段输出普通段落；嵌套表格递归拍平；单元格内段落不转
+    /// 列表（拍平语义），有效编号按降级告知。
     fn flatten_table(&mut self, table: &Table, out: &mut Vec<ParaOut>) {
         self.losses.tables += 1;
         for row in &table.rows {
@@ -525,44 +401,25 @@ impl Converter {
         top_level: bool,
         list: Option<(usize, bool, u64)>,
     ) -> ParaOut {
-        // 合并相邻同 marks 文本（canonical 要求），统计可见字符与全加粗判定。
-        let mut merged: Vec<(String, Vec<Value>)> = Vec::new();
-        let mut text_total = String::new();
+        let (content, text_total) = merge_inline_runs(acc.inline);
+        self.char_count += text_total.chars().count();
         let mut has_text = false;
         let mut all_bold = true;
-        for run in acc.inline {
-            if run.text.is_empty() {
-                continue;
-            }
-            self.char_count += run.text.chars().count();
-            text_total.push_str(&run.text);
-            if !run.text.trim().is_empty() {
+        for value in &content {
+            if !value["text"]
+                .as_str()
+                .is_some_and(|text| text.trim().is_empty())
+            {
                 has_text = true;
-                if !run.marks.iter().any(|m| m["type"] == "bold") {
+                let marks = value.get("marks").and_then(Value::as_array);
+                let bold = marks.is_some_and(|marks| {
+                    marks.iter().any(|mark| mark["type"] == "bold")
+                });
+                if !bold {
                     all_bold = false;
                 }
             }
-            if let Some(last) = merged.last_mut() {
-                if last.1 == run.marks {
-                    last.0.push_str(&run.text);
-                    continue;
-                }
-            }
-            merged.push((run.text, run.marks));
         }
-
-        let content: Vec<Value> = merged
-            .into_iter()
-            .map(|(text, marks)| {
-                let mut obj = Map::new();
-                obj.insert("type".to_string(), json!("text"));
-                obj.insert("text".to_string(), json!(text));
-                if !marks.is_empty() {
-                    obj.insert("marks".to_string(), Value::Array(marks));
-                }
-                Value::Object(obj)
-            })
-            .collect();
 
         let block_type = if acc.heading.is_some() {
             "heading"
@@ -582,7 +439,8 @@ impl Converter {
             node.insert("content".to_string(), Value::Array(content));
         }
 
-        let marker = if top_level && has_text && all_bold {
+        // 序列标记：仅顶层、非列表、全加粗段落（「格式一致」启发式）。
+        let marker = if top_level && list.is_none() && has_text && all_bold {
             parse_marker_family(&text_total).map(|key| (key, text_total.trim().to_string()))
         } else {
             None
@@ -596,7 +454,7 @@ impl Converter {
     }
 }
 
-// ========== run 级 marks（design D3 格式标记全保留） ==========
+// ========== run 级 marks（格式标记全保留） ==========
 
 /// run 级格式 → canonical marks（按 rank 排序：bold·italic·underline·strike·
 /// textStyle·highlight·link）。docx-rs 多个属性结构字段为私有但实现 Serialize，
@@ -844,17 +702,24 @@ fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
     attrs
 }
 
-// ========== 列表归组与文档组装 ==========
+// ========== 列表归组与解析入口 ==========
 
 /// 相邻同 numId 的编号段落归组为一个列表；任何非列表块打断归组。
-fn group_blocks(paras: Vec<ParaOut>) -> Vec<Value> {
+/// 同时产出顶层序列标记的（块索引, 族键, 文本）——标记段落必为独立块。
+fn group_blocks_with_markers(
+    paras: Vec<ParaOut>,
+) -> (Vec<Value>, Vec<(usize, String, String)>) {
     let mut out: Vec<Value> = Vec::new();
+    let mut markers: Vec<(usize, String, String)> = Vec::new();
     let mut items: Vec<Value> = Vec::new();
     let mut current: Option<(usize, bool, u64)> = None;
     for para in paras {
         match (current, para.list) {
             (_, None) => {
                 flush_list(&mut out, &mut items, &mut current);
+                if let Some((key, text)) = para.marker {
+                    markers.push((out.len(), key, text));
+                }
                 out.push(para.node);
             }
             (None, Some(list)) => {
@@ -872,7 +737,7 @@ fn group_blocks(paras: Vec<ParaOut>) -> Vec<Value> {
         }
     }
     flush_list(&mut out, &mut items, &mut current);
-    out
+    (out, markers)
 }
 
 fn flush_list(out: &mut Vec<Value>, items: &mut Vec<Value>, current: &mut Option<(usize, bool, u64)>) {
@@ -891,188 +756,9 @@ fn flush_list(out: &mut Vec<Value>, items: &mut Vec<Value>, current: &mut Option
     out.push(list);
 }
 
-fn doc_value_from_blocks(blocks: Vec<Value>) -> Value {
-    // grammar 要求 document.content 非空：空文档兜底一个空段落。
-    let content = if blocks.is_empty() {
-        vec![json!({ "type": "paragraph" })]
-    } else {
-        blocks
-    };
-    json!({
-        "format": super::NOTEBOOK_FORMAT,
-        "version": super::NOTEBOOK_VERSION,
-        "document": { "type": "doc", "content": content }
-    })
-}
+// ========== ZIP 预扫描与解析入口 ==========
 
-fn build_single_doc(paras: &[ParaOut]) -> Value {
-    doc_value_from_blocks(group_blocks(paras.to_vec()))
-}
-
-/// 按标记边界拆分：标记段落是其后文档的首段；首个标记之前的前言并入第 1 个
-/// 文档（design「按 N 个标记拆为 N 个文档」，文字零丢弃）。
-fn build_split_docs(paras: &[ParaOut], family: &str) -> Vec<(String, Value)> {
-    let markers: Vec<(usize, &str)> = paras
-        .iter()
-        .enumerate()
-        .filter_map(|(index, para)| {
-            para.marker
-                .as_ref()
-                .and_then(|(key, text)| (key == family).then_some((index, text.as_str())))
-        })
-        .collect();
-    let mut docs = Vec::new();
-    for (position, (marker_index, name)) in markers.iter().enumerate() {
-        let start = if position == 0 { 0 } else { *marker_index };
-        let end = markers
-            .get(position + 1)
-            .map(|(next, _)| *next)
-            .unwrap_or(paras.len());
-        let segment: Vec<ParaOut> = paras[start..end].to_vec();
-        docs.push((name.to_string(), doc_value_from_blocks(group_blocks(segment))));
-    }
-    docs
-}
-
-// ========== 序列标记识别（design D4：保守规则，只建议不执行） ==========
-
-/// 独立成段、整段仅为短序列文本（第X集 / 第X章 / Chapter N 风格）。
-fn parse_marker_family(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    let chars: Vec<char> = trimmed.chars().collect();
-    let len = chars.len();
-    if !MARKER_LENGTH_RANGE.contains(&len) {
-        return None;
-    }
-    if chars[0] == '第' {
-        let unit = chars[len - 1];
-        if MARKER_CN_UNITS.contains(unit) {
-            let inner: String = chars[1..len - 1].iter().collect();
-            let numeric = !inner.is_empty()
-                && inner
-                    .chars()
-                    .all(|c| c.is_ascii_digit() || MARKER_CN_NUMERALS.contains(c));
-            if numeric {
-                return Some(format!("cn:{unit}"));
-            }
-        }
-    }
-    let lower = trimmed.to_lowercase();
-    if let Some(rest) = lower.strip_prefix("chapter") {
-        let rest = rest.trim();
-        if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
-            return Some("en:chapter".to_string());
-        }
-    }
-    None
-}
-
-fn family_sample(key: &str) -> String {
-    match key.strip_prefix("cn:") {
-        Some(unit) => format!("第X{unit}"),
-        None => "Chapter N".to_string(),
-    }
-}
-
-struct FamilyAgg {
-    key: String,
-    indices: Vec<usize>,
-    texts: Vec<String>,
-    sample: String,
-}
-
-/// 识别拆分建议：同族标记重复 ≥3 次且全部满足格式一致（v1 规则：全加粗，
-/// 已在标记识别时过滤）。多族同时达标时无法唯一判定，保守不建议。
-fn detect_split(paras: &[ParaOut]) -> Option<(String, SplitSuggestion)> {
-    let mut families: Vec<FamilyAgg> = Vec::new();
-    for (index, para) in paras.iter().enumerate() {
-        if let Some((key, text)) = &para.marker {
-            match families.iter_mut().find(|f| &f.key == key) {
-                Some(agg) => {
-                    agg.indices.push(index);
-                    agg.texts.push(text.clone());
-                }
-                None => families.push(FamilyAgg {
-                    key: key.clone(),
-                    indices: vec![index],
-                    texts: vec![text.clone()],
-                    sample: family_sample(key),
-                }),
-            }
-        }
-    }
-    let qualifying: Vec<&FamilyAgg> = families
-        .iter()
-        .filter(|f| f.indices.len() >= MARKER_MIN_REPEAT)
-        .collect();
-    if qualifying.len() != 1 {
-        return None;
-    }
-    let family = qualifying[0];
-    let mut used: HashSet<String> = HashSet::new();
-    let doc_names = family
-        .texts
-        .iter()
-        .map(|text| unique_among(&mut used, sanitize_node_name(text, "导入文档")))
-        .collect();
-    Some((
-        family.key.clone(),
-        SplitSuggestion {
-            marker_sample: family.sample.clone(),
-            count: family.indices.len(),
-            doc_names,
-        },
-    ))
-}
-
-fn unique_among(used: &mut HashSet<String>, base: String) -> String {
-    if used.insert(base.clone()) {
-        return base;
-    }
-    let mut index = 2;
-    loop {
-        let candidate = format!("{base} {index}");
-        if used.insert(candidate.clone()) {
-            return candidate;
-        }
-        index += 1;
-    }
-}
-
-// ========== 文件识别与安全预扫描（design D5） ==========
-
-fn validate_docx_extension(file_path: &Path) -> Result<(), ProjectError> {
-    let is_docx = file_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("docx"));
-    if !is_docx {
-        return Err(ProjectError::ImportRejected(
-            "只支持 .docx 文件；.doc 老格式请先在 Word 或 WPS 中另存为 .docx".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-/// 有界读取输入文件（take 上限 +1，杜绝先查长度再读的竞态）。
-fn read_docx_bytes(file_path: &Path) -> Result<Vec<u8>, ProjectError> {
-    let file =
-        fs::File::open(file_path).map_err(|_| ProjectError::ImportRejected("无法读取所选文件".to_string()))?;
-    let mut limited = file.take(MAX_IMPORT_INPUT_BYTES + 1);
-    let mut bytes = Vec::new();
-    limited
-        .read_to_end(&mut bytes)
-        .map_err(|_| ProjectError::ImportRejected("无法读取所选文件".to_string()))?;
-    if bytes.len() as u64 > MAX_IMPORT_INPUT_BYTES {
-        return Err(ProjectError::ImportRejected(format!(
-            "文件过大：导入上限为 {} MB",
-            MAX_IMPORT_INPUT_BYTES / (1024 * 1024)
-        )));
-    }
-    Ok(bytes)
-}
-
-/// ZIP 预扫描产物：document.xml（兼容块计数用）与 docProps（生成器印记）。
+/// ZIP 预扫描产物：document.xml（兼容块/脚注计数用）与 docProps（生成器印记）。
 #[derive(Debug)]
 struct ZipScan {
     document_xml: Option<String>,
@@ -1080,16 +766,53 @@ struct ZipScan {
     custom_xml: Option<String>,
 }
 
-/// 解压防护 + ZIP 结构判定 + 顺带提取 document.xml / docProps。
+/// 解压防护 + ZIP 结构判定 + 顺带提取 document.xml / docProps，然后解析映射
+/// 为共享管线的 [`ParsedDocument`]。
 ///
 /// 上限按**真实解压量**执行：逐条目流式读出并在超限时立即中止，保证后续
 /// docx-rs 的解压读取不会超出已验证的安全范围（防声明值造假的压缩炸弹）。
+pub(crate) fn parse_docx(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
+    let scan = prescan_zip(bytes)?;
+    let generator = extract_generator(&scan);
+    let block_skipped = scan
+        .document_xml
+        .as_deref()
+        .map(count_missing_fallback_blocks)
+        .unwrap_or(0);
+    // 脚注引用计数走 document.xml 扫描通道（docx-rs 读侧不解析
+    // w:footnoteReference，见 count_footnote_references 文档）。
+    let footnote_refs = scan
+        .document_xml
+        .as_deref()
+        .map(count_footnote_references)
+        .unwrap_or(0);
+
+    let docx = read_docx_with_options(bytes, ReadDocxOptions::default().with_image_previews(false))
+        .map_err(|e| {
+            ProjectError::ImportRejected(format!("文件解析失败：不是有效的 Word 文档（{e:?}）"))
+        })?;
+    let mut converter = Converter::new(&docx);
+    let paras = converter.walk_document(&docx);
+    let (blocks, markers) = group_blocks_with_markers(paras);
+    let mut losses = converter.losses;
+    losses.footnotes += footnote_refs;
+    losses.block_skipped = block_skipped;
+    Ok(ParsedDocument {
+        blocks,
+        markers,
+        losses,
+        char_count: converter.char_count,
+        paragraph_count: converter.paragraph_count,
+        generator,
+    })
+}
+
 fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
     let invalid = |msg: String| ProjectError::ImportRejected(msg);
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| invalid("不是有效的 .docx 文件（ZIP 结构损坏）".to_string()))?;
 
-    // D5.1：按 ZIP 结构判断（存在 [Content_Types].xml），不信任系统 MIME。
+    // 按 ZIP 结构判断（存在 [Content_Types].xml），不信任系统 MIME。
     if archive.by_name("[Content_Types].xml").is_err() {
         return Err(invalid(
             "不是有效的 .docx 文件：缺少 [Content_Types].xml（请确认文件由 Word 或 WPS 保存）".to_string(),
@@ -1157,23 +880,7 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
     Ok(scan)
 }
 
-/// 解析并映射全文。
-fn parse_and_map(bytes: &[u8]) -> Result<ParsedDocx, ProjectError> {
-    let docx = read_docx_with_options(bytes, ReadDocxOptions::default().with_image_previews(false))
-        .map_err(|e| {
-            ProjectError::ImportRejected(format!("文件解析失败：不是有效的 Word 文档（{e:?}）"))
-        })?;
-    let mut converter = Converter::new(&docx);
-    let paras = converter.walk_document(&docx);
-    Ok(ParsedDocx {
-        paras,
-        losses: converter.losses,
-        char_count: converter.char_count,
-        paragraph_count: converter.paragraph_count,
-    })
-}
-
-// ========== docProps 生成器印记与兼容块计数（D5.2 / D5.5） ==========
+// ========== docProps 生成器印记与兼容块计数 ==========
 
 fn extract_generator(scan: &ZipScan) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
@@ -1273,42 +980,7 @@ fn count_footnote_references(document_xml: &str) -> usize {
     count_open_tags_local_name(document_xml, "footnoteReference")
 }
 
-// ========== 命名与工具 ==========
-
-/// 文档 / 文件夹名净化：替换文件系统非法字符为空格、折叠空白、去尾部点号；
-/// 空名回退 fallback（名称是元数据，净化不违反「文字逐字一致」边界）。
-fn sanitize_node_name(raw: &str, fallback: &str) -> String {
-    let replaced: String = raw
-        .chars()
-        .map(|ch| {
-            if ch.is_control() || "<>:\"/\\|?*".contains(ch) {
-                ' '
-            } else {
-                ch
-            }
-        })
-        .collect();
-    let collapsed = replaced.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut trimmed = collapsed.trim().trim_end_matches('.').to_string();
-    if trimmed.is_empty() {
-        trimmed = fallback.to_string();
-    }
-    trimmed
-}
-
-fn doc_name_from_file(file_path: &Path) -> String {
-    let stem = file_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("导入文档");
-    sanitize_node_name(stem, "导入文档")
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
-}
+// ========== 工具 ==========
 
 fn format_decimal(value: f64) -> String {
     let rounded = (value * 100.0).round() / 100.0;
@@ -1336,275 +1008,25 @@ fn ser_u64(value: &impl Serialize) -> Option<u64> {
     serde_json::to_value(value).ok().and_then(|v| v.as_u64())
 }
 
-// ========== 预检命令（零写入） ==========
-
-/// 解析并返回预览：字数、段落数、默认文档名、损耗清单、拆分建议、内容哈希、
-/// 生成器印记。作品校验走严格只读路径（发现待恢复事务即失败关闭，绝不写入）。
-pub fn import_docx_preview(project_root: &Path, file_path: &Path) -> Result<ImportPreview, ProjectError> {
-    super::strict_read_content_tree(project_root)?;
-    validate_docx_extension(file_path)?;
-    let bytes = read_docx_bytes(file_path)?;
-    let content_hash = sha256_hex(&bytes);
-    let scan = prescan_zip(&bytes)?;
-    let generator = extract_generator(&scan);
-    let block_skipped = scan
-        .document_xml
-        .as_deref()
-        .map(count_missing_fallback_blocks)
-        .unwrap_or(0);
-    // 脚注引用计数走 document.xml 扫描通道（docx-rs 读侧不解析
-    // w:footnoteReference，见 count_footnote_references 文档），合并进损耗
-    // 计数器后再统一生成告知文案。
-    let footnote_refs = scan
-        .document_xml
-        .as_deref()
-        .map(count_footnote_references)
-        .unwrap_or(0);
-    let mut parsed = parse_and_map(&bytes)?;
-    parsed.losses.footnotes += footnote_refs;
-
-    // 映射健全性自检：整文件单文档形态必须通过既有严格语法校验，
-    // 把映射缺陷挡在用户确认之前。
-    let single = build_single_doc(&parsed.paras);
-    super::validate_notebook_document(&single).map_err(|e| {
-        ProjectError::ImportRejected(format!("导入映射内部校验失败：{e}"))
-    })?;
-
-    let mut losses = parsed.losses.into_losses();
-    if block_skipped > 0 {
-        losses.push(ImportLoss {
-            kind: "block_skipped".to_string(),
-            count: block_skipped,
-            note: format!("{block_skipped} 个兼容块（AlternateContent）缺少回退内容，已跳过"),
-        });
-    }
-
-    Ok(ImportPreview {
-        char_count: parsed.char_count,
-        paragraph_count: parsed.paragraph_count,
-        default_doc_name: doc_name_from_file(file_path),
-        losses,
-        split_suggestion: detect_split(&parsed.paras).map(|(_, suggestion)| suggestion),
-        content_hash,
-        generator,
-    })
-}
-
-// ========== 提交命令（重解析 + 哈希比对 + 单事务落盘） ==========
-
-/// 重新解析并落盘：内容哈希与预览不一致即拒绝（前端提示重新预检）；
-/// 全部新文档经一次映射式事务原子提交，任何失败都不留部分完成的结构。
-pub fn import_docx_commit(
-    project_root: &Path,
-    file_path: &Path,
-    parent_id: Option<&str>,
-    split: bool,
-    expected_hash: &str,
-) -> Result<ImportCommitResult, ProjectError> {
-    validate_docx_extension(file_path)?;
-    let bytes = read_docx_bytes(file_path)?;
-    let content_hash = sha256_hex(&bytes);
-    if !content_hash.eq_ignore_ascii_case(expected_hash.trim()) {
-        return Err(ProjectError::ImportHashMismatch);
-    }
-
-    let parsed = parse_and_map(&bytes)?;
-    let default_name = doc_name_from_file(file_path);
-
-    // 组装文档集：默认整文件一个文档；用户选择拆分且存在唯一达标标记族时
-    // 按标记边界拆分（拆分请求但无标记时回退单文档）。
-    let (docs, folder_name): (Vec<(String, Value)>, Option<String>) = if split {
-        match detect_split(&parsed.paras) {
-            Some((family, _)) => (
-                build_split_docs(&parsed.paras, &family),
-                Some(default_name.clone()),
-            ),
-            None => (
-                vec![(default_name.clone(), build_single_doc(&parsed.paras))],
-                None,
-            ),
-        }
-    } else {
-        (
-            vec![(default_name.clone(), build_single_doc(&parsed.paras))],
-            None,
-        )
-    };
-
-    // 落盘前逐份校验：必须通过既有严格语法校验且不超过单文档大小上限。
-    let mut rendered: Vec<(String, String)> = Vec::with_capacity(docs.len());
-    for (name, value) in docs {
-        super::validate_notebook_document(&value)
-            .map_err(|e| ProjectError::ImportRejected(format!("导入映射内部校验失败：{e}")))?;
-        let notebook_json = serde_json::to_string_pretty(&value)
-            .map_err(|e| ProjectError::ImportRejected(format!("导入文档序列化失败：{e}")))?;
-        if notebook_json.len() as u64 > MAX_NOTEBOOK_BYTES {
-            return Err(ProjectError::ImportRejected(format!(
-                "导入后的文档「{name}」超过单文档 {} MB 上限，无法导入；可尝试按标记拆分导入",
-                MAX_NOTEBOOK_BYTES / (1024 * 1024)
-            )));
-        }
-        rendered.push((name, notebook_json));
-    }
-
-    commit_docs_transaction(project_root, rendered, parent_id, folder_name)
-}
-
-/// 单事务落盘：内容树（新增文件夹 + N 篇文档）+ N 份正文 + 元信息（最后，
-/// 完成标记）。AI 可见性沿用 `create_document` 默认值（允许，与既有新建文档
-/// 一致）。事务失败在提交前中止即无可见副作用；提交中途失败由既有恢复机制
-/// 前滚补齐（与其他结构变更同语义）。
-fn commit_docs_transaction(
-    project_root: &Path,
-    docs: Vec<(String, String)>,
-    parent_id: Option<&str>,
-    folder_name: Option<String>,
-) -> Result<ImportCommitResult, ProjectError> {
-    let paths = ProjectPaths::new(project_root.to_path_buf());
-    recover_interrupted_save(&paths)?;
-
-    let mut tree: ContentTree = super::operations::read_content_tree(&paths)?;
-    if let Some(parent) = parent_id {
-        let node = tree.nodes.get(parent).ok_or_else(|| {
-            ProjectError::ImportRejected("导入目标文件夹不存在，请刷新后重试".to_string())
-        })?;
-        if node.kind != NodeKind::Folder {
-            return Err(ProjectError::ImportRejected(
-                "导入目标必须是文件夹".to_string(),
-            ));
-        }
-    }
-
-    // 拆分导入：以默认文档名新建文件夹（名称净化 + 同级唯一化）。
-    let mut created_folder_id: Option<String> = None;
-    let docs_parent: Option<String> = match folder_name {
-        Some(name) => {
-            let folder_id = tree
-                .create_folder(parent_id)
-                .map_err(|e| ProjectError::ImportRejected(format!("创建导入文件夹失败：{e}")))?;
-            let unique = unique_sibling_name(&tree, parent_id, &sanitize_node_name(&name, "导入文件夹"), &folder_id);
-            tree.rename(&folder_id, &unique)
-                .map_err(|e| ProjectError::ImportRejected(format!("命名导入文件夹失败：{e}")))?;
-            created_folder_id = Some(folder_id.clone());
-            Some(folder_id)
-        }
-        None => parent_id.map(str::to_string),
-    };
-
-    // 创建 N 篇文档（create_document 自动分配唯一默认名，重命名为导入名）。
-    let mut created_doc_ids: Vec<String> = Vec::with_capacity(docs.len());
-    for (raw_name, _) in &docs {
-        let doc_id = tree
-            .create_document(docs_parent.as_deref())
-            .map_err(|e| ProjectError::ImportRejected(format!("创建导入文档失败：{e}")))?;
-        let unique = unique_sibling_name(
-            &tree,
-            docs_parent.as_deref(),
-            &sanitize_node_name(raw_name, "导入文档"),
-            &doc_id,
-        );
-        tree.rename(&doc_id, &unique)
-            .map_err(|e| ProjectError::ImportRejected(format!("命名导入文档失败：{e}")))?;
-        created_doc_ids.push(doc_id);
-    }
-
-    tree.validate()
-        .map_err(|e| ProjectError::ImportRejected(format!("导入结构校验失败：{e}")))?;
-
-    // 元信息只更新 updated_at；暂存顺序：内容树 → 各正文 → 元信息（最后）。
-    let metadata_json = read_bounded_string(&paths.metadata_file, MAX_METADATA_BYTES)
-        .map_err(|e| ProjectError::ImportRejected(format!("读取作品元信息失败：{e}")))?;
-    let mut metadata: ProjectMetadata = serde_json::from_str(&metadata_json)
-        .map_err(|e| ProjectError::ImportRejected(format!("作品元信息无法解析：{e}")))?;
-    metadata.updated_at = chrono::Utc::now().to_rfc3339();
-    let staged_metadata_json = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| ProjectError::ImportRejected(format!("序列化作品元信息失败：{e}")))?;
-    let tree_json = serde_json::to_string_pretty(&tree)
-        .map_err(|e| ProjectError::ImportRejected(format!("序列化内容树失败：{e}")))?;
-
-    let mut staged_writes: Vec<(StagedFile, String)> = vec![(
-        StagedFile {
-            staged: "content-tree.json".to_string(),
-            target: "next-story-system/content-tree.json".to_string(),
-            action: StagedAction::Replace,
-        },
-        tree_json,
-    )];
-    for (doc_id, (_, notebook_json)) in created_doc_ids.iter().zip(&docs) {
-        staged_writes.push((
-            StagedFile {
-                staged: format!("doc-{doc_id}.json"),
-                target: format!("作品文本/documents/{doc_id}.json"),
-                action: StagedAction::Replace,
-            },
-            notebook_json.clone(),
-        ));
-    }
-    staged_writes.push((
-        StagedFile {
-            staged: "project.json".to_string(),
-            target: "next-story-system/project.json".to_string(),
-            action: StagedAction::Replace,
-        },
-        staged_metadata_json,
-    ));
-
-    transactional_write_mapped(
-        &paths,
-        &staged_writes,
-        &metadata.updated_at,
-        ManifestPurpose::StructureChange,
-    )?;
-
-    Ok(ImportCommitResult {
-        created_doc_ids,
-        created_folder_id,
-    })
-}
-
-fn sibling_names(tree: &ContentTree, parent: Option<&str>, exclude: &str) -> Vec<String> {
-    let ids: Vec<&String> = match parent {
-        Some(parent_id) => tree
-            .nodes
-            .get(parent_id)
-            .map(|node| node.children.iter().collect())
-            .unwrap_or_default(),
-        None => tree.root_children.iter().collect(),
-    };
-    ids.into_iter()
-        .filter(|id| id.as_str() != exclude)
-        .filter_map(|id| tree.nodes.get(id).map(|node| node.name.clone()))
-        .collect()
-}
-
-/// 同级唯一命名：与既有节点（及本次已创建节点）冲突时追加「 2」「 3」后缀，
-/// 与内容树既有自动命名风格一致。
-fn unique_sibling_name(tree: &ContentTree, parent: Option<&str>, base: &str, exclude: &str) -> String {
-    let taken: HashSet<String> = sibling_names(tree, parent, exclude).into_iter().collect();
-    if !taken.contains(base) {
-        return base.to_string();
-    }
-    let mut index = 2;
-    loop {
-        let candidate = format!("{base} {index}");
-        if !taken.contains(&candidate) {
-            return candidate;
-        }
-        index += 1;
-    }
-}
-
 // ========== 测试 ==========
 
 #[cfg(test)]
 mod tests {
+    use super::super::document_import::{
+        detect_split_from_markers, doc_value_from_blocks, read_file_bounded, sha256_hex,
+        split_docs_from_blocks, ImportFormat, MAX_DOCX_INPUT_BYTES,
+    };
     use super::*;
     use docx_rs::{
         AbstractNumbering, AlignmentType, Delete, Docx, IndentLevel, Insert, Level, LevelJc,
         LevelText, LineSpacing, LineSpacingType, NumberFormat, NumberingId, Paragraph, Run,
         RunFonts, Start, Style, StyleType, Table, TableCell, TableRow,
     };
+    use std::fs;
     use std::io::Write as _;
+    use std::path::Path;
+
+    use super::super::{CreateProjectParams, ProjectPaths};
 
     // ----- 夹具工具 -----
 
@@ -1614,13 +1036,13 @@ mod tests {
         cursor.into_inner()
     }
 
-    fn parse(bytes: &[u8]) -> ParsedDocx {
+    fn parse(bytes: &[u8]) -> ParsedDocument {
         prescan_zip(bytes).expect("prescan");
-        parse_and_map(bytes).expect("parse and map")
+        parse_docx(bytes).expect("parse and map")
     }
 
-    fn blocks_of(parsed: &ParsedDocx) -> Vec<Value> {
-        group_blocks(parsed.paras.clone())
+    fn blocks_of(parsed: &ParsedDocument) -> Vec<Value> {
+        parsed.blocks.clone()
     }
 
     fn para(text: &str) -> Paragraph {
@@ -1675,25 +1097,35 @@ mod tests {
         writer.finish().expect("finish zip").into_inner()
     }
 
+    fn seed_project(name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = super::super::create_new_project(CreateProjectParams {
+            name: name.to_string(),
+            save_location: temp.path().to_string_lossy().to_string(),
+        })
+        .expect("create project");
+        (temp, root)
+    }
+
     // ----- 文件识别与防护 -----
 
     #[test]
     fn rejects_non_docx_extension_and_non_zip_bytes() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let root = super::super::create_new_project(super::super::CreateProjectParams {
-            name: "识别测试".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
+        let (temp, root) = seed_project("识别测试");
 
         let txt = temp.path().join("样本.txt");
         fs::write(&txt, "hello").unwrap();
-        let error = import_docx_preview(&root, &txt).unwrap_err();
-        assert!(error.to_string().contains(".docx"), "报错：{error}");
+        let error =
+            super::super::document_import::import_document_preview(&root, &txt).unwrap_err();
+        assert!(
+            error.to_string().contains(".docx") && error.to_string().contains(".md"),
+            "报错：{error}"
+        );
 
         let fake = temp.path().join("假文档.docx");
         fs::write(&fake, b"not a zip at all").unwrap();
-        let error = import_docx_preview(&root, &fake).unwrap_err();
+        let error =
+            super::super::document_import::import_document_preview(&root, &fake).unwrap_err();
         assert!(
             error.to_string().contains("不是有效的 .docx 文件"),
             "报错：{error}"
@@ -1704,13 +1136,10 @@ mod tests {
     fn oversized_input_rejected_before_parse() {
         let temp = tempfile::TempDir::new().unwrap();
         let big = temp.path().join("超大.docx");
-        let zeros = vec![0u8; MAX_IMPORT_INPUT_BYTES as usize + 1];
+        let zeros = vec![0u8; MAX_DOCX_INPUT_BYTES as usize + 1];
         fs::write(&big, zeros).unwrap();
-        let error = read_docx_bytes(&big).unwrap_err();
-        assert!(
-            error.to_string().contains("文件过大"),
-            "报错：{error}"
-        );
+        let error = read_file_bounded(&big, MAX_DOCX_INPUT_BYTES).unwrap_err();
+        assert!(error.to_string().contains("文件过大"), "报错：{error}");
     }
 
     #[test]
@@ -1986,7 +1415,7 @@ mod tests {
                     .add_run(Run::new().color("00ff00").size(28).add_text("绿色十四磅")),
             );
         let parsed = parse(&pack(docx));
-        let value = build_single_doc(&parsed.paras);
+        let value = doc_value_from_blocks(parsed.blocks.clone());
         super::super::validate_notebook_document(&value)
             .expect("映射产物必须通过既有严格语法校验");
     }
@@ -2028,16 +1457,12 @@ mod tests {
 </w:document>"#;
         let bytes = write_minimal_docx(document_xml);
 
-        let temp = tempfile::TempDir::new().unwrap();
-        let root = super::super::create_new_project(super::super::CreateProjectParams {
-            name: "兼容块测试".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
+        let (temp, root) = seed_project("兼容块测试");
         let file = temp.path().join("兼容样本.docx");
         fs::write(&file, &bytes).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("缺 Fallback 不得崩溃");
+        let preview = super::super::document_import::import_document_preview(&root, &file)
+            .expect("缺 Fallback 不得崩溃");
         let skipped = preview
             .losses
             .iter()
@@ -2046,7 +1471,7 @@ mod tests {
         assert_eq!(skipped.count, 1);
     }
 
-    // ----- 序列标记识别 -----
+    // ----- 序列标记识别（docx：全加粗段落启发式） -----
 
     #[test]
     fn episode_markers_suggest_split() {
@@ -2059,7 +1484,8 @@ mod tests {
             .add_paragraph(bold_para("第3集"))
             .add_paragraph(para("第三集正文"));
         let parsed = parse(&pack(docx));
-        let (family, suggestion) = detect_split(&parsed.paras).expect("应识别集数标记");
+        let (family, suggestion) =
+            detect_split_from_markers(&parsed.markers).expect("应识别集数标记");
 
         assert_eq!(family, "cn:集");
         assert_eq!(suggestion.marker_sample, "第X集");
@@ -2075,14 +1501,14 @@ mod tests {
             .add_paragraph(para("第2集"))
             .add_paragraph(para("第3集"));
         let parsed = parse(&pack(docx));
-        assert!(detect_split(&parsed.paras).is_none());
+        assert!(detect_split_from_markers(&parsed.markers).is_none());
 
         // 加粗但重复不足 3 次：不建议。
         let sparse = Docx::new()
             .add_paragraph(bold_para("第1集"))
             .add_paragraph(bold_para("第2集"));
         let parsed = parse(&pack(sparse));
-        assert!(detect_split(&parsed.paras).is_none());
+        assert!(detect_split_from_markers(&parsed.markers).is_none());
     }
 
     #[test]
@@ -2094,24 +1520,41 @@ mod tests {
             .add_paragraph(para("two"))
             .add_paragraph(bold_para("Chapter 3"));
         let parsed = parse(&pack(docx));
-        let (family, suggestion) = detect_split(&parsed.paras).expect("应识别章标记");
+        let (family, suggestion) =
+            detect_split_from_markers(&parsed.markers).expect("应识别章标记");
         assert_eq!(family, "en:chapter");
         assert_eq!(suggestion.marker_sample, "Chapter N");
         assert_eq!(suggestion.count, 3);
     }
 
-    // ----- 预检与提交端到端 -----
-
-    fn seed_project(name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-        let temp = tempfile::TempDir::new().unwrap();
-        let root =
-            super::super::create_new_project(super::super::CreateProjectParams {
-                name: name.to_string(),
-                save_location: temp.path().to_string_lossy().to_string(),
-            })
-            .expect("create project");
-        (temp, root)
+    #[test]
+    fn numbered_marker_paragraphs_not_marker_eligible() {
+        // 列表项段落即使全加粗短序列也不参与标记（避免拆分边界落在列表内部）。
+        let docx = Docx::new()
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().bold().add_text("第1集")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().bold().add_text("第2集")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().bold().add_text("第3集")),
+            );
+        let parsed = parse(&pack(docx));
+        assert!(
+            parsed.markers.is_empty(),
+            "列表项段落不应成为拆分标记：{:?}",
+            parsed.markers
+        );
     }
+
+    // ----- 预检与提交端到端（走共享命令，泛化后按扩展名分发回本分支） -----
 
     fn simple_docx_bytes() -> Vec<u8> {
         pack(Docx::new()
@@ -2122,6 +1565,10 @@ mod tests {
             .add_paragraph(para("第二集正文")))
     }
 
+    fn import_preview(root: &Path, file: &Path) -> super::super::document_import::ImportPreview {
+        super::super::document_import::import_document_preview(root, file).expect("预览")
+    }
+
     #[test]
     fn preview_reports_counts_hash_and_no_suggestion_below_threshold() {
         let (temp, root) = seed_project("预览测试");
@@ -2129,7 +1576,7 @@ mod tests {
         let bytes = simple_docx_bytes();
         fs::write(&file, &bytes).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("预览");
+        let preview = import_preview(&root, &file);
         assert_eq!(preview.default_doc_name, "我的剧本");
         assert_eq!(preview.char_count, "第1集第一集正文第2集第二集正文".chars().count());
         assert_eq!(preview.paragraph_count, 5);
@@ -2156,7 +1603,7 @@ mod tests {
             .add_paragraph(para("三")));
         fs::write(&file, bytes).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("预览");
+        let preview = import_preview(&root, &file);
         let suggestion = preview.split_suggestion.expect("3 个标记应产生建议");
         assert_eq!(suggestion.doc_names, vec!["第1集", "第2集", "第3集"]);
     }
@@ -2167,9 +1614,15 @@ mod tests {
         let file = temp.path().join("我的剧本.docx");
         fs::write(&file, simple_docx_bytes()).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("预览");
-        let result =
-            import_docx_commit(&root, &file, None, false, &preview.content_hash).expect("提交");
+        let preview = import_preview(&root, &file);
+        let result = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            None,
+            false,
+            &preview.content_hash,
+        )
+        .expect("提交");
 
         assert_eq!(result.created_doc_ids.len(), 1);
         assert!(result.created_folder_id.is_none());
@@ -2181,10 +1634,8 @@ mod tests {
         assert!(node.ai_visible, "导入文档 AI 可见性默认与新建文档一致");
         assert!(tree.root_children.contains(doc_id));
 
-        let notebook = fs::read_to_string(
-            ProjectPaths::new(root.clone()).document_file(doc_id),
-        )
-        .unwrap();
+        let notebook =
+            fs::read_to_string(ProjectPaths::new(root.clone()).document_file(doc_id)).unwrap();
         let value: Value = serde_json::from_str(&notebook).unwrap();
         super::super::validate_notebook_document(&value).expect("落盘文档必须通过严格校验");
         let text: Vec<String> = value["document"]["content"]
@@ -2212,7 +1663,14 @@ mod tests {
         fs::write(&file, simple_docx_bytes()).unwrap();
 
         let before = super::super::recover_then_read_content_tree(&root).unwrap();
-        let error = import_docx_commit(&root, &file, None, false, "deadbeef").unwrap_err();
+        let error = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            None,
+            false,
+            "deadbeef",
+        )
+        .unwrap_err();
         assert!(
             error.to_string().starts_with("hash_mismatch:"),
             "错误信息必须带 hash_mismatch: 前缀：{error}"
@@ -2235,10 +1693,16 @@ mod tests {
             .add_paragraph(para("第三集正文")));
         fs::write(&file, bytes).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("预览");
+        let preview = import_preview(&root, &file);
         assert!(preview.split_suggestion.is_some());
-        let result =
-            import_docx_commit(&root, &file, None, true, &preview.content_hash).expect("拆分提交");
+        let result = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            None,
+            true,
+            &preview.content_hash,
+        )
+        .expect("拆分提交");
 
         assert_eq!(result.created_doc_ids.len(), 3);
         let folder_id = result.created_folder_id.expect("应创建文件夹");
@@ -2285,12 +1749,18 @@ mod tests {
             .add_paragraph(para("丙")));
         fs::write(&file, bytes).unwrap();
 
-        let preview = import_docx_preview(&root, &file).expect("预览");
+        let preview = import_preview(&root, &file);
         let suggestion = preview.split_suggestion.expect("建议");
         assert_eq!(suggestion.doc_names, vec!["第1集", "第1集 2", "第2集"]);
 
-        let result =
-            import_docx_commit(&root, &file, None, true, &preview.content_hash).expect("提交");
+        let result = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            None,
+            true,
+            &preview.content_hash,
+        )
+        .expect("提交");
         let tree = super::super::recover_then_read_content_tree(&root).unwrap();
         let names: Vec<&str> = result
             .created_doc_ids
@@ -2307,18 +1777,58 @@ mod tests {
         fs::write(&file, simple_docx_bytes()).unwrap();
 
         let folder = super::super::create_folder(&root, None).expect("建文件夹");
-        let preview = import_docx_preview(&root, &file).expect("预览");
-        let result = import_docx_commit(&root, &file, Some(&folder), false, &preview.content_hash)
-            .expect("提交到文件夹");
+        let preview = import_preview(&root, &file);
+        let result = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            Some(&folder),
+            false,
+            &preview.content_hash,
+        )
+        .expect("提交到文件夹");
         let tree = super::super::recover_then_read_content_tree(&root).unwrap();
         assert!(tree.nodes[&folder].children.contains(&result.created_doc_ids[0]));
 
         // 文档节点不能作为父级。
         let doc_parent = tree.root_children[0].clone();
-        let error =
-            import_docx_commit(&root, &file, Some(&doc_parent), false, &preview.content_hash)
-                .unwrap_err();
+        let error = super::super::document_import::import_document_commit(
+            &root,
+            &file,
+            Some(&doc_parent),
+            false,
+            &preview.content_hash,
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("文件夹"), "报错：{error}");
+    }
+
+    #[test]
+    fn split_docs_from_blocks_matches_legacy_boundaries() {
+        // 拆分边界：标记块是其后文档首块，前言并入第 1 个文档。
+        let parsed = parse(&pack(Docx::new()
+            .add_paragraph(para("前言"))
+            .add_paragraph(bold_para("第1集"))
+            .add_paragraph(para("甲"))
+            .add_paragraph(bold_para("第2集"))
+            .add_paragraph(para("乙"))));
+        let docs = split_docs_from_blocks(&parsed.blocks, &parsed.markers, "cn:集");
+        assert_eq!(docs.len(), 2);
+        let first_texts: Vec<String> = docs[0].1["document"]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| {
+                b.get("content")
+                    .and_then(Value::as_array)
+                    .map(|ns| {
+                        ns.iter()
+                            .map(|n| n["text"].as_str().unwrap_or(""))
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(first_texts, vec!["前言", "第1集", "甲"]);
     }
 
     // ----- 工具函数 -----
@@ -2333,25 +1843,6 @@ mod tests {
         assert_eq!(highlight_color("yellow").as_deref(), Some("#ffff00"));
         assert_eq!(highlight_color("none"), None);
         assert_eq!(highlight_color("FFFF00").as_deref(), Some("#ffff00"));
-    }
-
-    #[test]
-    fn marker_pattern_cases() {
-        assert_eq!(parse_marker_family("第1集").as_deref(), Some("cn:集"));
-        assert_eq!(parse_marker_family(" 第六十一集 ").as_deref(), Some("cn:集"));
-        assert_eq!(parse_marker_family("第X章"), None);
-        assert_eq!(parse_marker_family("chapter 12").as_deref(), Some("en:chapter"));
-        assert_eq!(parse_marker_family("Chapter 1").as_deref(), Some("en:chapter"));
-        assert_eq!(parse_marker_family("第一章的正文内容很长"), None);
-        assert_eq!(parse_marker_family("正"), None);
-    }
-
-    #[test]
-    fn name_sanitization() {
-        assert_eq!(sanitize_node_name("第1集", "回退"), "第1集");
-        assert_eq!(sanitize_node_name("a:b*c?d", "回退"), "a b c d");
-        assert_eq!(sanitize_node_name("  名字. ", "回退"), "名字");
-        assert_eq!(sanitize_node_name("...", "回退"), "回退");
     }
 
     #[test]
@@ -2385,7 +1876,9 @@ mod tests {
         );
     }
 
-    // 引入未直接使用但保证链接的公共项（文档化用意：这些是模块的对外面）。
+    // 共享管线入口可达性（泛化分发后 docx 分支仍被正确路由）。
     #[allow(dead_code)]
-    fn _surface(_loss: ImportLoss, _suggestion: SplitSuggestion) {}
+    fn _dispatch_surface(format: ImportFormat) {
+        let _ = format;
+    }
 }

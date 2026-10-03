@@ -13,11 +13,11 @@
 ## File Responsibilities
 
 - `docs/superpowers/plans/2026-10-03-fix-import-fidelity-acceptance.md`: execution gates and evidence method.
-- `src-tauri/tests/fixtures/docx/acceptance-complex.docx`: newly generated complex Word input. Retain its generation recipe and source attribution in `src-tauri/tests/fixtures/docx/README.md`; do not derive expectations using the application importer.
-- `C:\Users\Administrator\AppData\Local\Temp\opencode\acceptance-complex.md`: complex Markdown input kept outside the tracked product files; store its literal contents and hash in the acceptance record.
+- `src-tauri/tests/fixtures/docx/acceptance-complex.docx`: newly generated complex Word input. Its generator `generate-acceptance-docx.py` is kept alongside (see `src-tauri/tests/fixtures/docx/README.md`); do not derive expectations using the application importer.
+- `openspec/changes/verify-import-fidelity-ui/verification/inputs/acceptance-complex.md`: complex Markdown input consolidated into the change's verification folder (not product files); its literal contents and hash are stored in the acceptance record.
 - `src-tauri/tests/fixtures/fdx/storyboarder-test.fdx`: existing long FDX input, read only.
-- `openspec/changes/fix-import-fidelity/验收记录.md`: frozen source-derived expectations, input hashes, observed UI and disk results, discrepancies and remaining gaps.
-- `openspec/changes/fix-import-fidelity/tasks.md`: mark 6.2 complete **only** when its gates are satisfied.
+- `openspec/changes/archive/2026-10-03-fix-import-fidelity/验收记录.md`: frozen source-derived expectations, input hashes, observed UI and disk results, discrepancies and remaining gaps.
+- `openspec/changes/archive/2026-10-03-fix-import-fidelity/tasks.md`: mark 6.2 complete **only** when its gates are satisfied.
 
 ## Task 1: Freeze Independent Expectations
 

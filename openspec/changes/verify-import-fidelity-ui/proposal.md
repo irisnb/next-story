@@ -22,7 +22,7 @@
 
 ## Impact
 
-- **验收对象**：`acceptance-complex.md`（opencode 临时目录，字面源与哈希已冻结于归档 §6.1）、`src-tauri/tests/fixtures/docx/acceptance-complex.docx`（§6.2）、`src-tauri/tests/fixtures/fdx/storyboarder-test.fdx`（§6.3，只读）。三个样本与辅助清单（manifest／expected.json）在当前环境均已确认存在；若临时目录样本丢失，以归档 §6.1 字面源重建并核对哈希。
+- **验收对象与材料**：输入 `verification/inputs/acceptance-complex.md`（自临时目录收纳，字节哈希见归档 §6.0）、`src-tauri/tests/fixtures/docx/acceptance-complex.docx`（§6.2；生成脚本 `generate-acceptance-docx.py` 同目录入库）、`src-tauri/tests/fixtures/fdx/storyboarder-test.fdx`（§6.3，只读）。预期清单与工具已收纳于 `verification/expected/` 与 `verification/tools/`；若某材料丢失，以归档 §6 内嵌内容重建并核对哈希。
 - **证据落点**：本 change 新建验收记录；冻结预期引用归档 `验收记录.md` §6，不复制、不修改。
 - **质量门槛**：`cargo test --quiet`、`npm run test:frontend -- --run`、`cargo clippy --lib --bins --tests -- -D warnings`、`npm run build`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`。
 - **不涉及**：产品代码、依赖、数据格式变更；验收会话需真实应用与原生文件选择（自动化不可靠时由用户在场确认路径）。

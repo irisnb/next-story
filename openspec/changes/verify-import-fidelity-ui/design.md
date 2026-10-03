@@ -8,7 +8,7 @@
 
 - 归档 §6 已在三个复杂样本**首次真实 UI 导入之前**冻结源推导预期、字面源、哈希与允许损耗计数（§6.0 哈希核对相符；§6.1 Markdown、§6.2 DOCX、§6.3 FDX）。
 - 执行门槛文档：`docs/superpowers/plans/2026-10-03-fix-import-fidelity-acceptance.md`（任务 1–4 与证据要求）。
-- 输入与辅助清单：`acceptance-complex.md`＋`acceptance-markdown-manifest.md`、`acceptance-complex.docx`＋`acceptance-docx-manifest.md`、`storyboarder-test.fdx`＋`fdx-acceptance-expected.json`／`fdx-acceptance-manifest.md`（临时目录样本若丢失，可按归档 §6.1 字面源重建并核对哈希）。
+- 输入与辅助清单已收纳于本变更 `verification/`：`inputs/acceptance-complex.md`；`expected/`（三份 manifest 与 `fdx-acceptance-expected.json`）；`tools/`（期望生成脚本与 UI 探针）。DOCX 夹具及其生成脚本同目录于 `src-tauri/tests/fixtures/docx/`；FDX 源样本在 `src-tauri/tests/fixtures/fdx/`（只读）。材料丢失时可按归档 §6 内嵌内容重建并核对哈希。
 - 验收对象＝**当前工作区构建**（含尚未提交的 fix-import-fidelity 实现改动）；提交与推送须另行获得用户确认。
 
 先例参照：`2026-09-22-app-real-chain-validation`（应用级真实验证，证据落档 `verification/`）、`2026-09-09-dsh-capability-integration-validation`（验证型能力规格）。

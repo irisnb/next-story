@@ -1,0 +1,4 @@
+# 哈希冻结的验收材料（见归档 2026-10-03-fix-import-fidelity/验收记录.md §6.0）
+# 关闭行尾转换：core.autocrlf=true 时 checkout 会把 LF 改成 CRLF，直接破坏 SHA-256 校验
+fdx/storyboarder-test.fdx -text
+docx/generate-acceptance-docx.py -text

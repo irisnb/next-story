@@ -1,12 +1,12 @@
 # verify-import-fidelity-ui Tasks
 
 > 验收对象＝当前工作区构建（含未提交的 fix-import-fidelity 实现）；冻结预期＝归档 `openspec/changes/archive/2026-10-03-fix-import-fidelity/验收记录.md` §6（只读引用，不复制、不改写）。执行门槛见 `docs/superpowers/plans/2026-10-03-fix-import-fidelity-acceptance.md`。
-> 边界：不改产品代码；不重写归档记录与冻结清单；不重复导入既有小样本；不使用 `C:\Users\Administrator\Desktop\test\导出验收-20261001`；不删除、不修改归属未明目录（含 `src-tauri/tests/fixtures/fdx/保真验收-复杂导入-20261003`）；发现疑似缺陷记录可复现证据后另行立项；未经用户确认不提交、不推送。浏览器级 invoke／文件注入仅作辅助，不充当 UI 证据；比对只读进行，不经任何 AI 路径写入文档。
+> 边界：不改产品代码；不重写归档记录与冻结清单；不重复导入既有小样本；不使用 `C:\Users\Administrator\Desktop\test\导出验收-20261001`；验收材料统一收纳于本变更 `verification/`，**目的地作品不得建在仓库目录内**（此前两个误建空作品已清理）；发现疑似缺陷记录可复现证据后另行立项；未经用户确认不提交、不推送。浏览器级 invoke／文件注入仅作辅助，不充当 UI 证据；比对只读进行，不经任何 AI 路径写入文档。
 
 ## 1. 基线与输入核对
 
-- [ ] 1.1 执行前核对输入：`acceptance-complex.md`＋`acceptance-markdown-manifest.md`、`acceptance-complex.docx`＋`acceptance-docx-manifest.md`、`storyboarder-test.fdx`＋`fdx-acceptance-expected.json`／`fdx-acceptance-manifest.md` 均存在且哈希符合归档 §6.0；记录 `git rev` 与工作区 dirty 清单作为验收对象版本；记录应用构建／运行证据（`http://localhost:1420/` 属于当前重建的 Tauri 应用）。
-- [ ] 1.2 经用户确认建立**新鲜可弃作品**并记录空树基线（绝不用既有作品，绝不使用导出验收目录）；记录三个样本导入前的输入哈希。
+- [ ] 1.1 执行前核对输入：`verification/inputs/acceptance-complex.md`、`verification/expected/`（`acceptance-markdown-manifest.md`、`acceptance-docx-manifest.md`、`fdx-acceptance-manifest.md`、`fdx-acceptance-expected.json`）、`src-tauri/tests/fixtures/docx/acceptance-complex.docx`、`src-tauri/tests/fixtures/fdx/storyboarder-test.fdx` 均存在且字节哈希符合归档 §6.0；记录 `git rev` 与工作区 dirty 清单作为验收对象版本；记录应用构建／运行证据（`http://localhost:1420/` 属于当前重建的 Tauri 应用）。
+- [ ] 1.2 经用户确认建立**新鲜可弃作品**并记录空树基线（绝不用既有作品，绝不使用导出验收目录；**目的地不得位于仓库目录内**）；记录三个样本导入前的输入哈希。
 
 ## 2. 逐格式真实 UI 验收（对照归档 §6 冻结清单）
 

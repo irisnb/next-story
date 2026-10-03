@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-03",
+  "results": [
+    {
+      "file": "docx-01-开头-BASE.png",
+      "anchor": "BEGIN marker paragraph A01 plain docDefaults baseline.",
+      "bytes": 104712,
+      "desc": "开头：P01 BEGIN"
+    },
+    {
+      "file": "docx-02-符号段.png",
+      "anchor": "SYM01 wingdings F0FC then",
+      "bytes": 99820,
+      "desc": "符号段 P07：✓λ•▪ 与丢弃空位"
+    },
+    {
+      "file": "docx-03-中断续算.png",
+      "anchor": "C07 decimal resumes after interruption",
+      "bytes": 73756,
+      "desc": "编号续算：P14=4. 与 P15"
+    },
+    {
+      "file": "docx-04-嵌套降级.png",
+      "anchor": "C10 first child under five",
+      "bytes": 73004,
+      "desc": "嵌套降级：C10-C13 拍平为普通段落"
+    },
+    {
+      "file": "docx-05-结尾-END.png",
+      "anchor": "END marker paragraph Z02 with direct bold black.",
+      "bytes": 68268,
+      "desc": "结尾：P26 END"
+    }
+  ]
+}

@@ -1,0 +1,436 @@
+{
+  "paragraphs": [
+    {
+      "idx": 1,
+      "attrs": {
+        "lineHeight": "1.15",
+        "spacingAfter": "6pt"
+      },
+      "runs": [
+        {
+          "text": "BEGIN marker paragraph A01 plain docDefaults baseline.",
+          "marks": [
+            "色:#262626|号:11pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 2,
+      "attrs": {
+        "lineHeight": "1.15",
+        "spacingAfter": "6pt"
+      },
+      "runs": [
+        {
+          "text": "Run A02a inherits docDefaults. A02b 中文运行保持原样。",
+          "marks": [
+            "色:#262626|号:11pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 3,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "A03 AcceptanceBase expects 12pt color 1F4E79 not bold.",
+          "marks": [
+            "色:#1f4e79|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 4,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "A04 AcceptanceMid expects bold italic 12pt color 7030A0.",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 5,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "A05 AcceptanceLeaf expects bold italic underline 14pt color C00000.",
+          "marks": [
+            "bold",
+            "italic",
+            "下划线",
+            "色:#c00000|号:14pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 6,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "A06R1 chain ",
+          "marks": [
+            "bold",
+            "italic",
+            "下划线",
+            "色:#c00000|号:14pt|字体:Microsoft YaHei"
+          ]
+        },
+        {
+          "text": "A06R2 charstyle ",
+          "marks": [
+            "italic",
+            "下划线",
+            "色:#00b050|号:13pt|字体:Microsoft YaHei"
+          ]
+        },
+        {
+          "text": "A06R3 direct",
+          "marks": [
+            "bold",
+            "italic",
+            "下划线",
+            "色:#ffc000|号:16pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 7,
+      "attrs": {
+        "lineHeight": "1.15",
+        "spacingAfter": "6pt"
+      },
+      "runs": [
+        {
+          "text": "SYM01 wingdings F0FC then ✓ then wingdings F0FB then  then symbol 006C then λ then symbol F0B7 then • then wingdings F0A7 then ▪ then unknown unmappedfont 0047 then  then unknown bogussymbol 002A then  SYM01 end",
+          "marks": [
+            "色:#262626|号:11pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 8,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C01 first decimal item",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 9,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C02 first alpha interleave item",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 10,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C03 second decimal item",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 11,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C04 second alpha interleave item",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 12,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C05 third decimal item before interruption",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 13,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C06 interruption paragraph without list numbering.",
+          "marks": [
+            "bold",
+            "italic",
+            "下划线",
+            "色:#c00000|号:14pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 14,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C07 decimal resumes after interruption",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 15,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C08 alpha resumes after interruption",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 16,
+      "attrs": {
+        "lineHeight": "1.15",
+        "spacingAfter": "6pt"
+      },
+      "runs": [
+        {
+          "text": "MIDDLE marker paragraph M00 for middle inspection.",
+          "marks": [
+            "色:#262626|号:11pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 17,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C09 parent item five",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 18,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C10 first child under five",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 19,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C11 second child under five",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 20,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C12 grandchild under second child",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 21,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C13 third child after grandchild",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 22,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C14 parent item six",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 23,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C15 first child under six resets",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 24,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "C16 last parent item seven",
+          "marks": [
+            "bold",
+            "italic",
+            "色:#7030a0|号:12pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 25,
+      "attrs": {
+        "spacingAfter": "4pt"
+      },
+      "runs": [
+        {
+          "text": "Z01 final chain paragraph.",
+          "marks": [
+            "bold",
+            "italic",
+            "下划线",
+            "色:#c00000|号:14pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    },
+    {
+      "idx": 26,
+      "attrs": {
+        "lineHeight": "1.15",
+        "spacingAfter": "6pt"
+      },
+      "runs": [
+        {
+          "text": "END marker paragraph Z02 with direct bold black.",
+          "marks": [
+            "bold",
+            "色:#000000|号:11pt|字体:Microsoft YaHei"
+          ]
+        }
+      ]
+    }
+  ],
+  "paragraphAttrs": []
+}

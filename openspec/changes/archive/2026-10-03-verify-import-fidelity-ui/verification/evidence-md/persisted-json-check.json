@@ -1,0 +1,50 @@
+{
+  "files": [
+    {
+      "file": "node-1791035441953939700-3.json",
+      "size": 8861,
+      "topLevels": [
+        "heading",
+        "paragraph",
+        "bulletList",
+        "paragraph",
+        "paragraph",
+        "paragraph",
+        "bulletList",
+        "paragraph",
+        "paragraph",
+        "bulletList",
+        "paragraph",
+        "heading",
+        "orderedList",
+        "paragraph",
+        "orderedList",
+        "paragraph",
+        "paragraph"
+      ],
+      "orderedStarts": [
+        {
+          "depth": 0,
+          "start": 3
+        },
+        {
+          "depth": 0,
+          "start": 4
+        },
+        {
+          "depth": 2,
+          "start": 7
+        }
+      ],
+      "maxNestSeen": 4,
+      "nodeTypeCounts": {
+        "heading": 2,
+        "text": 25,
+        "paragraph": 24,
+        "bulletList": 6,
+        "listItem": 14,
+        "orderedList": 3
+      }
+    }
+  ]
+}

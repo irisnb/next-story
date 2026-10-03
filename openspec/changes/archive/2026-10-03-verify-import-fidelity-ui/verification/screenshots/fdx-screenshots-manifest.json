@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-03",
+  "results": [
+    {
+      "file": "fdx-01-标题页并入.png",
+      "anchor": "FARMLAND",
+      "bytes": 101260,
+      "desc": "标题页并入开头：FARMLAND 居中＋下划线"
+    },
+    {
+      "file": "fdx-02-场景头.png",
+      "anchor": "123 EXT. Mast 2 3 farm - nIGHT",
+      "bytes": 103100,
+      "desc": "首个场景头 heading2 带编号前缀"
+    },
+    {
+      "file": "fdx-03-双栏拆分.png",
+      "anchor": "But Daddy--",
+      "bytes": 78632,
+      "desc": "双栏对白拆先后两组（MARY/LOUIS）"
+    },
+    {
+      "file": "fdx-04-行首空格.png",
+      "anchor": "The horse breaks from the field",
+      "bytes": 110380,
+      "desc": "C:348 行首两空格保留（规则A）"
+    },
+    {
+      "file": "fdx-05-结尾.png",
+      "anchor": "He can hear Henry screaming",
+      "bytes": 98540,
+      "desc": "末条"
+    }
+  ]
+}

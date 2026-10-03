@@ -1,0 +1,482 @@
+{
+  "counts": {
+    "expected": 487,
+    "measured": 487
+  },
+  "textDiffs": [],
+  "typeChecks": {
+    "character": {
+      "expectedCount": 121,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":\"144pt\",\"mr\":\"18pt\",\"ta\":null}",
+          "count": 121,
+          "examplePos": 19,
+          "exampleText": "Henry"
+        }
+      ]
+    },
+    "dialogue": {
+      "expectedCount": 122,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":\"72pt\",\"mr\":\"108pt\",\"ta\":null}",
+          "count": 122,
+          "examplePos": 20,
+          "exampleText": "Was it like this with me?"
+        }
+      ]
+    },
+    "heading2": {
+      "expectedCount": 31,
+      "signatures": [
+        {
+          "sig": "tag:h2",
+          "count": 31,
+          "examplePos": 10,
+          "exampleText": "123 EXT. Mast 2 3 farm - nIGHT"
+        }
+      ]
+    },
+    "paragraph": {
+      "expectedCount": 192,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":null,\"mr\":null,\"ta\":null}",
+          "count": 192,
+          "examplePos": 9,
+          "exampleText": "Fade in:"
+        }
+      ]
+    },
+    "paragraph+tp": {
+      "expectedCount": 9,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":null,\"mr\":null,\"ta\":\"center\"}",
+          "count": 6,
+          "examplePos": 0,
+          "exampleText": "FARMLAND"
+        },
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":null,\"mr\":null,\"ta\":\"justify\"}",
+          "count": 3,
+          "examplePos": 4,
+          "exampleText": "Address"
+        }
+      ]
+    },
+    "parenthetical": {
+      "expectedCount": 8,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":\"108pt\",\"mr\":\"144pt\",\"ta\":null}",
+          "count": 8,
+          "examplePos": 178,
+          "exampleText": "(to Henry)"
+        }
+      ]
+    },
+    "transition": {
+      "expectedCount": 4,
+      "signatures": [
+        {
+          "sig": "{\"tag\":\"p\",\"cls\":\"\",\"ml\":null,\"mr\":null,\"ta\":\"right\"}",
+          "count": 4,
+          "examplePos": 34,
+          "exampleText": "Fade out:"
+        }
+      ]
+    }
+  },
+  "alignChecks": [
+    {
+      "pos": 0,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 1,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 2,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 3,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 4,
+      "want": "justify",
+      "got": "justify",
+      "ok": true
+    },
+    {
+      "pos": 5,
+      "want": "justify",
+      "got": "justify",
+      "ok": true
+    },
+    {
+      "pos": 6,
+      "want": "justify",
+      "got": "justify",
+      "ok": true
+    },
+    {
+      "pos": 7,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 8,
+      "want": "center",
+      "got": "center",
+      "ok": true
+    },
+    {
+      "pos": 34,
+      "want": "right",
+      "got": "right",
+      "ok": true
+    },
+    {
+      "pos": 38,
+      "want": "right",
+      "got": "right",
+      "ok": true
+    },
+    {
+      "pos": 41,
+      "want": "right",
+      "got": "right",
+      "ok": true
+    },
+    {
+      "pos": 334,
+      "want": "right",
+      "got": "right",
+      "ok": true
+    }
+  ],
+  "anchorChecks": {
+    "pos0": {
+      "text": "FARMLAND",
+      "ok": true
+    },
+    "pos10": {
+      "text": "123 EXT. Mast 2 3 farm - nIGHT",
+      "tag": "h2",
+      "ok": true
+    },
+    "empty31": {
+      "text": "\"\"",
+      "ok": true
+    },
+    "empty54": {
+      "text": "\"\"",
+      "ok": true
+    },
+    "dual": [
+      {
+        "pos": 285,
+        "text": "MARY",
+        "block": "character"
+      },
+      {
+        "pos": 286,
+        "text": "But Daddy--",
+        "block": "dialogue"
+      },
+      {
+        "pos": 287,
+        "text": "LOUIS",
+        "block": "character"
+      },
+      {
+        "pos": 288,
+        "text": "I said get!",
+        "block": "dialogue"
+      }
+    ],
+    "dualOk": true,
+    "pos360": {
+      "head": "\"  The horse \"",
+      "ok": true
+    },
+    "last": {
+      "text": "He can hear Henry screaming, struggling to wipe the locusts ",
+      "ok": true
+    }
+  },
+  "hashChecks": {
+    "full487": {
+      "computed": "3EB0A3FE12193BCA8BAF6D3B795C1734ED5107385553A14B96E3580DED5CBBE5",
+      "expected": "3EB0A3FE12193BCA8BAF6D3B795C1734ED5107385553A14B96E3580DED5CBBE5",
+      "ok": true
+    },
+    "content478": {
+      "computed": "01DB42D9B5F10FC0BA8A99E22680385E7A08E6C54A9D6B51941754B95667B107",
+      "expected": "01DB42D9B5F10FC0BA8A99E22680385E7A08E6C54A9D6B51941754B95667B107",
+      "ok": true
+    }
+  },
+  "styleRunsChecks": [
+    {
+      "src": "C:0",
+      "style": "AllCaps",
+      "text": "Fade in:",
+      "pos": 9,
+      "measuredText": "Fade in:",
+      "ok": true,
+      "note": "整段原样"
+    },
+    {
+      "src": "C:3",
+      "style": "Bold",
+      "text": "TITLE: Nebraska, 1875.",
+      "pos": 12,
+      "measuredText": "TITLE: Nebraska, 1875.",
+      "ok": true
+    },
+    {
+      "src": "C:22",
+      "style": "AllCaps",
+      "text": "",
+      "pos": 31,
+      "measuredText": "",
+      "ok": true,
+      "note": "整段原样"
+    },
+    {
+      "src": "C:26",
+      "style": "AllCaps",
+      "text": "Fade in:",
+      "pos": 35,
+      "measuredText": "Fade in:",
+      "ok": true,
+      "note": "整段原样"
+    },
+    {
+      "src": "C:36",
+      "style": "Bold",
+      "text": "TITLE: Eight months later",
+      "pos": 45,
+      "measuredText": "TITLE: Eight months later",
+      "ok": true
+    },
+    {
+      "src": "C:45",
+      "style": "AllCaps",
+      "text": "",
+      "pos": 54,
+      "measuredText": "",
+      "ok": true,
+      "note": "整段原样"
+    },
+    {
+      "src": "C:54",
+      "style": "Underline",
+      "text": "All Creatures Of Our God And King",
+      "pos": 63,
+      "measuredText": "The church is shoulder-to-shoulder as PA",
+      "ok": true
+    },
+    {
+      "src": "C:184",
+      "style": "AllCaps",
+      "text": "T",
+      "pos": 193,
+      "measuredText": "Well be that as it may, I’m already here",
+      "ok": true,
+      "note": "多 Text 段片段，包含性检查"
+    },
+    {
+      "src": "C:192",
+      "style": "Italic",
+      "text": "This shouldn’t be here.",
+      "pos": 201,
+      "measuredText": "This shouldn’t be here.",
+      "ok": true
+    },
+    {
+      "src": "C:198",
+      "style": "Underline",
+      "text": "A fair deal.",
+      "pos": 207,
+      "measuredText": "I offered you a fair deal. A fair deal.",
+      "ok": true
+    },
+    {
+      "src": "C:314",
+      "style": "Italic",
+      "text": "This dialogue shouldn’t be here.",
+      "pos": 326,
+      "measuredText": "This dialogue shouldn’t be here.",
+      "ok": true
+    },
+    {
+      "src": "TP:17",
+      "style": "Underline+AllCaps",
+      "text": "FARMLAND",
+      "pos": 0,
+      "measuredText": "FARMLAND",
+      "ok": true
+    },
+    {
+      "src": "TP:72",
+      "style": "Italic",
+      "text": "\"You cannot find peace by avoiding life.",
+      "pos": 7,
+      "measuredText": "\"You cannot find peace by avoiding life.",
+      "ok": true
+    },
+    {
+      "src": "TP:74",
+      "style": "Italic",
+      "text": "-- Virginia Woolf",
+      "pos": 8,
+      "measuredText": "-- Virginia Woolf",
+      "ok": true
+    }
+  ],
+  "summary": {
+    "countOk": true,
+    "textAllOk": true,
+    "alignAllOk": true,
+    "indentAllOk": true,
+    "hashFullOk": true,
+    "hashContentOk": true,
+    "styleRunsAllOk": true,
+    "typeSignatureUnique": true
+  },
+  "indentAnchors": [
+    {
+      "pos": 19,
+      "type": "character",
+      "want": {
+        "indentLeft": "144pt",
+        "indentRight": "18pt"
+      },
+      "got": {
+        "ml": "144pt",
+        "mr": "18pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 28,
+      "type": "character",
+      "want": {
+        "indentLeft": "144pt",
+        "indentRight": "18pt"
+      },
+      "got": {
+        "ml": "144pt",
+        "mr": "18pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 46,
+      "type": "character",
+      "want": {
+        "indentLeft": "144pt",
+        "indentRight": "18pt"
+      },
+      "got": {
+        "ml": "144pt",
+        "mr": "18pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 20,
+      "type": "dialogue",
+      "want": {
+        "indentLeft": "72pt",
+        "indentRight": "108pt"
+      },
+      "got": {
+        "ml": "72pt",
+        "mr": "108pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 29,
+      "type": "dialogue",
+      "want": {
+        "indentLeft": "72pt",
+        "indentRight": "108pt"
+      },
+      "got": {
+        "ml": "72pt",
+        "mr": "108pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 47,
+      "type": "dialogue",
+      "want": {
+        "indentLeft": "72pt",
+        "indentRight": "108pt"
+      },
+      "got": {
+        "ml": "72pt",
+        "mr": "108pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 178,
+      "type": "parenthetical",
+      "want": {
+        "indentLeft": "108pt",
+        "indentRight": "144pt"
+      },
+      "got": {
+        "ml": "108pt",
+        "mr": "144pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 227,
+      "type": "parenthetical",
+      "want": {
+        "indentLeft": "108pt",
+        "indentRight": "144pt"
+      },
+      "got": {
+        "ml": "108pt",
+        "mr": "144pt"
+      },
+      "ok": true
+    },
+    {
+      "pos": 241,
+      "type": "parenthetical",
+      "want": {
+        "indentLeft": "108pt",
+        "indentRight": "144pt"
+      },
+      "got": {
+        "ml": "108pt",
+        "mr": "144pt"
+      },
+      "ok": true
+    }
+  ]
+}

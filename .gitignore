@@ -22,6 +22,8 @@ secrets.json
 
 # ===== 日志 / 临时产物（旧项目教训：不让日志和临时脚本混进仓库）=====
 .omo/
+# 本次导入工作的测试文档/证据本地归档（含真实样本内容，不入公开仓库）
+本地测试文档/
 .playwright-mcp/
 *.log
 npm-debug.log*
@@ -47,7 +49,7 @@ coverage/
 Thumbs.db
 desktop.ini
 
-# sidecar ̽��/���Ե���ʱ����Ŀ¼����������
+# sidecar ̽��/���Ե���ʱ����Ŀ¼����������
 sidecar/**/.probe-home/
 sidecar/**/.dump-home/
 sidecar/**/.test-home/

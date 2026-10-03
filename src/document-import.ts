@@ -25,7 +25,8 @@ export const HASH_MISMATCH_PREFIX = "hash_mismatch:";
 /**
  * 损耗类型的中文标签——明细完整呈现、绝不省略（简化的是路径，不是诚实）。
  * docx 管线六类（add-word-import）；md 分支六类（add-markdown-import）；
- * fdx 分支六类（add-fdx-import）。
+ * fdx 分支六类（add-fdx-import）；保真修复三类（fix-import-fidelity）；
+ * 另有跨管线兜底的 block_skipped。
  */
 export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   table_flattened: "表格拍平保文字",
@@ -46,6 +47,9 @@ export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   scriptnote_dropped: "剧注丢弃",
   revision_marks_ignored: "修订标记忽略，文字无损",
   unknown_element_skipped: "未知元素已跳过（不影响文字）",
+  list_overflow_degraded: "列表溢出内容降级为普通段落",
+  symbol_dropped: "符号字符丢弃",
+  style_degraded: "样式属性未解析",
   block_skipped: "无法识别的块跳过",
 };
 

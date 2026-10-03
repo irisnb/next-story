@@ -104,6 +104,9 @@ export interface ImportLoss {
     | "scriptnote_dropped"
     | "revision_marks_ignored"
     | "unknown_element_skipped"
+    | "list_overflow_degraded"
+    | "symbol_dropped"
+    | "style_degraded"
     | "block_skipped";
   count: number;
   note: string;

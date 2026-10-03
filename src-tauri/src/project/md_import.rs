@@ -152,18 +152,24 @@ struct Buffer {
 
 enum Frame {
     List(ListFrame),
-    /// 列表项：累积其块级内容（首段落 + 可选嵌套列表）。
+    /// 列表项：累积其块级内容（首段＋嵌套列表＋溢出内容，原顺序）。
     Item(Vec<Value>),
     Table(TableFrame),
+}
+
+/// 列表帧内的有序条目：项与溢出内容按原文顺序穿插（fix-import-fidelity D1：
+/// 溢出在该项结束处降级输出，随后才是下一个同级项——列表块按需拆分保序）。
+enum ListEntry {
+    /// listItem 节点。
+    Item(Value),
+    /// 项结束处降级的普通段落（续段原样；第二个及以后的子列表拍平）。
+    Overflow(Vec<Value>),
 }
 
 struct ListFrame {
     ordered: bool,
     start: u64,
-    items: Vec<Value>,
-    /// 超出 grammar 承载的项内多余块（第二个及以后的嵌套列表等），在整个
-    /// 列表结束后按原顺序输出到列表之后（文字与顺序零丢失）。
-    overflow: Vec<Value>,
+    seq: Vec<ListEntry>,
 }
 
 struct TableFrame {
@@ -314,8 +320,7 @@ impl MdConverter {
                 self.stack.push(Frame::List(ListFrame {
                     ordered,
                     start,
-                    items: Vec::new(),
-                    overflow: Vec::new(),
+                    seq: Vec::new(),
                 }));
             }
             Tag::Item => {
@@ -634,9 +639,11 @@ impl MdConverter {
         let Some(Frame::Item(mut blocks)) = self.stack.pop() else {
             return;
         };
-        // listItem = [首段落] 或 [首段落, 一个嵌套列表]。
-        // 首块是段落（或标题降级为段落）；列表直接开头则补空段落；
-        // 多余段落并入首段（软接合语义）；多余列表溢出到列表之后。
+        // listItem = [首段落] 或 [首段落, 一个嵌套列表]（grammar 承载上限）。
+        // 溢出内容（项内续段、第二个及以后的子列表、其后内容）按原文顺序
+        // 在该项结束处降级为普通段落（fix-import-fidelity D1：保序不重排、
+        // 不再把续段软接合进首段）。
+        let mut first_is_placeholder = false;
         let mut first = match blocks.first().map(|block| block["type"].as_str()) {
             Some(Some("paragraph")) => blocks.remove(0),
             Some(Some("heading")) => {
@@ -644,7 +651,11 @@ impl MdConverter {
                 coerce_heading_to_paragraph(&mut node);
                 node
             }
-            _ => paragraph_node(Vec::new()),
+            _ => {
+                // 没有可充当首段的块：占位空段（项以子列表开头或空项）。
+                first_is_placeholder = true;
+                paragraph_node(Vec::new())
+            }
         };
         let mut nested: Option<Value> = None;
         let mut overflow: Vec<Value> = Vec::new();
@@ -654,13 +665,23 @@ impl MdConverter {
                 Some("bulletList") | Some("orderedList")
             );
             if is_list {
-                if nested.is_none() {
+                if nested.is_none() && overflow.is_empty() {
                     nested = Some(block);
                 } else {
-                    overflow.push(block);
+                    // 已发生溢出后，首个子列表也不能提前回填：就地拍平保序。
+                    self.losses.list_overflow_lists += 1;
+                    let mut flattened = Vec::new();
+                    flatten_list_to_paragraphs(&block, &mut flattened);
+                    overflow.extend(flattened);
                 }
+            } else if first_is_placeholder && nested.is_none() && overflow.is_empty() {
+                // 仅在没有已输出内容时允许填占位，不能把子列表后的文字前移。
+                first = block;
+                first_is_placeholder = false;
             } else {
-                self.absorb_extra_paragraph(&mut first, block);
+                // 项内续段：原样降级为普通段落（不再软接合进首段）。
+                self.losses.list_overflow_paragraphs += 1;
+                overflow.push(block);
             }
         }
         let mut item = json!({ "type": "listItem", "content": [first] });
@@ -669,10 +690,12 @@ impl MdConverter {
         }
         match self.stack.last_mut() {
             Some(Frame::List(list)) => {
-                list.items.push(item);
-                list.overflow.extend(overflow);
+                list.seq.push(ListEntry::Item(item));
+                if !overflow.is_empty() {
+                    list.seq.push(ListEntry::Overflow(overflow));
+                }
             }
-            // 防御：孤立 item 顶层成块。
+            // 防御：孤立 item 顶层成块（溢出紧随其后，保序）。
             _ => {
                 self.blocks.push(item);
                 self.blocks.extend(overflow);
@@ -680,55 +703,49 @@ impl MdConverter {
         }
     }
 
-    /// 列表项内的多余段落并入首段：文字按 CJK 接合规则衔接，顺序零丢失。
-    fn absorb_extra_paragraph(&mut self, first: &mut Value, extra: Value) {
-        let Some(extra_nodes) = extra.get("content").and_then(Value::as_array).cloned() else {
-            return;
-        };
-        if extra_nodes.is_empty() {
-            return;
-        }
-        let first_empty = first.get("content").is_none();
-        if first_empty {
-            first["content"] = Value::Array(extra_nodes);
-            return;
-        }
-        // 接合空格：前文末字符与多余段首字符非双侧 CJK 时补一个空格。
-        let last_char = first_text_tail(first);
-        let next_char = extra_nodes
-            .first()
-            .and_then(|node| node["text"].as_str())
-            .and_then(|text| text.chars().next());
-        if let (Some(last), Some(next)) = (last_char, next_char) {
-            if !(is_cjk(last) && is_cjk(next)) {
-                self.char_count += 1;
-                if let Some(runs) = first["content"].as_array_mut() {
-                    runs.push(json!({ "type": "text", "text": " " }));
-                }
-            }
-        }
-        if let Some(runs) = first["content"].as_array_mut() {
-            runs.extend(extra_nodes);
-        }
-    }
-
     fn end_list(&mut self) {
         let Some(Frame::List(list)) = self.stack.pop() else {
             return;
         };
-        let node = if list.ordered {
-            json!({
-                "type": "orderedList",
-                "attrs": { "start": list.start },
-                "content": list.items
-            })
-        } else {
-            json!({ "type": "bulletList", "content": list.items })
+        // 按原文顺序输出：连续的项聚成一个列表块；遇到溢出先冲刷当前块、
+        // 输出降级段落，再开新列表块（有序列表 start 续算，不重起）。
+        let ordered = list.ordered;
+        let base_start = list.start;
+        let mut items: Vec<Value> = Vec::new();
+        let mut segment_start = base_start;
+        let mut items_flushed = 0u64;
+        let flush_items = |items: &mut Vec<Value>, segment_start: u64, sink: &mut Self| {
+            if items.is_empty() {
+                return;
+            }
+            let node = if ordered {
+                json!({
+                    "type": "orderedList",
+                    "attrs": { "start": segment_start },
+                    "content": std::mem::take(items)
+                })
+            } else {
+                json!({ "type": "bulletList", "content": std::mem::take(items) })
+            };
+            sink.sink_push(node);
         };
-        self.sink_push(node);
-        for extra in list.overflow {
-            self.sink_push(extra);
+        for entry in list.seq {
+            match entry {
+                ListEntry::Item(item) => {
+                    items.push(item);
+                }
+                ListEntry::Overflow(blocks) => {
+                    items_flushed += items.len() as u64;
+                    flush_items(&mut items, segment_start, self);
+                    for block in blocks {
+                        self.sink_push(block);
+                    }
+                    // 后续片段的起始编号＝原起点＋已输出的项数（续算）。
+                    segment_start = base_start + items_flushed;
+                }
+            }
         }
+        flush_items(&mut items, segment_start, self);
     }
 
     fn end_table(&mut self) {
@@ -797,12 +814,25 @@ fn coerce_heading_to_paragraph(node: &mut Value) {
     }
 }
 
-fn first_text_tail(node: &Value) -> Option<char> {
-    node.get("content")
-        .and_then(Value::as_array)
-        .and_then(|runs| runs.last())
-        .and_then(|run| run["text"].as_str())
-        .and_then(|text| text.chars().next_back())
+/// 把列表节点递归拍平为段落序列（溢出子列表降级用，文字与顺序零丢失）：
+/// 每个 listItem 的首段原样保留，其嵌套列表递归拍平跟在后面。
+fn flatten_list_to_paragraphs(list: &Value, out: &mut Vec<Value>) {
+    let Some(items) = list.get("content").and_then(Value::as_array) else {
+        return;
+    };
+    for item in items {
+        if let Some(children) = item.get("content").and_then(Value::as_array) {
+            for child in children {
+                match child["type"].as_str() {
+                    Some("paragraph") => out.push(child.clone()),
+                    Some("bulletList") | Some("orderedList") => {
+                        flatten_list_to_paragraphs(child, out);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 /// 剥除 `<...>` 标签段（含注释/声明），保留其余文字。属性内含 `>` 的病态
@@ -1070,6 +1100,87 @@ mod tests {
         assert_eq!(parsed.blocks[1]["content"].as_array().unwrap().len(), 2);
     }
 
+    // ----- 列表溢出保序（fix-import-fidelity D1；复现测试先行） -----
+
+    /// 复现：项内续段／第二个子列表的阅读顺序被当前实现重排。
+    /// 源顺序：父项A → 子项B → 续段C → 第二续段D → 子项E → 下一项F。
+    #[test]
+    fn list_overflow_preserves_source_reading_order() {
+        let source = "-   父项A\n\n    -   子项B\n\n    续段C\n\n    第二续段D\n\n    -   子项E\n\n-   下一项F";
+        let parsed = parse(source);
+
+        // 期望块序列（阅读顺序）：
+        // [list: 项A＋嵌套[B]] → 段落C → 段落D → 段落E(子列表2拍平) → [list: 项F]。
+        assert_eq!(parsed.blocks.len(), 5, "块序列：{:#?}", parsed.blocks);
+        assert_eq!(parsed.blocks[0]["type"], "bulletList");
+        let item_a = &parsed.blocks[0]["content"][0];
+        assert_eq!(item_a["content"].as_array().unwrap().len(), 2, "首段＋首子列表留项内");
+        assert_eq!(item_a["content"][0]["content"][0]["text"], "父项A");
+        assert_eq!(item_a["content"][1]["type"], "bulletList");
+        assert_eq!(
+            item_a["content"][1]["content"][0]["content"][0]["content"][0]["text"],
+            "子项B"
+        );
+        // 溢出内容按原文顺序紧随该项：C、D 为段落，E 为子列表 2 拍平的段落。
+        assert_eq!(parsed.blocks[1]["type"], "paragraph");
+        assert_eq!(block_text(&parsed.blocks[1]), "续段C");
+        assert_eq!(parsed.blocks[2]["type"], "paragraph");
+        assert_eq!(block_text(&parsed.blocks[2]), "第二续段D");
+        assert_eq!(parsed.blocks[3]["type"], "paragraph");
+        assert_eq!(block_text(&parsed.blocks[3]), "子项E", "第二个子列表拍平为段落");
+        // 同一逻辑列表被溢出打断后重续：项F 是新的 bulletList 块。
+        assert_eq!(parsed.blocks[4]["type"], "bulletList");
+        assert_eq!(
+            parsed.blocks[4]["content"][0]["content"][0]["content"][0]["text"],
+            "下一项F"
+        );
+        // 溢出按元素计数（note 区分段落／子列表）：续段×2＋子列表×1。
+        assert_eq!(parsed.losses.list_overflow_paragraphs, 2);
+        assert_eq!(parsed.losses.list_overflow_lists, 1);
+        // 文字零丢失（递归收集全部文字）。
+        fn deep_text(node: &Value, out: &mut String) {
+            if let Some(text) = node["text"].as_str() {
+                out.push_str(text);
+            }
+            if let Some(children) = node.get("content").and_then(Value::as_array) {
+                for child in children {
+                    deep_text(child, out);
+                }
+            }
+        }
+        let mut all_text = String::new();
+        for block in &parsed.blocks {
+            deep_text(block, &mut all_text);
+        }
+        for piece in ["父项A", "子项B", "续段C", "第二续段D", "子项E", "下一项F"] {
+            assert!(all_text.contains(piece), "文字丢失：{piece}");
+        }
+    }
+
+    /// 有序列表溢出打断后重续：后续片段的 start 续算（不重起）。
+    #[test]
+    fn ordered_list_overflow_continues_numbering() {
+        let source = "1.  第一项\n\n    续段甲\n\n2.  第二项\n\n3.  第三项";
+        let parsed = parse(source);
+        // 期望：[ordered start=1: 第一项] → 段落(续段甲) → [ordered start=2: 第二项、第三项]。
+        let ordered_blocks: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        assert_eq!(ordered_blocks.len(), 2, "块序列：{:#?}", parsed.blocks);
+        assert_eq!(ordered_blocks[0]["attrs"]["start"], 1);
+        assert_eq!(
+            ordered_blocks[0]["content"].as_array().unwrap().len(),
+            1,
+            "第一项单独成段"
+        );
+        assert_eq!(ordered_blocks[1]["attrs"]["start"], 2, "重续片段从 2 续算");
+        assert_eq!(ordered_blocks[1]["content"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed.losses.list_overflow_paragraphs, 1);
+        assert_eq!(parsed.losses.list_overflow_lists, 0);
+    }
+
     #[test]
     fn tight_list_items_become_implicit_paragraphs() {
         let blocks = blocks_of("- 甲\n- 乙\n- 丙");
@@ -1229,6 +1340,30 @@ mod tests {
         let parsed = parse("**第1集**\n\n**第2集**\n\n**第3集**");
         assert!(parsed.markers.is_empty(), "标记：{:?}", parsed.markers);
         assert!(detect_split_from_markers(&parsed.markers).is_none());
+    }
+
+    #[test]
+    fn continuation_before_first_sublist_preserves_reading_order() {
+        fn collect(node: &Value, out: &mut Vec<String>) {
+            if let Some(text) = node["text"].as_str() {
+                out.push(text.to_string());
+            }
+            if let Some(children) = node["content"].as_array() {
+                for child in children { collect(child, out); }
+            }
+        }
+        for (source, expected) in [
+            ("- A\n\n  C\n\n  - B\n\n- D\n", vec!["A", "C", "B", "D"]),
+            ("-\n  - B\n\n  C\n\n- D\n", vec!["B", "C", "D"]),
+            ("3. A\n\n   C\n\n   - B\n\n4. D\n", vec!["A", "C", "B", "D"]),
+        ] {
+            let parsed = parse(source);
+            let mut texts = Vec::new();
+            for block in &parsed.blocks { collect(block, &mut texts); }
+            assert_eq!(texts, expected, "source: {source}");
+            let document = super::super::document_import::doc_value_from_blocks(parsed.blocks);
+            super::super::validate_notebook_document(&document).unwrap();
+        }
     }
 
     // ----- 5.3：编码与行尾补充样本 -----

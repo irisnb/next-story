@@ -285,6 +285,19 @@ test("损耗条目：中文标签＋数量，备注为空时不追加括号", ()
     lossItemText({ kind: "revision_finalized", count: 3, note: "" }),
     "修订取最终态：3 处",
   );
+  // fix-import-fidelity 扩充的三类保真降级（跨格式）。
+  assert.equal(
+    lossItemText({ kind: "list_overflow_degraded", count: 6, note: "" }),
+    "列表溢出内容降级为普通段落：6 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "symbol_dropped", count: 2, note: "" }),
+    "符号字符丢弃：2 处",
+  );
+  assert.equal(
+    lossItemText({ kind: "style_degraded", count: 9, note: "" }),
+    "样式属性未解析：9 处",
+  );
 });
 
 test("损耗标签表：md 分支新增 kind 全部有平实中文标签", () => {

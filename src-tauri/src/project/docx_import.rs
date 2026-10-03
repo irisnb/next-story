@@ -24,8 +24,7 @@ use std::io::{Cursor, Read};
 
 use docx_rs::{
     read_docx_with_options, Docx, DocumentChild, HyperlinkData, Paragraph, ParagraphChild,
-    ParagraphStyle, ReadDocxOptions, Run, RunChild, RunProperty, SpecialIndentType, StructuredDataTag,
-    Table, TableCellContent, TableChild,
+    ReadDocxOptions, Run, RunChild, StructuredDataTag, Table, TableCellContent, TableChild,
 };
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -52,10 +51,14 @@ struct LevelInfo {
 }
 
 /// numId → 各层级定义（按 ilvl 下标）。仅解析 num/abstractNum 两级引用；
-/// lvlOverride 与样式链编号（numStyleLink）不解析，解析不到按降级告知。
+/// lvlOverride 的 startOverride 消费（fix-import-fidelity D4，spike 结论：
+/// `LevelOverride{level, override_start}` 字段 pub、reader 完整读取）；
+/// 样式链编号（numStyleLink）仍不解析，解析不到按降级告知。
 #[derive(Default)]
 struct NumberingIndex {
     map: HashMap<usize, Vec<Option<LevelInfo>>>,
+    /// (numId, ilvl) → startOverride 覆盖起点。
+    overrides: HashMap<(usize, usize), u64>,
 }
 
 impl NumberingIndex {
@@ -80,12 +83,21 @@ impl NumberingIndex {
             abstract_levels.insert(abs.id, levels);
         }
         let mut map = HashMap::new();
+        let mut overrides = HashMap::new();
         for num in &numberings.numberings {
             if let Some(levels) = abstract_levels.get(&num.abstract_num_id) {
                 map.insert(num.id, levels.clone());
             }
+            for level_override in &num.level_overrides {
+                if let Some(start) = level_override.override_start {
+                    overrides.insert(
+                        (num.id, level_override.level),
+                        u64::try_from(start).unwrap_or(1).max(1),
+                    );
+                }
+            }
         }
-        Self { map }
+        Self { map, overrides }
     }
 
     /// 取 numId 的第 0 层定义；不可见或缺失返回 None（调用方按普通段落处理）。
@@ -95,6 +107,11 @@ impl NumberingIndex {
             .first()?
             .as_ref()
             .filter(|info| info.visible)
+    }
+
+    /// numId 在指定层级的 startOverride（无覆盖返回 None）。
+    fn override_start(&self, num_id: usize, ilvl: usize) -> Option<u64> {
+        self.overrides.get(&(num_id, ilvl)).copied()
     }
 }
 
@@ -138,17 +155,37 @@ struct ParaOut {
 
 // ========== 转换器 ==========
 
+/// 样式表条目（fix-import-fidelity D3 样式上下文）：basedOn 链与预序列化的
+/// 字符/段落属性（serde camelCase map，与 docx-rs 私有字段的读取通道一致）。
+struct StyleEntry {
+    based_on: Option<String>,
+    run_property: Map<String, Value>,
+    paragraph_property: Map<String, Value>,
+}
+
 struct Converter {
     hyperlinks: HashMap<String, String>,
     numbering: NumberingIndex,
+    /// styleId → 样式名（标题识别沿用）。
     styles_by_id: HashMap<String, String>,
+    /// styleId → 样式条目（D3 样式链）。
+    style_entries: HashMap<String, StyleEntry>,
+    /// 文档默认字符属性（docDefaults rPrDefault，map 形态）。
+    doc_default_rpr: Map<String, Value>,
+    /// 文档默认段落属性（docDefaults pPrDefault）。
+    doc_default_ppr: Map<String, Value>,
+    /// 默认段落样式 ID（styles.xml `w:default="1"`，docx-rs 不读该标志，
+    /// 由预扫描捕获的 styles.xml 探测）。
+    default_paragraph_style: Option<String>,
+    /// D4 编号计数器：(numId, ilvl) → 当前值（跨普通段落打断持续）。
+    numbering_counters: HashMap<(usize, usize), u64>,
     losses: LossCounter,
     char_count: usize,
     paragraph_count: usize,
 }
 
 impl Converter {
-    fn new(docx: &Docx) -> Self {
+    fn new(docx: &Docx, styles_xml: Option<&str>) -> Self {
         let hyperlinks = docx
             .hyperlinks
             .iter()
@@ -161,13 +198,141 @@ impl Converter {
             .iter()
             .map(|style| (style.style_id.clone(), ser_str(&style.name).unwrap_or_default()))
             .collect();
+
+        // D3 样式上下文：docDefaults（私有字段经 Serialize 提取，spike 结论）
+        // ＋样式条目（basedOn 私有 → 同通道；rPr/pPr 字段 pub 直接序列化）。
+        let doc_defaults = serde_json::to_value(&docx.styles.doc_defaults)
+            .ok()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        // DocDefaults 序列化形状：{"runPropertyDefault":{"runProperty":{…}},
+        // "paragraphPropertyDefault":{"paragraphProperty":{…}}}。
+        let inner_object = |wrapper_key: &str, inner_key: &str| -> Map<String, Value> {
+            doc_defaults
+                .get(wrapper_key)
+                .and_then(Value::as_object)
+                .and_then(|wrapper| wrapper.get(inner_key))
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let doc_default_rpr = inner_object("runPropertyDefault", "runProperty");
+        let doc_default_ppr = inner_object("paragraphPropertyDefault", "paragraphProperty");
+
+        let style_entries = docx
+            .styles
+            .styles
+            .iter()
+            .map(|style| {
+                (
+                    style.style_id.clone(),
+                    StyleEntry {
+                        based_on: style
+                            .based_on
+                            .as_ref()
+                            .and_then(ser_str),
+                        run_property: serde_json::to_value(&style.run_property)
+                            .ok()
+                            .and_then(|value| value.as_object().cloned())
+                            .unwrap_or_default(),
+                        paragraph_property: serde_json::to_value(&style.paragraph_property)
+                            .ok()
+                            .and_then(|value| value.as_object().cloned())
+                            .unwrap_or_default(),
+                    },
+                )
+            })
+            .collect();
+
+        let default_paragraph_style = styles_xml.and_then(detect_default_paragraph_style);
+
         Self {
             hyperlinks,
             numbering,
             styles_by_id,
+            style_entries,
+            doc_default_rpr,
+            doc_default_ppr,
+            default_paragraph_style,
+            numbering_counters: HashMap::new(),
             losses: LossCounter::default(),
             char_count: 0,
             paragraph_count: 0,
+        }
+    }
+
+    /// 解析 basedOn 链（自根到叶，环防护深度 8）：返回根→…→本样式的条目序列。
+    fn style_chain(&self, style_id: &str) -> Vec<&StyleEntry> {
+        let mut chain = Vec::new();
+        let mut current = self.style_entries.get(style_id);
+        let mut depth = 0;
+        while let Some(entry) = current {
+            if depth >= 8 {
+                break; // 环防护：超深链截断（异常样式表防御）。
+            }
+            chain.push(entry);
+            depth += 1;
+            current = entry
+                .based_on
+                .as_deref()
+                .and_then(|parent| self.style_entries.get(parent));
+        }
+        chain.reverse(); // 根在前，叶在后：后者覆盖前者。
+        chain
+    }
+
+    /// 生效段落样式 ID：显式 pStyle 优先，缺省用默认段落样式（Word 语义：
+    /// 无 pStyle 的段落挂默认样式，其链上属性照常生效）。
+    fn effective_paragraph_style<'a>(&'a self, explicit: Option<&'a str>) -> Option<&'a str> {
+        explicit.or(self.default_paragraph_style.as_deref())
+    }
+
+    /// 样式链生效字符属性（docDefaults ← 段落样式链）：map 字段级合并，
+    /// fonts 子对象按属性位合并（显式 ascii/eastAsia 键胜于主题键的整替）。
+    fn chain_char_map(&self, paragraph_style: Option<&str>) -> Map<String, Value> {
+        let mut merged = self.doc_default_rpr.clone();
+        let chain = paragraph_style.map(|id| self.style_chain(id)).unwrap_or_default();
+        for entry in chain {
+            overlay_map(&mut merged, &entry.run_property);
+        }
+        merged
+    }
+
+    /// 样式链生效段落属性（docDefaults ← 段落样式链）。
+    fn chain_paragraph_map(&self, paragraph_style: Option<&str>) -> Map<String, Value> {
+        let mut merged = self.doc_default_ppr.clone();
+        let chain = paragraph_style.map(|id| self.style_chain(id)).unwrap_or_default();
+        for entry in chain {
+            overlay_map(&mut merged, &entry.paragraph_property);
+        }
+        merged
+    }
+
+    /// D3 未解析计数：样式链（含 docDefaults）上存在但既不映射也不属已知
+    /// 非格式行为属性的键（段落应用一次；rStyle 链按 run 计）。
+    /// 注意：docx-rs 的 ParagraphProperty 序列化恒带 `"tabs":[]`（Vec 无
+    /// skip），空 tabs 是回声不是信息——只在非空时计数。
+    fn count_style_degraded(&mut self, char_map: &Map<String, Value>, para_map: &Map<String, Value>) {
+        for key in char_map.keys() {
+            if UNMAPPABLE_CHAR_KEYS.contains(&key.as_str()) {
+                self.losses.style_degraded += 1;
+            }
+        }
+        for (key, value) in para_map {
+            match key.as_str() {
+                "tabs" => {
+                    let non_empty = value
+                        .as_array()
+                        .is_some_and(|tabs| !tabs.is_empty());
+                    if non_empty {
+                        self.losses.style_degraded += 1;
+                    }
+                }
+                "borders" => {
+                    self.losses.style_degraded += 1;
+                }
+                _ => {}
+            }
         }
     }
 
@@ -229,42 +394,38 @@ impl Converter {
     ) -> Vec<ParaOut> {
         self.paragraph_count += 1;
 
-        // 块属性：对齐 / 缩进 / 行距段距；标题样式优先于列表（标题不参与列表归组）。
-        let attrs = paragraph_attrs(&p.property);
-        let heading = p
-            .property
-            .style
-            .as_ref()
-            .and_then(|style| self.heading_level(style));
+        // D3：生效段落属性＝docDefaults ← 段落样式链 ← 直接属性（后覆盖前），
+        // 标题识别仍用显式 pStyle 的 ID/名称。
+        let explicit_style = p.property.style.as_ref().map(|style| style.val.as_str());
+        let paragraph_style: Option<String> = self
+            .effective_paragraph_style(explicit_style)
+            .map(str::to_string);
+        let mut effective_ppr = self.chain_paragraph_map(paragraph_style.as_deref());
+        let direct_ppr = serde_json::to_value(&p.property)
+            .ok()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        overlay_map(&mut effective_ppr, &direct_ppr);
+        // 样式链（不含直接属性）的未解析键计数（每段一次）。
+        let chain_only_ppr = self.chain_paragraph_map(paragraph_style.as_deref());
+        let chain_only_char = self.chain_char_map(paragraph_style.as_deref());
+        self.count_style_degraded(&chain_only_char, &chain_only_ppr);
 
-        // 编号可见性：numId=0 墓碑与缺失 numId 一律普通段落且不计数；
-        // 多级（ilvl>0）、表格内、解析不到定义 → 降级普通段落并计数告知。
-        let list = match &p.property.numbering_property {
-            None => None,
-            Some(np) => match np.id.as_ref().map(|id| id.id) {
-                None | Some(0) => None,
-                Some(num_id) => {
-                    let ilvl = np.level.as_ref().map(|l| l.val).unwrap_or(0);
-                    if ilvl > 0 || in_table {
-                        self.losses.numbering_degraded += 1;
-                        None
-                    } else {
-                        match self.numbering.level0(num_id) {
-                            Some(info) => Some((num_id, info.ordered, info.start)),
-                            None => {
-                                self.losses.numbering_degraded += 1;
-                                None
-                            }
-                        }
-                    }
-                }
-            },
-        };
+        let heading = explicit_style.and_then(|id| self.heading_level_by_id(id));
+        let attrs = paragraph_attrs_from_map(&effective_ppr);
+
+        // D4 编号：生效 numberingProperty（含样式链携带的编号，如 ListNumber
+        // 样式）；计数器跨普通段落打断持续，更深层级在更浅出现时重置。
+        let list = self.resolve_numbering(&effective_ppr, in_table);
+
+        // D3：段落级字符基底（docDefaults ← 段落样式链），run 层再叠
+        // rStyle 链与直接属性（collect_run 内）。
+        let char_base = self.chain_char_map(paragraph_style.as_deref());
 
         let mut acc = ParaAccum::new(heading, attrs);
         let mut closed: Vec<ParaAccum> = Vec::new();
         for child in &p.children {
-            self.collect_paragraph_child(child, None, &mut acc, &mut closed);
+            self.collect_paragraph_child(child, None, &char_base, &mut acc, &mut closed);
         }
         let mut parts = closed;
         parts.push(acc);
@@ -275,28 +436,83 @@ impl Converter {
             .collect()
     }
 
-    fn heading_level(&self, style: &ParagraphStyle) -> Option<u8> {
-        if let Some(level) = parse_heading_token(&style.val) {
+    fn heading_level_by_id(&self, style_id: &str) -> Option<u8> {
+        if let Some(level) = parse_heading_token(style_id) {
             return Some(level);
         }
         self.styles_by_id
-            .get(&style.val)
+            .get(style_id)
             .and_then(|name| parse_heading_token(name))
+    }
+
+    /// D4 编号解析：生效 numberingProperty（含样式链携带的编号，如
+    /// ListNumber 样式的 pPr numPr）→ 计数器语义下的 (numId, ordered, 当前值)。
+    /// 墓碑/缺失→普通段落不计数；ilvl>0/表格内/定义不可见→numbering_degraded
+    /// （计数器仍按语义推进，供将来多层渲染）；同 numId 计数跨打断持续、
+    /// 更深层级在更浅出现时重置、startOverride 改写起点。
+    fn resolve_numbering(
+        &mut self,
+        effective_ppr: &Map<String, Value>,
+        in_table: bool,
+    ) -> Option<(usize, bool, u64)> {
+        let numbering = effective_ppr.get("numberingProperty").and_then(Value::as_object)?;
+        let num_id = numbering.get("id").and_then(Value::as_u64)? as usize;
+        if num_id == 0 {
+            return None; // 墓碑：普通段落，不计数。
+        }
+        let ilvl = numbering
+            .get("level")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize;
+
+        // 计数器语义（无论本段是否可渲染为列表都推进）：
+        // 更深层级在更浅层级出现时重置。
+        let keys_to_reset: Vec<(usize, usize)> = self
+            .numbering_counters
+            .keys()
+            .filter(|(nid, level)| *nid == num_id && *level > ilvl)
+            .cloned()
+            .collect();
+        for key in keys_to_reset {
+            self.numbering_counters.remove(&key);
+        }
+        // 首见计数器起点＝startOverride（若该 numId 覆盖了此层）否则定义层起点。
+        let start = self
+            .numbering
+            .override_start(num_id, ilvl)
+            .or_else(|| self.numbering.level0(num_id).map(|info| info.start))
+            .unwrap_or(1);
+        let counter = self.numbering_counters.entry((num_id, ilvl)).or_insert(start - 1);
+        *counter += 1;
+        let current = *counter;
+
+        if ilvl > 0 || in_table {
+            self.losses.numbering_degraded += 1;
+            return None;
+        }
+        match self.numbering.level0(num_id) {
+            Some(info) => Some((num_id, info.ordered, current)),
+            None => {
+                self.losses.numbering_degraded += 1;
+                None
+            }
+        }
     }
 
     fn collect_paragraph_child(
         &mut self,
         child: &ParagraphChild,
         link_href: Option<&str>,
+        char_base: &Map<String, Value>,
         acc: &mut ParaAccum,
         closed: &mut Vec<ParaAccum>,
     ) {
         match child {
-            ParagraphChild::Run(run) => self.collect_run(run, link_href, acc, closed),
+            ParagraphChild::Run(run) => self.collect_run(run, link_href, char_base, acc, closed),
             ParagraphChild::Hyperlink(h) => {
                 let href = self.href_for(h);
                 for inner in &h.children {
-                    self.collect_paragraph_child(inner, href.as_deref(), acc, closed);
+                    self.collect_paragraph_child(inner, href.as_deref(), char_base, acc, closed);
                 }
             }
             ParagraphChild::Insert(ins) => {
@@ -305,7 +521,7 @@ impl Converter {
                 for inner in &ins.children {
                     match inner {
                         docx_rs::InsertChild::Run(run) => {
-                            self.collect_run(run, link_href, acc, closed)
+                            self.collect_run(run, link_href, char_base, acc, closed)
                         }
                         docx_rs::InsertChild::Delete(_) => self.losses.revisions += 1,
                         _ => {}
@@ -325,7 +541,7 @@ impl Converter {
                 for inner in &mt.children {
                     match inner {
                         docx_rs::MoveToChild::Run(run) => {
-                            self.collect_run(run, link_href, acc, closed)
+                            self.collect_run(run, link_href, char_base, acc, closed)
                         }
                         docx_rs::MoveToChild::Delete(_) => self.losses.revisions += 1,
                         _ => {}
@@ -351,10 +567,46 @@ impl Converter {
         &mut self,
         run: &Run,
         link_href: Option<&str>,
+        char_base: &Map<String, Value>,
         acc: &mut ParaAccum,
         closed: &mut Vec<ParaAccum>,
     ) {
-        let marks = run_marks(&run.run_property, link_href);
+        // D3：生效字符属性＝段落基底（docDefaults ← 段落样式链）← rStyle
+        // 字符样式链 ← 直接属性（后覆盖前）。rStyle 链克隆到本地后计数与
+        // 叠加（避免与 self 的可变借用冲突）。
+        let r_style_chain: Vec<Map<String, Value>> = run
+            .run_property
+            .style
+            .as_ref()
+            .map(|style| style.val.as_str())
+            .map(|style_id| {
+                self.style_chain(style_id)
+                    .iter()
+                    .map(|entry| entry.run_property.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut effective = char_base.clone();
+        // rStyle 链（字符样式链）：其自身引入的未解析键按 run 计（段落链已
+        // 计过的基底键不重复计）。
+        let mut r_style_degraded = 0usize;
+        for entry_map in &r_style_chain {
+            for key in entry_map.keys() {
+                if UNMAPPABLE_CHAR_KEYS.contains(&key.as_str()) {
+                    r_style_degraded += 1;
+                }
+            }
+        }
+        self.losses.style_degraded += r_style_degraded;
+        for entry_map in &r_style_chain {
+            overlay_map(&mut effective, entry_map);
+        }
+        let direct = serde_json::to_value(&run.run_property)
+            .ok()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        overlay_map(&mut effective, &direct);
+        let marks = marks_from_char_map(&effective, link_href);
         for child in &run.children {
             match child {
                 RunChild::Text(t) => {
@@ -383,6 +635,18 @@ impl Converter {
                     closed.push(std::mem::replace(acc, continuation));
                 }
                 RunChild::Drawing(_) | RunChild::Shape(_) => self.losses.images += 1,
+                RunChild::Sym(sym) => {
+                    // 符号字符是可见文字（fix-import-fidelity D2）：常用符号字体
+                    // 高置信映射表 → 插入对应 Unicode 字符（忠实解码，非改写）；
+                    // 映射失败 → symbol_dropped 计数告知（note 含字体名），不静默。
+                    match symbol_to_unicode(&sym.font, &sym.char) {
+                        Some(ch) => acc.inline.push(InlineRun {
+                            text: ch.to_string(),
+                            marks: marks.clone(),
+                        }),
+                        None => self.losses.symbols += 1,
+                    }
+                }
                 RunChild::CommentStart(_) => self.losses.comments += 1,
                 // 注意：脚注引用不在此计数——docx-rs 读侧不解析
                 // w:footnoteReference（模型层看不到），计数统一走
@@ -459,65 +723,64 @@ impl Converter {
 /// run 级格式 → canonical marks（按 rank 排序：bold·italic·underline·strike·
 /// textStyle·highlight·link）。docx-rs 多个属性结构字段为私有但实现 Serialize，
 /// 统一经 serde_json::to_value 读取。
-fn run_marks(rp: &RunProperty, link_href: Option<&str>) -> Vec<Value> {
+/// 生效字符属性 map（D3 合并产物，serde camelCase 键）→ canonical marks。
+/// 键形态：bold/italic→bool，underline→string，strike→bool，color→string，
+/// sz→number（半点），fonts→object（eastAsia/ascii/hiAnsi 键优先，主题键
+/// 不解析——docDefaults 显式字体兜底），highlight→string。
+fn marks_from_char_map(map: &Map<String, Value>, link_href: Option<&str>) -> Vec<Value> {
     let mut marks = Vec::new();
-    if ser_flag(rp.bold.as_ref()) {
+    if map.get("bold").and_then(Value::as_bool) == Some(true) {
         marks.push(json!({ "type": "bold" }));
     }
-    if ser_flag(rp.italic.as_ref()) {
+    if map.get("italic").and_then(Value::as_bool) == Some(true) {
         marks.push(json!({ "type": "italic" }));
     }
-    if let Some(underline) = &rp.underline {
-        let val = ser_str(underline).unwrap_or_default();
-        if !val.is_empty() && val != "none" {
+    if let Some(underline) = map.get("underline").and_then(Value::as_str) {
+        if !underline.is_empty() && underline != "none" {
             marks.push(json!({ "type": "underline" }));
         }
     }
-    if ser_flag(rp.strike.as_ref()) {
+    if map.get("strike").and_then(Value::as_bool) == Some(true) {
         marks.push(json!({ "type": "strike" }));
     }
 
     let mut text_style = Map::new();
-    if let Some(color) = &rp.color {
-        if let Some(hex) = normalize_hex_color(&ser_str(color).unwrap_or_default()) {
+    if let Some(color) = map.get("color").and_then(Value::as_str) {
+        if let Some(hex) = normalize_hex_color(color) {
             text_style.insert("color".to_string(), json!(hex));
         }
     }
-    if let Some(sz) = &rp.sz {
-        if let Some(half_points) = ser_u64(sz) {
-            if half_points > 0 {
-                text_style.insert(
-                    "fontSize".to_string(),
-                    json!(format!("{}pt", format_decimal(half_points as f64 / 2.0))),
-                );
-            }
+    if let Some(half_points) = map.get("sz").and_then(Value::as_u64) {
+        if half_points > 0 {
+            text_style.insert(
+                "fontSize".to_string(),
+                json!(format!("{}pt", format_decimal(half_points as f64 / 2.0))),
+            );
         }
     }
-    if let Some(fonts) = &rp.fonts {
-        if let Some(font_value) = serde_json::to_value(fonts).ok().and_then(|v| {
-            v.as_object().cloned()
-        }) {
-            // 中英混排优先 eastAsia，其次 ascii / hiAnsi。
-            let family = ["eastAsia", "ascii", "hiAnsi"]
-                .iter()
-                .find_map(|key| {
-                    font_value
-                        .get(*key)
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                })
-                .unwrap_or_default();
-            if !family.is_empty() {
-                text_style.insert("fontFamily".to_string(), json!(family));
-            }
+    if let Some(fonts) = map.get("fonts").and_then(Value::as_object) {
+        // 中英混排优先 eastAsia，其次 ascii / hiAnsi；主题键（asciiTheme 等）
+        // 不做主题解析、不计损耗（docDefaults 显式字体兜底，WPS 金样本
+        // 零 style_degraded 的口径之一，见报告）。
+        let family = ["eastAsia", "ascii", "hiAnsi"]
+            .iter()
+            .find_map(|key| {
+                fonts
+                    .get(*key)
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_default();
+        if !family.is_empty() {
+            text_style.insert("fontFamily".to_string(), json!(family));
         }
     }
     if !text_style.is_empty() {
         marks.push(json!({ "type": "textStyle", "attrs": Value::Object(text_style) }));
     }
 
-    if let Some(highlight) = &rp.highlight {
-        if let Some(hex) = highlight_color(&ser_str(highlight).unwrap_or_default()) {
+    if let Some(highlight) = map.get("highlight").and_then(Value::as_str) {
+        if let Some(hex) = highlight_color(highlight) {
             marks.push(json!({ "type": "highlight", "attrs": { "color": hex } }));
         }
     }
@@ -529,6 +792,39 @@ fn run_marks(rp: &RunProperty, link_href: Option<&str>) -> Vec<Value> {
     }
     marks
 }
+
+/// map 字段级合并（overlay 覆盖 base；fonts 子对象按属性位再合并，显式键
+/// 与主题键共存时互不整替）。
+fn overlay_map(base: &mut Map<String, Value>, overlay: &Map<String, Value>) {
+    for (key, value) in overlay {
+        if key == "fonts" {
+            if let (Some(base_fonts), Some(overlay_fonts)) = (
+                base.get_mut("fonts").and_then(Value::as_object_mut),
+                value.as_object(),
+            ) {
+                for (font_key, font_value) in overlay_fonts {
+                    base_fonts.insert(font_key.clone(), font_value.clone());
+                }
+                continue;
+            }
+        }
+        base.insert(key.clone(), value.clone());
+    }
+}
+
+/// 字符属性：链上存在但语法不承载的键（计入 style_degraded）。szCs（复杂
+/// 文字字号＝sz 的孪生）与 vanish（隐藏文字语义另议）不计——前者语义重复，
+/// 后者涉及内容取舍而非格式，均记报告。
+const UNMAPPABLE_CHAR_KEYS: &[&str] = &[
+    "vertAlign",
+    "caps",
+    "characterSpacing",
+    "shading",
+    "textBorder",
+    "dstrike",
+    "fitText",
+    "stretch",
+];
 
 /// OOXML 颜色（RRGGBB / 可能带 alpha 的 RRGGBBAA / auto）→ 小写 #rrggbb；
 /// `auto` 与非法值返回 None（按继承处理，不产生标记）。
@@ -594,11 +890,14 @@ fn parse_heading_token(text: &str) -> Option<u8> {
     None
 }
 
-fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
+/// 生效段落属性 map（D3 合并产物，serde camelCase 键）→ 编辑器段落属性。
+/// 键形态：alignment→string，indent→{start,end,startChars,specialIndent,
+/// hangingChars,firstLineChars}，lineSpacing→{lineRule,before,after,line}。
+fn paragraph_attrs_from_map(pp: &Map<String, Value>) -> Map<String, Value> {
     let mut attrs = Map::new();
 
-    if let Some(justification) = &pp.alignment {
-        let mapped = match justification.val.as_str() {
+    if let Some(justification) = pp.get("alignment").and_then(Value::as_str) {
+        let mapped = match justification {
             "left" | "start" => Some("left"),
             "center" => Some("center"),
             "right" | "end" => Some("right"),
@@ -611,14 +910,17 @@ fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
         }
     }
 
-    if let Some(indent) = &pp.indent {
+    if let Some(indent) = pp.get("indent").and_then(Value::as_object) {
         // 缩进优先消费字符单位（*Chars，1/100 字符 ≈ em），退回 twips（1/20 pt）。
-        if let Some(chars) = indent.start_chars {
+        let special = indent.get("specialIndent").and_then(Value::as_object);
+        let first_line_chars = indent.get("firstLineChars").and_then(Value::as_i64);
+        let hanging_chars = indent.get("hangingChars").and_then(Value::as_i64);
+        if let Some(chars) = indent.get("startChars").and_then(Value::as_i64) {
             attrs.insert(
                 "indentLeft".to_string(),
                 json!(format!("{}em", format_decimal(chars as f64 / 100.0))),
             );
-        } else if let Some(start) = indent.start {
+        } else if let Some(start) = indent.get("start").and_then(Value::as_i64) {
             if start != 0 {
                 attrs.insert(
                     "indentLeft".to_string(),
@@ -626,7 +928,7 @@ fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
                 );
             }
         }
-        if let Some(end) = indent.end {
+        if let Some(end) = indent.get("end").and_then(Value::as_i64) {
             if end != 0 {
                 attrs.insert(
                     "indentRight".to_string(),
@@ -634,21 +936,25 @@ fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
                 );
             }
         }
-        let first_line: Option<String> = if let Some(chars) = indent.first_line_chars {
+        // specialIndent 序列化形状：{"type":"firstLine"|"hanging","val":twips}。
+        let first_line: Option<String> = if let Some(chars) = first_line_chars {
             Some(format!("{}em", format_decimal(chars as f64 / 100.0)))
-        } else if let Some(chars) = indent.hanging_chars {
+        } else if let Some(chars) = hanging_chars {
             Some(format!("-{}em", format_decimal(chars as f64 / 100.0)))
         } else {
-            match indent.special_indent {
-                Some(SpecialIndentType::FirstLine(twips)) => Some(format!(
-                    "{}pt",
-                    format_decimal(twips as f64 / 20.0)
-                )),
-                Some(SpecialIndentType::Hanging(twips)) => Some(format!(
-                    "-{}pt",
-                    format_decimal(twips as f64 / 20.0)
-                )),
-                None => None,
+            match special.map(|sp| {
+                (
+                    sp.get("type").and_then(Value::as_str).unwrap_or(""),
+                    sp.get("val").and_then(Value::as_i64).unwrap_or(0),
+                )
+            }) {
+                Some(("firstLine", twips)) => {
+                    Some(format!("{}pt", format_decimal(twips as f64 / 20.0)))
+                }
+                Some(("hanging", twips)) => {
+                    Some(format!("-{}pt", format_decimal(twips as f64 / 20.0)))
+                }
+                _ => None,
             }
         };
         if let Some(value) = first_line {
@@ -658,43 +964,38 @@ fn paragraph_attrs(pp: &docx_rs::ParagraphProperty) -> Map<String, Value> {
         }
     }
 
-    if let Some(spacing) = &pp.line_spacing {
-        let spacing_value = serde_json::to_value(spacing).ok().and_then(|v| {
-            v.as_object().cloned()
-        });
-        if let Some(spacing_value) = spacing_value {
-            if let Some(before) = spacing_value.get("before").and_then(Value::as_u64) {
-                if before > 0 {
-                    attrs.insert(
-                        "spacingBefore".to_string(),
-                        json!(format!("{}pt", format_decimal(before as f64 / 20.0))),
-                    );
-                }
+    if let Some(spacing_value) = pp.get("lineSpacing").and_then(Value::as_object) {
+        if let Some(before) = spacing_value.get("before").and_then(Value::as_u64) {
+            if before > 0 {
+                attrs.insert(
+                    "spacingBefore".to_string(),
+                    json!(format!("{}pt", format_decimal(before as f64 / 20.0))),
+                );
             }
-            if let Some(after) = spacing_value.get("after").and_then(Value::as_u64) {
-                if after > 0 {
-                    attrs.insert(
-                        "spacingAfter".to_string(),
-                        json!(format!("{}pt", format_decimal(after as f64 / 20.0))),
-                    );
-                }
+        }
+        if let Some(after) = spacing_value.get("after").and_then(Value::as_u64) {
+            if after > 0 {
+                attrs.insert(
+                    "spacingAfter".to_string(),
+                    json!(format!("{}pt", format_decimal(after as f64 / 20.0))),
+                );
             }
-            let line = spacing_value.get("line").and_then(Value::as_i64);
-            let rule = spacing_value
-                .get("lineRule")
-                .and_then(Value::as_str)
-                .unwrap_or("auto");
-            if let Some(line) = line {
-                if line > 0 {
-                    let value = if rule == "auto" {
-                        // auto：240 = 单倍行距 → 无单位倍数。
-                        format_decimal(line as f64 / 240.0)
-                    } else {
-                        // exact / atLeast：twips → pt（CSS 无 atLeast，按固定值近似）。
-                        format!("{}pt", format_decimal(line as f64 / 20.0))
-                    };
-                    attrs.insert("lineHeight".to_string(), json!(value));
-                }
+        }
+        let line = spacing_value.get("line").and_then(Value::as_i64);
+        let rule = spacing_value
+            .get("lineRule")
+            .and_then(Value::as_str)
+            .unwrap_or("auto");
+        if let Some(line) = line {
+            if line > 0 {
+                let value = if rule == "auto" {
+                    // auto：240 = 单倍行距 → 无单位倍数。
+                    format_decimal(line as f64 / 240.0)
+                } else {
+                    // exact / atLeast：twips → pt（CSS 无 atLeast，按固定值近似）。
+                    format!("{}pt", format_decimal(line as f64 / 20.0))
+                };
+                attrs.insert("lineHeight".to_string(), json!(value));
             }
         }
     }
@@ -758,12 +1059,14 @@ fn flush_list(out: &mut Vec<Value>, items: &mut Vec<Value>, current: &mut Option
 
 // ========== ZIP 预扫描与解析入口 ==========
 
-/// ZIP 预扫描产物：document.xml（兼容块/脚注计数用）与 docProps（生成器印记）。
+/// ZIP 预扫描产物：document.xml（兼容块/脚注计数用）、docProps（生成器印记）
+/// 与 styles.xml（默认段落样式探测——docx-rs 不读 `w:default` 标志，spike 结论）。
 #[derive(Debug)]
 struct ZipScan {
     document_xml: Option<String>,
     app_xml: Option<String>,
     custom_xml: Option<String>,
+    styles_xml: Option<String>,
 }
 
 /// 解压防护 + ZIP 结构判定 + 顺带提取 document.xml / docProps，然后解析映射
@@ -791,7 +1094,7 @@ pub(crate) fn parse_docx(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
         .map_err(|e| {
             ProjectError::ImportRejected(format!("文件解析失败：不是有效的 Word 文档（{e:?}）"))
         })?;
-    let mut converter = Converter::new(&docx);
+    let mut converter = Converter::new(&docx, scan.styles_xml.as_deref());
     let paras = converter.walk_document(&docx);
     let (blocks, markers) = group_blocks_with_markers(paras);
     let mut losses = converter.losses;
@@ -823,6 +1126,7 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
         document_xml: None,
         app_xml: None,
         custom_xml: None,
+        styles_xml: None,
     };
     let mut total: u64 = 0;
     for index in 0..archive.len() {
@@ -835,7 +1139,7 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
         let name = entry.name().to_string();
         let capture = matches!(
             name.as_str(),
-            "word/document.xml" | "docProps/app.xml" | "docProps/custom.xml"
+            "word/document.xml" | "docProps/app.xml" | "docProps/custom.xml" | "word/styles.xml"
         );
         let mut captured: Vec<u8> = Vec::new();
         let mut entry_total: u64 = 0;
@@ -874,10 +1178,36 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
             "docProps/custom.xml" => {
                 scan.custom_xml = Some(String::from_utf8_lossy(&captured).into_owned())
             }
+            "word/styles.xml" => {
+                scan.styles_xml = Some(String::from_utf8_lossy(&captured).into_owned())
+            }
             _ => {}
         }
     }
     Ok(scan)
+}
+
+/// styles.xml 默认段落样式探测（D3）：`w:default="1"` 且 `w:type="paragraph"`
+/// 的 styleId——docx-rs Style 模型无 default 字段（spike 结论），从预扫描
+/// 捕获的 styles.xml 以 roxmltree 读取（前缀属性按本地名比对）。styles.xml
+/// 缺失/畸形时返回 None（无默认样式，段落链仅 docDefaults）。
+fn detect_default_paragraph_style(styles_xml: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(styles_xml).ok()?;
+    for style in doc.descendants() {
+        if !style.is_element() || style.tag_name().name() != "style" {
+            continue;
+        }
+        let local = |name: &str| {
+            style
+                .attributes()
+                .find(|attr| attr.name() == name)
+                .map(|attr| attr.value())
+        };
+        if local("type") == Some("paragraph") && local("default") == Some("1") {
+            return local("styleId").map(str::to_string);
+        }
+    }
+    None
 }
 
 // ========== docProps 生成器印记与兼容块计数 ==========
@@ -980,6 +1310,91 @@ fn count_footnote_references(document_xml: &str) -> usize {
     count_open_tags_local_name(document_xml, "footnoteReference")
 }
 
+// ========== 符号字符映射（fix-import-fidelity D2） ==========
+
+/// `w:sym`（{font, char} 字符引用，char 为十六进制、多在私用区 F0xx）→
+/// Unicode 字符。只收高置信常用符号（宁缺毋滥）：Wingdings 勾叉／笑脸／
+/// 方块系列＋Symbol 字体（本质是希腊字母数学字体，编码极稳定）的希腊字母
+/// 全集与常用数学符号。`F0` 私用区前缀按 OOXML 惯例剥除后查表。
+fn symbol_to_unicode(font: &str, char_code: &str) -> Option<char> {
+    let code = u32::from_str_radix(char_code.trim(), 16).ok()?;
+    // 私用区回声前缀：Wingdings/Symbol 引用常写作 F0xx（F000 区）。
+    let code = if (0xF000..=0xF0FF).contains(&code) { code - 0xF000 } else { code };
+    match font.trim() {
+        "Wingdings" => wingdings_char(code),
+        "Symbol" => symbol_font_char(code),
+        _ => None,
+    }
+}
+
+/// Wingdings 常用符号（Alan Wood 映射表中高置信常用子集）。
+fn wingdings_char(code: u32) -> Option<char> {
+    Some(match code {
+        0xFC => '✓',  // 0x2713 勾
+        0xFD => '✗',  // 0x2717 叉
+        0xFE => '☑',  // 0x2611 勾选框
+        0x4A => '☺',  // 0x263A 笑脸（Wingdings J）
+        0x4B => '😐', // 0x1F610 中性脸（Wingdings K）
+        0x4C => '🙁', // 0x1F642→frown 近似：Wingdings L 难过脸，取 0x1F641 风格保守映射
+        0x6E => '■',  // 0x25A0 实心方块（Wingdings n）
+        0x6F => '□',  // 0x25A1 空心方块（Wingdings o）
+        0x71 => '❑',  // 0x2751 阴影方框（Wingdings q）
+        0xA7 => '▪',  // 0x25AA 小实心方块（Word 方块项目符）
+        0xA8 => '▫',  // 0x25AB 小空心方块
+        0xB7 => '●',  // 0x25CF 实心圆点（Wingdings 圆项目符）
+        0xCB => '◦',  // 0x25E6 小空心圆点（Wingdings ）
+        0xD8 => '○',  // 0x25CB 空心圆（Wingdings Ø）
+        0xE8 => '→',  // 0x2192 右箭头（Wingdings è）
+        0xE9 => '↔',  // 0x2194 双向箭头
+        0xEA => '↑',  // 0x2191 上箭头
+        0xEB => '↓',  // 0x2193 下箭头
+        0xF2 => '⇒',  // 0x21D2 双线右箭头
+        0xAB => '«',  // Wingdings « 左书名号形箭头，保守原样
+        0xBB => '»',
+        0xE7 => '←',  // 0x2190 左箭头
+        0xDC => '✄',  // 0x2704 剪刀
+        0xC7 => '✎',  // 0x270E 铅笔
+        0x28 => '☎',  // 0x260E 电话
+        0x3F => '✈',  // 0x2708 飞机
+        _ => return None,
+    })
+}
+
+/// Symbol 字体（Adobe Symbol 编码，希腊字母＝ASCII 位，极稳定）。
+fn symbol_font_char(code: u32) -> Option<char> {
+    Some(match code {
+        // 数学常用。
+        0xB1 => '±',
+        0xB4 => '×',
+        0xB8 => '÷',
+        0xB9 => '≠',
+        0xBB => '≈',
+        0xA3 => '≤',
+        0xB3 => '≥',
+        0xA5 => '∞',
+        0xB0 => '°',
+        0xD6 => '−', // 真减号 U+2212
+        0xB7 => '•', // Symbol 圆点符（Word 默认项目符）
+        0xD7 => '≡',
+        0xB2 => '⊃',
+        0xA1 => '¬',
+        0xD1 => '∴',
+        // 希腊小写（Symbol 字体 ASCII 位即希腊字母）。
+        0x61 => 'α', 0x62 => 'β', 0x63 => 'χ', 0x64 => 'δ', 0x65 => 'ε',
+        0x66 => 'φ', 0x67 => 'γ', 0x68 => 'η', 0x69 => 'ι', 0x6A => 'ϕ',
+        0x6B => 'κ', 0x6C => 'λ', 0x6D => 'μ', 0x6E => 'ν', 0x6F => 'ο',
+        0x70 => 'π', 0x71 => 'θ', 0x72 => 'ρ', 0x73 => 'σ', 0x74 => 'τ',
+        0x75 => 'υ', 0x77 => 'ω', 0x78 => 'ξ', 0x79 => 'ψ', 0x7A => 'ζ',
+        // 希腊大写。
+        0x41 => 'Α', 0x42 => 'Β', 0x47 => 'Γ', 0x44 => 'Δ', 0x45 => 'Ε',
+        0x5A => 'Ζ', 0x48 => 'Η', 0x51 => 'Θ', 0x49 => 'Ι', 0x4B => 'Κ',
+        0x4C => 'Λ', 0x4D => 'Μ', 0x4E => 'Ν', 0x58 => 'Ξ', 0x4F => 'Ο',
+        0x50 => 'Π', 0x52 => 'Ρ', 0x54 => 'Τ', 0x53 => 'Σ', 0x55 => 'Υ',
+        0x46 => 'Φ', 0x59 => 'Ψ', 0x57 => 'Ω', 0x43 => 'Χ',
+        _ => return None,
+    })
+}
+
 // ========== 工具 ==========
 
 fn format_decimal(value: f64) -> String {
@@ -989,13 +1404,6 @@ fn format_decimal(value: f64) -> String {
         text = text.trim_end_matches('0').trim_end_matches('.').to_string();
     }
     text
-}
-
-fn ser_flag(value: Option<&impl Serialize>) -> bool {
-    value
-        .and_then(|v| serde_json::to_value(v).ok())
-        .and_then(|v| v.as_bool())
-        == Some(true)
 }
 
 fn ser_str(value: &impl Serialize) -> Option<String> {
@@ -1094,6 +1502,40 @@ mod tests {
             .start_file("word/document.xml", options)
             .expect("start document");
         writer.write_all(document_xml.as_bytes()).unwrap();
+        writer.finish().expect("finish zip").into_inner()
+    }
+
+    /// 手工构造最小 .docx ZIP（含 styles.xml——用于 docx-rs 写侧无法表达的
+    /// `w:default="1"` 默认样式标志等）。
+    fn write_minimal_docx_with_styles(document_xml: &str, styles_xml: &str) -> Vec<u8> {
+        const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" PartName="/word/document.xml"/><Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml" PartName="/word/styles.xml"/></Types>"#;
+        const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
+        const DOC_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>"#;
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file("[Content_Types].xml", options)
+            .expect("start content types");
+        std::io::Write::write_all(&mut writer, CONTENT_TYPES.as_bytes()).unwrap();
+        writer
+            .start_file("_rels/.rels", options)
+            .expect("start rels");
+        std::io::Write::write_all(&mut writer, RELS.as_bytes()).unwrap();
+        writer
+            .start_file("word/_rels/document.xml.rels", options)
+            .expect("start doc rels");
+        std::io::Write::write_all(&mut writer, DOC_RELS.as_bytes()).unwrap();
+        writer
+            .start_file("word/styles.xml", options)
+            .expect("start styles");
+        std::io::Write::write_all(&mut writer, styles_xml.as_bytes()).unwrap();
+        writer
+            .start_file("word/document.xml", options)
+            .expect("start document");
+        std::io::Write::write_all(&mut writer, document_xml.as_bytes()).unwrap();
         writer.finish().expect("finish zip").into_inner()
     }
 
@@ -1322,7 +1764,7 @@ mod tests {
         // 字符单位路径由 chars 缩进专项测试覆盖。
         let paragraph = Paragraph::new()
             .align(AlignmentType::Center)
-            .indent(Some(420), Some(SpecialIndentType::FirstLine(400)), None, None)
+            .indent(Some(420), Some(docx_rs::SpecialIndentType::FirstLine(400)), None, None)
             .line_spacing(
                 LineSpacing::new()
                     .line_rule(LineSpacingType::Auto)
@@ -1833,6 +2275,356 @@ mod tests {
 
     // ----- 工具函数 -----
 
+    // ===== fix-import-fidelity 复现测试（先失败后修复） =====
+
+    /// 复现 D2：`w:sym` 符号字符当前被静默丢弃（collect_run 的 `_ => {}`）。
+    #[test]
+    fn repro_symbol_characters_mapped_to_unicode() {
+        let docx = Docx::new().add_paragraph(
+            Paragraph::new()
+                .add_run(Run::new().add_sym(docx_rs::Sym::new("Wingdings", "F0FC")))
+                .add_run(Run::new().add_text(" 已完成")),
+        );
+        let parsed = parse(&pack(docx));
+        // 期望：勾号成为正文文字（✓ 已完成）。
+        assert_eq!(block_text(&parsed.blocks[0]), "✓ 已完成");
+        // 未知字体/码位 → symbol_dropped 计数（非静默）。
+        let docx = Docx::new().add_paragraph(
+            Paragraph::new().add_run(
+                Run::new().add_sym(docx_rs::Sym::new("Webdings", "F0F0")),
+            ),
+        );
+        let parsed = parse(&pack(docx));
+        assert_eq!(parsed.losses.symbols, 1, "未知符号字体计入丢弃");
+    }
+
+    /// 复现 D3：basedOn 三层链的样式格式当前丢失（styles_by_id 只存名称）。
+    #[test]
+    fn repro_style_chain_formatting_applied() {
+        let mut grand = Style::new("Grand", StyleType::Paragraph).name("grand");
+        grand.run_property = grand.run_property.clone().bold();
+        let mut parent = Style::new("Parent", StyleType::Paragraph)
+            .name("parent")
+            .based_on("Grand");
+        parent.run_property = parent.run_property.clone().size(28);
+        let mut child = Style::new("Child", StyleType::Paragraph)
+            .name("child")
+            .based_on("Parent");
+        child.run_property = child.run_property.clone().color("FF0000");
+        let docx = Docx::new()
+            .add_style(grand)
+            .add_style(parent)
+            .add_style(child)
+            .add_paragraph(Paragraph::new().style("Child").add_run(Run::new().add_text("链式样式文字")));
+        let parsed = parse(&pack(docx));
+        let marks = &parsed.blocks[0]["content"][0]["marks"];
+        let types: Vec<&str> = marks
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["type"].as_str().unwrap())
+            .collect();
+        // 期望：粗体（来自 Grand）＋颜色（来自 Child）＋字号 14pt（来自 Parent）。
+        assert!(
+            types.contains(&"bold"),
+            "祖父样式的粗体应生效：{types:?}"
+        );
+        assert!(
+            types.contains(&"textStyle"),
+            "链上字号/颜色应生效：{types:?}"
+        );
+        let text_style = marks
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["type"] == "textStyle")
+            .unwrap();
+        assert_eq!(text_style["attrs"]["fontSize"], "14pt");
+        assert_eq!(text_style["attrs"]["color"], "#ff0000");
+    }
+
+    /// 复现 D4：同一 numId 的有序列表被普通段落打断后，当前从起点重起。
+    #[test]
+    fn repro_numbering_continues_across_interruption() {
+        let docx = Docx::new()
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第一项")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第二项")),
+            )
+            .add_paragraph(para("打断段落"))
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第三项")),
+            );
+        let parsed = parse(&pack(docx));
+        let ordered: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        assert_eq!(ordered.len(), 2, "打断产生两个列表块");
+        // 期望：重续块从 3 续算（当前错误地重起为 1）。
+        assert_eq!(
+            ordered[1]["attrs"]["start"], 3,
+            "重续列表应以当前计数值为 start"
+        );
+    }
+
+    /// D4 的 startOverride 消费：numId 2 覆盖起点为 5。
+    #[test]
+    fn repro_start_override_consumed() {
+        let abstract_num = AbstractNumbering::new(1).add_level(Level::new(
+            0,
+            Start::new(1),
+            NumberFormat::new("decimal"),
+            LevelText::new("%1."),
+            LevelJc::new("left"),
+        ));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(
+                docx_rs::Numbering::new(2, 1)
+                    .add_override(docx_rs::LevelOverride::new(0).start(5)),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(2), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("覆盖项")),
+            );
+        let parsed = parse(&pack(docx));
+        let ordered: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(ordered[0]["attrs"]["start"], 5, "startOverride 改写起点");
+    }
+
+    /// D4 矩阵：双列表交错——各自计数互不干扰、同打断续算。
+    #[test]
+    fn numbering_two_lists_interleave_independently() {
+        let abstract_a = AbstractNumbering::new(1).add_level(Level::new(
+            0,
+            Start::new(1),
+            NumberFormat::new("decimal"),
+            LevelText::new("%1."),
+            LevelJc::new("left"),
+        ));
+        let abstract_b = AbstractNumbering::new(2).add_level(Level::new(
+            0,
+            Start::new(10),
+            NumberFormat::new("decimal"),
+            LevelText::new("%1."),
+            LevelJc::new("left"),
+        ));
+        let item = |num: usize, text: &str| {
+            Paragraph::new()
+                .numbering(NumberingId::new(num), IndentLevel::new(0))
+                .add_run(Run::new().add_text(text))
+        };
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_a)
+            .add_abstract_numbering(abstract_b)
+            .add_numbering(docx_rs::Numbering::new(1, 1))
+            .add_numbering(docx_rs::Numbering::new(2, 2))
+            .add_paragraph(item(1, "甲一"))
+            .add_paragraph(item(2, "乙十"))
+            .add_paragraph(item(1, "甲二"))
+            .add_paragraph(item(2, "乙十一"));
+        let parsed = parse(&pack(docx));
+        let ordered: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        // 交错产生 4 个列表块（每次 numId 切换即断组），各自从当前计数续起。
+        assert_eq!(ordered.len(), 4, "块序列：{ordered:#?}");
+        assert_eq!(ordered[0]["attrs"]["start"], 1, "甲一");
+        assert_eq!(ordered[1]["attrs"]["start"], 10, "乙十");
+        assert_eq!(ordered[2]["attrs"]["start"], 2, "甲二续算");
+        assert_eq!(ordered[3]["attrs"]["start"], 11, "乙十一续算");
+    }
+
+    /// D4 矩阵：更深层级出现→重置（ilvl1 降级为普通段，ilvl0 计数不受段落
+    /// 打断影响持续）；墓碑 numId=0 与真编号并存互不干扰。
+    #[test]
+    fn numbering_deeper_level_reset_and_tombstone_coexistence() {
+        let abstract_num = AbstractNumbering::new(1)
+            .add_level(Level::new(
+                0,
+                Start::new(1),
+                NumberFormat::new("decimal"),
+                LevelText::new("%1."),
+                LevelJc::new("left"),
+            ))
+            .add_level(Level::new(
+                1,
+                Start::new(1),
+                NumberFormat::new("decimal"),
+                LevelText::new("%2."),
+                LevelJc::new("left"),
+            ));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(docx_rs::Numbering::new(1, 1))
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第一项")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(1))
+                    .add_run(Run::new().add_text("子层（降级为普通段）")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第二项")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(0), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("墓碑段")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("第三项")),
+            );
+        let parsed = parse(&pack(docx));
+        // ilvl1 → numbering_degraded；ilvl0 计数跨「降级段＋墓碑段」持续。
+        assert_eq!(parsed.losses.numbering_degraded, 1);
+        let ordered: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        assert_eq!(ordered.len(), 3, "三个列表片段");
+        assert_eq!(ordered[0]["attrs"]["start"], 1, "第一项");
+        assert_eq!(ordered[1]["attrs"]["start"], 2, "第二项跨子层降级段续算");
+        assert_eq!(ordered[2]["attrs"]["start"], 3, "第三项跨墓碑段续算");
+        // 墓碑段是普通段落、文字完整。
+        let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+        assert!(texts.contains(&"墓碑段".to_string()));
+    }
+
+    /// D3：样式链携带的编号（ListNumber 风格：pStyle → 样式 pPr numPr）。
+    #[test]
+    fn style_linked_numbering_applies() {
+        let mut list_style = Style::new("ListNumber", StyleType::Paragraph).name("List Number");
+        list_style.paragraph_property =
+            list_style.paragraph_property.clone().numbering(NumberingId::new(1), IndentLevel::new(0));
+        let abstract_num = AbstractNumbering::new(1).add_level(Level::new(
+            0,
+            Start::new(1),
+            NumberFormat::new("decimal"),
+            LevelText::new("%1."),
+            LevelJc::new("left"),
+        ));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(docx_rs::Numbering::new(1, 1))
+            .add_style(list_style)
+            .add_paragraph(
+                Paragraph::new()
+                    .style("ListNumber")
+                    .add_run(Run::new().add_text("样式编号项")),
+            )
+            // 墓碑段：写侧只有在出现直接编号段落时才输出 numbering.xml，
+            // 用 numId=0 墓碑强制携带定义（导入侧按墓碑处理为普通段落）。
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(0), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("墓碑触发段")),
+            );
+        let parsed = parse(&pack(docx));
+        let ordered: Vec<&Value> = parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect();
+        assert_eq!(ordered.len(), 1, "样式链携带的编号应生效");
+        assert_eq!(block_text(&ordered[0]["content"][0]["content"][0]), "样式编号项");
+        let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+        assert!(texts.contains(&"墓碑触发段".to_string()), "墓碑段保留：{texts:?}");
+    }
+
+    /// D3：样式链上语法不承载的属性计入 style_degraded（每段一次）。
+    #[test]
+    fn style_degraded_counted_for_unmappable_chain_props() {
+        let mut styled = Style::new("CapStyle", StyleType::Paragraph).name("cap style");
+        styled.run_property = styled.run_property.clone().caps();
+        let docx = Docx::new()
+            .add_style(styled)
+            .add_paragraph(
+                Paragraph::new()
+                    .style("CapStyle")
+                    .add_run(Run::new().add_text("全大写样式段")),
+            )
+            .add_paragraph(para("普通段"));
+        let parsed = parse(&pack(docx));
+        // caps 不映射：一个使用段落计一次；直接属性上的 caps 不计（既有口径：
+        // 计数针对「样式链上」未解析属性）。
+        assert_eq!(parsed.losses.style_degraded, 1);
+        assert_eq!(block_text(&parsed.blocks[0]), "全大写样式段", "文字无损");
+    }
+
+    /// D3：默认段落样式（styles.xml w:default="1"）对无 pStyle 段落生效。
+    #[test]
+    fn default_paragraph_style_applies_to_unstyled_paragraphs() {
+        // docx-rs 写侧不出 default 标志——手工 ZIP 注入 styles.xml。
+        let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>无样式段落</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+        let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:rPr><w:sz w:val="24"/></w:rPr>
+  </w:style>
+</w:styles>"#;
+        let bytes = write_minimal_docx_with_styles(document_xml, styles_xml);
+        let parsed = parse(&bytes);
+        // 无 pStyle 段落继承默认样式 Normal 的 12pt。
+        let text_node = &parsed.blocks[0]["content"][0];
+        let marks = text_node["marks"].as_array().expect("应有 textStyle");
+        assert_eq!(marks[0]["type"], "textStyle");
+        assert_eq!(marks[0]["attrs"]["fontSize"], "12pt");
+    }
+
+    /// D3：环状 basedOn 链防护（A→B→A 截断不崩溃）。
+    #[test]
+    fn cyclic_based_on_chain_guarded() {
+        let mut a = Style::new("A", StyleType::Paragraph).name("a").based_on("B");
+        a.run_property = a.run_property.clone().bold();
+        let mut b = Style::new("B", StyleType::Paragraph).name("b").based_on("A");
+        b.run_property = b.run_property.clone().italic();
+        let docx = Docx::new()
+            .add_style(a)
+            .add_style(b)
+            .add_paragraph(Paragraph::new().style("A").add_run(Run::new().add_text("环链文字")));
+        let parsed = parse(&pack(docx));
+        assert_eq!(block_text(&parsed.blocks[0]), "环链文字");
+        // 环截断后链上属性仍生效（bold 来自 A 自身）。
+        let marks = parsed.blocks[0]["content"][0]["marks"].as_array().cloned();
+        let has_bold = marks.is_some_and(|ms| ms.iter().any(|m| m["type"] == "bold"));
+        assert!(has_bold, "环防护不丢链上属性");
+    }
+
+    // ----- 工具函数（原位） -----
+
     #[test]
     fn hex_and_highlight_normalization() {
         assert_eq!(normalize_hex_color("FF0000").as_deref(), Some("#ff0000"));
@@ -1869,6 +2661,7 @@ mod tests {
             document_xml: None,
             app_xml: Some(app.to_string()),
             custom_xml: Some(custom.to_string()),
+            styles_xml: None,
         };
         assert_eq!(
             extract_generator(&scan).as_deref(),

@@ -468,37 +468,55 @@ fn export_import_roundtrip_diffs_are_enumerable() {
     assert_eq!(blocks[1]["attrs"]["textAlign"], "center");
 
     // ---- 断言 3：mark 差异恰好落在清单内 ----
-    // 3a. 富格式段：加粗/斜体/下划线/删除线/颜色保留。
+    // 3a. 富格式段：加粗/斜体/下划线/删除线/颜色保留；fix-import-fidelity D3
+    // 后每个 run 还携带 docDefaults 的 fontFamily/fontSize（导出侧
+    // default_size(24)/default_fonts 写入 docDefaults，导入侧样式链如今
+    // 真应用——往返已知差异⑤，属保真改进而非降级）。
     assert_eq!(
         block_mark_summary(&blocks[10]),
         vec![
             "bold",
+            "textStyle.fontFamily",
+            "textStyle.fontSize",
+            // 「普通」run：无直接格式，但 docDefaults 字体字号经 D3 生效。
+            "textStyle.fontFamily",
+            "textStyle.fontSize",
             "italic",
+            "textStyle.fontFamily",
+            "textStyle.fontSize",
             "underline",
             "strike",
+            "textStyle.fontFamily",
+            "textStyle.fontSize",
             "textStyle.color",
+            "textStyle.fontFamily",
+            "textStyle.fontSize",
         ],
-        "加粗/斜体/下划线/删除线/颜色必须保留"
+        "加粗/斜体/下划线/删除线/颜色必须保留，docDefaults 字体字号生效"
     );
     assert_eq!(
         blocks[10]["content"][4]["marks"][0]["attrs"]["color"],
         "#3366cc",
         "颜色值往返一致（导出去 #、导入补 #）"
     );
-    // 3b. 链接/高亮/字号/字体丢失（差异③④），全文不再出现这些 mark。
+    // 3b. 链接/高亮丢失（差异③④——run 级不导出）；docDefaults 生效后
+    // fontSize/fontFamily 以文档默认形态保留（差异⑤），仅链接与高亮不得出现。
     for (index, block) in blocks.iter().enumerate() {
         let summary = block_mark_summary(block);
         assert!(
-            !summary.iter().any(|m| m == "link"
-                || m == "highlight"
-                || m == "textStyle.fontSize"
-                || m == "textStyle.fontFamily"),
+            !summary.iter().any(|m| m == "link" || m == "highlight"),
             "第 {index} 块出现清单外的保留 mark：{summary:?}"
         );
     }
-    // 3c. 丢失 marks 后的三个文本节点合并为单个无标记节点（canonical 行为）。
+    // 3c. 丢失链接/高亮 marks 后的三个文本节点因 docDefaults 字体字号标记
+    // 不再是「无标记」——保持为独立节点（canonical 相邻同 marks 合并规则
+    // 依旧成立：三者同携带 docDefaults textStyle，合并为一个节点）。
     assert_eq!(blocks[11]["content"].as_array().unwrap().len(), 1);
-    assert!(blocks[11]["content"][0].get("marks").is_none());
+    assert_eq!(
+        blocks[11]["content"][0]["marks"][0]["attrs"]["fontFamily"],
+        "Source Han Sans CN",
+        "docDefaults 字体经 D3 链生效"
+    );
 
     // ---- 断言 4：既有文档不受导入影响（导入只新增文档）。 ----
     let after = project::recover_then_read_content_tree(&root).expect("reread tree");

@@ -125,6 +125,14 @@ pub(crate) struct LossCounter {
     pub(crate) unknown_elements: usize,
     /// fdx：未知元素的去重名称清单（进入告知 note，便于新样本轮排查）。
     pub(crate) unknown_element_names: Vec<String>,
+    /// md：列表溢出降级的段落计数（fix-import-fidelity D1）。
+    pub(crate) list_overflow_paragraphs: usize,
+    /// md：列表溢出降级的子列表计数（第二个及以后的嵌套子列表，拍平）。
+    pub(crate) list_overflow_lists: usize,
+    /// docx：无法映射而丢弃的符号字符数（fix-import-fidelity D2）。
+    pub(crate) symbols: usize,
+    /// docx：样式链上存在但无法解析/映射的属性计数（fix-import-fidelity D3）。
+    pub(crate) style_degraded: usize,
 }
 
 impl LossCounter {
@@ -260,6 +268,27 @@ impl LossCounter {
                     };
                     format!("{}{suffix}", preview.join("、"))
                 }
+            ),
+        );
+        push(
+            "list_overflow_degraded",
+            self.list_overflow_paragraphs + self.list_overflow_lists,
+            format!(
+                "列表溢出内容已按原文顺序降级为普通段落：续段 {} 处、子列表 {} 个",
+                self.list_overflow_paragraphs, self.list_overflow_lists
+            ),
+        );
+        push(
+            "symbol_dropped",
+            self.symbols,
+            format!("{} 个符号字符无法可靠映射，已丢弃", self.symbols),
+        );
+        push(
+            "style_degraded",
+            self.style_degraded,
+            format!(
+                "{} 处样式链属性无法解析映射，已忽略",
+                self.style_degraded
             ),
         );
         out

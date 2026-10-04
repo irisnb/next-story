@@ -77,10 +77,15 @@ sidecar/reliability/long-context/materials/*.txt text eol=lf
 - **Linux：越过签名修复后暴露下一层**——clippy `-D warnings` 下 3 项 `dead_code`，均只被 `#[cfg(windows)]` 分支引用、非 Windows 编译时成为死代码：`PRINT_CALLBACK_TIMEOUT`（`pdf_print.rs:45`）、`enum PrintSignal`（:190）、`PDF_SDK_UNSUPPORTED`（:252）；失败点 `Run unified checks` → clippy `could not compile next-story (lib) due to 3 previous errors`（退出码 101）。
 - 处置（第 2 轮，2026-10-04）：三项分别加 `#[cfg(windows)]` 门控；共享代码不引用它们（grep 核实），Windows 分支不受影响。
 
-### 5.2 第 2 轮（commit 待补，run 待补）
+### 5.2 第 2 轮（commit `1a1ff54`，run `37212615363`）
 
 - 修复内容：`pdf_print.rs` 三处 `#[cfg(windows)]`（+3 行）。本地 `cargo fmt --check`／`npm run clippy:rust` 退出码 0。
-- CI 双平台结果待推送后补充。
+- **CI 双平台全绿**（linux＋windows 均 success；2026-09-26 以来首次）——`test:rust` 等此前从未在 CI 跑完的科目完整通过，Linux 未再暴露下一层阻塞。
+
+### 5.3 收口结论
+
+- 两个初始阻塞（非 Windows 编译、夹具换行）＋逐层清理发现的第三项（Windows 专用条目死代码）全部清除；CI 双平台门禁恢复可信。
+- 全程记录：第 1 轮 run `37211806698`（Windows 绿／Linux 死代码层）；第 2 轮 run `37212615363`（双平台绿）。
 
 ## 6. 诚实边界
 

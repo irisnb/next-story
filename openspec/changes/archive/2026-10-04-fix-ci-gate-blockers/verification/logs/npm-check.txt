@@ -1,0 +1,60 @@
+﻿     Running tests\on_demand_reading_negative_test.rs (src-tauri\target\debug\deps\on_demand_reading_negative_test-c8a9
+3536c5f36153.exe)
+running 2 tests
+test negative_tool_names_fail_to_parse_as_story_tool_calls ... ok
+test negative_direct_calls_fail_closed_with_zero_disk_side_effects ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+     Running tests\project_test.rs (src-tauri\target\debug\deps\project_test-92dfdbf0df54dc69.exe)
+running 33 tests
+test open_existing_project_rejects_missing_or_malformed_project_files ... ok
+test open_existing_project_rejects_project_root_symlink ... ok
+test open_existing_project_rejects_oversized_metadata_before_opening ... ok
+test open_rejects_old_project_structure_version_1 ... ok
+test open_rejects_old_txt_only_project ... ok
+test open_existing_project_rejects_required_file_symlink_when_it_escapes_root ... ok
+test open_rejects_missing_version_field ... ok
+test open_existing_project_rejects_oversized_draft_before_opening ... ok
+test open_existing_project_rejects_oversized_main_before_opening ... ok
+test open_rejects_unknown_future_project_structure_version ... ok
+test project_error_display_never_leaks_sensitive_paths ... ok
+test project_error_keeps_existing_user_understandable_prompts ... ok
+test create_new_project_creates_expected_chinese_structure ... ok
+test open_rejects_committing_oversized_transaction ... ok
+test open_rejects_oversized_notebook_before_reading ... ok
+test create_new_project_rejects_empty_invalid_reserved_and_existing_names ... ok
+test open_rejects_version_as_fraction ... ok
+test open_rejects_version_as_negative ... ok
+test create_new_project_writes_valid_blank_structured_notebooks ... ok
+test open_rejects_version_as_null ... ok
+test open_rejects_version_as_string ... ok
+test open_rejects_unrecoverable_transaction_with_invalid_staged_notebook ... ok
+test unsupported_version_with_interrupted_transaction_leaves_all_bytes_unchanged ... ok
+test save_rejects_invalid_notebook_payload_before_staging ... ok
+test open_rejects_corrupted_notebook_json ... ok
+test open_rejects_unsupported_notebook_document_version ... ok
+test open_rejects_unknown_node_type ... ok
+test save_and_reopen_preserves_document_through_production_api ... ok
+test open_accepts_nested_list ... ok
+test visibility_and_directory_commands_never_leak_path_or_document_identity ... ok
+test open_discards_staged_oversized_transaction ... ok
+test save_rejects_oversized_document_before_staging ... ok
+test real_chain_visibility_walkthrough_keeps_document_bytes_unchanged ... ok
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+     Running tests\real_link_on_demand_reading_test.rs (src-tauri\target\debug\deps\real_link_on_demand_reading_test-f3
+6796df76573c4d.exe)
+running 3 tests
+test real_link_authorization_request_suspends_then_grant_continues ... ignored, 鐪熷疄閾捐矾锛氶渶瑕?ZHIPU_API_KEY + 缃戠粶 + DSH sidecar锛屾墜鍔?--ignored 杩愯
+test real_link_fuse_stops_excess_reads_and_model_concludes ... ignored, 鐪熷疄閾捐矾锛氶渶瑕?ZHIPU_API_KEY + 缃戠粶 + DSH sidecar锛屾墜鍔?--ignored 杩愯
+test real_link_tool_loop_reads_document_and_confirms_sent ... ignored, 鐪熷疄閾捐矾锛氶渶瑕?ZHIPU_API_KEY + 缃戠粶 + DSH sidecar锛屾墜鍔?--ignored 杩愯
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\word_import_test.rs (src-tauri\target\debug\deps\word_import_test-c324f00b587a0f3e.exe)
+running 5 tests
+test comment_ranges_counted_as_comment_dropped ... ok
+test image_runs_counted_as_image_dropped ... ok
+test footnote_references_counted_as_footnote_dropped ... ok
+test mixed_document_counts_each_loss_kind_independently ... ok
+test export_import_roundtrip_diffs_are_enumerable ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+   Doc-tests next_story_lib
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

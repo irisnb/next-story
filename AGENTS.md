@@ -67,9 +67,11 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 
 代码写出来之前，用户一定先看过并同意"要做什么"。一次只开一个 change。
 
+**归档前硬性门槛（2026-10-02 教训）**：涉及新窗口、插件权限、CSP、外部进程、文件对话框的 change，apply 后必须真机冒烟（CDP 端到端驱动＋用户真实点击＋视觉比对）才能归档；mock 与单元测试全绿不算（见 `方向/行动计划-2026-08-27.md` 账本第 21 条）。
+
 ## 当前实现的诚实边界
 
-当前已实现（2026-08 常驻会话改造后，2026-09 讨论保存与隔离、多窗口与快车道改造后，2026-09-14 阶段 4/5 归档后，2026-09-21 阶段 6 归档后）：
+当前已实现（2026-08 常驻会话改造后，2026-09 讨论保存与隔离、多窗口与快车道改造后，2026-09-14 阶段 4/5 归档后，2026-09-21 阶段 6 归档后，2026-10-03 写作宽度与作品进出线归档后）：
 
 - **平台范围**：产品面向 Windows 用户，当前与第一版只发行 Windows 版；macOS 与 Linux 不是目标平台（2026-09-22 方向决策，见「方向/第一版方向共识-2026-07-01.md」第 1 节）。
 - **常驻 AI 会话**：两种首轮入口——面板直接提问（编辑器选区作为可选重点提示自动附带），以及选区「AI 及时召唤」（以冻结选区为材料、无需先输入问题，见 `selection-ai-summon`）；两者进入同一个**讨论**。回复**流式逐字呈现**；追问只发送增量问题，历史由常驻会话在驱动进程内维护。
@@ -87,6 +89,7 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 - **受控只读与 AI 可见性**：统一后端只读读取边界（目录、正文、经校验的未保存快照）与文档级 AI 可见性；隐藏、回收站与越权读取被拒绝；使用过后来被隐藏材料的讨论永久只读，旧出处脱敏显示（见 `controlled-story-read-visibility`）。
 - **常规讨论自动现场材料（阶段五 A）**：常规首轮与追问自动附带关注文档现场材料（已保存正文或经校验的未保存快照）、允许目录投影与后端确定性跨文档字面检索（NFKC 规范化；8 候选词 / 5 文档 / 10 片段 / 命中前后各 120 字符为检索输出硬上限，非模型上下文上限）；关注文档显式切换、下一轮生效，查看文档不自动改绑；材料出处持久化，「本次参考了什么」轻量可查看；及时召唤不经过常规取材流程；`message_sent` 发送回执折算为轮级 `sent_confirmed`，无回执不伪造（见 `automatic-story-context`）。
 - **按需补读（阶段六）**：材料不足时模型经 `story-request-reading` 发起授权请求，用户允许后围绕问题自主调用受控只读工具（`story-list` / `story-read` / `story-search`）；授权属于讨论（允许 / 拒绝 / 随时关闭、跨重启保留），等待期间轮次挂起、不产生模型请求；非关注文档只读已保存正文，轮内版本固定、同轮去重、失控保险丝（非配额）；读取出处（文档 / 版本 / 阅读程度）入「本次参考了什么」与讨论档案；及时召唤首轮不补读，后续追问按普通规则（见 `agent-on-demand-reading`）。2026-09-22 应用级接线修复：前端传输层经 `ai-conversation-identity.ts` 统一携带讨论身份——此前按需补读在应用级从未接通（前端从未传讨论身份，git 全历史零命中），修复后授权流经真实应用端到端验证通过（见 `app-real-chain-validation`）。
+- **写作宽度与作品进出线（2026-10-01～03）**：编辑区稿纸化三档（窄 640 / 标准 720 / 宽 860，显示偏好持久化，见 `stable-writing-width`）已归档；多格式导出（Word / PDF / Markdown）与作品导入（Word / Markdown / Final Draft `.fdx`）均已实现并归档（见 `project-word-export`、`project-pdf-export`、`project-markdown-export`、`project-word-import`、`project-markdown-import`、`project-fdx-import`）。导入保真验收已归档（`import-fidelity-acceptance`）：Markdown 与 FDX 零偏差；**DOCX 五项遗留缺陷客观存在、处置进行中**——**事项 11「导入保真遗留缺陷修复（六项清单）」**：⑥ 工程卫生已完成并归档（2026-10-04，`fix-rust-format-and-clippy-hygiene`）；下一件＝①③④⑤ 保真修复，② 编辑器字母/罗马编号单列排后（明细与证据出处见 `方向/行动计划-2026-08-27.md`）。
 
 完整行为以 `openspec/specs/`（尤其 `resident-ai-session`、`persistent-ai-panel-entry`、`ai-thinking-panel`、`ai-feature-orchestration`、`selection-ai-summon`、`conversation-management`、`conversation-persistence`、`discussion-windows`、`ai-request-scheduling`、`conversation-list`、`controlled-story-read-visibility`、`automatic-story-context`、`agent-on-demand-reading`）为准。当前没有：附近上下文（光标周边取材）、全文摘要、语义 / 向量检索、完整作品认知、后台预加载、记忆、Agent 循环、AI 内容库、用户确认的作品信息、思考收束、安全返回写作——这些都不是当前能力，不能写成已实现；系统主动附带材料与跨文档字面检索已由阶段五 A 实现，按需补读已由阶段六实现，但不等于上述能力。真实链路驱动级回归已通过（2026-09-14 智谱 `glm-5.3-flash`，含 `message_sent` 回执断言；2026-09-21 按需补读 3 场景经智谱 coding 端点 `glm-5.3` 复验通过）；**应用级真实材料链路与等待基线已完成**（2026-09-22 `app-real-chain-validation`：材料链路 8 场景＋编排回归 5 场景全过、发现并修复 P0 前端讨论身份接线缺陷、等待基线 42 条记录——首字中位约 3 秒，实测样本非承诺）；**并发上限经用户拍板定值 4**（2/3 档完全实证，4 档行为无异常，四路同刻直接证据未捕获、如实记录于验证记录）。长上下文轮次间歇性冻结已归因修复（2026-09-23 `fix-long-context-freeze`：根因为宿主挂起等待无超时结构洞＋冻结轮永久占用并发名额，压缩链经权威查证排除；停滞看护＋授权等待豁免，实弹验证通过——见审计文档补充二十二）。
 
@@ -100,9 +103,21 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 | `方向/第一版方向共识-2026-07-01.md` | 第一版范围、当前/未来区分、统一词汇 | 方向调整时 |
 | `方向/全量地基审计-2026-09-14.md` | 阶段 6 开工前全量地基审计报告与修复队列 | 修复队列推进时 |
 | `方向/开发前全面工程复核-2026-09-23.md` | 开发前工程复核报告、六项 P1 缺陷与四次 change 修复分组 | 分组项完成归档时 |
+| `方向/行动计划-2026-08-27.md` | 路线图＋决策账本：当前排期、上一件/下一件工作、每条决定的"为什么" | 排期或拍板变化时 |
 | `.omo/二阶段-01-编辑器、项目结构与UI方案/` | 二阶段阶段性讨论记录（编辑器三轮、作品结构等）；其中「AI 参考优先级」相关结论已被 2026-08 方向更新取代，不再作为用户概念 | 持续修订 |
 | `openspec/specs/` | 真相源：我们"已经做成"什么（实现并归档后才有） | 工具自动驱动 |
 | `openspec/changes/` | 正在进行的变更 | 工具自动驱动 |
+
+## 工程命令（2026-10-04 核对；完整说明见 `README.md`「运行、检查与打包」）
+
+- 安装：`npm install`，再 `npm ci --prefix sidecar`（根目录与 `sidecar/` 依赖分开安装）。
+- 开发：`npm run tauri:dev` 启动完整桌面应用（首次 Rust 编译可能数分钟）；只调前端用 `npm run dev`。
+- 总门禁：`npm run check`——依次 typecheck → lint → test:frontend → test:reliability → test:driver → test:validation → build → fmt:rust → clippy:rust → test:rust，某步失败即停；CI（Linux＋Windows）跑同一条。改完代码先把它跑绿。
+- 单科：`npm run typecheck`、`npm run lint`、`npm run test:frontend`、`npm run test:reliability`、`npm run test:driver`、`npm run test:validation`、`npm run test:rust`、`npm run fmt:rust`、`npm run clippy:rust`。
+- 单测单跑：前端 `node --test tests/<文件>.test.ts`；Rust `cargo test --manifest-path src-tauri/Cargo.toml <测试名>`。
+- 顺序依赖：`npm run check` 先构建前端、后编译/测试 Rust（Tauri `generate_context!` 需要前端产物）；单独跑 Rust 科目时先跑过 `npm run build`。
+- 环境：Node ≥ 22.19（DSH 下限；CI 用 Node 22）、Rust stable-msvc。
+- Windows 打包：`npm ci --prefix sidecar` → `powershell -ExecutionPolicy Bypass -File scripts\vendor-node.ps1` → `npm run tauri:build`。
 
 ## 给 AI 的话
 

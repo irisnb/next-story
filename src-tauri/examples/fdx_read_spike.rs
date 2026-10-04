@@ -17,7 +17,11 @@ fn dump(n: roxmltree::Node, depth: usize, out: &mut String) {
         out.push_str(&format!(
             "{ind}<{}{}>\n",
             n.tag_name().name(),
-            if attrs.is_empty() { String::new() } else { format!(" [{}]", attrs.join(", ")) }
+            if attrs.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", attrs.join(", "))
+            }
         ));
         for c in n.children() {
             dump(c, depth + 1, out);
@@ -31,9 +35,9 @@ fn dump(n: roxmltree::Node, depth: usize, out: &mut String) {
 }
 
 fn main() {
-    let path = env::args().nth(1).unwrap_or_else(|| {
-        "tests/fixtures/fdx/storyboarder-test.fdx".to_string()
-    });
+    let path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "tests/fixtures/fdx/storyboarder-test.fdx".to_string());
     let bytes = fs::read(&path).expect("read fdx");
     let has_bom = bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
     let slice = if has_bom { &bytes[3..] } else { &bytes[..] };
@@ -52,7 +56,11 @@ fn main() {
         .attributes()
         .map(|a| format!("{}={}", a.name(), a.value()))
         .collect();
-    println!("root: <{}> [{}]", root.tag_name().name(), root_attrs.join(", "));
+    println!(
+        "root: <{}> [{}]",
+        root.tag_name().name(),
+        root_attrs.join(", ")
+    );
 
     let mut census: BTreeMap<String, usize> = BTreeMap::new();
     fn walk(n: roxmltree::Node, census: &mut BTreeMap<String, usize>) {
@@ -123,7 +131,8 @@ fn main() {
 
     println!(
         "== TitlePage present: {} ==",
-        doc.descendants().any(|n| n.is_element() && n.tag_name().name() == "TitlePage")
+        doc.descendants()
+            .any(|n| n.is_element() && n.tag_name().name() == "TitlePage")
     );
     println!(
         "== Alignment attr present: {} ==",

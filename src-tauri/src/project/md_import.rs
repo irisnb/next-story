@@ -35,9 +35,7 @@ use super::ProjectError;
 /// 事件流映射。非 UTF-8 与超限以中文报错稳定失败，零副作用。
 pub(crate) fn parse_md(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
     // BOM：spike 实证 pulldown-cmark 不剥离，U+FEFF 会进入首个 Text 事件字面。
-    let bytes = bytes
-        .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
-        .unwrap_or(bytes);
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes);
     let text = std::str::from_utf8(bytes).map_err(|_| {
         ProjectError::ImportRejected(
             "文件不是 UTF-8 编码：请用编辑器把文件转存为 UTF-8 后再导入".to_string(),
@@ -293,12 +291,18 @@ impl MdConverter {
         match tag {
             Tag::Paragraph => {
                 self.flush_current();
-                self.current = Some(Buffer { kind: BufferKind::Paragraph, inline: Vec::new() });
+                self.current = Some(Buffer {
+                    kind: BufferKind::Paragraph,
+                    inline: Vec::new(),
+                });
             }
             Tag::Heading { level, .. } => {
                 self.flush_current();
                 let level = level as u8;
-                self.current = Some(Buffer { kind: BufferKind::Heading(level), inline: Vec::new() });
+                self.current = Some(Buffer {
+                    kind: BufferKind::Heading(level),
+                    inline: Vec::new(),
+                });
             }
             // 引用块：外壳降级（quote_degraded 计数），内容块自然汇入
             // 外层容器，文字零丢失。
@@ -335,13 +339,17 @@ impl MdConverter {
             }
             Tag::Table(_) => {
                 self.flush_current();
-                self.stack.push(Frame::Table(TableFrame { cells: Vec::new() }));
+                self.stack
+                    .push(Frame::Table(TableFrame { cells: Vec::new() }));
             }
             // 行容器：单元格事件自行处理。
             Tag::TableHead | Tag::TableRow => {}
             Tag::TableCell => {
                 self.flush_current();
-                self.current = Some(Buffer { kind: BufferKind::Cell, inline: Vec::new() });
+                self.current = Some(Buffer {
+                    kind: BufferKind::Cell,
+                    inline: Vec::new(),
+                });
             }
             // ----- 行内容器：标记入栈 -----
             Tag::Emphasis => self.inline_marks.push(json!({ "type": "italic" })),
@@ -475,7 +483,10 @@ impl MdConverter {
     /// 没有 Paragraph 包装的行内事件）。
     fn ensure_buffer(&mut self) {
         if self.current.is_none() && self.code_buf.is_none() && self.html_buf.is_none() {
-            self.current = Some(Buffer { kind: BufferKind::Paragraph, inline: Vec::new() });
+            self.current = Some(Buffer {
+                kind: BufferKind::Paragraph,
+                inline: Vec::new(),
+            });
         }
     }
 
@@ -533,7 +544,10 @@ impl MdConverter {
                     let marks = self.snapshot_marks();
                     self.char_count += 1;
                     if let Some(buffer) = self.current.as_mut() {
-                        buffer.inline.push(InlineRun { text: " ".to_string(), marks });
+                        buffer.inline.push(InlineRun {
+                            text: " ".to_string(),
+                            marks,
+                        });
                     }
                 }
             }
@@ -600,7 +614,8 @@ impl MdConverter {
                 }
                 self.sink_push(Value::Object(node));
                 self.paragraph_count += 1;
-            }            BufferKind::Paragraph => {
+            }
+            BufferKind::Paragraph => {
                 self.sink_push(paragraph_node(content));
                 self.paragraph_count += 1;
             }
@@ -631,7 +646,9 @@ impl MdConverter {
 
     /// 标记仅认「落在顶层块序列」的标题（列表项内的标题不参与）。
     fn marker_eligible(&self) -> bool {
-        self.stack.iter().all(|frame| !matches!(frame, Frame::Item(_)))
+        self.stack
+            .iter()
+            .all(|frame| !matches!(frame, Frame::Item(_)))
     }
 
     fn end_item(&mut self) {
@@ -886,7 +903,12 @@ mod tests {
             .map(|nodes| {
                 nodes
                     .iter()
-                    .flat_map(|n| n.get("marks").and_then(Value::as_array).cloned().unwrap_or_default())
+                    .flat_map(|n| {
+                        n.get("marks")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default()
+                    })
                     .map(|m| m["type"].as_str().unwrap_or("").to_string())
                     .collect()
             })
@@ -1030,10 +1052,7 @@ mod tests {
         assert_eq!(parsed.blocks[0]["type"], "heading");
         assert_eq!(block_text(&parsed.blocks[0]), "正文标题");
         // frontmatter 不进入正文字数。
-        assert_eq!(
-            parsed.char_count,
-            "正文标题正文段落。".chars().count()
-        );
+        assert_eq!(parsed.char_count, "正文标题正文段落。".chars().count());
     }
 
     #[test]
@@ -1094,7 +1113,10 @@ mod tests {
         // 嵌套无序列表保留在第二个列表项内。
         assert_eq!(items[1]["content"].as_array().unwrap().len(), 2);
         assert_eq!(items[1]["content"][1]["type"], "bulletList");
-        assert_eq!(items[1]["content"][1]["content"][0]["content"][0]["content"][0]["text"], "嵌套无序");
+        assert_eq!(
+            items[1]["content"][1]["content"][0]["content"][0]["content"][0]["text"],
+            "嵌套无序"
+        );
 
         assert_eq!(parsed.blocks[1]["type"], "bulletList");
         assert_eq!(parsed.blocks[1]["content"].as_array().unwrap().len(), 2);
@@ -1114,7 +1136,11 @@ mod tests {
         assert_eq!(parsed.blocks.len(), 5, "块序列：{:#?}", parsed.blocks);
         assert_eq!(parsed.blocks[0]["type"], "bulletList");
         let item_a = &parsed.blocks[0]["content"][0];
-        assert_eq!(item_a["content"].as_array().unwrap().len(), 2, "首段＋首子列表留项内");
+        assert_eq!(
+            item_a["content"].as_array().unwrap().len(),
+            2,
+            "首段＋首子列表留项内"
+        );
         assert_eq!(item_a["content"][0]["content"][0]["text"], "父项A");
         assert_eq!(item_a["content"][1]["type"], "bulletList");
         assert_eq!(
@@ -1127,7 +1153,11 @@ mod tests {
         assert_eq!(parsed.blocks[2]["type"], "paragraph");
         assert_eq!(block_text(&parsed.blocks[2]), "第二续段D");
         assert_eq!(parsed.blocks[3]["type"], "paragraph");
-        assert_eq!(block_text(&parsed.blocks[3]), "子项E", "第二个子列表拍平为段落");
+        assert_eq!(
+            block_text(&parsed.blocks[3]),
+            "子项E",
+            "第二个子列表拍平为段落"
+        );
         // 同一逻辑列表被溢出打断后重续：项F 是新的 bulletList 块。
         assert_eq!(parsed.blocks[4]["type"], "bulletList");
         assert_eq!(
@@ -1284,14 +1314,19 @@ mod tests {
         let parsed = parse("<div>\n块内文字\n</div>\n\n正文。");
         assert_eq!(loss(&parsed, L_HTML), 1, "HTML 块整块计一处");
         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
-        assert!(texts.contains(&"块内文字".to_string()), "块内文字保留：{texts:?}");
+        assert!(
+            texts.contains(&"块内文字".to_string()),
+            "块内文字保留：{texts:?}"
+        );
         assert!(texts.contains(&"正文。".to_string()));
     }
 
     #[test]
     fn no_losses_for_plain_supported_markdown() {
         // 反例：纯支持元素不产生任何损耗。
-        let parsed = parse("# 标题\n\n段落 **粗** *斜* ~~删~~ <u>下划</u> [链](https://e.com)\n\n1. 一\n2. 二");
+        let parsed = parse(
+            "# 标题\n\n段落 **粗** *斜* ~~删~~ <u>下划</u> [链](https://e.com)\n\n1. 一\n2. 二",
+        );
         let kinds = parsed.losses.loss_kinds_for_test();
         assert!(kinds.is_empty(), "损耗：{kinds:?}");
     }
@@ -1349,7 +1384,9 @@ mod tests {
                 out.push(text.to_string());
             }
             if let Some(children) = node["content"].as_array() {
-                for child in children { collect(child, out); }
+                for child in children {
+                    collect(child, out);
+                }
             }
         }
         for (source, expected) in [
@@ -1359,7 +1396,9 @@ mod tests {
         ] {
             let parsed = parse(source);
             let mut texts = Vec::new();
-            for block in &parsed.blocks { collect(block, &mut texts); }
+            for block in &parsed.blocks {
+                collect(block, &mut texts);
+            }
             assert_eq!(texts, expected, "source: {source}");
             let document = super::super::document_import::doc_value_from_blocks(parsed.blocks);
             super::super::validate_notebook_document(&document).unwrap();

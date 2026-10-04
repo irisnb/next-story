@@ -56,7 +56,7 @@ fn is_episode_marker(s: &str) -> bool {
     }
     inner
         .chars()
-        .all(|c| matches!(c, '0'..='9') || "一二三四五六七八九十百零两".contains(c))
+        .all(|c: char| c.is_ascii_digit() || "一二三四五六七八九十百零两".contains(c))
 }
 
 fn para_text(p: &Paragraph) -> String {
@@ -146,9 +146,10 @@ fn walk_para(p: &Paragraph, st: &mut Stats) {
     }
     if is_episode_marker(&text) {
         st.markers_total += 1;
-        let has_text_runs = p.children.iter().any(|c| {
-            matches!(c, ParagraphChild::Run(r) if !para_text_of_run(r).trim().is_empty())
-        });
+        let has_text_runs = p
+            .children
+            .iter()
+            .any(|c| matches!(c, ParagraphChild::Run(r) if !para_text_of_run(r).trim().is_empty()));
         let all_bold = p.children.iter().all(|c| match c {
             ParagraphChild::Run(r) => {
                 para_text_of_run(r).trim().is_empty() || r.run_property.bold.is_some()
@@ -195,16 +196,14 @@ fn main() {
     println!("file: {path}");
     println!("file size: {} bytes", buf.len());
 
-    let docx = match read_docx_with_options(
-        &buf,
-        ReadDocxOptions::default().with_image_previews(false),
-    ) {
-        Ok(d) => d,
-        Err(e) => {
-            println!("READ FAILED: {e:?}");
-            return;
-        }
-    };
+    let docx =
+        match read_docx_with_options(&buf, ReadDocxOptions::default().with_image_previews(false)) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("READ FAILED: {e:?}");
+                return;
+            }
+        };
     println!("READ OK — docx-rs read_docx 解析成功\n");
 
     let mut st = Stats::default();
@@ -231,20 +230,23 @@ fn main() {
     );
     println!("  numPr 无 id   : {}", st.numpr_no_id);
     println!("pStyle paras    : {}   (基准 0)", st.style_paras);
-    println!("bold runs       : {}   (基准 ~2761 含段落级 rPr)", st.bold_runs);
+    println!(
+        "bold runs       : {}   (基准 ~2761 含段落级 rPr)",
+        st.bold_runs
+    );
     println!("italic runs     : {}", st.italic_runs);
     println!("underline runs  : {}", st.underline_runs);
     println!("strike runs     : {}", st.strike_runs);
     println!("color runs      : {}   (基准 2066)", st.color_runs);
     println!("sz runs         : {}   (基准 6675 含 szCs)", st.sz_runs);
-    println!("highlight runs  : {}   (基准 1974 含 noHighlight)", st.highlight_runs);
+    println!(
+        "highlight runs  : {}   (基准 1974 含 noHighlight)",
+        st.highlight_runs
+    );
     println!("fonts runs      : {}   (基准 3808)", st.fonts_runs);
     println!("hyperlink paras : {}", st.hyperlink_paras);
     println!("insert/delete   : {}/{}", st.insert_paras, st.delete_paras);
-    println!(
-        "集数标记(独立成段)  : {}   (基准 61)",
-        st.markers_total
-    );
+    println!("集数标记(独立成段)  : {}   (基准 61)", st.markers_total);
     println!(
         "集数标记(且全加粗)  : {}   (设计拆分规则输入)",
         st.markers_all_bold

@@ -43,14 +43,18 @@ fn block_text(block: &Value) -> String {
 
 fn full_roundtrip(root: &Path, file: &Path) -> (ImportPreview, Vec<Value>) {
     let preview = import_document_preview(root, file).expect("预检");
-    let commit = import_document_commit(root, file, None, false, &preview.content_hash)
-        .expect("提交");
-    let notebook =
-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(&commit.created_doc_ids[0]))
-            .expect("read notebook");
+    let commit =
+        import_document_commit(root, file, None, false, &preview.content_hash).expect("提交");
+    let notebook = fs::read_to_string(
+        ProjectPaths::new(root.to_path_buf()).document_file(&commit.created_doc_ids[0]),
+    )
+    .expect("read notebook");
     let value: Value = serde_json::from_str(&notebook).expect("parse notebook");
     validate_notebook_document(&value).expect("须过严格校验");
-    (preview, value["document"]["content"].as_array().unwrap().clone())
+    (
+        preview,
+        value["document"]["content"].as_array().unwrap().clone(),
+    )
 }
 
 /// num-having-numbering-part.docx：编号经段落样式（ListNumber pPr numPr）
@@ -83,8 +87,7 @@ fn fixture_num_via_style_becomes_ordered_list() {
 #[test]
 fn fixture_styles_part_parses_without_incident() {
     let (_temp, root) = seed_project("sty 样式");
-    let (preview, blocks) =
-        full_roundtrip(&root, &fixture_path("sty-having-styles-part.docx"));
+    let (preview, blocks) = full_roundtrip(&root, &fixture_path("sty-having-styles-part.docx"));
     // 正文为空：单个空段落兜底。
     assert_eq!(blocks.len(), 1);
     assert_eq!(block_text(&blocks[0]), "");
@@ -101,7 +104,13 @@ fn fixture_known_styles_chain_format_applies() {
     let texts: Vec<String> = blocks.iter().map(block_text).collect();
     assert_eq!(
         texts,
-        vec!["no specified style", "missing style", "Heading 1", "Body Text", ""]
+        vec![
+            "no specified style",
+            "missing style",
+            "Heading 1",
+            "Body Text",
+            ""
+        ]
     );
     // Heading 1（pStyle Heading1，链 Normal←Heading1）：标题层级保留＋
     // 样式链字符属性生效（该样本 Heading1 定义 b/color 365F91/sz 28）。
@@ -121,7 +130,10 @@ fn fixture_known_styles_chain_format_applies() {
         .iter()
         .find(|m| m["type"] == "textStyle")
         .expect("链上字号颜色生效");
-    assert_eq!(text_style["attrs"]["fontSize"], "14pt", "样式 sz=28 覆盖 docDefaults");
+    assert_eq!(
+        text_style["attrs"]["fontSize"], "14pt",
+        "样式 sz=28 覆盖 docDefaults"
+    );
     assert_eq!(text_style["attrs"]["color"], "#365f91");
     // docDefaults（sz=22 → 11pt）经默认样式链对其余段落生效。
     for index in [0usize, 1, 3] {

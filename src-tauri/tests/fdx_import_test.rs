@@ -128,8 +128,7 @@ fn expected_blocks_and_counts(xml: &str) -> (Vec<String>, OracleCounts) {
                 for content in child.children() {
                     if content.is_element() && content.tag_name().name() == "Content" {
                         for paragraph in content.children() {
-                            if paragraph.is_element()
-                                && paragraph.tag_name().name() == "Paragraph"
+                            if paragraph.is_element() && paragraph.tag_name().name() == "Paragraph"
                             {
                                 for line in paragraph_lines(paragraph) {
                                     title_texts.push(line);
@@ -160,9 +159,7 @@ fn expected_blocks_and_counts(xml: &str) -> (Vec<String>, OracleCounts) {
                                 }
                             }
                             for inner in dual.children() {
-                                if inner.is_element()
-                                    && inner.tag_name().name() == "Paragraph"
-                                {
+                                if inner.is_element() && inner.tag_name().name() == "Paragraph" {
                                     script_texts.extend(paragraph_lines(inner));
                                 }
                             }
@@ -185,8 +182,7 @@ fn expected_blocks_and_counts(xml: &str) -> (Vec<String>, OracleCounts) {
                                 for (position, line) in lines.into_iter().enumerate() {
                                     let mut line = line;
                                     if position == 0
-                                        && paragraph.attribute("Type")
-                                            == Some("Scene Heading")
+                                        && paragraph.attribute("Type") == Some("Scene Heading")
                                     {
                                         if let Some(number) = paragraph
                                             .attribute("Number")
@@ -226,9 +222,8 @@ fn expected_blocks_and_counts(xml: &str) -> (Vec<String>, OracleCounts) {
 }
 
 fn imported_blocks(root: &Path, doc_id: &str) -> Vec<Value> {
-    let notebook =
-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
-            .expect("read imported notebook");
+    let notebook = fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+        .expect("read imported notebook");
     let value: Value = serde_json::from_str(&notebook).expect("parse imported notebook");
     validate_notebook_document(&value).expect("导入产物必须通过既有严格语法校验");
     value["document"]["content"].as_array().unwrap().clone()
@@ -257,10 +252,22 @@ fn storyboarder_fixture_full_import_verbatim() {
     );
     // 损耗清单按 fixture 实际内容计数。
     assert_eq!(loss_count(&preview, "titlepage_inlined"), counts.titlepage);
-    assert_eq!(loss_count(&preview, "scene_metadata_dropped"), counts.scene_metadata);
-    assert_eq!(loss_count(&preview, "scriptnote_dropped"), counts.scriptnote);
-    assert_eq!(loss_count(&preview, "dual_dialogue_degraded"), counts.dual_dialogue);
-    assert_eq!(loss_count(&preview, "revision_marks_ignored"), counts.revision_marks);
+    assert_eq!(
+        loss_count(&preview, "scene_metadata_dropped"),
+        counts.scene_metadata
+    );
+    assert_eq!(
+        loss_count(&preview, "scriptnote_dropped"),
+        counts.scriptnote
+    );
+    assert_eq!(
+        loss_count(&preview, "dual_dialogue_degraded"),
+        counts.dual_dialogue
+    );
+    assert_eq!(
+        loss_count(&preview, "revision_marks_ignored"),
+        counts.revision_marks
+    );
     // fixture 损耗基数（spike census：TitlePage×1、SceneProperties×30、
     // ScriptNote×14、DualDialogue×1、Revision 定义×19）。
     assert_eq!(counts.titlepage, 1);
@@ -276,8 +283,8 @@ fn storyboarder_fixture_full_import_verbatim() {
     assert_eq!(preview.paragraph_count, expected_texts.len());
 
     // 提交落盘，逐块逐字对照。
-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
-        .expect("提交");
+    let commit =
+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("提交");
     assert_eq!(commit.created_doc_ids.len(), 1);
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
     assert_eq!(blocks.len(), expected_texts.len());
@@ -340,10 +347,13 @@ fn screenplain_dual_dialogue_order_preserved() {
         Some("FinalDraft Version=1, DocumentType=Script")
     );
     assert_eq!(loss_count(&preview, "dual_dialogue_degraded"), 1);
-    assert!(preview.losses.iter().all(|loss| loss.kind == "dual_dialogue_degraded"));
+    assert!(preview
+        .losses
+        .iter()
+        .all(|loss| loss.kind == "dual_dialogue_degraded"));
 
-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
-        .expect("提交");
+    let commit =
+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("提交");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
     let texts: Vec<String> = blocks.iter().map(block_text).collect();
     // 先后两组：GIRL→Hey!→GUY→Hello!，Character/Dialogue 缩进档生效。
@@ -380,8 +390,8 @@ fn synthetic_episode_scene_headings_split_roundtrip() {
     assert_eq!(suggestion.marker_sample, "第X集");
     assert_eq!(suggestion.doc_names, vec!["第1集", "第2集", "第3集"]);
 
-    let commit = import_document_commit(&root, &file, None, true, &preview.content_hash)
-        .expect("拆分提交");
+    let commit =
+        import_document_commit(&root, &file, None, true, &preview.content_hash).expect("拆分提交");
     assert_eq!(commit.created_doc_ids.len(), 3);
     let folder = commit.created_folder_id.expect("拆分建文件夹");
     let tree = project::recover_then_read_content_tree(&root).unwrap();
@@ -391,7 +401,10 @@ fn synthetic_episode_scene_headings_split_roundtrip() {
         let texts: Vec<String> = blocks.iter().map(block_text).collect();
         assert_eq!(
             texts,
-            vec![format!("第{}集", index + 1), format!("第{}集正文。", index + 1)]
+            vec![
+                format!("第{}集", index + 1),
+                format!("第{}集正文。", index + 1)
+            ]
         );
     }
 
@@ -413,9 +426,13 @@ fn synthetic_mixed_script_layouts_preserved() {
     fs::write(&file, source).unwrap();
 
     let preview = import_document_preview(&root, &file).expect("预览");
-    assert!(preview.losses.is_empty(), "混合样本无结构性损耗：{:?}", preview.losses);
-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
-        .expect("提交");
+    assert!(
+        preview.losses.is_empty(),
+        "混合样本无结构性损耗：{:?}",
+        preview.losses
+    );
+    let commit =
+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("提交");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
 
     let texts: Vec<String> = blocks.iter().map(block_text).collect();
@@ -439,7 +456,10 @@ fn synthetic_mixed_script_layouts_preserved() {
     // 无 ElementSettings → 回退固定档（Dialogue 2em／Parenthetical 3em／
     // Character 4em）。
     assert_eq!(blocks[4]["attrs"]["indentLeft"], "4em", "Character 深档");
-    assert_eq!(blocks[5]["attrs"]["indentLeft"], "3em", "Parenthetical 中档");
+    assert_eq!(
+        blocks[5]["attrs"]["indentLeft"], "3em",
+        "Parenthetical 中档"
+    );
     assert_eq!(blocks[6]["attrs"]["indentLeft"], "2em", "Dialogue 浅档");
     assert_eq!(blocks[7]["attrs"]["textAlign"], "right");
     // 样式词组：Bold→bold；Italic+Underline→[italic, underline]。
@@ -482,8 +502,8 @@ fn edge_fixture_path(name: &str) -> PathBuf {
 /// 通用端到端：预检＋提交＋严格校验，返回（preview, blocks）。
 fn full_roundtrip(root: &Path, file: &Path) -> (ImportPreview, Vec<Value>) {
     let preview = import_document_preview(root, file).expect("预检");
-    let commit = import_document_commit(root, file, None, false, &preview.content_hash)
-        .expect("提交");
+    let commit =
+        import_document_commit(root, file, None, false, &preview.content_hash).expect("提交");
     let blocks = imported_blocks(root, &commit.created_doc_ids[0]);
     (preview, blocks)
 }
@@ -567,11 +587,18 @@ fn edge_extended_characters_preserved() {
 fn edge_parenthetical_fallback_tiers() {
     let (_temp, root) = seed_project("edge parenthetical");
     let (preview, blocks) = full_roundtrip(&root, &edge_fixture_path("parenthetical.fdx"));
-    assert!(preview.losses.is_empty(), "无结构性损耗：{:?}", preview.losses);
+    assert!(
+        preview.losses.is_empty(),
+        "无结构性损耗：{:?}",
+        preview.losses
+    );
     let texts: Vec<String> = blocks.iter().map(block_text).collect();
     assert_eq!(texts, vec!["JOHN DOE", "(screaming)", "Hello!!!"]);
     assert_eq!(blocks[0]["attrs"]["indentLeft"], "4em", "Character 深档");
-    assert_eq!(blocks[1]["attrs"]["indentLeft"], "3em", "Parenthetical 中档");
+    assert_eq!(
+        blocks[1]["attrs"]["indentLeft"], "3em",
+        "Parenthetical 中档"
+    );
     assert_eq!(blocks[2]["attrs"]["indentLeft"], "2em", "Dialogue 浅档");
 }
 

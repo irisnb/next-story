@@ -150,7 +150,10 @@ impl LossCounter {
         push(
             "table_flattened",
             self.tables,
-            format!("{} 个表格按「每格一段」拍平：文字保留，表格结构不保留", self.tables),
+            format!(
+                "{} 个表格按「每格一段」拍平：文字保留，表格结构不保留",
+                self.tables
+            ),
         );
         push(
             "image_dropped",
@@ -170,12 +173,18 @@ impl LossCounter {
         push(
             "revision_finalized",
             self.revisions,
-            format!("{} 处修订标记按最终状态导入（保留新增、丢弃删除）", self.revisions),
+            format!(
+                "{} 处修订标记按最终状态导入（保留新增、丢弃删除）",
+                self.revisions
+            ),
         );
         push(
             "numbering_degraded",
             self.numbering_degraded,
-            format!("{} 个段落的编号定义无法映射为列表，按普通段落导入", self.numbering_degraded),
+            format!(
+                "{} 个段落的编号定义无法映射为列表，按普通段落导入",
+                self.numbering_degraded
+            ),
         );
         push(
             "code_degraded",
@@ -190,11 +199,7 @@ impl LossCounter {
             self.quotes,
             format!("{} 个引用块降级为普通段落", self.quotes),
         );
-        push(
-            "hr_dropped",
-            self.hr,
-            format!("{} 条分隔线不导入", self.hr),
-        );
+        push("hr_dropped", self.hr, format!("{} 条分隔线不导入", self.hr));
         push(
             "html_stripped",
             self.html_stripped,
@@ -203,12 +208,18 @@ impl LossCounter {
         push(
             "frontmatter_dropped",
             self.frontmatter,
-            format!("{} 个 YAML frontmatter 块已剥离，不进入正文", self.frontmatter),
+            format!(
+                "{} 个 YAML frontmatter 块已剥离，不进入正文",
+                self.frontmatter
+            ),
         );
         push(
             "tasklist_degraded",
             self.tasklists,
-            format!("{} 个任务列表按无序列表导入（勾选框以字面保留）", self.tasklists),
+            format!(
+                "{} 个任务列表按无序列表导入（勾选框以字面保留）",
+                self.tasklists
+            ),
         );
         push(
             "block_skipped",
@@ -234,7 +245,10 @@ impl LossCounter {
         push(
             "scene_metadata_dropped",
             self.scene_metadata,
-            format!("{} 组场景元数据（含 Story Map 场景数据）不导入", self.scene_metadata),
+            format!(
+                "{} 组场景元数据（含 Story Map 场景数据）不导入",
+                self.scene_metadata
+            ),
         );
         push(
             "scriptnote_dropped",
@@ -244,7 +258,10 @@ impl LossCounter {
         push(
             "revision_marks_ignored",
             self.revision_marks,
-            format!("{} 处修订标记已忽略（全部文字无损导入）", self.revision_marks),
+            format!(
+                "{} 处修订标记已忽略（全部文字无损导入）",
+                self.revision_marks
+            ),
         );
         push(
             "unknown_element_skipped",
@@ -286,10 +303,7 @@ impl LossCounter {
         push(
             "style_degraded",
             self.style_degraded,
-            format!(
-                "{} 处样式链属性无法解析映射，已忽略",
-                self.style_degraded
-            ),
+            format!("{} 处样式链属性无法解析映射，已忽略", self.style_degraded),
         );
         out
     }
@@ -487,12 +501,7 @@ pub(crate) fn split_docs_from_blocks(
 ) -> Vec<(String, Value)> {
     segments_for_family(markers, family, blocks.len())
         .into_iter()
-        .map(|(name, start, end)| {
-            (
-                name,
-                doc_value_from_blocks(blocks[start..end].to_vec()),
-            )
-        })
+        .map(|(name, start, end)| (name, doc_value_from_blocks(blocks[start..end].to_vec())))
         .collect()
 }
 
@@ -542,10 +551,12 @@ fn detect_import_format(file_path: &Path) -> Result<ImportFormat, ProjectError> 
         Some("fdx") => Ok(ImportFormat::Fdx),
         // Final Draft 1–7 私有二进制老格式：不尝试解析，提示另存为 .fdx。
         Some("fdr") => Err(ProjectError::ImportRejected(
-            "Final Draft 1–7 老格式（.fdr）不支持：请在 Final Draft 中打开并另存为 .fdx 后导入".to_string(),
+            "Final Draft 1–7 老格式（.fdr）不支持：请在 Final Draft 中打开并另存为 .fdx 后导入"
+                .to_string(),
         )),
         _ => Err(ProjectError::ImportRejected(
-            "只支持 .docx、.md 与 .fdx 文件；.doc 老格式请先在 Word 或 WPS 中另存为 .docx".to_string(),
+            "只支持 .docx、.md 与 .fdx 文件；.doc 老格式请先在 Word 或 WPS 中另存为 .docx"
+                .to_string(),
         )),
     }
 }
@@ -610,7 +621,11 @@ pub(crate) fn doc_name_from_file(file_path: &Path) -> String {
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 // ========== 预检命令（零写入） ==========
@@ -668,7 +683,12 @@ pub fn import_document_commit(
 
     let parsed = parse_by_format(format, &bytes)?;
     let default_name = doc_name_from_file(file_path);
-    let single_doc = || vec![(default_name.clone(), doc_value_from_blocks(parsed.blocks.clone()))];
+    let single_doc = || {
+        vec![(
+            default_name.clone(),
+            doc_value_from_blocks(parsed.blocks.clone()),
+        )]
+    };
 
     // 组装文档集：默认整文件一个文档；用户选择拆分且存在唯一达标标记族时
     // 按标记边界拆分（拆分请求但无标记时回退单文档）。
@@ -837,7 +857,12 @@ fn sibling_names(tree: &ContentTree, parent: Option<&str>, exclude: &str) -> Vec
 
 /// 同级唯一命名：与既有节点（及本次已创建节点）冲突时追加「 2」「 3」后缀，
 /// 与内容树既有自动命名风格一致。
-fn unique_sibling_name(tree: &ContentTree, parent: Option<&str>, base: &str, exclude: &str) -> String {
+fn unique_sibling_name(
+    tree: &ContentTree,
+    parent: Option<&str>,
+    base: &str,
+    exclude: &str,
+) -> String {
     let taken: HashSet<String> = sibling_names(tree, parent, exclude).into_iter().collect();
     if !taken.contains(base) {
         return base.to_string();

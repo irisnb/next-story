@@ -181,8 +181,9 @@ fn export_import_roundtrip_diffs_limited_to_known_four() {
 
     // 既有导出路径生成 .md。
     let target = temp.path().join("往返产物.md");
-    let export = export_project_to_markdown(&root, &ExportScope::Document(source_doc.clone()), &target)
-        .expect("导出必须成功");
+    let export =
+        export_project_to_markdown(&root, &ExportScope::Document(source_doc.clone()), &target)
+            .expect("导出必须成功");
     assert!(export.ok, "导出结果：{export:?}");
 
     // 重新导入：预览＋提交。
@@ -234,8 +235,14 @@ fn export_import_roundtrip_diffs_limited_to_known_four() {
     assert_eq!(blocks[4]["attrs"]["start"], 3);
     let ordered_items = blocks[4]["content"].as_array().unwrap();
     assert_eq!(ordered_items.len(), 2);
-    assert_eq!(ordered_items[0]["content"][0]["content"][0]["text"], "第三项");
-    assert_eq!(ordered_items[1]["content"][0]["content"][0]["text"], "第四项");
+    assert_eq!(
+        ordered_items[0]["content"][0]["content"][0]["text"],
+        "第三项"
+    );
+    assert_eq!(
+        ordered_items[1]["content"][0]["content"][0]["text"],
+        "第四项"
+    );
 
     // 富格式段：加粗/斜体/删除线/下划线保留；颜色为四项已知降级之一（丢失）。
     assert_eq!(
@@ -263,7 +270,10 @@ fn export_import_roundtrip_diffs_limited_to_known_four() {
     let tail_runs = blocks[6]["content"].as_array().unwrap();
     assert_eq!(tail_runs.len(), 2);
     assert_eq!(tail_runs[0]["text"], "链接文字");
-    assert_eq!(tail_runs[0]["marks"][0]["attrs"]["href"], "https://example.com/roundtrip");
+    assert_eq!(
+        tail_runs[0]["marks"][0]["attrs"]["href"],
+        "https://example.com/roundtrip"
+    );
     assert_eq!(tail_runs[1]["text"], "高亮文字带字号字体");
     assert!(tail_runs[1].get("marks").is_none());
 
@@ -351,8 +361,8 @@ fn combined_underline_strike_roundtrip_degrades_to_literal_tildes() {
     assert!(export.ok);
 
     let preview = import_document_preview(&root, &target).expect("预览");
-    let commit = import_document_commit(&root, &target, None, false, &preview.content_hash)
-        .expect("提交");
+    let commit =
+        import_document_commit(&root, &target, None, false, &preview.content_hash).expect("提交");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
 
     // 现状断言：文字逐字保留（含字面波浪线）、underline 保留、strike 丢失。
@@ -391,8 +401,8 @@ fn preview_and_commit_end_to_end_with_frontmatter_and_losses() {
         code_note.note
     );
 
-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
-        .expect("提交");
+    let commit =
+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("提交");
     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
 
     // 标题、软换行接合（CJK 直连）、引用文字、代码行、脚注引用字面全部保留；
@@ -412,7 +422,10 @@ fn preview_and_commit_end_to_end_with_frontmatter_and_losses() {
     assert_eq!(block_text(&blocks[0]), "我的笔记");
     // 任务列表按无序列表导入，勾选框字面保留（断言下探到列表项段落）。
     let task_block = blocks.iter().find(|b| b["type"] == "bulletList").unwrap();
-    assert_eq!(block_text(&task_block["content"][0]["content"][0]), "[x] 任务项");
+    assert_eq!(
+        block_text(&task_block["content"][0]["content"][0]),
+        "[x] 任务项"
+    );
 }
 
 #[test]
@@ -428,8 +441,8 @@ fn markdown_split_commit_by_heading_sequence() {
     assert_eq!(suggestion.count, 3);
     assert_eq!(suggestion.doc_names, vec!["第1章", "第2章", "第3章"]);
 
-    let commit = import_document_commit(&root, &file, None, true, &preview.content_hash)
-        .expect("拆分提交");
+    let commit =
+        import_document_commit(&root, &file, None, true, &preview.content_hash).expect("拆分提交");
     assert_eq!(commit.created_doc_ids.len(), 3);
     let folder = commit.created_folder_id.expect("拆分建文件夹");
     let tree = project::recover_then_read_content_tree(&root).unwrap();
@@ -438,7 +451,10 @@ fn markdown_split_commit_by_heading_sequence() {
     // 前言（含书名标题）并入第 1 个文档，其后各章边界正确。
     let first = imported_blocks(&root, &commit.created_doc_ids[0]);
     let first_texts: Vec<String> = first.iter().map(block_text).collect();
-    assert_eq!(first_texts, vec!["全本小说", "前言。", "第1章", "第一章正文"]);
+    assert_eq!(
+        first_texts,
+        vec!["全本小说", "前言。", "第1章", "第一章正文"]
+    );
     let second = imported_blocks(&root, &commit.created_doc_ids[1]);
     let second_texts: Vec<String> = second.iter().map(block_text).collect();
     assert_eq!(second_texts, vec!["第2章", "第二章正文"]);
@@ -460,8 +476,7 @@ fn bom_and_hash_mismatch_via_public_commands() {
 
     // 哈希不一致：中文前缀错误、零残留。
     let before = project::recover_then_read_content_tree(&root).unwrap();
-    let error =
-        import_document_commit(&root, &file, None, false, "deadbeef").unwrap_err();
+    let error = import_document_commit(&root, &file, None, false, "deadbeef").unwrap_err();
     assert!(
         error.to_string().starts_with("hash_mismatch:"),
         "错误信息必须带 hash_mismatch: 前缀：{error}"

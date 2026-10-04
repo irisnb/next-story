@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 
 use docx_rs::{Comment, Docx, Footnote, Paragraph, Pic, Run, Table, TableCell, TableRow};
 use next_story_lib::project::{
-    self, export_project_to_word, import_document_commit, import_document_preview, validate_notebook_document,
-    CreateProjectParams, ExportScope, ImportPreview, ProjectPaths,
+    self, export_project_to_word, import_document_commit, import_document_preview,
+    validate_notebook_document, CreateProjectParams, ExportScope, ImportPreview, ProjectPaths,
 };
 use serde_json::Value;
 use tempfile::TempDir;
@@ -45,11 +45,11 @@ fn write_docx_file(path: &Path, docx: Docx) {
 
 /// 最小真实 1×1 PNG（写入侧不解码、读取侧关预览解码，字节只需是合法媒体）。
 const TINY_PNG: &[u8] = &[
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D',
-    b'R', 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
-    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, b'I', b'D', b'A', b'T', 0x78, 0x9C, 0x63, 0x00,
-    0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, b'I',
-    b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D', b'R',
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0A, b'I', b'D', b'A', b'T', 0x78, 0x9C, 0x63, 0x00, 0x00, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE,
+    0x42, 0x60, 0x82,
 ];
 
 fn loss_count(preview: &ImportPreview, kind: &str) -> usize {
@@ -84,11 +84,7 @@ fn image_runs_counted_as_image_dropped() {
         Docx::new().add_paragraph(
             Paragraph::new()
                 .add_run(Run::new().add_text("图前"))
-                .add_run(Run::new().add_image(Pic::new_with_dimensions(
-                    TINY_PNG.to_vec(),
-                    1,
-                    1,
-                )))
+                .add_run(Run::new().add_image(Pic::new_with_dimensions(TINY_PNG.to_vec(), 1, 1)))
                 .add_run(Run::new().add_text("图后")),
         ),
     );
@@ -119,17 +115,19 @@ fn footnote_references_counted_as_footnote_dropped() {
                     .add_run(Run::new().add_footnote_reference(footnote))
                     .add_run(Run::new().add_text("正文后")),
             )
-            .add_paragraph(
-                Paragraph::new().add_run(Run::new().add_footnote_reference({
-                    let mut another = Footnote::new();
-                    another.add_content(Paragraph::new().add_run(Run::new().add_text("第二条脚注")));
-                    another
-                })),
-            ),
+            .add_paragraph(Paragraph::new().add_run(Run::new().add_footnote_reference({
+                let mut another = Footnote::new();
+                another.add_content(Paragraph::new().add_run(Run::new().add_text("第二条脚注")));
+                another
+            }))),
     );
 
     let preview = preview_of(&root, &file);
-    assert_eq!(loss_count(&preview, "footnote_dropped"), 2, "两处脚注引用各计一处");
+    assert_eq!(
+        loss_count(&preview, "footnote_dropped"),
+        2,
+        "两处脚注引用各计一处"
+    );
     // 脚注内容是附件部件，不进入正文字数。
     assert_eq!(preview.char_count, "正文前正文后".chars().count());
 }
@@ -171,7 +169,11 @@ fn comment_ranges_counted_as_comment_dropped() {
     );
 
     let preview = preview_of(&root, &file);
-    assert_eq!(loss_count(&preview, "comment_dropped"), 2, "两处批注各计一处");
+    assert_eq!(
+        loss_count(&preview, "comment_dropped"),
+        2,
+        "两处批注各计一处"
+    );
     // 被批注的正文逐字保留，批注内容不进入正文字数。
     assert_eq!(
         preview.char_count,
@@ -192,8 +194,10 @@ fn mixed_document_counts_each_loss_kind_independently() {
         Docx::new()
             .add_paragraph(Paragraph::new().add_run(Run::new().add_text("开头段")))
             .add_table(Table::new(vec![TableRow::new(vec![
-                TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("左格"))),
-                TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("右格"))),
+                TableCell::new()
+                    .add_paragraph(Paragraph::new().add_run(Run::new().add_text("左格"))),
+                TableCell::new()
+                    .add_paragraph(Paragraph::new().add_run(Run::new().add_text("右格"))),
             ])]))
             .add_paragraph(
                 Paragraph::new()
@@ -250,9 +254,8 @@ fn mixed_document_counts_each_loss_kind_independently() {
 
 /// 提交导入并读取落盘文档的顶层块数组（已通过严格校验）。
 fn imported_blocks(root: &Path, doc_id: &str) -> Vec<Value> {
-    let notebook =
-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
-            .expect("read imported notebook");
+    let notebook = fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+        .expect("read imported notebook");
     let value: Value = serde_json::from_str(&notebook).expect("parse imported notebook");
     validate_notebook_document(&value).expect("往返产物必须通过既有严格语法校验");
     value["document"]["content"].as_array().unwrap().clone()
@@ -300,7 +303,8 @@ fn block_mark_summary(block: &Value) -> Vec<String> {
 /// 链接/高亮/字号字体。
 fn roundtrip_source_notebook() -> Value {
     let text = |t: &str| serde_json::json!({ "type": "text", "text": t });
-    let marked = |t: &str, marks: Value| serde_json::json!({ "type": "text", "text": t, "marks": marks });
+    let marked =
+        |t: &str, marks: Value| serde_json::json!({ "type": "text", "text": t, "marks": marks });
     let list_item = |t: &str| {
         serde_json::json!({
             "type": "listItem",
@@ -428,15 +432,15 @@ fn export_import_roundtrip_diffs_are_enumerable() {
     assert_eq!(
         texts,
         vec![
-            "往返测试文档",   // 差异①导出侧：范围根名称 → Heading1
+            "往返测试文档", // 差异①导出侧：范围根名称 → Heading1
             "开头段落",
-            "",               // 空段落原样保留
+            "", // 空段落原样保留
             "二级标题",
             "五级标题",
-            "• 项目一",       // 差异②导出侧：列表 → 文字前缀
+            "• 项目一", // 差异②导出侧：列表 → 文字前缀
             "• 项目二",
-            "  • 嵌套项",     // 嵌套项按深度缩进两个空格
-            "3. 第三项",      // 有序列表带 start=3 前缀
+            "  • 嵌套项", // 嵌套项按深度缩进两个空格
+            "3. 第三项",  // 有序列表带 start=3 前缀
             "4. 第四项",
             "加粗普通斜体下划删除蓝色文字",
             "链接文字高亮文字带字号字体", // 差异③④：marks 丢失后相邻同 marks 合并
@@ -495,8 +499,7 @@ fn export_import_roundtrip_diffs_are_enumerable() {
         "加粗/斜体/下划线/删除线/颜色必须保留，docDefaults 字体字号生效"
     );
     assert_eq!(
-        blocks[10]["content"][4]["marks"][0]["attrs"]["color"],
-        "#3366cc",
+        blocks[10]["content"][4]["marks"][0]["attrs"]["color"], "#3366cc",
         "颜色值往返一致（导出去 #、导入补 #）"
     );
     // 3b. 链接/高亮丢失（差异③④——run 级不导出）；docDefaults 生效后
@@ -513,8 +516,7 @@ fn export_import_roundtrip_diffs_are_enumerable() {
     // 依旧成立：三者同携带 docDefaults textStyle，合并为一个节点）。
     assert_eq!(blocks[11]["content"].as_array().unwrap().len(), 1);
     assert_eq!(
-        blocks[11]["content"][0]["marks"][0]["attrs"]["fontFamily"],
-        "Source Han Sans CN",
+        blocks[11]["content"][0]["marks"][0]["attrs"]["fontFamily"], "Source Han Sans CN",
         "docDefaults 字体经 D3 链生效"
     );
 
@@ -522,9 +524,7 @@ fn export_import_roundtrip_diffs_are_enumerable() {
     let after = project::recover_then_read_content_tree(&root).expect("reread tree");
     let source_node = after.nodes.get(&source_doc).expect("源文档仍在");
     assert_eq!(source_node.name, "往返测试文档");
-    let source_after = fs::read_to_string(
-        ProjectPaths::new(root.clone()).document_file(&source_doc),
-    )
-    .unwrap();
+    let source_after =
+        fs::read_to_string(ProjectPaths::new(root.clone()).document_file(&source_doc)).unwrap();
     assert_eq!(source_after, source_json, "源文档正文逐字节不变");
 }

@@ -13,6 +13,9 @@ export default tseslint.config(
       "tmp/**",
       // 离线捆绑的第三方静态资产（Paged.js 压缩版）：不是本仓库源码，不参与 lint。
       "public/vendor/**",
+      // 本地工作目录（gitignored 的测试证据/草稿，不入库）：不是仓库源码，不参与 lint。
+      "本地测试文档/**",
+      ".omo/**",
     ],
   },
   js.configs.recommended,

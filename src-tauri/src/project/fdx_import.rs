@@ -191,9 +191,7 @@ fn format_decimal(value: f64) -> String {
 /// 步骤：剥 BOM → 严格 UTF-8 → roxmltree 良构性解析 → 根元素校验 →
 /// 按上下文遍历映射。畸形与编码问题以中文报错稳定失败，零副作用。
 pub(crate) fn parse_fdx(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
-    let bytes = bytes
-        .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
-        .unwrap_or(bytes);
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes);
     let text = std::str::from_utf8(bytes).map_err(|_| {
         ProjectError::ImportRejected(
             "文件不是 UTF-8 编码：请用 Final Draft 或文本编辑器转存为 UTF-8 后再导入".to_string(),
@@ -340,9 +338,9 @@ impl FdxConverter {
     /// 顶层段落：无 Type 且含 DualDialogue 子元素＝双栏对白包裹段（spike 实证
     /// 结构），拆为先后两组段落；其余按 Type 映射。
     fn walk_script_paragraph(&mut self, paragraph: Node) {
-        let dual = paragraph.children().find(|child| {
-            child.is_element() && child.tag_name().name() == "DualDialogue"
-        });
+        let dual = paragraph
+            .children()
+            .find(|child| child.is_element() && child.tag_name().name() == "DualDialogue");
         match dual {
             Some(dual) => {
                 // 包裹段内除 DualDialogue 外可能嵌 ScriptNote/SceneProperties
@@ -408,10 +406,7 @@ impl FdxConverter {
                     let mut node = Map::new();
                     node.insert("type".to_string(), json!("paragraph"));
                     if let Some(align) = text_align {
-                        node.insert(
-                            "attrs".to_string(),
-                            json!({ "textAlign": align }),
-                        );
+                        node.insert("attrs".to_string(), json!({ "textAlign": align }));
                     }
                     node.insert("content".to_string(), Value::Array(content_nodes));
                     self.title_blocks.push(Value::Object(node));
@@ -564,13 +559,10 @@ impl FdxConverter {
                             lines.push(Vec::new());
                         }
                         if !part.is_empty() {
-                            lines
-                                .last_mut()
-                                .expect("行序列非空")
-                                .push(InlineRun {
-                                    text: part.to_string(),
-                                    marks: marks.clone(),
-                                });
+                            lines.last_mut().expect("行序列非空").push(InlineRun {
+                                text: part.to_string(),
+                                marks: marks.clone(),
+                            });
                         }
                     }
                 }
@@ -702,7 +694,7 @@ impl FdxConverter {
         if paragraph_type == "Transition" {
             style.text_align = match layout.map(|item| item.alignment) {
                 Some(FdAlignment::Missing) | None => Some("right"), // 缺省回退。
-                Some(alignment) => alignment.text_align(), // 显式 Left → None。
+                Some(alignment) => alignment.text_align(),          // 显式 Left → None。
             };
             return style;
         }
@@ -720,9 +712,7 @@ impl FdxConverter {
                 _ => None,
             };
             // 首行缩进：英寸×72→pt，负值＝悬挂（grammar 允许任意非空度量串）。
-            style.text_indent = layout
-                .first_indent
-                .and_then(indent_attr_from_inches);
+            style.text_indent = layout.first_indent.and_then(indent_attr_from_inches);
             return style;
         }
 
@@ -776,12 +766,12 @@ fn text_marks(text_node: Node) -> Vec<Value> {
         .and_then(|value| value.trim().parse::<f64>().ok())
     {
         // FD Size 已是点值（12＝12pt），与 docx 侧 fontSize 的 pt 字符串同形。
-        text_style.insert("fontSize".to_string(), json!(format!("{}pt", format_decimal(size))));
+        text_style.insert(
+            "fontSize".to_string(),
+            json!(format!("{}pt", format_decimal(size))),
+        );
     }
-    if let Some(color) = text_node
-        .attribute("Color")
-        .and_then(fd_color_to_hex)
-    {
+    if let Some(color) = text_node.attribute("Color").and_then(fd_color_to_hex) {
         text_style.insert("color".to_string(), json!(color));
     }
     if !text_style.is_empty() {
@@ -919,13 +909,28 @@ mod tests {
 
         for index in [4, 5, 6, 7, 8, 9] {
             assert_eq!(blocks[index]["type"], "paragraph", "index={index}");
-            assert!(blocks[index].get("attrs").is_none(), "普通段无属性：{index}");
+            assert!(
+                blocks[index].get("attrs").is_none(),
+                "普通段无属性：{index}"
+            );
         }
 
-        assert_eq!(blocks[10]["attrs"]["indentLeft"], "4em", "Character 回退深档");
-        assert_eq!(blocks[11]["attrs"]["indentLeft"], "2em", "Dialogue 回退浅档");
-        assert_eq!(blocks[12]["attrs"]["indentLeft"], "3em", "Parenthetical 回退中档");
-        assert_eq!(blocks[13]["attrs"]["textAlign"], "right", "Transition 右对齐");
+        assert_eq!(
+            blocks[10]["attrs"]["indentLeft"], "4em",
+            "Character 回退深档"
+        );
+        assert_eq!(
+            blocks[11]["attrs"]["indentLeft"], "2em",
+            "Dialogue 回退浅档"
+        );
+        assert_eq!(
+            blocks[12]["attrs"]["indentLeft"], "3em",
+            "Parenthetical 回退中档"
+        );
+        assert_eq!(
+            blocks[13]["attrs"]["textAlign"], "right",
+            "Transition 右对齐"
+        );
     }
 
     #[test]
@@ -938,7 +943,10 @@ mod tests {
         assert_eq!(parsed.blocks[0]["type"], "heading");
         assert_eq!(parsed.blocks[0]["attrs"]["level"], 6, "clamp 到 6");
         assert_eq!(parsed.blocks[1]["attrs"]["level"], 1, "clamp 到 1");
-        assert_eq!(parsed.blocks[2]["type"], "paragraph", "非法 Outline 兜底段落");
+        assert_eq!(
+            parsed.blocks[2]["type"], "paragraph",
+            "非法 Outline 兜底段落"
+        );
     }
 
     // ----- ElementSettings 权威布局（用户验收修正） -----
@@ -1042,7 +1050,10 @@ mod tests {
             no_base,
             r#"<Paragraph Type="Dialogue"><Text>甲</Text></Paragraph><Paragraph Type="Character"><Text>丙</Text></Paragraph>"#,
         );
-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "2em", "缺基准回退档");
+        assert_eq!(
+            parsed.blocks[0]["attrs"]["indentLeft"], "2em",
+            "缺基准回退档"
+        );
         assert!(parsed.blocks[0]["attrs"].get("indentRight").is_none());
         assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "4em", "缺块回退档");
 
@@ -1053,8 +1064,14 @@ mod tests {
             partial,
             r#"<Paragraph Type="Character"><Text>丙</Text></Paragraph>"#,
         );
-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em", "缺属性回退档");
-        assert_eq!(parsed.blocks[0]["attrs"]["indentRight"], "36pt", "右按设置换算");
+        assert_eq!(
+            parsed.blocks[0]["attrs"]["indentLeft"], "4em",
+            "缺属性回退档"
+        );
+        assert_eq!(
+            parsed.blocks[0]["attrs"]["indentRight"], "36pt",
+            "右按设置换算"
+        );
 
         // 非法数值属性＝缺失：回退档。
         let invalid = r#"<ElementSettings Type="Action"><ParagraphSpec Alignment="Left" LeftIndent="1.50" RightIndent="7.50"/></ElementSettings><ElementSettings Type="Dialogue"><ParagraphSpec Alignment="Left" LeftIndent="abc" RightIndent="6.00"/></ElementSettings>"#;
@@ -1062,7 +1079,10 @@ mod tests {
             invalid,
             r#"<Paragraph Type="Dialogue"><Text>甲</Text></Paragraph>"#,
         );
-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "2em", "非法值回退档");
+        assert_eq!(
+            parsed.blocks[0]["attrs"]["indentLeft"], "2em",
+            "非法值回退档"
+        );
     }
 
     // ----- 场景编号并入 -----
@@ -1080,7 +1100,9 @@ mod tests {
         // 编号前缀计入字数。
         assert_eq!(
             parsed.char_count,
-            "12 外景 书店门口—日动作段的编号不读取。内景 房间—夜".chars().count()
+            "12 外景 书店门口—日动作段的编号不读取。内景 房间—夜"
+                .chars()
+                .count()
         );
     }
 
@@ -1088,7 +1110,9 @@ mod tests {
 
     #[test]
     fn dual_dialogue_splits_in_order_with_notes_counted() {
-        let parsed = parse_body(r#"<Paragraph><ScriptNote Name="note"><Paragraph><Text>包裹段剧注</Text></Paragraph></ScriptNote><DualDialogue><Paragraph Type="Character"><Text>玛丽</Text></Paragraph><Paragraph Type="Parenthetical"><Text>（急）</Text></Paragraph><Paragraph Type="Dialogue"><Text>快走！</Text></Paragraph><Paragraph Type="Character"><Text>路易</Text></Paragraph><Paragraph Type="Dialogue"><Text>我说走！</Text></Paragraph></DualDialogue></Paragraph>"#);
+        let parsed = parse_body(
+            r#"<Paragraph><ScriptNote Name="note"><Paragraph><Text>包裹段剧注</Text></Paragraph></ScriptNote><DualDialogue><Paragraph Type="Character"><Text>玛丽</Text></Paragraph><Paragraph Type="Parenthetical"><Text>（急）</Text></Paragraph><Paragraph Type="Dialogue"><Text>快走！</Text></Paragraph><Paragraph Type="Character"><Text>路易</Text></Paragraph><Paragraph Type="Dialogue"><Text>我说走！</Text></Paragraph></DualDialogue></Paragraph>"#,
+        );
         assert_eq!(loss(&parsed, L_DUAL), 1);
         assert_eq!(loss(&parsed, L_SCRIPTNOTE), 1, "包裹段内剧注计数丢弃");
         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
@@ -1098,8 +1122,14 @@ mod tests {
             "拆为先后两组、括注随组、顺序保留"
         );
         // 内部段落缩进档随类型生效（无 ElementSettings → 回退固定档）。
-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em", "Character 深档");
-        assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "3em", "Parenthetical 中档");
+        assert_eq!(
+            parsed.blocks[0]["attrs"]["indentLeft"], "4em",
+            "Character 深档"
+        );
+        assert_eq!(
+            parsed.blocks[1]["attrs"]["indentLeft"], "3em",
+            "Parenthetical 中档"
+        );
     }
 
     // ----- TitlePage 并入与反例 -----
@@ -1133,9 +1163,15 @@ mod tests {
             3,
             "两套修订定义＋一处行内非零 RevisionID"
         );
-        assert_eq!(block_text(&parsed.blocks[0]), "带修订标记的文字", "文字无损");
+        assert_eq!(
+            block_text(&parsed.blocks[0]),
+            "带修订标记的文字",
+            "文字无损"
+        );
         // RevisionID=0（无修订）不计。
-        let parsed = parse_body(r#"<Paragraph Type="Action"><Text RevisionID="0">零修订</Text></Paragraph>"#);
+        let parsed = parse_body(
+            r#"<Paragraph Type="Action"><Text RevisionID="0">零修订</Text></Paragraph>"#,
+        );
         assert_eq!(loss(&parsed, L_REVISION), 0);
     }
 
@@ -1152,7 +1188,11 @@ mod tests {
         assert_eq!(loss(&parsed, L_SCENE_META), 1);
         assert_eq!(loss(&parsed, L_SCRIPTNOTE), 1);
         assert_eq!(block_text(&parsed.blocks[0]), "1 外景 农场—日");
-        assert_eq!(parsed.char_count, "1 外景 农场—日".chars().count(), "丢弃内容不入字数");
+        assert_eq!(
+            parsed.char_count,
+            "1 外景 农场—日".chars().count(),
+            "丢弃内容不入字数"
+        );
     }
 
     // ----- Style 词组 -----
@@ -1170,9 +1210,7 @@ mod tests {
             r#"<Paragraph Type="Action"><Text>缺属性</Text></Paragraph>"#,
         ));
         let mark_types = |index: usize| -> Vec<String> {
-            parsed.blocks[index]["content"]
-                .as_array()
-                .unwrap()[0]
+            parsed.blocks[index]["content"].as_array().unwrap()[0]
                 .get("marks")
                 .and_then(Value::as_array)
                 .map(|marks| {
@@ -1206,7 +1244,10 @@ mod tests {
         assert_eq!(parsed.losses.unknown_elements, 2, "段内两个未知元素");
         assert_eq!(
             parsed.losses.unknown_element_names,
-            vec!["SomeFutureElement".to_string(), "AnotherUnknown".to_string()]
+            vec![
+                "SomeFutureElement".to_string(),
+                "AnotherUnknown".to_string()
+            ]
         );
     }
 
@@ -1216,7 +1257,10 @@ mod tests {
         let source = r#"<FinalDraft DocumentType="Script" Version="3"><Content><Paragraph Type="Action"><Text>正文</Text></Paragraph></Content><SmartType><Characters/></SmartType><FutureModule><Data/></FutureModule></FinalDraft>"#;
         let parsed = parse(source);
         assert_eq!(parsed.losses.unknown_elements, 1, "仅 FutureModule 计数");
-        assert_eq!(parsed.losses.unknown_element_names, vec!["FutureModule".to_string()]);
+        assert_eq!(
+            parsed.losses.unknown_element_names,
+            vec!["FutureModule".to_string()]
+        );
     }
 
     // ----- 对齐三态（审计 A1） -----
@@ -1350,7 +1394,8 @@ mod tests {
     #[test]
     fn first_line_leading_whitespace_preserved() {
         // 段首前导空格（无换行前缀）＝作者缩进语义，逐字保留。
-        let parsed = parse_body(r#"<Paragraph Type="Action"><Text>    Four spaces</Text></Paragraph>"#);
+        let parsed =
+            parse_body(r#"<Paragraph Type="Action"><Text>    Four spaces</Text></Paragraph>"#);
         assert_eq!(block_text(&parsed.blocks[0]), "    Four spaces");
         assert_eq!(parsed.char_count, "    Four spaces".chars().count());
         // 换行后的行首空白（XML 回声形态）仍剥除。
@@ -1374,13 +1419,15 @@ mod tests {
         assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em");
 
         // 段内强制换行：拆为同属性相邻段落（同 md HardBreak／docx w:br 策略）。
-        let parsed = parse_body(
-            r#"<Paragraph Type="Dialogue"><Text>第一行&#10;第二行</Text></Paragraph>"#,
-        );
+        let parsed =
+            parse_body(r#"<Paragraph Type="Dialogue"><Text>第一行&#10;第二行</Text></Paragraph>"#);
         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
         assert_eq!(texts, vec!["第一行", "第二行"]);
         assert_eq!(parsed.blocks.len(), 2);
-        assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "2em", "延续段同属性");
+        assert_eq!(
+            parsed.blocks[1]["attrs"]["indentLeft"], "2em",
+            "延续段同属性"
+        );
         assert_eq!(parsed.paragraph_count, 2);
 
         // 全空白段落：保留为空段（作者间距），字数为零。
@@ -1402,8 +1449,8 @@ mod tests {
         .expect("create project");
         let file = temp.path().join("老剧本.fdr");
         std::fs::write(&file, b"binary junk").unwrap();
-        let error = super::super::document_import::import_document_preview(&root, &file)
-            .unwrap_err();
+        let error =
+            super::super::document_import::import_document_preview(&root, &file).unwrap_err();
         let message = error.to_string();
         assert!(
             message.contains(".fdr") && message.contains("另存为 .fdx"),
@@ -1421,8 +1468,8 @@ mod tests {
         .expect("create project");
         let file = temp.path().join("坏的.fdx");
         std::fs::write(&file, b"<FinalDraft><Content><Paragraph>").unwrap();
-        let error = super::super::document_import::import_document_preview(&root, &file)
-            .unwrap_err();
+        let error =
+            super::super::document_import::import_document_preview(&root, &file).unwrap_err();
         assert!(
             error.to_string().contains("不是有效的 .fdx 文件"),
             "报错：{error}"

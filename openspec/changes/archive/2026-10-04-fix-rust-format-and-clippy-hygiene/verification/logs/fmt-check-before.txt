@@ -1,0 +1,1941 @@
+﻿
+> next-story@0.1.0 fmt:rust
+> cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+Diff in \\?\D:\Next Story\src-tauri\examples\docx_read_spike.rs:146:
+     }
+     if is_episode_marker(&text) {
+         st.markers_total += 1;
+[31m-        let has_text_runs = p.children.iter().any(|c| {
+[0m[31m-            matches!(c, ParagraphChild::Run(r) if !para_text_of_run(r).trim().is_empty())
+[0m[31m-        });
+[0m[32m+        let has_text_runs = p
+[0m[32m+            .children
+[0m[32m+            .iter()
+[0m[32m+            .any(|c| matches!(c, ParagraphChild::Run(r) if !para_text_of_run(r).trim().is_empty()));
+[0m         let all_bold = p.children.iter().all(|c| match c {
+             ParagraphChild::Run(r) => {
+                 para_text_of_run(r).trim().is_empty() || r.run_property.bold.is_some()
+Diff in \\?\D:\Next Story\src-tauri\examples\docx_read_spike.rs:195:
+     println!("file: {path}");
+     println!("file size: {} bytes", buf.len());
+ 
+[31m-    let docx = match read_docx_with_options(
+[0m[31m-        &buf,
+[0m[31m-        ReadDocxOptions::default().with_image_previews(false),
+[0m[31m-    ) {
+[0m[31m-        Ok(d) => d,
+[0m[31m-        Err(e) => {
+[0m[31m-            println!("READ FAILED: {e:?}");
+[0m[31m-            return;
+[0m[31m-        }
+[0m[31m-    };
+[0m[32m+    let docx =
+[0m[32m+        match read_docx_with_options(&buf, ReadDocxOptions::default().with_image_previews(false)) {
+[0m[32m+            Ok(d) => d,
+[0m[32m+            Err(e) => {
+[0m[32m+                println!("READ FAILED: {e:?}");
+[0m[32m+                return;
+[0m[32m+            }
+[0m[32m+        };
+[0m     println!("READ OK 鈥?docx-rs read_docx 瑙ｆ瀽鎴愬姛\n");
+ 
+     let mut st = Stats::default();
+Diff in \\?\D:\Next Story\src-tauri\examples\docx_read_spike.rs:231:
+     );
+     println!("  numPr 鏃?id   : {}", st.numpr_no_id);
+     println!("pStyle paras    : {}   (鍩哄噯 0)", st.style_paras);
+[31m-    println!("bold runs       : {}   (鍩哄噯 ~2761 鍚钀界骇 rPr)", st.bold_runs);
+[0m[32m+    println!(
+[0m[32m+        "bold runs       : {}   (鍩哄噯 ~2761 鍚钀界骇 rPr)",
+[0m[32m+        st.bold_runs
+[0m[32m+    );
+[0m     println!("italic runs     : {}", st.italic_runs);
+     println!("underline runs  : {}", st.underline_runs);
+     println!("strike runs     : {}", st.strike_runs);
+Diff in \\?\D:\Next Story\src-tauri\examples\docx_read_spike.rs:238:
+     println!("color runs      : {}   (鍩哄噯 2066)", st.color_runs);
+     println!("sz runs         : {}   (鍩哄噯 6675 鍚?szCs)", st.sz_runs);
+[31m-    println!("highlight runs  : {}   (鍩哄噯 1974 鍚?noHighlight)", st.highlight_runs);
+[0m[32m+    println!(
+[0m[32m+        "highlight runs  : {}   (鍩哄噯 1974 鍚?noHighlight)",
+[0m[32m+        st.highlight_runs
+[0m[32m+    );
+[0m     println!("fonts runs      : {}   (鍩哄噯 3808)", st.fonts_runs);
+     println!("hyperlink paras : {}", st.hyperlink_paras);
+     println!("insert/delete   : {}/{}", st.insert_paras, st.delete_paras);
+Diff in \\?\D:\Next Story\src-tauri\examples\docx_read_spike.rs:244:
+[31m-    println!(
+[0m[31m-        "闆嗘暟鏍囪(鐙珛鎴愭)  : {}   (鍩哄噯 61)",
+[0m[31m-        st.markers_total
+[0m[31m-    );
+[0m[32m+    println!("闆嗘暟鏍囪(鐙珛鎴愭)  : {}   (鍩哄噯 61)", st.markers_total);
+[0m     println!(
+         "闆嗘暟鏍囪(涓斿叏鍔犵矖)  : {}   (璁捐鎷嗗垎瑙勫垯杈撳叆)",
+         st.markers_all_bold
+Diff in \\?\D:\Next Story\src-tauri\examples\fdx_read_spike.rs:17:
+         out.push_str(&format!(
+             "{ind}<{}{}>\n",
+             n.tag_name().name(),
+[31m-            if attrs.is_empty() { String::new() } else { format!(" [{}]", attrs.join(", ")) }
+[0m[32m+            if attrs.is_empty() {
+[0m[32m+                String::new()
+[0m[32m+            } else {
+[0m[32m+                format!(" [{}]", attrs.join(", "))
+[0m[32m+            }
+[0m         ));
+         for c in n.children() {
+             dump(c, depth + 1, out);
+Diff in \\?\D:\Next Story\src-tauri\examples\fdx_read_spike.rs:31:
+ }
+ 
+ fn main() {
+[31m-    let path = env::args().nth(1).unwrap_or_else(|| {
+[0m[31m-        "tests/fixtures/fdx/storyboarder-test.fdx".to_string()
+[0m[31m-    });
+[0m[32m+    let path = env::args()
+[0m[32m+        .nth(1)
+[0m[32m+        .unwrap_or_else(|| "tests/fixtures/fdx/storyboarder-test.fdx".to_string());
+[0m     let bytes = fs::read(&path).expect("read fdx");
+     let has_bom = bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
+     let slice = if has_bom { &bytes[3..] } else { &bytes[..] };
+Diff in \\?\D:\Next Story\src-tauri\examples\fdx_read_spike.rs:52:
+         .attributes()
+         .map(|a| format!("{}={}", a.name(), a.value()))
+         .collect();
+[31m-    println!("root: <{}> [{}]", root.tag_name().name(), root_attrs.join(", "));
+[0m[32m+    println!(
+[0m[32m+        "root: <{}> [{}]",
+[0m[32m+        root.tag_name().name(),
+[0m[32m+        root_attrs.join(", ")
+[0m[32m+    );
+[0m 
+     let mut census: BTreeMap<String, usize> = BTreeMap::new();
+     fn walk(n: roxmltree::Node, census: &mut BTreeMap<String, usize>) {
+Diff in \\?\D:\Next Story\src-tauri\examples\fdx_read_spike.rs:123:
+ 
+     println!(
+         "== TitlePage present: {} ==",
+[31m-        doc.descendants().any(|n| n.is_element() && n.tag_name().name() == "TitlePage")
+[0m[32m+        doc.descendants()
+[0m[32m+            .any(|n| n.is_element() && n.tag_name().name() == "TitlePage")
+[0m     );
+     println!(
+         "== Alignment attr present: {} ==",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:150:
+         push(
+             "table_flattened",
+             self.tables,
+[31m-            format!("{} 涓〃鏍兼寜銆屾瘡鏍间竴娈点€嶆媿骞筹細鏂囧瓧淇濈暀锛岃〃鏍肩粨鏋勪笉淇濈暀", self.tables),
+[0m[32m+            format!(
+[0m[32m+                "{} 涓〃鏍兼寜銆屾瘡鏍间竴娈点€嶆媿骞筹細鏂囧瓧淇濈暀锛岃〃鏍肩粨鏋勪笉淇濈暀",
+[0m[32m+                self.tables
+[0m[32m+            ),
+[0m         );
+         push(
+             "image_dropped",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:170:
+         push(
+             "revision_finalized",
+             self.revisions,
+[31m-            format!("{} 澶勪慨璁㈡爣璁版寜鏈€缁堢姸鎬佸鍏ワ紙淇濈暀鏂板銆佷涪寮冨垹闄わ級", self.revisions),
+[0m[32m+            format!(
+[0m[32m+                "{} 澶勪慨璁㈡爣璁版寜鏈€缁堢姸鎬佸鍏ワ紙淇濈暀鏂板銆佷涪寮冨垹闄わ級",
+[0m[32m+                self.revisions
+[0m[32m+            ),
+[0m         );
+         push(
+             "numbering_degraded",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:177:
+             self.numbering_degraded,
+[31m-            format!("{} 涓钀界殑缂栧彿瀹氫箟鏃犳硶鏄犲皠涓哄垪琛紝鎸夋櫘閫氭钀藉鍏?, self.numbering_degraded),
+[0m[32m+            format!(
+[0m[32m+                "{} 涓钀界殑缂栧彿瀹氫箟鏃犳硶鏄犲皠涓哄垪琛紝鎸夋櫘閫氭钀藉鍏?,
+[0m[32m+                self.numbering_degraded
+[0m[32m+            ),
+[0m         );
+         push(
+             "code_degraded",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:190:
+             self.quotes,
+             format!("{} 涓紩鐢ㄥ潡闄嶇骇涓烘櫘閫氭钀?, self.quotes),
+         );
+[32m+        push("hr_dropped", self.hr, format!("{} 鏉″垎闅旂嚎涓嶅鍏?, self.hr));
+[0m         push(
+[31m-            "hr_dropped",
+[0m[31m-            self.hr,
+[0m[31m-            format!("{} 鏉″垎闅旂嚎涓嶅鍏?, self.hr),
+[0m[31m-        );
+[0m[31m-        push(
+[0m             "html_stripped",
+             self.html_stripped,
+             format!("{} 涓?HTML 鏍囩宸插墺闄わ紙淇濈暀鍏朵腑鏂囧瓧锛?, self.html_stripped),
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:203:
+         push(
+             "frontmatter_dropped",
+             self.frontmatter,
+[31m-            format!("{} 涓?YAML frontmatter 鍧楀凡鍓ョ锛屼笉杩涘叆姝ｆ枃", self.frontmatter),
+[0m[32m+            format!(
+[0m[32m+                "{} 涓?YAML frontmatter 鍧楀凡鍓ョ锛屼笉杩涘叆姝ｆ枃",
+[0m[32m+                self.frontmatter
+[0m[32m+            ),
+[0m         );
+         push(
+             "tasklist_degraded",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:210:
+             self.tasklists,
+[31m-            format!("{} 涓换鍔″垪琛ㄦ寜鏃犲簭鍒楄〃瀵煎叆锛堝嬀閫夋浠ュ瓧闈繚鐣欙級", self.tasklists),
+[0m[32m+            format!(
+[0m[32m+                "{} 涓换鍔″垪琛ㄦ寜鏃犲簭鍒楄〃瀵煎叆锛堝嬀閫夋浠ュ瓧闈繚鐣欙級",
+[0m[32m+                self.tasklists
+[0m[32m+            ),
+[0m         );
+         push(
+             "block_skipped",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:234:
+         push(
+             "scene_metadata_dropped",
+             self.scene_metadata,
+[31m-            format!("{} 缁勫満鏅厓鏁版嵁锛堝惈 Story Map 鍦烘櫙鏁版嵁锛変笉瀵煎叆", self.scene_metadata),
+[0m[32m+            format!(
+[0m[32m+                "{} 缁勫満鏅厓鏁版嵁锛堝惈 Story Map 鍦烘櫙鏁版嵁锛変笉瀵煎叆",
+[0m[32m+                self.scene_metadata
+[0m[32m+            ),
+[0m         );
+         push(
+             "scriptnote_dropped",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:244:
+         push(
+             "revision_marks_ignored",
+             self.revision_marks,
+[31m-            format!("{} 澶勪慨璁㈡爣璁板凡蹇界暐锛堝叏閮ㄦ枃瀛楁棤鎹熷鍏ワ級", self.revision_marks),
+[0m[32m+            format!(
+[0m[32m+                "{} 澶勪慨璁㈡爣璁板凡蹇界暐锛堝叏閮ㄦ枃瀛楁棤鎹熷鍏ワ級",
+[0m[32m+                self.revision_marks
+[0m[32m+            ),
+[0m         );
+         push(
+             "unknown_element_skipped",
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:286:
+         push(
+             "style_degraded",
+             self.style_degraded,
+[31m-            format!(
+[0m[31m-                "{} 澶勬牱寮忛摼灞炴€ф棤娉曡В鏋愭槧灏勶紝宸插拷鐣?,
+[0m[31m-                self.style_degraded
+[0m[31m-            ),
+[0m[32m+            format!("{} 澶勬牱寮忛摼灞炴€ф棤娉曡В鏋愭槧灏勶紝宸插拷鐣?, self.style_degraded),
+[0m         );
+         out
+     }
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:487:
+ ) -> Vec<(String, Value)> {
+     segments_for_family(markers, family, blocks.len())
+         .into_iter()
+[31m-        .map(|(name, start, end)| {
+[0m[31m-            (
+[0m[31m-                name,
+[0m[31m-                doc_value_from_blocks(blocks[start..end].to_vec()),
+[0m[31m-            )
+[0m[31m-        })
+[0m[32m+        .map(|(name, start, end)| (name, doc_value_from_blocks(blocks[start..end].to_vec())))
+[0m         .collect()
+ }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:542:
+         Some("fdx") => Ok(ImportFormat::Fdx),
+         // Final Draft 1鈥? 绉佹湁浜岃繘鍒惰€佹牸寮忥細涓嶅皾璇曡В鏋愶紝鎻愮ず鍙﹀瓨涓?.fdx銆?         Some("fdr") => Err(ProjectError::ImportRejected(
+[31m-            "Final Draft 1鈥? 鑰佹牸寮忥紙.fdr锛変笉鏀寔锛氳鍦?Final Draft 涓墦寮€骞跺彟瀛樹负 .fdx 鍚庡鍏?.to_string(),
+[0m[32m+            "Final Draft 1鈥? 鑰佹牸寮忥紙.fdr锛変笉鏀寔锛氳鍦?Final Draft 涓墦寮€骞跺彟瀛樹负 .fdx 鍚庡鍏?
+[0m[32m+                .to_string(),
+[0m         )),
+         _ => Err(ProjectError::ImportRejected(
+[31m-            "鍙敮鎸?.docx銆?md 涓?.fdx 鏂囦欢锛?doc 鑰佹牸寮忚鍏堝湪 Word 鎴?WPS 涓彟瀛樹负 .docx".to_string(),
+[0m[32m+            "鍙敮鎸?.docx銆?md 涓?.fdx 鏂囦欢锛?doc 鑰佹牸寮忚鍏堝湪 Word 鎴?WPS 涓彟瀛樹负 .docx"
+[0m[32m+                .to_string(),
+[0m         )),
+     }
+ }
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:610:
+ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+     let mut hasher = Sha256::new();
+     hasher.update(bytes);
+[31m-    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+[0m[32m+    hasher
+[0m[32m+        .finalize()
+[0m[32m+        .iter()
+[0m[32m+        .map(|b| format!("{b:02x}"))
+[0m[32m+        .collect()
+[0m }
+ 
+ // ========== 棰勬鍛戒护锛堥浂鍐欏叆锛?==========
+Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:668:
+ 
+     let parsed = parse_by_format(format, &bytes)?;
+     let default_name = doc_name_from_file(file_path);
+[31m-    let single_doc = || vec![(default_name.clone(), doc_value_from_blocks(parsed.blocks.clone()))];
+[0m[32m+    let single_doc = || {
+[0m[32m+        vec![(
+[0m[32m+            default_name.clone(),
+[0m[32m+            doc_value_from_blocks(parsed.blocks.clone()),
+[0m[32m+        )]
+[0m[32m+    };
+[0m 
+     // 缁勮鏂囨。闆嗭細榛樿鏁存枃浠朵竴涓枃妗ｏ紱鐢ㄦ埛閫夋嫨鎷嗗垎涓斿瓨鍦ㄥ敮涓€杈炬爣鏍囪鏃忔椂
+     // 鎸夋爣璁拌竟鐣屾媶鍒嗭紙鎷嗗垎璇锋眰浣嗘棤鏍囪鏃跺洖閫€鍗曟枃妗ｏ級銆?Diff in \\?\D:\Next Story\src-tauri\src\project\document_import.rs:837:
+ 
+ /// 鍚岀骇鍞竴鍛藉悕锛氫笌鏃㈡湁鑺傜偣锛堝強鏈宸插垱寤鸿妭鐐癸級鍐茬獊鏃惰拷鍔犮€?2銆嶃€?3銆嶅悗缂€锛? /// 涓庡唴瀹规爲鏃㈡湁鑷姩鍛藉悕椋庢牸涓€鑷淬€?[31m-fn unique_sibling_name(tree: &ContentTree, parent: Option<&str>, base: &str, exclude: &str) -> String {
+[0m[32m+fn unique_sibling_name(
+[0m[32m+    tree: &ContentTree,
+[0m[32m+    parent: Option<&str>,
+[0m[32m+    base: &str,
+[0m[32m+    exclude: &str,
+[0m[32m+) -> String {
+[0m     let taken: HashSet<String> = sibling_names(tree, parent, exclude).into_iter().collect();
+     if !taken.contains(base) {
+         return base.to_string();
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:23:
+ use std::io::{Cursor, Read};
+ 
+ use docx_rs::{
+[31m-    read_docx_with_options, Docx, DocumentChild, HyperlinkData, Paragraph, ParagraphChild,
+[0m[32m+    read_docx_with_options, DocumentChild, Docx, HyperlinkData, Paragraph, ParagraphChild,
+[0m     ReadDocxOptions, Run, RunChild, StructuredDataTag, Table, TableCellContent, TableChild,
+ };
+ use serde::Serialize;
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:196:
+             .styles
+             .styles
+             .iter()
+[31m-            .map(|style| (style.style_id.clone(), ser_str(&style.name).unwrap_or_default()))
+[0m[32m+            .map(|style| {
+[0m[32m+                (
+[0m[32m+                    style.style_id.clone(),
+[0m[32m+                    ser_str(&style.name).unwrap_or_default(),
+[0m[32m+                )
+[0m[32m+            })
+[0m             .collect();
+ 
+         // D3 鏍峰紡涓婁笅鏂囷細docDefaults锛堢鏈夊瓧娈电粡 Serialize 鎻愬彇锛宻pike 缁撹锛?Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:227:
+                 (
+                     style.style_id.clone(),
+                     StyleEntry {
+[31m-                        based_on: style
+[0m[31m-                            .based_on
+[0m[31m-                            .as_ref()
+[0m[31m-                            .and_then(ser_str),
+[0m[32m+                        based_on: style.based_on.as_ref().and_then(ser_str),
+[0m                         run_property: serde_json::to_value(&style.run_property)
+                             .ok()
+                             .and_then(|value| value.as_object().cloned())
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:291:
+     /// fonts 瀛愬璞℃寜灞炴€т綅鍚堝苟锛堟樉寮?ascii/eastAsia 閿儨浜庝富棰橀敭鐨勬暣鏇匡級銆?     fn chain_char_map(&self, paragraph_style: Option<&str>) -> Map<String, Value> {
+         let mut merged = self.doc_default_rpr.clone();
+[31m-        let chain = paragraph_style.map(|id| self.style_chain(id)).unwrap_or_default();
+[0m[32m+        let chain = paragraph_style
+[0m[32m+            .map(|id| self.style_chain(id))
+[0m[32m+            .unwrap_or_default();
+[0m         for entry in chain {
+             overlay_map(&mut merged, &entry.run_property);
+         }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:301:
+     /// 鏍峰紡閾剧敓鏁堟钀藉睘鎬э紙docDefaults 鈫?娈佃惤鏍峰紡閾撅級銆?     fn chain_paragraph_map(&self, paragraph_style: Option<&str>) -> Map<String, Value> {
+         let mut merged = self.doc_default_ppr.clone();
+[31m-        let chain = paragraph_style.map(|id| self.style_chain(id)).unwrap_or_default();
+[0m[32m+        let chain = paragraph_style
+[0m[32m+            .map(|id| self.style_chain(id))
+[0m[32m+            .unwrap_or_default();
+[0m         for entry in chain {
+             overlay_map(&mut merged, &entry.paragraph_property);
+         }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:312:
+     /// 闈炴牸寮忚涓哄睘鎬х殑閿紙娈佃惤搴旂敤涓€娆★紱rStyle 閾炬寜 run 璁★級銆?     /// 娉ㄦ剰锛歞ocx-rs 鐨?ParagraphProperty 搴忓垪鍖栨亽甯?`"tabs":[]`锛圴ec 鏃?     /// skip锛夛紝绌?tabs 鏄洖澹颁笉鏄俊鎭€斺€斿彧鍦ㄩ潪绌烘椂璁℃暟銆?[31m-    fn count_style_degraded(&mut self, char_map: &Map<String, Value>, para_map: &Map<String, Value>) {
+[0m[32m+    fn count_style_degraded(
+[0m[32m+        &mut self,
+[0m[32m+        char_map: &Map<String, Value>,
+[0m[32m+        para_map: &Map<String, Value>,
+[0m[32m+    ) {
+[0m         for key in char_map.keys() {
+             if UNMAPPABLE_CHAR_KEYS.contains(&key.as_str()) {
+                 self.losses.style_degraded += 1;
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:321:
+         for (key, value) in para_map {
+             match key.as_str() {
+                 "tabs" => {
+[31m-                    let non_empty = value
+[0m[31m-                        .as_array()
+[0m[31m-                        .is_some_and(|tabs| !tabs.is_empty());
+[0m[32m+                    let non_empty = value.as_array().is_some_and(|tabs| !tabs.is_empty());
+[0m                     if non_empty {
+                         self.losses.style_degraded += 1;
+                     }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:455:
+         effective_ppr: &Map<String, Value>,
+         in_table: bool,
+     ) -> Option<(usize, bool, u64)> {
+[31m-        let numbering = effective_ppr.get("numberingProperty").and_then(Value::as_object)?;
+[0m[32m+        let numbering = effective_ppr
+[0m[32m+            .get("numberingProperty")
+[0m[32m+            .and_then(Value::as_object)?;
+[0m         let num_id = numbering.get("id").and_then(Value::as_u64)? as usize;
+         if num_id == 0 {
+             return None; // 澧撶锛氭櫘閫氭钀斤紝涓嶈鏁般€?Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:462:
+         }
+[31m-        let ilvl = numbering
+[0m[31m-            .get("level")
+[0m[31m-            .and_then(Value::as_u64)
+[0m[31m-            .unwrap_or(0) as usize;
+[0m[32m+        let ilvl = numbering.get("level").and_then(Value::as_u64).unwrap_or(0) as usize;
+[0m 
+         // 璁℃暟鍣ㄨ涔夛紙鏃犺鏈鏄惁鍙覆鏌撲负鍒楄〃閮芥帹杩涳級锛?         // 鏇存繁灞傜骇鍦ㄦ洿娴呭眰绾у嚭鐜版椂閲嶇疆銆?Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:482:
+             .override_start(num_id, ilvl)
+             .or_else(|| self.numbering.level0(num_id).map(|info| info.start))
+             .unwrap_or(1);
+[31m-        let counter = self.numbering_counters.entry((num_id, ilvl)).or_insert(start - 1);
+[0m[32m+        let counter = self
+[0m[32m+            .numbering_counters
+[0m[32m+            .entry((num_id, ilvl))
+[0m[32m+            .or_insert(start - 1);
+[0m         *counter += 1;
+         let current = *counter;
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:676:
+             {
+                 has_text = true;
+                 let marks = value.get("marks").and_then(Value::as_array);
+[31m-                let bold = marks.is_some_and(|marks| {
+[0m[31m-                    marks.iter().any(|mark| mark["type"] == "bold")
+[0m[31m-                });
+[0m[32m+                let bold =
+[0m[32m+                    marks.is_some_and(|marks| marks.iter().any(|mark| mark["type"] == "bold"));
+[0m                 if !bold {
+                     all_bold = false;
+                 }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:764:
+         // 闆?style_degraded 鐨勫彛寰勪箣涓€锛岃鎶ュ憡锛夈€?         let family = ["eastAsia", "ascii", "hiAnsi"]
+             .iter()
+[31m-            .find_map(|key| {
+[0m[31m-                fonts
+[0m[31m-                    .get(*key)
+[0m[31m-                    .and_then(Value::as_str)
+[0m[31m-                    .map(str::to_string)
+[0m[31m-            })
+[0m[32m+            .find_map(|key| fonts.get(*key).and_then(Value::as_str).map(str::to_string))
+[0m             .unwrap_or_default();
+         if !family.is_empty() {
+             text_style.insert("fontFamily".to_string(), json!(family));
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1007:
+ 
+ /// 鐩搁偦鍚?numId 鐨勭紪鍙锋钀藉綊缁勪负涓€涓垪琛紱浠讳綍闈炲垪琛ㄥ潡鎵撴柇褰掔粍銆? /// 鍚屾椂浜у嚭椤跺眰搴忓垪鏍囪鐨勶紙鍧楃储寮? 鏃忛敭, 鏂囨湰锛夆€斺€旀爣璁版钀藉繀涓虹嫭绔嬪潡銆?[31m-fn group_blocks_with_markers(
+[0m[31m-    paras: Vec<ParaOut>,
+[0m[31m-) -> (Vec<Value>, Vec<(usize, String, String)>) {
+[0m[32m+fn group_blocks_with_markers(paras: Vec<ParaOut>) -> (Vec<Value>, Vec<(usize, String, String)>) {
+[0m     let mut out: Vec<Value> = Vec::new();
+     let mut markers: Vec<(usize, String, String)> = Vec::new();
+     let mut items: Vec<Value> = Vec::new();
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1041:
+     (out, markers)
+ }
+ 
+[31m-fn flush_list(out: &mut Vec<Value>, items: &mut Vec<Value>, current: &mut Option<(usize, bool, u64)>) {
+[0m[32m+fn flush_list(
+[0m[32m+    out: &mut Vec<Value>,
+[0m[32m+    items: &mut Vec<Value>,
+[0m[32m+    current: &mut Option<(usize, bool, u64)>,
+[0m[32m+) {
+[0m     let Some((_, ordered, start)) = current.take() else {
+         return;
+     };
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1118:
+     // 鎸?ZIP 缁撴瀯鍒ゆ柇锛堝瓨鍦?[Content_Types].xml锛夛紝涓嶄俊浠荤郴缁?MIME銆?     if archive.by_name("[Content_Types].xml").is_err() {
+         return Err(invalid(
+[31m-            "涓嶆槸鏈夋晥鐨?.docx 鏂囦欢锛氱己灏?[Content_Types].xml锛堣纭鏂囦欢鐢?Word 鎴?WPS 淇濆瓨锛?.to_string(),
+[0m[32m+            "涓嶆槸鏈夋晥鐨?.docx 鏂囦欢锛氱己灏?[Content_Types].xml锛堣纭鏂囦欢鐢?Word 鎴?WPS 淇濆瓨锛?
+[0m[32m+                .to_string(),
+[0m         ));
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1174:
+             "word/document.xml" => {
+                 scan.document_xml = Some(String::from_utf8_lossy(&captured).into_owned())
+             }
+[31m-            "docProps/app.xml" => scan.app_xml = Some(String::from_utf8_lossy(&captured).into_owned()),
+[0m[32m+            "docProps/app.xml" => {
+[0m[32m+                scan.app_xml = Some(String::from_utf8_lossy(&captured).into_owned())
+[0m[32m+            }
+[0m             "docProps/custom.xml" => {
+                 scan.custom_xml = Some(String::from_utf8_lossy(&captured).into_owned())
+             }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1278:
+         }
+         let name_start = end;
+         while end < bytes.len()
+[31m-            && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b':' | b'_' | b'-' | b'.'))
+[0m[32m+            && (bytes[end].is_ascii_alphanumeric()
+[0m[32m+                || matches!(bytes[end], b':' | b'_' | b'-' | b'.'))
+[0m         {
+             end += 1;
+         }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1319:
+ fn symbol_to_unicode(font: &str, char_code: &str) -> Option<char> {
+     let code = u32::from_str_radix(char_code.trim(), 16).ok()?;
+     // 绉佺敤鍖哄洖澹板墠缂€锛歐ingdings/Symbol 寮曠敤甯稿啓浣?F0xx锛團000 鍖猴級銆?[31m-    let code = if (0xF000..=0xF0FF).contains(&code) { code - 0xF000 } else { code };
+[0m[32m+    let code = if (0xF000..=0xF0FF).contains(&code) {
+[0m[32m+        code - 0xF000
+[0m[32m+    } else {
+[0m[32m+        code
+[0m[32m+    };
+[0m     match font.trim() {
+         "Wingdings" => wingdings_char(code),
+         "Symbol" => symbol_font_char(code),
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1351:
+         0xF2 => '鈬?,  // 0x21D2 鍙岀嚎鍙崇澶?         0xAB => '芦',  // Wingdings 芦 宸︿功鍚嶅彿褰㈢澶达紝淇濆畧鍘熸牱
+         0xBB => '禄',
+[31m-        0xE7 => '鈫?,  // 0x2190 宸︾澶?[0m[31m-        0xDC => '鉁?,  // 0x2704 鍓垁
+[0m[31m-        0xC7 => '鉁?,  // 0x270E 閾呯瑪
+[0m[31m-        0x28 => '鈽?,  // 0x260E 鐢佃瘽
+[0m[31m-        0x3F => '鉁?,  // 0x2708 椋炴満
+[0m[32m+        0xE7 => '鈫?, // 0x2190 宸︾澶?[0m[32m+        0xDC => '鉁?, // 0x2704 鍓垁
+[0m[32m+        0xC7 => '鉁?, // 0x270E 閾呯瑪
+[0m[32m+        0x28 => '鈽?, // 0x260E 鐢佃瘽
+[0m[32m+        0x3F => '鉁?, // 0x2708 椋炴満
+[0m         _ => return None,
+     })
+ }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1380:
+         0xA1 => '卢',
+         0xD1 => '鈭?,
+         // 甯岃厞灏忓啓锛圫ymbol 瀛椾綋 ASCII 浣嶅嵆甯岃厞瀛楁瘝锛夈€?[31m-        0x61 => '伪', 0x62 => '尾', 0x63 => '蠂', 0x64 => '未', 0x65 => '蔚',
+[0m[31m-        0x66 => '蠁', 0x67 => '纬', 0x68 => '畏', 0x69 => '喂', 0x6A => '蠒',
+[0m[31m-        0x6B => '魏', 0x6C => '位', 0x6D => '渭', 0x6E => '谓', 0x6F => '慰',
+[0m[31m-        0x70 => '蟺', 0x71 => '胃', 0x72 => '蟻', 0x73 => '蟽', 0x74 => '蟿',
+[0m[31m-        0x75 => '蠀', 0x77 => '蠅', 0x78 => '尉', 0x79 => '蠄', 0x7A => '味',
+[0m[32m+        0x61 => '伪',
+[0m[32m+        0x62 => '尾',
+[0m[32m+        0x63 => '蠂',
+[0m[32m+        0x64 => '未',
+[0m[32m+        0x65 => '蔚',
+[0m[32m+        0x66 => '蠁',
+[0m[32m+        0x67 => '纬',
+[0m[32m+        0x68 => '畏',
+[0m[32m+        0x69 => '喂',
+[0m[32m+        0x6A => '蠒',
+[0m[32m+        0x6B => '魏',
+[0m[32m+        0x6C => '位',
+[0m[32m+        0x6D => '渭',
+[0m[32m+        0x6E => '谓',
+[0m[32m+        0x6F => '慰',
+[0m[32m+        0x70 => '蟺',
+[0m[32m+        0x71 => '胃',
+[0m[32m+        0x72 => '蟻',
+[0m[32m+        0x73 => '蟽',
+[0m[32m+        0x74 => '蟿',
+[0m[32m+        0x75 => '蠀',
+[0m[32m+        0x77 => '蠅',
+[0m[32m+        0x78 => '尉',
+[0m[32m+        0x79 => '蠄',
+[0m[32m+        0x7A => '味',
+[0m         // 甯岃厞澶у啓銆?[31m-        0x41 => '螒', 0x42 => '螔', 0x47 => '螕', 0x44 => '螖', 0x45 => '螘',
+[0m[31m-        0x5A => '螙', 0x48 => '螚', 0x51 => '螛', 0x49 => '螜', 0x4B => '螝',
+[0m[31m-        0x4C => '螞', 0x4D => '螠', 0x4E => '螡', 0x58 => '螢', 0x4F => '螣',
+[0m[31m-        0x50 => '螤', 0x52 => '巍', 0x54 => '韦', 0x53 => '危', 0x55 => '违',
+[0m[31m-        0x46 => '桅', 0x59 => '唯', 0x57 => '惟', 0x43 => '围',
+[0m[32m+        0x41 => '螒',
+[0m[32m+        0x42 => '螔',
+[0m[32m+        0x47 => '螕',
+[0m[32m+        0x44 => '螖',
+[0m[32m+        0x45 => '螘',
+[0m[32m+        0x5A => '螙',
+[0m[32m+        0x48 => '螚',
+[0m[32m+        0x51 => '螛',
+[0m[32m+        0x49 => '螜',
+[0m[32m+        0x4B => '螝',
+[0m[32m+        0x4C => '螞',
+[0m[32m+        0x4D => '螠',
+[0m[32m+        0x4E => '螡',
+[0m[32m+        0x58 => '螢',
+[0m[32m+        0x4F => '螣',
+[0m[32m+        0x50 => '螤',
+[0m[32m+        0x52 => '巍',
+[0m[32m+        0x54 => '韦',
+[0m[32m+        0x53 => '危',
+[0m[32m+        0x55 => '违',
+[0m[32m+        0x46 => '桅',
+[0m[32m+        0x59 => '唯',
+[0m[32m+        0x57 => '惟',
+[0m[32m+        0x43 => '围',
+[0m         _ => return None,
+     })
+ }
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1595:
+             .start_file("[Content_Types].xml", options)
+             .expect("start content types");
+         writer.write_all(b"<Types/>").unwrap();
+[31m-        writer
+[0m[31m-            .start_file("bomb.xml", options)
+[0m[31m-            .expect("start bomb");
+[0m[32m+        writer.start_file("bomb.xml", options).expect("start bomb");
+[0m         let zeros = vec![0u8; 70 * 1024 * 1024];
+         writer.write_all(&zeros).unwrap();
+         let bytes = writer.finish().expect("finish").into_inner();
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1750:
+             .iter()
+             .map(|m| m["type"].as_str().unwrap())
+             .collect();
+[31m-        assert_eq!(types, vec!["bold", "italic", "underline", "strike", "textStyle", "highlight"]);
+[0m[32m+        assert_eq!(
+[0m[32m+            types,
+[0m[32m+            vec![
+[0m[32m+                "bold",
+[0m[32m+                "italic",
+[0m[32m+                "underline",
+[0m[32m+                "strike",
+[0m[32m+                "textStyle",
+[0m[32m+                "highlight"
+[0m[32m+            ]
+[0m[32m+        );
+[0m         let text_style = &blocks[0]["content"][0]["marks"][4]["attrs"];
+         assert_eq!(text_style["color"], "#ff0000");
+         assert_eq!(text_style["fontSize"], "12pt");
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1757:
+         assert_eq!(text_style["fontFamily"], "瀹嬩綋");
+[31m-        assert_eq!(blocks[0]["content"][0]["marks"][5]["attrs"]["color"], "#ffff00");
+[0m[32m+        assert_eq!(
+[0m[32m+            blocks[0]["content"][0]["marks"][5]["attrs"]["color"],
+[0m[32m+            "#ffff00"
+[0m[32m+        );
+[0m     }
+ 
+     #[test]
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1764:
+         // 瀛楃鍗曚綅璺緞鐢?chars 缂╄繘涓撻」娴嬭瘯瑕嗙洊銆?         let paragraph = Paragraph::new()
+             .align(AlignmentType::Center)
+[31m-            .indent(Some(420), Some(docx_rs::SpecialIndentType::FirstLine(400)), None, None)
+[0m[32m+            .indent(
+[0m[32m+                Some(420),
+[0m[32m+                Some(docx_rs::SpecialIndentType::FirstLine(400)),
+[0m[32m+                None,
+[0m[32m+                None,
+[0m[32m+            )
+[0m             .line_spacing(
+                 LineSpacing::new()
+                     .line_rule(LineSpacingType::Auto)
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1809:
+         let docx = Docx::new()
+             .add_style(Style::new("Heading1", StyleType::Paragraph).name("heading 1"))
+             .add_style(Style::new("s2", StyleType::Paragraph).name("鏍囬 2"))
+[31m-            .add_paragraph(Paragraph::new().style("Heading1").add_run(Run::new().add_text("涓€绾?)))
+[0m[31m-            .add_paragraph(Paragraph::new().style("s2").add_run(Run::new().add_text("浜岀骇")))
+[0m[32m+            .add_paragraph(
+[0m[32m+                Paragraph::new()
+[0m[32m+                    .style("Heading1")
+[0m[32m+                    .add_run(Run::new().add_text("涓€绾?)),
+[0m[32m+            )
+[0m[32m+            .add_paragraph(
+[0m[32m+                Paragraph::new()
+[0m[32m+                    .style("s2")
+[0m[32m+                    .add_run(Run::new().add_text("浜岀骇")),
+[0m[32m+            )
+[0m             .add_paragraph(para("鏅€?));
+         let parsed = parse(&pack(docx));
+         let blocks = blocks_of(&parsed);
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1858:
+             );
+         let parsed = parse(&pack(docx));
+         let value = doc_value_from_blocks(parsed.blocks.clone());
+[31m-        super::super::validate_notebook_document(&value)
+[0m[31m-            .expect("鏄犲皠浜х墿蹇呴』閫氳繃鏃㈡湁涓ユ牸璇硶鏍￠獙");
+[0m[32m+        super::super::validate_notebook_document(&value).expect("鏄犲皠浜х墿蹇呴』閫氳繃鏃㈡湁涓ユ牸璇硶鏍￠獙");
+[0m     }
+ 
+     // ----- 淇鏈€缁堟€?-----
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1868:
+     fn revisions_take_final_state() {
+         let paragraph = Paragraph::new()
+             .add_insert(Insert::new(Run::new().add_text("淇濈暀")))
+[31m-            .add_delete(
+[0m[31m-                Delete::new()
+[0m[31m-                    .add_run(Run::new().add_delete_text("涓㈠純")),
+[0m[31m-            )
+[0m[32m+            .add_delete(Delete::new().add_run(Run::new().add_delete_text("涓㈠純")))
+[0m             .add_run(Run::new().add_text("灏惧反"));
+         let docx = Docx::new().add_paragraph(paragraph);
+         let parsed = parse(&pack(docx));
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:1999:
+     // ----- 棰勬涓庢彁浜ょ鍒扮锛堣蛋鍏变韩鍛戒护锛屾硾鍖栧悗鎸夋墿灞曞悕鍒嗗彂鍥炴湰鍒嗘敮锛?-----
+ 
+     fn simple_docx_bytes() -> Vec<u8> {
+[31m-        pack(Docx::new()
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("绗竴闆嗘鏂?))
+[0m[31m-            .add_paragraph(Paragraph::new())
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("绗簩闆嗘鏂?)))
+[0m[32m+        pack(
+[0m[32m+            Docx::new()
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("绗竴闆嗘鏂?))
+[0m[32m+                .add_paragraph(Paragraph::new())
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("绗簩闆嗘鏂?)),
+[0m[32m+        )
+[0m     }
+ 
+     fn import_preview(root: &Path, file: &Path) -> super::super::document_import::ImportPreview {
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2020:
+ 
+         let preview = import_preview(&root, &file);
+         assert_eq!(preview.default_doc_name, "鎴戠殑鍓ф湰");
+[31m-        assert_eq!(preview.char_count, "绗?闆嗙涓€闆嗘鏂囩2闆嗙浜岄泦姝ｆ枃".chars().count());
+[0m[32m+        assert_eq!(
+[0m[32m+            preview.char_count,
+[0m[32m+            "绗?闆嗙涓€闆嗘鏂囩2闆嗙浜岄泦姝ｆ枃".chars().count()
+[0m[32m+        );
+[0m         assert_eq!(preview.paragraph_count, 5);
+         // docx 鎵撳寘鍚椂闂存埑锛屽搱甯屽繀椤诲鍚屼竴浠藉瓧鑺傝绠椼€?         assert_eq!(preview.content_hash, sha256_hex(&bytes));
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2035:
+     fn preview_requires_three_markers_for_suggestion() {
+         let (temp, root) = seed_project("棰勮寤鸿娴嬭瘯");
+         let file = temp.path().join("鎴戠殑鍓ф湰.docx");
+[31m-        let bytes = pack(Docx::new()
+[0m[31m-            .add_paragraph(para("鍓嶈█"))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("涓€"))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("浜?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("涓?)));
+[0m[32m+        let bytes = pack(
+[0m[32m+            Docx::new()
+[0m[32m+                .add_paragraph(para("鍓嶈█"))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("涓€"))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("浜?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("涓?)),
+[0m[32m+        );
+[0m         fs::write(&file, bytes).unwrap();
+ 
+         let preview = import_preview(&root, &file);
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2106:
+ 
+         let before = super::super::recover_then_read_content_tree(&root).unwrap();
+         let error = super::super::document_import::import_document_commit(
+[31m-            &root,
+[0m[31m-            &file,
+[0m[31m-            None,
+[0m[31m-            false,
+[0m[31m-            "deadbeef",
+[0m[32m+            &root, &file, None, false, "deadbeef",
+[0m         )
+         .unwrap_err();
+         assert!(
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2125:
+     fn commit_split_creates_folder_and_docs_with_preamble_kept() {
+         let (temp, root) = seed_project("鎷嗗垎鎻愪氦娴嬭瘯");
+         let file = temp.path().join("鍏ㄦ湰鍓ф湰.docx");
+[31m-        let bytes = pack(Docx::new()
+[0m[31m-            .add_paragraph(para("鍓嶈█锛氬墽鏈俊鎭?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("绗竴闆嗘鏂?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("绗簩闆嗘鏂?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("绗笁闆嗘鏂?)));
+[0m[32m+        let bytes = pack(
+[0m[32m+            Docx::new()
+[0m[32m+                .add_paragraph(para("鍓嶈█锛氬墽鏈俊鎭?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("绗竴闆嗘鏂?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("绗簩闆嗘鏂?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("绗笁闆嗘鏂?)),
+[0m[32m+        );
+[0m         fs::write(&file, bytes).unwrap();
+ 
+         let preview = import_preview(&root, &file);
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2182:
+         let (temp, root) = seed_project("閲嶅悕娴嬭瘯");
+         let file = temp.path().join("閲嶅鏍囪.docx");
+         // 涓や釜銆岀1闆嗐€嶆爣璁?+ 绗?闆嗭細閲嶅鍚嶉』鍞竴鍖栥€?[31m-        let bytes = pack(Docx::new()
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("鐢?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("涔?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("涓?)));
+[0m[32m+        let bytes = pack(
+[0m[32m+            Docx::new()
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("鐢?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("涔?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("涓?)),
+[0m[32m+        );
+[0m         fs::write(&file, bytes).unwrap();
+ 
+         let preview = import_preview(&root, &file);
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2229:
+         )
+         .expect("鎻愪氦鍒版枃浠跺す");
+         let tree = super::super::recover_then_read_content_tree(&root).unwrap();
+[31m-        assert!(tree.nodes[&folder].children.contains(&result.created_doc_ids[0]));
+[0m[32m+        assert!(tree.nodes[&folder]
+[0m[32m+            .children
+[0m[32m+            .contains(&result.created_doc_ids[0]));
+[0m 
+         // 鏂囨。鑺傜偣涓嶈兘浣滀负鐖剁骇銆?         let doc_parent = tree.root_children[0].clone();
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2247:
+     #[test]
+     fn split_docs_from_blocks_matches_legacy_boundaries() {
+         // 鎷嗗垎杈圭晫锛氭爣璁板潡鏄叾鍚庢枃妗ｉ鍧楋紝鍓嶈█骞跺叆绗?1 涓枃妗ｃ€?[31m-        let parsed = parse(&pack(Docx::new()
+[0m[31m-            .add_paragraph(para("鍓嶈█"))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("鐢?))
+[0m[31m-            .add_paragraph(bold_para("绗?闆?))
+[0m[31m-            .add_paragraph(para("涔?))));
+[0m[32m+        let parsed = parse(&pack(
+[0m[32m+            Docx::new()
+[0m[32m+                .add_paragraph(para("鍓嶈█"))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("鐢?))
+[0m[32m+                .add_paragraph(bold_para("绗?闆?))
+[0m[32m+                .add_paragraph(para("涔?)),
+[0m[32m+        ));
+[0m         let docs = split_docs_from_blocks(&parsed.blocks, &parsed.markers, "cn:闆?);
+         assert_eq!(docs.len(), 2);
+         let first_texts: Vec<String> = docs[0].1["document"]["content"]
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2290:
+         assert_eq!(block_text(&parsed.blocks[0]), "鉁?宸插畬鎴?);
+         // 鏈煡瀛椾綋/鐮佷綅 鈫?symbol_dropped 璁℃暟锛堥潪闈欓粯锛夈€?         let docx = Docx::new().add_paragraph(
+[31m-            Paragraph::new().add_run(
+[0m[31m-                Run::new().add_sym(docx_rs::Sym::new("Webdings", "F0F0")),
+[0m[31m-            ),
+[0m[32m+            Paragraph::new().add_run(Run::new().add_sym(docx_rs::Sym::new("Webdings", "F0F0"))),
+[0m         );
+         let parsed = parse(&pack(docx));
+         assert_eq!(parsed.losses.symbols, 1, "鏈煡绗﹀彿瀛椾綋璁″叆涓㈠純");
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2315:
+             .add_style(grand)
+             .add_style(parent)
+             .add_style(child)
+[31m-            .add_paragraph(Paragraph::new().style("Child").add_run(Run::new().add_text("閾惧紡鏍峰紡鏂囧瓧")));
+[0m[32m+            .add_paragraph(
+[0m[32m+                Paragraph::new()
+[0m[32m+                    .style("Child")
+[0m[32m+                    .add_run(Run::new().add_text("閾惧紡鏍峰紡鏂囧瓧")),
+[0m[32m+            );
+[0m         let parsed = parse(&pack(docx));
+         let marks = &parsed.blocks[0]["content"][0]["marks"];
+         let types: Vec<&str> = marks
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2325:
+             .map(|m| m["type"].as_str().unwrap())
+             .collect();
+         // 鏈熸湜锛氱矖浣擄紙鏉ヨ嚜 Grand锛夛紜棰滆壊锛堟潵鑷?Child锛夛紜瀛楀彿 14pt锛堟潵鑷?Parent锛夈€?[32m+        assert!(types.contains(&"bold"), "绁栫埗鏍峰紡鐨勭矖浣撳簲鐢熸晥锛歿types:?}");
+[0m         assert!(
+[31m-            types.contains(&"bold"),
+[0m[31m-            "绁栫埗鏍峰紡鐨勭矖浣撳簲鐢熸晥锛歿types:?}"
+[0m[31m-        );
+[0m[31m-        assert!(
+[0m             types.contains(&"textStyle"),
+             "閾句笂瀛楀彿/棰滆壊搴旂敓鏁堬細{types:?}"
+         );
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2390:
+         let docx = Docx::new()
+             .add_abstract_numbering(abstract_num)
+             .add_numbering(
+[31m-                docx_rs::Numbering::new(2, 1)
+[0m[31m-                    .add_override(docx_rs::LevelOverride::new(0).start(5)),
+[0m[32m+                docx_rs::Numbering::new(2, 1).add_override(docx_rs::LevelOverride::new(0).start(5)),
+[0m             )
+             .add_paragraph(
+                 Paragraph::new()
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2521:
+     #[test]
+     fn style_linked_numbering_applies() {
+         let mut list_style = Style::new("ListNumber", StyleType::Paragraph).name("List Number");
+[31m-        list_style.paragraph_property =
+[0m[31m-            list_style.paragraph_property.clone().numbering(NumberingId::new(1), IndentLevel::new(0));
+[0m[32m+        list_style.paragraph_property = list_style
+[0m[32m+            .paragraph_property
+[0m[32m+            .clone()
+[0m[32m+            .numbering(NumberingId::new(1), IndentLevel::new(0));
+[0m         let abstract_num = AbstractNumbering::new(1).add_level(Level::new(
+             0,
+             Start::new(1),
+Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2553:
+             .filter(|b| b["type"] == "orderedList")
+             .collect();
+         assert_eq!(ordered.len(), 1, "鏍峰紡閾炬惡甯︾殑缂栧彿搴旂敓鏁?);
+[31m-        assert_eq!(block_text(&ordered[0]["content"][0]["content"][0]), "鏍峰紡缂栧彿椤?);
+[0m[32m+        assert_eq!(
+[0m[32m+            block_text(&ordered[0]["content"][0]["content"][0]),
+[0m[32m+            "鏍峰紡缂栧彿椤?
+[0m[32m+        );
+[0m         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+[31m-        assert!(texts.contains(&"澧撶瑙﹀彂娈?.to_string()), "澧撶娈典繚鐣欙細{texts:?}");
+[0m[32m+        assert!(
+[0m[32m+            texts.contains(&"澧撶瑙﹀彂娈?.to_string()),
+[0m[32m+            "澧撶娈典繚鐣欙細{texts:?}"
+[0m[32m+        );
+[0m     }
+ 
+     /// D3锛氭牱寮忛摼涓婅娉曚笉鎵胯浇鐨勫睘鎬ц鍏?style_degraded锛堟瘡娈典竴娆★級銆?Diff in \\?\D:\Next Story\src-tauri\src\project\docx_import.rs:2607:
+     /// D3锛氱幆鐘?basedOn 閾鹃槻鎶わ紙A鈫払鈫扐 鎴柇涓嶅穿婧冿級銆?     #[test]
+     fn cyclic_based_on_chain_guarded() {
+[31m-        let mut a = Style::new("A", StyleType::Paragraph).name("a").based_on("B");
+[0m[32m+        let mut a = Style::new("A", StyleType::Paragraph)
+[0m[32m+            .name("a")
+[0m[32m+            .based_on("B");
+[0m         a.run_property = a.run_property.clone().bold();
+[31m-        let mut b = Style::new("B", StyleType::Paragraph).name("b").based_on("A");
+[0m[32m+        let mut b = Style::new("B", StyleType::Paragraph)
+[0m[32m+            .name("b")
+[0m[32m+            .based_on("A");
+[0m         b.run_property = b.run_property.clone().italic();
+[31m-        let docx = Docx::new()
+[0m[31m-            .add_style(a)
+[0m[31m-            .add_style(b)
+[0m[31m-            .add_paragraph(Paragraph::new().style("A").add_run(Run::new().add_text("鐜摼鏂囧瓧")));
+[0m[32m+        let docx = Docx::new().add_style(a).add_style(b).add_paragraph(
+[0m[32m+            Paragraph::new()
+[0m[32m+                .style("A")
+[0m[32m+                .add_run(Run::new().add_text("鐜摼鏂囧瓧")),
+[0m[32m+        );
+[0m         let parsed = parse(&pack(docx));
+         assert_eq!(block_text(&parsed.blocks[0]), "鐜摼鏂囧瓧");
+         // 鐜埅鏂悗閾句笂灞炴€т粛鐢熸晥锛坆old 鏉ヨ嚜 A 鑷韩锛夈€?Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:191:
+ /// 姝ラ锛氬墺 BOM 鈫?涓ユ牸 UTF-8 鈫?roxmltree 鑹瀯鎬цВ鏋?鈫?鏍瑰厓绱犳牎楠?鈫? /// 鎸変笂涓嬫枃閬嶅巻鏄犲皠銆傜暩褰笌缂栫爜闂浠ヤ腑鏂囨姤閿欑ǔ瀹氬け璐ワ紝闆跺壇浣滅敤銆? pub(crate) fn parse_fdx(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
+[31m-    let bytes = bytes
+[0m[31m-        .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
+[0m[31m-        .unwrap_or(bytes);
+[0m[32m+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes);
+[0m     let text = std::str::from_utf8(bytes).map_err(|_| {
+         ProjectError::ImportRejected(
+             "鏂囦欢涓嶆槸 UTF-8 缂栫爜锛氳鐢?Final Draft 鎴栨枃鏈紪杈戝櫒杞瓨涓?UTF-8 鍚庡啀瀵煎叆".to_string(),
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:340:
+     /// 椤跺眰娈佃惤锛氭棤 Type 涓斿惈 DualDialogue 瀛愬厓绱狅紳鍙屾爮瀵圭櫧鍖呰９娈碉紙spike 瀹炶瘉
+     /// 缁撴瀯锛夛紝鎷嗕负鍏堝悗涓ょ粍娈佃惤锛涘叾浣欐寜 Type 鏄犲皠銆?     fn walk_script_paragraph(&mut self, paragraph: Node) {
+[31m-        let dual = paragraph.children().find(|child| {
+[0m[31m-            child.is_element() && child.tag_name().name() == "DualDialogue"
+[0m[31m-        });
+[0m[32m+        let dual = paragraph
+[0m[32m+            .children()
+[0m[32m+            .find(|child| child.is_element() && child.tag_name().name() == "DualDialogue");
+[0m         match dual {
+             Some(dual) => {
+                 // 鍖呰９娈靛唴闄?DualDialogue 澶栧彲鑳藉祵 ScriptNote/SceneProperties
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:408:
+                     let mut node = Map::new();
+                     node.insert("type".to_string(), json!("paragraph"));
+                     if let Some(align) = text_align {
+[31m-                        node.insert(
+[0m[31m-                            "attrs".to_string(),
+[0m[31m-                            json!({ "textAlign": align }),
+[0m[31m-                        );
+[0m[32m+                        node.insert("attrs".to_string(), json!({ "textAlign": align }));
+[0m                     }
+                     node.insert("content".to_string(), Value::Array(content_nodes));
+                     self.title_blocks.push(Value::Object(node));
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:564:
+                             lines.push(Vec::new());
+                         }
+                         if !part.is_empty() {
+[31m-                            lines
+[0m[31m-                                .last_mut()
+[0m[31m-                                .expect("琛屽簭鍒楅潪绌?)
+[0m[31m-                                .push(InlineRun {
+[0m[31m-                                    text: part.to_string(),
+[0m[31m-                                    marks: marks.clone(),
+[0m[31m-                                });
+[0m[32m+                            lines.last_mut().expect("琛屽簭鍒楅潪绌?).push(InlineRun {
+[0m[32m+                                text: part.to_string(),
+[0m[32m+                                marks: marks.clone(),
+[0m[32m+                            });
+[0m                         }
+                     }
+                 }
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:702:
+         if paragraph_type == "Transition" {
+             style.text_align = match layout.map(|item| item.alignment) {
+                 Some(FdAlignment::Missing) | None => Some("right"), // 缂虹渷鍥為€€銆?[31m-                Some(alignment) => alignment.text_align(), // 鏄惧紡 Left 鈫?None銆?[0m[32m+                Some(alignment) => alignment.text_align(),          // 鏄惧紡 Left 鈫?None銆?[0m             };
+             return style;
+         }
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:720:
+                 _ => None,
+             };
+             // 棣栬缂╄繘锛氳嫳瀵该?2鈫抪t锛岃礋鍊硷紳鎮寕锛坓rammar 鍏佽浠绘剰闈炵┖搴﹂噺涓诧級銆?[31m-            style.text_indent = layout
+[0m[31m-                .first_indent
+[0m[31m-                .and_then(indent_attr_from_inches);
+[0m[32m+            style.text_indent = layout.first_indent.and_then(indent_attr_from_inches);
+[0m             return style;
+         }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:776:
+         .and_then(|value| value.trim().parse::<f64>().ok())
+     {
+         // FD Size 宸叉槸鐐瑰€硷紙12锛?2pt锛夛紝涓?docx 渚?fontSize 鐨?pt 瀛楃涓插悓褰€?[31m-        text_style.insert("fontSize".to_string(), json!(format!("{}pt", format_decimal(size))));
+[0m[32m+        text_style.insert(
+[0m[32m+            "fontSize".to_string(),
+[0m[32m+            json!(format!("{}pt", format_decimal(size))),
+[0m[32m+        );
+[0m     }
+[31m-    if let Some(color) = text_node
+[0m[31m-        .attribute("Color")
+[0m[31m-        .and_then(fd_color_to_hex)
+[0m[31m-    {
+[0m[32m+    if let Some(color) = text_node.attribute("Color").and_then(fd_color_to_hex) {
+[0m         text_style.insert("color".to_string(), json!(color));
+     }
+     if !text_style.is_empty() {
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:919:
+ 
+         for index in [4, 5, 6, 7, 8, 9] {
+             assert_eq!(blocks[index]["type"], "paragraph", "index={index}");
+[31m-            assert!(blocks[index].get("attrs").is_none(), "鏅€氭鏃犲睘鎬э細{index}");
+[0m[32m+            assert!(
+[0m[32m+                blocks[index].get("attrs").is_none(),
+[0m[32m+                "鏅€氭鏃犲睘鎬э細{index}"
+[0m[32m+            );
+[0m         }
+ 
+[31m-        assert_eq!(blocks[10]["attrs"]["indentLeft"], "4em", "Character 鍥為€€娣辨。");
+[0m[31m-        assert_eq!(blocks[11]["attrs"]["indentLeft"], "2em", "Dialogue 鍥為€€娴呮。");
+[0m[31m-        assert_eq!(blocks[12]["attrs"]["indentLeft"], "3em", "Parenthetical 鍥為€€涓。");
+[0m[31m-        assert_eq!(blocks[13]["attrs"]["textAlign"], "right", "Transition 鍙冲榻?);
+[0m[32m+        assert_eq!(
+[0m[32m+            blocks[10]["attrs"]["indentLeft"], "4em",
+[0m[32m+            "Character 鍥為€€娣辨。"
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            blocks[11]["attrs"]["indentLeft"], "2em",
+[0m[32m+            "Dialogue 鍥為€€娴呮。"
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            blocks[12]["attrs"]["indentLeft"], "3em",
+[0m[32m+            "Parenthetical 鍥為€€涓。"
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            blocks[13]["attrs"]["textAlign"], "right",
+[0m[32m+            "Transition 鍙冲榻?
+[0m[32m+        );
+[0m     }
+ 
+     #[test]
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:938:
+         assert_eq!(parsed.blocks[0]["type"], "heading");
+         assert_eq!(parsed.blocks[0]["attrs"]["level"], 6, "clamp 鍒?6");
+         assert_eq!(parsed.blocks[1]["attrs"]["level"], 1, "clamp 鍒?1");
+[31m-        assert_eq!(parsed.blocks[2]["type"], "paragraph", "闈炴硶 Outline 鍏滃簳娈佃惤");
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[2]["type"], "paragraph",
+[0m[32m+            "闈炴硶 Outline 鍏滃簳娈佃惤"
+[0m[32m+        );
+[0m     }
+ 
+     // ----- ElementSettings 鏉冨▉甯冨眬锛堢敤鎴烽獙鏀朵慨姝ｏ級 -----
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1042:
+             no_base,
+             r#"<Paragraph Type="Dialogue"><Text>鐢?/Text></Paragraph><Paragraph Type="Character"><Text>涓?/Text></Paragraph>"#,
+         );
+[31m-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "2em", "缂哄熀鍑嗗洖閫€妗?);
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[0]["attrs"]["indentLeft"], "2em",
+[0m[32m+            "缂哄熀鍑嗗洖閫€妗?
+[0m[32m+        );
+[0m         assert!(parsed.blocks[0]["attrs"].get("indentRight").is_none());
+         assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "4em", "缂哄潡鍥為€€妗?);
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1053:
+             partial,
+             r#"<Paragraph Type="Character"><Text>涓?/Text></Paragraph>"#,
+         );
+[31m-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em", "缂哄睘鎬у洖閫€妗?);
+[0m[31m-        assert_eq!(parsed.blocks[0]["attrs"]["indentRight"], "36pt", "鍙虫寜璁剧疆鎹㈢畻");
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[0]["attrs"]["indentLeft"], "4em",
+[0m[32m+            "缂哄睘鎬у洖閫€妗?
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[0]["attrs"]["indentRight"], "36pt",
+[0m[32m+            "鍙虫寜璁剧疆鎹㈢畻"
+[0m[32m+        );
+[0m 
+         // 闈炴硶鏁板€煎睘鎬э紳缂哄け锛氬洖閫€妗ｃ€?         let invalid = r#"<ElementSettings Type="Action"><ParagraphSpec Alignment="Left" LeftIndent="1.50" RightIndent="7.50"/></ElementSettings><ElementSettings Type="Dialogue"><ParagraphSpec Alignment="Left" LeftIndent="abc" RightIndent="6.00"/></ElementSettings>"#;
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1062:
+             invalid,
+             r#"<Paragraph Type="Dialogue"><Text>鐢?/Text></Paragraph>"#,
+         );
+[31m-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "2em", "闈炴硶鍊煎洖閫€妗?);
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[0]["attrs"]["indentLeft"], "2em",
+[0m[32m+            "闈炴硶鍊煎洖閫€妗?
+[0m[32m+        );
+[0m     }
+ 
+     // ----- 鍦烘櫙缂栧彿骞跺叆 -----
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1080:
+         // 缂栧彿鍓嶇紑璁″叆瀛楁暟銆?         assert_eq!(
+             parsed.char_count,
+[31m-            "12 澶栨櫙 涔﹀簵闂ㄥ彛鈥旀棩鍔ㄤ綔娈电殑缂栧彿涓嶈鍙栥€傚唴鏅?鎴块棿鈥斿".chars().count()
+[0m[32m+            "12 澶栨櫙 涔﹀簵闂ㄥ彛鈥旀棩鍔ㄤ綔娈电殑缂栧彿涓嶈鍙栥€傚唴鏅?鎴块棿鈥斿"
+[0m[32m+                .chars()
+[0m[32m+                .count()
+[0m         );
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1088:
+ 
+     #[test]
+     fn dual_dialogue_splits_in_order_with_notes_counted() {
+[31m-        let parsed = parse_body(r#"<Paragraph><ScriptNote Name="note"><Paragraph><Text>鍖呰９娈靛墽娉?/Text></Paragraph></ScriptNote><DualDialogue><Paragraph Type="Character"><Text>鐜涗附</Text></Paragraph><Paragraph Type="Parenthetical"><Text>锛堟€ワ級</Text></Paragraph><Paragraph Type="Dialogue"><Text>蹇蛋锛?/Text></Paragraph><Paragraph Type="Character"><Text>璺槗</Text></Paragraph><Paragraph Type="Dialogue"><Text>鎴戣璧帮紒</Text></Paragraph></DualDialogue></Paragraph>"#);
+[0m[32m+        let parsed = parse_body(
+[0m[32m+            r#"<Paragraph><ScriptNote Name="note"><Paragraph><Text>鍖呰９娈靛墽娉?/Text></Paragraph></ScriptNote><DualDialogue><Paragraph Type="Character"><Text>鐜涗附</Text></Paragraph><Paragraph Type="Parenthetical"><Text>锛堟€ワ級</Text></Paragraph><Paragraph Type="Dialogue"><Text>蹇蛋锛?/Text></Paragraph><Paragraph Type="Character"><Text>璺槗</Text></Paragraph><Paragraph Type="Dialogue"><Text>鎴戣璧帮紒</Text></Paragraph></DualDialogue></Paragraph>"#,
+[0m[32m+        );
+[0m         assert_eq!(loss(&parsed, L_DUAL), 1);
+         assert_eq!(loss(&parsed, L_SCRIPTNOTE), 1, "鍖呰９娈靛唴鍓ф敞璁℃暟涓㈠純");
+         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1098:
+             "鎷嗕负鍏堝悗涓ょ粍銆佹嫭娉ㄩ殢缁勩€侀『搴忎繚鐣?
+         );
+         // 鍐呴儴娈佃惤缂╄繘妗ｉ殢绫诲瀷鐢熸晥锛堟棤 ElementSettings 鈫?鍥為€€鍥哄畾妗ｏ級銆?[31m-        assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em", "Character 娣辨。");
+[0m[31m-        assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "3em", "Parenthetical 涓。");
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[0]["attrs"]["indentLeft"], "4em",
+[0m[32m+            "Character 娣辨。"
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[1]["attrs"]["indentLeft"], "3em",
+[0m[32m+            "Parenthetical 涓。"
+[0m[32m+        );
+[0m     }
+ 
+     // ----- TitlePage 骞跺叆涓庡弽渚?-----
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1133:
+             3,
+             "涓ゅ淇瀹氫箟锛嬩竴澶勮鍐呴潪闆?RevisionID"
+         );
+[31m-        assert_eq!(block_text(&parsed.blocks[0]), "甯︿慨璁㈡爣璁扮殑鏂囧瓧", "鏂囧瓧鏃犳崯");
+[0m[32m+        assert_eq!(
+[0m[32m+            block_text(&parsed.blocks[0]),
+[0m[32m+            "甯︿慨璁㈡爣璁扮殑鏂囧瓧",
+[0m[32m+            "鏂囧瓧鏃犳崯"
+[0m[32m+        );
+[0m         // RevisionID=0锛堟棤淇锛変笉璁°€?[31m-        let parsed = parse_body(r#"<Paragraph Type="Action"><Text RevisionID="0">闆朵慨璁?/Text></Paragraph>"#);
+[0m[32m+        let parsed = parse_body(
+[0m[32m+            r#"<Paragraph Type="Action"><Text RevisionID="0">闆朵慨璁?/Text></Paragraph>"#,
+[0m[32m+        );
+[0m         assert_eq!(loss(&parsed, L_REVISION), 0);
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1152:
+         assert_eq!(loss(&parsed, L_SCENE_META), 1);
+         assert_eq!(loss(&parsed, L_SCRIPTNOTE), 1);
+         assert_eq!(block_text(&parsed.blocks[0]), "1 澶栨櫙 鍐滃満鈥旀棩");
+[31m-        assert_eq!(parsed.char_count, "1 澶栨櫙 鍐滃満鈥旀棩".chars().count(), "涓㈠純鍐呭涓嶅叆瀛楁暟");
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.char_count,
+[0m[32m+            "1 澶栨櫙 鍐滃満鈥旀棩".chars().count(),
+[0m[32m+            "涓㈠純鍐呭涓嶅叆瀛楁暟"
+[0m[32m+        );
+[0m     }
+ 
+     // ----- Style 璇嶇粍 -----
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1170:
+             r#"<Paragraph Type="Action"><Text>缂哄睘鎬?/Text></Paragraph>"#,
+         ));
+         let mark_types = |index: usize| -> Vec<String> {
+[31m-            parsed.blocks[index]["content"]
+[0m[31m-                .as_array()
+[0m[31m-                .unwrap()[0]
+[0m[32m+            parsed.blocks[index]["content"].as_array().unwrap()[0]
+[0m                 .get("marks")
+                 .and_then(Value::as_array)
+                 .map(|marks| {
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1206:
+         assert_eq!(parsed.losses.unknown_elements, 2, "娈靛唴涓や釜鏈煡鍏冪礌");
+         assert_eq!(
+             parsed.losses.unknown_element_names,
+[31m-            vec!["SomeFutureElement".to_string(), "AnotherUnknown".to_string()]
+[0m[32m+            vec![
+[0m[32m+                "SomeFutureElement".to_string(),
+[0m[32m+                "AnotherUnknown".to_string()
+[0m[32m+            ]
+[0m         );
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1216:
+         let source = r#"<FinalDraft DocumentType="Script" Version="3"><Content><Paragraph Type="Action"><Text>姝ｆ枃</Text></Paragraph></Content><SmartType><Characters/></SmartType><FutureModule><Data/></FutureModule></FinalDraft>"#;
+         let parsed = parse(source);
+         assert_eq!(parsed.losses.unknown_elements, 1, "浠?FutureModule 璁℃暟");
+[31m-        assert_eq!(parsed.losses.unknown_element_names, vec!["FutureModule".to_string()]);
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.losses.unknown_element_names,
+[0m[32m+            vec!["FutureModule".to_string()]
+[0m[32m+        );
+[0m     }
+ 
+     // ----- 瀵归綈涓夋€侊紙瀹¤ A1锛?-----
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1350:
+     #[test]
+     fn first_line_leading_whitespace_preserved() {
+         // 娈甸鍓嶅绌烘牸锛堟棤鎹㈣鍓嶇紑锛夛紳浣滆€呯缉杩涜涔夛紝閫愬瓧淇濈暀銆?[31m-        let parsed = parse_body(r#"<Paragraph Type="Action"><Text>    Four spaces</Text></Paragraph>"#);
+[0m[32m+        let parsed =
+[0m[32m+            parse_body(r#"<Paragraph Type="Action"><Text>    Four spaces</Text></Paragraph>"#);
+[0m         assert_eq!(block_text(&parsed.blocks[0]), "    Four spaces");
+         assert_eq!(parsed.char_count, "    Four spaces".chars().count());
+         // 鎹㈣鍚庣殑琛岄绌虹櫧锛圶ML 鍥炲０褰㈡€侊級浠嶅墺闄ゃ€?Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1374:
+         assert_eq!(parsed.blocks[0]["attrs"]["indentLeft"], "4em");
+ 
+         // 娈靛唴寮哄埗鎹㈣锛氭媶涓哄悓灞炴€х浉閭绘钀斤紙鍚?md HardBreak锛廳ocx w:br 绛栫暐锛夈€?[31m-        let parsed = parse_body(
+[0m[31m-            r#"<Paragraph Type="Dialogue"><Text>绗竴琛?#10;绗簩琛?/Text></Paragraph>"#,
+[0m[31m-        );
+[0m[32m+        let parsed =
+[0m[32m+            parse_body(r#"<Paragraph Type="Dialogue"><Text>绗竴琛?#10;绗簩琛?/Text></Paragraph>"#);
+[0m         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+         assert_eq!(texts, vec!["绗竴琛?, "绗簩琛?]);
+         assert_eq!(parsed.blocks.len(), 2);
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1383:
+[31m-        assert_eq!(parsed.blocks[1]["attrs"]["indentLeft"], "2em", "寤剁画娈靛悓灞炴€?);
+[0m[32m+        assert_eq!(
+[0m[32m+            parsed.blocks[1]["attrs"]["indentLeft"], "2em",
+[0m[32m+            "寤剁画娈靛悓灞炴€?
+[0m[32m+        );
+[0m         assert_eq!(parsed.paragraph_count, 2);
+ 
+         // 鍏ㄧ┖鐧芥钀斤細淇濈暀涓虹┖娈碉紙浣滆€呴棿璺濓級锛屽瓧鏁颁负闆躲€?Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1402:
+         .expect("create project");
+         let file = temp.path().join("鑰佸墽鏈?fdr");
+         std::fs::write(&file, b"binary junk").unwrap();
+[31m-        let error = super::super::document_import::import_document_preview(&root, &file)
+[0m[31m-            .unwrap_err();
+[0m[32m+        let error =
+[0m[32m+            super::super::document_import::import_document_preview(&root, &file).unwrap_err();
+[0m         let message = error.to_string();
+         assert!(
+             message.contains(".fdr") && message.contains("鍙﹀瓨涓?.fdx"),
+Diff in \\?\D:\Next Story\src-tauri\src\project\fdx_import.rs:1421:
+         .expect("create project");
+         let file = temp.path().join("鍧忕殑.fdx");
+         std::fs::write(&file, b"<FinalDraft><Content><Paragraph>").unwrap();
+[31m-        let error = super::super::document_import::import_document_preview(&root, &file)
+[0m[31m-            .unwrap_err();
+[0m[32m+        let error =
+[0m[32m+            super::super::document_import::import_document_preview(&root, &file).unwrap_err();
+[0m         assert!(
+             error.to_string().contains("涓嶆槸鏈夋晥鐨?.fdx 鏂囦欢"),
+             "鎶ラ敊锛歿error}"
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:35:
+ /// 浜嬩欢娴佹槧灏勩€傞潪 UTF-8 涓庤秴闄愪互涓枃鎶ラ敊绋冲畾澶辫触锛岄浂鍓綔鐢ㄣ€? pub(crate) fn parse_md(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
+     // BOM锛歴pike 瀹炶瘉 pulldown-cmark 涓嶅墺绂伙紝U+FEFF 浼氳繘鍏ラ涓?Text 浜嬩欢瀛楅潰銆?[31m-    let bytes = bytes
+[0m[31m-        .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
+[0m[31m-        .unwrap_or(bytes);
+[0m[32m+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes);
+[0m     let text = std::str::from_utf8(bytes).map_err(|_| {
+         ProjectError::ImportRejected(
+             "鏂囦欢涓嶆槸 UTF-8 缂栫爜锛氳鐢ㄧ紪杈戝櫒鎶婃枃浠惰浆瀛樹负 UTF-8 鍚庡啀瀵煎叆".to_string(),
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:293:
+         match tag {
+             Tag::Paragraph => {
+                 self.flush_current();
+[31m-                self.current = Some(Buffer { kind: BufferKind::Paragraph, inline: Vec::new() });
+[0m[32m+                self.current = Some(Buffer {
+[0m[32m+                    kind: BufferKind::Paragraph,
+[0m[32m+                    inline: Vec::new(),
+[0m[32m+                });
+[0m             }
+             Tag::Heading { level, .. } => {
+                 self.flush_current();
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:300:
+                 let level = level as u8;
+[31m-                self.current = Some(Buffer { kind: BufferKind::Heading(level), inline: Vec::new() });
+[0m[32m+                self.current = Some(Buffer {
+[0m[32m+                    kind: BufferKind::Heading(level),
+[0m[32m+                    inline: Vec::new(),
+[0m[32m+                });
+[0m             }
+             // 寮曠敤鍧楋細澶栧３闄嶇骇锛坬uote_degraded 璁℃暟锛夛紝鍐呭鍧楄嚜鐒舵眹鍏?             // 澶栧眰瀹瑰櫒锛屾枃瀛楅浂涓㈠け銆?Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:335:
+             }
+             Tag::Table(_) => {
+                 self.flush_current();
+[31m-                self.stack.push(Frame::Table(TableFrame { cells: Vec::new() }));
+[0m[32m+                self.stack
+[0m[32m+                    .push(Frame::Table(TableFrame { cells: Vec::new() }));
+[0m             }
+             // 琛屽鍣細鍗曞厓鏍间簨浠惰嚜琛屽鐞嗐€?             Tag::TableHead | Tag::TableRow => {}
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:342:
+             Tag::TableCell => {
+                 self.flush_current();
+[31m-                self.current = Some(Buffer { kind: BufferKind::Cell, inline: Vec::new() });
+[0m[32m+                self.current = Some(Buffer {
+[0m[32m+                    kind: BufferKind::Cell,
+[0m[32m+                    inline: Vec::new(),
+[0m[32m+                });
+[0m             }
+             // ----- 琛屽唴瀹瑰櫒锛氭爣璁板叆鏍?-----
+             Tag::Emphasis => self.inline_marks.push(json!({ "type": "italic" })),
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:475:
+     /// 娌℃湁 Paragraph 鍖呰鐨勮鍐呬簨浠讹級銆?     fn ensure_buffer(&mut self) {
+         if self.current.is_none() && self.code_buf.is_none() && self.html_buf.is_none() {
+[31m-            self.current = Some(Buffer { kind: BufferKind::Paragraph, inline: Vec::new() });
+[0m[32m+            self.current = Some(Buffer {
+[0m[32m+                kind: BufferKind::Paragraph,
+[0m[32m+                inline: Vec::new(),
+[0m[32m+            });
+[0m         }
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:533:
+                     let marks = self.snapshot_marks();
+                     self.char_count += 1;
+                     if let Some(buffer) = self.current.as_mut() {
+[31m-                        buffer.inline.push(InlineRun { text: " ".to_string(), marks });
+[0m[32m+                        buffer.inline.push(InlineRun {
+[0m[32m+                            text: " ".to_string(),
+[0m[32m+                            marks,
+[0m[32m+                        });
+[0m                     }
+                 }
+             }
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:600:
+                 }
+                 self.sink_push(Value::Object(node));
+                 self.paragraph_count += 1;
+[31m-            }            BufferKind::Paragraph => {
+[0m[32m+            }
+[0m[32m+            BufferKind::Paragraph => {
+[0m                 self.sink_push(paragraph_node(content));
+                 self.paragraph_count += 1;
+             }
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:631:
+ 
+     /// 鏍囪浠呰銆岃惤鍦ㄩ《灞傚潡搴忓垪銆嶇殑鏍囬锛堝垪琛ㄩ」鍐呯殑鏍囬涓嶅弬涓庯級銆?     fn marker_eligible(&self) -> bool {
+[31m-        self.stack.iter().all(|frame| !matches!(frame, Frame::Item(_)))
+[0m[32m+        self.stack
+[0m[32m+            .iter()
+[0m[32m+            .all(|frame| !matches!(frame, Frame::Item(_)))
+[0m     }
+ 
+     fn end_item(&mut self) {
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:886:
+             .map(|nodes| {
+                 nodes
+                     .iter()
+[31m-                    .flat_map(|n| n.get("marks").and_then(Value::as_array).cloned().unwrap_or_default())
+[0m[32m+                    .flat_map(|n| {
+[0m[32m+                        n.get("marks")
+[0m[32m+                            .and_then(Value::as_array)
+[0m[32m+                            .cloned()
+[0m[32m+                            .unwrap_or_default()
+[0m[32m+                    })
+[0m                     .map(|m| m["type"].as_str().unwrap_or("").to_string())
+                     .collect()
+             })
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1030:
+         assert_eq!(parsed.blocks[0]["type"], "heading");
+         assert_eq!(block_text(&parsed.blocks[0]), "姝ｆ枃鏍囬");
+         // frontmatter 涓嶈繘鍏ユ鏂囧瓧鏁般€?[31m-        assert_eq!(
+[0m[31m-            parsed.char_count,
+[0m[31m-            "姝ｆ枃鏍囬姝ｆ枃娈佃惤銆?.chars().count()
+[0m[31m-        );
+[0m[32m+        assert_eq!(parsed.char_count, "姝ｆ枃鏍囬姝ｆ枃娈佃惤銆?.chars().count());
+[0m     }
+ 
+     #[test]
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1094:
+         // 宓屽鏃犲簭鍒楄〃淇濈暀鍦ㄧ浜屼釜鍒楄〃椤瑰唴銆?         assert_eq!(items[1]["content"].as_array().unwrap().len(), 2);
+         assert_eq!(items[1]["content"][1]["type"], "bulletList");
+[31m-        assert_eq!(items[1]["content"][1]["content"][0]["content"][0]["content"][0]["text"], "宓屽鏃犲簭");
+[0m[32m+        assert_eq!(
+[0m[32m+            items[1]["content"][1]["content"][0]["content"][0]["content"][0]["text"],
+[0m[32m+            "宓屽鏃犲簭"
+[0m[32m+        );
+[0m 
+         assert_eq!(parsed.blocks[1]["type"], "bulletList");
+         assert_eq!(parsed.blocks[1]["content"].as_array().unwrap().len(), 2);
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1114:
+         assert_eq!(parsed.blocks.len(), 5, "鍧楀簭鍒楋細{:#?}", parsed.blocks);
+         assert_eq!(parsed.blocks[0]["type"], "bulletList");
+         let item_a = &parsed.blocks[0]["content"][0];
+[31m-        assert_eq!(item_a["content"].as_array().unwrap().len(), 2, "棣栨锛嬮瀛愬垪琛ㄧ暀椤瑰唴");
+[0m[32m+        assert_eq!(
+[0m[32m+            item_a["content"].as_array().unwrap().len(),
+[0m[32m+            2,
+[0m[32m+            "棣栨锛嬮瀛愬垪琛ㄧ暀椤瑰唴"
+[0m[32m+        );
+[0m         assert_eq!(item_a["content"][0]["content"][0]["text"], "鐖堕」A");
+         assert_eq!(item_a["content"][1]["type"], "bulletList");
+         assert_eq!(
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1127:
+         assert_eq!(parsed.blocks[2]["type"], "paragraph");
+         assert_eq!(block_text(&parsed.blocks[2]), "绗簩缁D");
+         assert_eq!(parsed.blocks[3]["type"], "paragraph");
+[31m-        assert_eq!(block_text(&parsed.blocks[3]), "瀛愰」E", "绗簩涓瓙鍒楄〃鎷嶅钩涓烘钀?);
+[0m[32m+        assert_eq!(
+[0m[32m+            block_text(&parsed.blocks[3]),
+[0m[32m+            "瀛愰」E",
+[0m[32m+            "绗簩涓瓙鍒楄〃鎷嶅钩涓烘钀?
+[0m[32m+        );
+[0m         // 鍚屼竴閫昏緫鍒楄〃琚孩鍑烘墦鏂悗閲嶇画锛氶」F 鏄柊鐨?bulletList 鍧椼€?         assert_eq!(parsed.blocks[4]["type"], "bulletList");
+         assert_eq!(
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1284:
+         let parsed = parse("<div>\n鍧楀唴鏂囧瓧\n</div>\n\n姝ｆ枃銆?);
+         assert_eq!(loss(&parsed, L_HTML), 1, "HTML 鍧楁暣鍧楄涓€澶?);
+         let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+[31m-        assert!(texts.contains(&"鍧楀唴鏂囧瓧".to_string()), "鍧楀唴鏂囧瓧淇濈暀锛歿texts:?}");
+[0m[32m+        assert!(
+[0m[32m+            texts.contains(&"鍧楀唴鏂囧瓧".to_string()),
+[0m[32m+            "鍧楀唴鏂囧瓧淇濈暀锛歿texts:?}"
+[0m[32m+        );
+[0m         assert!(texts.contains(&"姝ｆ枃銆?.to_string()));
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1291:
+     #[test]
+     fn no_losses_for_plain_supported_markdown() {
+         // 鍙嶄緥锛氱函鏀寔鍏冪礌涓嶄骇鐢熶换浣曟崯鑰椼€?[31m-        let parsed = parse("# 鏍囬\n\n娈佃惤 **绮?* *鏂? ~~鍒爚~ <u>涓嬪垝</u> [閾綸(https://e.com)\n\n1. 涓€\n2. 浜?);
+[0m[32m+        let parsed = parse(
+[0m[32m+            "# 鏍囬\n\n娈佃惤 **绮?* *鏂? ~~鍒爚~ <u>涓嬪垝</u> [閾綸(https://e.com)\n\n1. 涓€\n2. 浜?,
+[0m[32m+        );
+[0m         let kinds = parsed.losses.loss_kinds_for_test();
+         assert!(kinds.is_empty(), "鎹熻€楋細{kinds:?}");
+     }
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1349:
+                 out.push(text.to_string());
+             }
+             if let Some(children) = node["content"].as_array() {
+[31m-                for child in children { collect(child, out); }
+[0m[32m+                for child in children {
+[0m[32m+                    collect(child, out);
+[0m[32m+                }
+[0m             }
+         }
+         for (source, expected) in [
+Diff in \\?\D:\Next Story\src-tauri\src\project\md_import.rs:1359:
+         ] {
+             let parsed = parse(source);
+             let mut texts = Vec::new();
+[31m-            for block in &parsed.blocks { collect(block, &mut texts); }
+[0m[32m+            for block in &parsed.blocks {
+[0m[32m+                collect(block, &mut texts);
+[0m[32m+            }
+[0m             assert_eq!(texts, expected, "source: {source}");
+             let document = super::super::document_import::doc_value_from_blocks(parsed.blocks);
+             super::super::validate_notebook_document(&document).unwrap();
+Diff in \\?\D:\Next Story\src-tauri\src\project\mod.rs:1:
+ mod content_tree;
+[32m+mod document_import;
+[0m mod docx_export;
+ mod docx_import;
+[31m-mod document_import;
+[0m mod export;
+ mod fdx_import;
+ mod markdown_export;
+Diff in \\?\D:\Next Story\src-tauri\src\project\mod.rs:18:
+ // 鏂囨。瀵煎叆锛坅dd-markdown-import D2 鍛戒护娉涘寲锛夛細docx / md 涓や釜绉佹湁鍒嗘敮缁? // document_import 闂ㄩ潰鎸夋墿灞曞悕鍒嗗彂锛屽叕寮€椤逛粠杩欓噷瀵煎嚭銆? pub use document_import::{
+[31m-    import_document_commit, import_document_preview, ImportCommitResult, ImportLoss,
+[0m[31m-    ImportPreview, SplitSuggestion,
+[0m[32m+    import_document_commit, import_document_preview, ImportCommitResult, ImportLoss, ImportPreview,
+[0m[32m+    SplitSuggestion,
+[0m };
+ pub use export::{
+     build_export_project, export_project_to_markdown, export_project_to_word, ExportAlign,
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:128:
+                 for content in child.children() {
+                     if content.is_element() && content.tag_name().name() == "Content" {
+                         for paragraph in content.children() {
+[31m-                            if paragraph.is_element()
+[0m[31m-                                && paragraph.tag_name().name() == "Paragraph"
+[0m[32m+                            if paragraph.is_element() && paragraph.tag_name().name() == "Paragraph"
+[0m                             {
+                                 for line in paragraph_lines(paragraph) {
+                                     title_texts.push(line);
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:160:
+                                 }
+                             }
+                             for inner in dual.children() {
+[31m-                                if inner.is_element()
+[0m[31m-                                    && inner.tag_name().name() == "Paragraph"
+[0m[31m-                                {
+[0m[32m+                                if inner.is_element() && inner.tag_name().name() == "Paragraph" {
+[0m                                     script_texts.extend(paragraph_lines(inner));
+                                 }
+                             }
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:185:
+                                 for (position, line) in lines.into_iter().enumerate() {
+                                     let mut line = line;
+                                     if position == 0
+[31m-                                        && paragraph.attribute("Type")
+[0m[31m-                                            == Some("Scene Heading")
+[0m[32m+                                        && paragraph.attribute("Type") == Some("Scene Heading")
+[0m                                     {
+                                         if let Some(number) = paragraph
+                                             .attribute("Number")
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:226:
+ }
+ 
+ fn imported_blocks(root: &Path, doc_id: &str) -> Vec<Value> {
+[31m-    let notebook =
+[0m[31m-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+[0m[31m-            .expect("read imported notebook");
+[0m[32m+    let notebook = fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+[0m[32m+        .expect("read imported notebook");
+[0m     let value: Value = serde_json::from_str(&notebook).expect("parse imported notebook");
+     validate_notebook_document(&value).expect("瀵煎叆浜х墿蹇呴』閫氳繃鏃㈡湁涓ユ牸璇硶鏍￠獙");
+     value["document"]["content"].as_array().unwrap().clone()
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:257:
+     );
+     // 鎹熻€楁竻鍗曟寜 fixture 瀹為檯鍐呭璁℃暟銆?     assert_eq!(loss_count(&preview, "titlepage_inlined"), counts.titlepage);
+[31m-    assert_eq!(loss_count(&preview, "scene_metadata_dropped"), counts.scene_metadata);
+[0m[31m-    assert_eq!(loss_count(&preview, "scriptnote_dropped"), counts.scriptnote);
+[0m[31m-    assert_eq!(loss_count(&preview, "dual_dialogue_degraded"), counts.dual_dialogue);
+[0m[31m-    assert_eq!(loss_count(&preview, "revision_marks_ignored"), counts.revision_marks);
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "scene_metadata_dropped"),
+[0m[32m+        counts.scene_metadata
+[0m[32m+    );
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "scriptnote_dropped"),
+[0m[32m+        counts.scriptnote
+[0m[32m+    );
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "dual_dialogue_degraded"),
+[0m[32m+        counts.dual_dialogue
+[0m[32m+    );
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "revision_marks_ignored"),
+[0m[32m+        counts.revision_marks
+[0m[32m+    );
+[0m     // fixture 鎹熻€楀熀鏁帮紙spike census锛歍itlePage脳1銆丼ceneProperties脳30銆?     // ScriptNote脳14銆丏ualDialogue脳1銆丷evision 瀹氫箟脳19锛夈€?     assert_eq!(counts.titlepage, 1);
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:276:
+     assert_eq!(preview.paragraph_count, expected_texts.len());
+ 
+     // 鎻愪氦钀界洏锛岄€愬潡閫愬瓧瀵圭収銆?[31m-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     assert_eq!(commit.created_doc_ids.len(), 1);
+     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
+     assert_eq!(blocks.len(), expected_texts.len());
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:340:
+         Some("FinalDraft Version=1, DocumentType=Script")
+     );
+     assert_eq!(loss_count(&preview, "dual_dialogue_degraded"), 1);
+[31m-    assert!(preview.losses.iter().all(|loss| loss.kind == "dual_dialogue_degraded"));
+[0m[32m+    assert!(preview
+[0m[32m+        .losses
+[0m[32m+        .iter()
+[0m[32m+        .all(|loss| loss.kind == "dual_dialogue_degraded"));
+[0m 
+[31m-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
+     let texts: Vec<String> = blocks.iter().map(block_text).collect();
+     // 鍏堝悗涓ょ粍锛欸IRL鈫扝ey!鈫扜UY鈫扝ello!锛孋haracter/Dialogue 缂╄繘妗ｇ敓鏁堛€?Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:380:
+     assert_eq!(suggestion.marker_sample, "绗琗闆?);
+     assert_eq!(suggestion.doc_names, vec!["绗?闆?, "绗?闆?, "绗?闆?]);
+ 
+[31m-    let commit = import_document_commit(&root, &file, None, true, &preview.content_hash)
+[0m[31m-        .expect("鎷嗗垎鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, true, &preview.content_hash).expect("鎷嗗垎鎻愪氦");
+[0m     assert_eq!(commit.created_doc_ids.len(), 3);
+     let folder = commit.created_folder_id.expect("鎷嗗垎寤烘枃浠跺す");
+     let tree = project::recover_then_read_content_tree(&root).unwrap();
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:391:
+         let texts: Vec<String> = blocks.iter().map(block_text).collect();
+         assert_eq!(
+             texts,
+[31m-            vec![format!("绗瑊}闆?, index + 1), format!("绗瑊}闆嗘鏂囥€?, index + 1)]
+[0m[32m+            vec![
+[0m[32m+                format!("绗瑊}闆?, index + 1),
+[0m[32m+                format!("绗瑊}闆嗘鏂囥€?, index + 1)
+[0m[32m+            ]
+[0m         );
+     }
+ 
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:413:
+     fs::write(&file, source).unwrap();
+ 
+     let preview = import_document_preview(&root, &file).expect("棰勮");
+[31m-    assert!(preview.losses.is_empty(), "娣峰悎鏍锋湰鏃犵粨鏋勬€ф崯鑰楋細{:?}", preview.losses);
+[0m[31m-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    assert!(
+[0m[32m+        preview.losses.is_empty(),
+[0m[32m+        "娣峰悎鏍锋湰鏃犵粨鏋勬€ф崯鑰楋細{:?}",
+[0m[32m+        preview.losses
+[0m[32m+    );
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
+ 
+     let texts: Vec<String> = blocks.iter().map(block_text).collect();
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:439:
+     // 鏃?ElementSettings 鈫?鍥為€€鍥哄畾妗ｏ紙Dialogue 2em锛廝arenthetical 3em锛?     // Character 4em锛夈€?     assert_eq!(blocks[4]["attrs"]["indentLeft"], "4em", "Character 娣辨。");
+[31m-    assert_eq!(blocks[5]["attrs"]["indentLeft"], "3em", "Parenthetical 涓。");
+[0m[32m+    assert_eq!(
+[0m[32m+        blocks[5]["attrs"]["indentLeft"], "3em",
+[0m[32m+        "Parenthetical 涓。"
+[0m[32m+    );
+[0m     assert_eq!(blocks[6]["attrs"]["indentLeft"], "2em", "Dialogue 娴呮。");
+     assert_eq!(blocks[7]["attrs"]["textAlign"], "right");
+     // 鏍峰紡璇嶇粍锛欱old鈫抌old锛汭talic+Underline鈫抂italic, underline]銆?Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:482:
+ /// 閫氱敤绔埌绔細棰勬锛嬫彁浜わ紜涓ユ牸鏍￠獙锛岃繑鍥烇紙preview, blocks锛夈€? fn full_roundtrip(root: &Path, file: &Path) -> (ImportPreview, Vec<Value>) {
+     let preview = import_document_preview(root, file).expect("棰勬");
+[31m-    let commit = import_document_commit(root, file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(root, file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     let blocks = imported_blocks(root, &commit.created_doc_ids[0]);
+     (preview, blocks)
+ }
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:567:
+ fn edge_parenthetical_fallback_tiers() {
+     let (_temp, root) = seed_project("edge parenthetical");
+     let (preview, blocks) = full_roundtrip(&root, &edge_fixture_path("parenthetical.fdx"));
+[31m-    assert!(preview.losses.is_empty(), "鏃犵粨鏋勬€ф崯鑰楋細{:?}", preview.losses);
+[0m[32m+    assert!(
+[0m[32m+        preview.losses.is_empty(),
+[0m[32m+        "鏃犵粨鏋勬€ф崯鑰楋細{:?}",
+[0m[32m+        preview.losses
+[0m[32m+    );
+[0m     let texts: Vec<String> = blocks.iter().map(block_text).collect();
+     assert_eq!(texts, vec!["JOHN DOE", "(screaming)", "Hello!!!"]);
+     assert_eq!(blocks[0]["attrs"]["indentLeft"], "4em", "Character 娣辨。");
+Diff in \\?\D:\Next Story\src-tauri\tests\fdx_import_test.rs:574:
+[31m-    assert_eq!(blocks[1]["attrs"]["indentLeft"], "3em", "Parenthetical 涓。");
+[0m[32m+    assert_eq!(
+[0m[32m+        blocks[1]["attrs"]["indentLeft"], "3em",
+[0m[32m+        "Parenthetical 涓。"
+[0m[32m+    );
+[0m     assert_eq!(blocks[2]["attrs"]["indentLeft"], "2em", "Dialogue 娴呮。");
+ }
+ 
+Diff in \\?\D:\Next Story\src-tauri\tests\import_fidelity_test.rs:43:
+ 
+ fn full_roundtrip(root: &Path, file: &Path) -> (ImportPreview, Vec<Value>) {
+     let preview = import_document_preview(root, file).expect("棰勬");
+[31m-    let commit = import_document_commit(root, file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[31m-    let notebook =
+[0m[31m-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(&commit.created_doc_ids[0]))
+[0m[31m-            .expect("read notebook");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(root, file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m[32m+    let notebook = fs::read_to_string(
+[0m[32m+        ProjectPaths::new(root.to_path_buf()).document_file(&commit.created_doc_ids[0]),
+[0m[32m+    )
+[0m[32m+    .expect("read notebook");
+[0m     let value: Value = serde_json::from_str(&notebook).expect("parse notebook");
+     validate_notebook_document(&value).expect("椤昏繃涓ユ牸鏍￠獙");
+[31m-    (preview, value["document"]["content"].as_array().unwrap().clone())
+[0m[32m+    (
+[0m[32m+        preview,
+[0m[32m+        value["document"]["content"].as_array().unwrap().clone(),
+[0m[32m+    )
+[0m }
+ 
+ /// num-having-numbering-part.docx锛氱紪鍙风粡娈佃惤鏍峰紡锛圠istNumber pPr numPr锛?Diff in \\?\D:\Next Story\src-tauri\tests\import_fidelity_test.rs:83:
+ #[test]
+ fn fixture_styles_part_parses_without_incident() {
+     let (_temp, root) = seed_project("sty 鏍峰紡");
+[31m-    let (preview, blocks) =
+[0m[31m-        full_roundtrip(&root, &fixture_path("sty-having-styles-part.docx"));
+[0m[32m+    let (preview, blocks) = full_roundtrip(&root, &fixture_path("sty-having-styles-part.docx"));
+[0m     // 姝ｆ枃涓虹┖锛氬崟涓┖娈佃惤鍏滃簳銆?     assert_eq!(blocks.len(), 1);
+     assert_eq!(block_text(&blocks[0]), "");
+Diff in \\?\D:\Next Story\src-tauri\tests\import_fidelity_test.rs:101:
+     let texts: Vec<String> = blocks.iter().map(block_text).collect();
+     assert_eq!(
+         texts,
+[31m-        vec!["no specified style", "missing style", "Heading 1", "Body Text", ""]
+[0m[32m+        vec![
+[0m[32m+            "no specified style",
+[0m[32m+            "missing style",
+[0m[32m+            "Heading 1",
+[0m[32m+            "Body Text",
+[0m[32m+            ""
+[0m[32m+        ]
+[0m     );
+     // Heading 1锛坧Style Heading1锛岄摼 Normal鈫怘eading1锛夛細鏍囬灞傜骇淇濈暀锛?     // 鏍峰紡閾惧瓧绗﹀睘鎬х敓鏁堬紙璇ユ牱鏈?Heading1 瀹氫箟 b/color 365F91/sz 28锛夈€?Diff in \\?\D:\Next Story\src-tauri\tests\import_fidelity_test.rs:121:
+         .iter()
+         .find(|m| m["type"] == "textStyle")
+         .expect("閾句笂瀛楀彿棰滆壊鐢熸晥");
+[31m-    assert_eq!(text_style["attrs"]["fontSize"], "14pt", "鏍峰紡 sz=28 瑕嗙洊 docDefaults");
+[0m[32m+    assert_eq!(
+[0m[32m+        text_style["attrs"]["fontSize"], "14pt",
+[0m[32m+        "鏍峰紡 sz=28 瑕嗙洊 docDefaults"
+[0m[32m+    );
+[0m     assert_eq!(text_style["attrs"]["color"], "#365f91");
+     // docDefaults锛坰z=22 鈫?11pt锛夌粡榛樿鏍峰紡閾惧鍏朵綑娈佃惤鐢熸晥銆?     for index in [0usize, 1, 3] {
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:181:
+ 
+     // 鏃㈡湁瀵煎嚭璺緞鐢熸垚 .md銆?     let target = temp.path().join("寰€杩斾骇鐗?md");
+[31m-    let export = export_project_to_markdown(&root, &ExportScope::Document(source_doc.clone()), &target)
+[0m[31m-        .expect("瀵煎嚭蹇呴』鎴愬姛");
+[0m[32m+    let export =
+[0m[32m+        export_project_to_markdown(&root, &ExportScope::Document(source_doc.clone()), &target)
+[0m[32m+            .expect("瀵煎嚭蹇呴』鎴愬姛");
+[0m     assert!(export.ok, "瀵煎嚭缁撴灉锛歿export:?}");
+ 
+     // 閲嶆柊瀵煎叆锛氶瑙堬紜鎻愪氦銆?Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:234:
+     assert_eq!(blocks[4]["attrs"]["start"], 3);
+     let ordered_items = blocks[4]["content"].as_array().unwrap();
+     assert_eq!(ordered_items.len(), 2);
+[31m-    assert_eq!(ordered_items[0]["content"][0]["content"][0]["text"], "绗笁椤?);
+[0m[31m-    assert_eq!(ordered_items[1]["content"][0]["content"][0]["text"], "绗洓椤?);
+[0m[32m+    assert_eq!(
+[0m[32m+        ordered_items[0]["content"][0]["content"][0]["text"],
+[0m[32m+        "绗笁椤?
+[0m[32m+    );
+[0m[32m+    assert_eq!(
+[0m[32m+        ordered_items[1]["content"][0]["content"][0]["text"],
+[0m[32m+        "绗洓椤?
+[0m[32m+    );
+[0m 
+     // 瀵屾牸寮忔锛氬姞绮?鏂滀綋/鍒犻櫎绾?涓嬪垝绾夸繚鐣欙紱棰滆壊涓哄洓椤瑰凡鐭ラ檷绾т箣涓€锛堜涪澶憋級銆?     assert_eq!(
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:263:
+     let tail_runs = blocks[6]["content"].as_array().unwrap();
+     assert_eq!(tail_runs.len(), 2);
+     assert_eq!(tail_runs[0]["text"], "閾炬帴鏂囧瓧");
+[31m-    assert_eq!(tail_runs[0]["marks"][0]["attrs"]["href"], "https://example.com/roundtrip");
+[0m[32m+    assert_eq!(
+[0m[32m+        tail_runs[0]["marks"][0]["attrs"]["href"],
+[0m[32m+        "https://example.com/roundtrip"
+[0m[32m+    );
+[0m     assert_eq!(tail_runs[1]["text"], "楂樹寒鏂囧瓧甯﹀瓧鍙峰瓧浣?);
+     assert!(tail_runs[1].get("marks").is_none());
+ 
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:351:
+     assert!(export.ok);
+ 
+     let preview = import_document_preview(&root, &target).expect("棰勮");
+[31m-    let commit = import_document_commit(&root, &target, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &target, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
+ 
+     // 鐜扮姸鏂█锛氭枃瀛楅€愬瓧淇濈暀锛堝惈瀛楅潰娉㈡氮绾匡級銆乽nderline 淇濈暀銆乻trike 涓㈠け銆?Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:391:
+         code_note.note
+     );
+ 
+[31m-    let commit = import_document_commit(&root, &file, None, false, &preview.content_hash)
+[0m[31m-        .expect("鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, false, &preview.content_hash).expect("鎻愪氦");
+[0m     let blocks = imported_blocks(&root, &commit.created_doc_ids[0]);
+ 
+     // 鏍囬銆佽蒋鎹㈣鎺ュ悎锛圕JK 鐩磋繛锛夈€佸紩鐢ㄦ枃瀛椼€佷唬鐮佽銆佽剼娉ㄥ紩鐢ㄥ瓧闈㈠叏閮ㄤ繚鐣欙紱
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:412:
+     assert_eq!(block_text(&blocks[0]), "鎴戠殑绗旇");
+     // 浠诲姟鍒楄〃鎸夋棤搴忓垪琛ㄥ鍏ワ紝鍕鹃€夋瀛楅潰淇濈暀锛堟柇瑷€涓嬫帰鍒板垪琛ㄩ」娈佃惤锛夈€?     let task_block = blocks.iter().find(|b| b["type"] == "bulletList").unwrap();
+[31m-    assert_eq!(block_text(&task_block["content"][0]["content"][0]), "[x] 浠诲姟椤?);
+[0m[32m+    assert_eq!(
+[0m[32m+        block_text(&task_block["content"][0]["content"][0]),
+[0m[32m+        "[x] 浠诲姟椤?
+[0m[32m+    );
+[0m }
+ 
+ #[test]
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:428:
+     assert_eq!(suggestion.count, 3);
+     assert_eq!(suggestion.doc_names, vec!["绗?绔?, "绗?绔?, "绗?绔?]);
+ 
+[31m-    let commit = import_document_commit(&root, &file, None, true, &preview.content_hash)
+[0m[31m-        .expect("鎷嗗垎鎻愪氦");
+[0m[32m+    let commit =
+[0m[32m+        import_document_commit(&root, &file, None, true, &preview.content_hash).expect("鎷嗗垎鎻愪氦");
+[0m     assert_eq!(commit.created_doc_ids.len(), 3);
+     let folder = commit.created_folder_id.expect("鎷嗗垎寤烘枃浠跺す");
+     let tree = project::recover_then_read_content_tree(&root).unwrap();
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:438:
+     // 鍓嶈█锛堝惈涔﹀悕鏍囬锛夊苟鍏ョ 1 涓枃妗ｏ紝鍏跺悗鍚勭珷杈圭晫姝ｇ‘銆?     let first = imported_blocks(&root, &commit.created_doc_ids[0]);
+     let first_texts: Vec<String> = first.iter().map(block_text).collect();
+[31m-    assert_eq!(first_texts, vec!["鍏ㄦ湰灏忚", "鍓嶈█銆?, "绗?绔?, "绗竴绔犳鏂?]);
+[0m[32m+    assert_eq!(
+[0m[32m+        first_texts,
+[0m[32m+        vec!["鍏ㄦ湰灏忚", "鍓嶈█銆?, "绗?绔?, "绗竴绔犳鏂?]
+[0m[32m+    );
+[0m     let second = imported_blocks(&root, &commit.created_doc_ids[1]);
+     let second_texts: Vec<String> = second.iter().map(block_text).collect();
+     assert_eq!(second_texts, vec!["绗?绔?, "绗簩绔犳鏂?]);
+Diff in \\?\D:\Next Story\src-tauri\tests\markdown_import_test.rs:460:
+ 
+     // 鍝堝笇涓嶄竴鑷达細涓枃鍓嶇紑閿欒銆侀浂娈嬬暀銆?     let before = project::recover_then_read_content_tree(&root).unwrap();
+[31m-    let error =
+[0m[31m-        import_document_commit(&root, &file, None, false, "deadbeef").unwrap_err();
+[0m[32m+    let error = import_document_commit(&root, &file, None, false, "deadbeef").unwrap_err();
+[0m     assert!(
+         error.to_string().starts_with("hash_mismatch:"),
+         "閿欒淇℃伅蹇呴』甯?hash_mismatch: 鍓嶇紑锛歿error}"
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:15:
+ 
+ use docx_rs::{Comment, Docx, Footnote, Paragraph, Pic, Run, Table, TableCell, TableRow};
+ use next_story_lib::project::{
+[31m-    self, export_project_to_word, import_document_commit, import_document_preview, validate_notebook_document,
+[0m[31m-    CreateProjectParams, ExportScope, ImportPreview, ProjectPaths,
+[0m[32m+    self, export_project_to_word, import_document_commit, import_document_preview,
+[0m[32m+    validate_notebook_document, CreateProjectParams, ExportScope, ImportPreview, ProjectPaths,
+[0m };
+ use serde_json::Value;
+ use tempfile::TempDir;
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:45:
+ 
+ /// 鏈€灏忕湡瀹?1脳1 PNG锛堝啓鍏ヤ晶涓嶈В鐮併€佽鍙栦晶鍏抽瑙堣В鐮侊紝瀛楄妭鍙渶鏄悎娉曞獟浣擄級銆? const TINY_PNG: &[u8] = &[
+[31m-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D',
+[0m[31m-    b'R', 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+[0m[31m-    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, b'I', b'D', b'A', b'T', 0x78, 0x9C, 0x63, 0x00,
+[0m[31m-    0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, b'I',
+[0m[31m-    b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
+[0m[32m+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D', b'R',
+[0m[32m+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+[0m[32m+    0x89, 0x00, 0x00, 0x00, 0x0A, b'I', b'D', b'A', b'T', 0x78, 0x9C, 0x63, 0x00, 0x00, 0x00, 0x00,
+[0m[32m+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE,
+[0m[32m+    0x42, 0x60, 0x82,
+[0m ];
+ 
+ fn loss_count(preview: &ImportPreview, kind: &str) -> usize {
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:84:
+         Docx::new().add_paragraph(
+             Paragraph::new()
+                 .add_run(Run::new().add_text("鍥惧墠"))
+[31m-                .add_run(Run::new().add_image(Pic::new_with_dimensions(
+[0m[31m-                    TINY_PNG.to_vec(),
+[0m[31m-                    1,
+[0m[31m-                    1,
+[0m[31m-                )))
+[0m[32m+                .add_run(Run::new().add_image(Pic::new_with_dimensions(TINY_PNG.to_vec(), 1, 1)))
+[0m                 .add_run(Run::new().add_text("鍥惧悗")),
+         ),
+     );
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:119:
+                     .add_run(Run::new().add_footnote_reference(footnote))
+                     .add_run(Run::new().add_text("姝ｆ枃鍚?)),
+             )
+[31m-            .add_paragraph(
+[0m[31m-                Paragraph::new().add_run(Run::new().add_footnote_reference({
+[0m[31m-                    let mut another = Footnote::new();
+[0m[31m-                    another.add_content(Paragraph::new().add_run(Run::new().add_text("绗簩鏉¤剼娉?)));
+[0m[31m-                    another
+[0m[31m-                })),
+[0m[31m-            ),
+[0m[32m+            .add_paragraph(Paragraph::new().add_run(Run::new().add_footnote_reference({
+[0m[32m+                let mut another = Footnote::new();
+[0m[32m+                another.add_content(Paragraph::new().add_run(Run::new().add_text("绗簩鏉¤剼娉?)));
+[0m[32m+                another
+[0m[32m+            }))),
+[0m     );
+ 
+     let preview = preview_of(&root, &file);
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:132:
+[31m-    assert_eq!(loss_count(&preview, "footnote_dropped"), 2, "涓ゅ鑴氭敞寮曠敤鍚勮涓€澶?);
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "footnote_dropped"),
+[0m[32m+        2,
+[0m[32m+        "涓ゅ鑴氭敞寮曠敤鍚勮涓€澶?
+[0m[32m+    );
+[0m     // 鑴氭敞鍐呭鏄檮浠堕儴浠讹紝涓嶈繘鍏ユ鏂囧瓧鏁般€?     assert_eq!(preview.char_count, "姝ｆ枃鍓嶆鏂囧悗".chars().count());
+ }
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:171:
+     );
+ 
+     let preview = preview_of(&root, &file);
+[31m-    assert_eq!(loss_count(&preview, "comment_dropped"), 2, "涓ゅ鎵规敞鍚勮涓€澶?);
+[0m[32m+    assert_eq!(
+[0m[32m+        loss_count(&preview, "comment_dropped"),
+[0m[32m+        2,
+[0m[32m+        "涓ゅ鎵规敞鍚勮涓€澶?
+[0m[32m+    );
+[0m     // 琚壒娉ㄧ殑姝ｆ枃閫愬瓧淇濈暀锛屾壒娉ㄥ唴瀹逛笉杩涘叆姝ｆ枃瀛楁暟銆?     assert_eq!(
+         preview.char_count,
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:192:
+         Docx::new()
+             .add_paragraph(Paragraph::new().add_run(Run::new().add_text("寮€澶存")))
+             .add_table(Table::new(vec![TableRow::new(vec![
+[31m-                TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("宸︽牸"))),
+[0m[31m-                TableCell::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text("鍙虫牸"))),
+[0m[32m+                TableCell::new()
+[0m[32m+                    .add_paragraph(Paragraph::new().add_run(Run::new().add_text("宸︽牸"))),
+[0m[32m+                TableCell::new()
+[0m[32m+                    .add_paragraph(Paragraph::new().add_run(Run::new().add_text("鍙虫牸"))),
+[0m             ])]))
+             .add_paragraph(
+                 Paragraph::new()
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:250:
+ 
+ /// 鎻愪氦瀵煎叆骞惰鍙栬惤鐩樻枃妗ｇ殑椤跺眰鍧楁暟缁勶紙宸查€氳繃涓ユ牸鏍￠獙锛夈€? fn imported_blocks(root: &Path, doc_id: &str) -> Vec<Value> {
+[31m-    let notebook =
+[0m[31m-        fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+[0m[31m-            .expect("read imported notebook");
+[0m[32m+    let notebook = fs::read_to_string(ProjectPaths::new(root.to_path_buf()).document_file(doc_id))
+[0m[32m+        .expect("read imported notebook");
+[0m     let value: Value = serde_json::from_str(&notebook).expect("parse imported notebook");
+     validate_notebook_document(&value).expect("寰€杩斾骇鐗╁繀椤婚€氳繃鏃㈡湁涓ユ牸璇硶鏍￠獙");
+     value["document"]["content"].as_array().unwrap().clone()
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:300:
+ /// 閾炬帴/楂樹寒/瀛楀彿瀛椾綋銆? fn roundtrip_source_notebook() -> Value {
+     let text = |t: &str| serde_json::json!({ "type": "text", "text": t });
+[31m-    let marked = |t: &str, marks: Value| serde_json::json!({ "type": "text", "text": t, "marks": marks });
+[0m[32m+    let marked =
+[0m[32m+        |t: &str, marks: Value| serde_json::json!({ "type": "text", "text": t, "marks": marks });
+[0m     let list_item = |t: &str| {
+         serde_json::json!({
+             "type": "listItem",
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:428:
+     assert_eq!(
+         texts,
+         vec![
+[31m-            "寰€杩旀祴璇曟枃妗?,   // 宸紓鈶犲鍑轰晶锛氳寖鍥存牴鍚嶇О 鈫?Heading1
+[0m[32m+            "寰€杩旀祴璇曟枃妗?, // 宸紓鈶犲鍑轰晶锛氳寖鍥存牴鍚嶇О 鈫?Heading1
+[0m             "寮€澶存钀?,
+[31m-            "",               // 绌烘钀藉師鏍蜂繚鐣?[0m[32m+            "", // 绌烘钀藉師鏍蜂繚鐣?[0m             "浜岀骇鏍囬",
+             "浜旂骇鏍囬",
+[31m-            "鈥?椤圭洰涓€",       // 宸紓鈶″鍑轰晶锛氬垪琛?鈫?鏂囧瓧鍓嶇紑
+[0m[32m+            "鈥?椤圭洰涓€", // 宸紓鈶″鍑轰晶锛氬垪琛?鈫?鏂囧瓧鍓嶇紑
+[0m             "鈥?椤圭洰浜?,
+[31m-            "  鈥?宓屽椤?,     // 宓屽椤规寜娣卞害缂╄繘涓や釜绌烘牸
+[0m[31m-            "3. 绗笁椤?,      // 鏈夊簭鍒楄〃甯?start=3 鍓嶇紑
+[0m[32m+            "  鈥?宓屽椤?, // 宓屽椤规寜娣卞害缂╄繘涓や釜绌烘牸
+[0m[32m+            "3. 绗笁椤?,  // 鏈夊簭鍒楄〃甯?start=3 鍓嶇紑
+[0m             "4. 绗洓椤?,
+             "鍔犵矖鏅€氭枩浣撲笅鍒掑垹闄よ摑鑹叉枃瀛?,
+             "閾炬帴鏂囧瓧楂樹寒鏂囧瓧甯﹀瓧鍙峰瓧浣?, // 宸紓鈶⑩懀锛歮arks 涓㈠け鍚庣浉閭诲悓 marks 鍚堝苟
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:495:
+         "鍔犵矖/鏂滀綋/涓嬪垝绾?鍒犻櫎绾?棰滆壊蹇呴』淇濈暀锛宒ocDefaults 瀛椾綋瀛楀彿鐢熸晥"
+     );
+     assert_eq!(
+[31m-        blocks[10]["content"][4]["marks"][0]["attrs"]["color"],
+[0m[31m-        "#3366cc",
+[0m[32m+        blocks[10]["content"][4]["marks"][0]["attrs"]["color"], "#3366cc",
+[0m         "棰滆壊鍊煎線杩斾竴鑷达紙瀵煎嚭鍘?#銆佸鍏ヨˉ #锛?
+     );
+     // 3b. 閾炬帴/楂樹寒涓㈠け锛堝樊寮傗憿鈶ｂ€斺€攔un 绾т笉瀵煎嚭锛夛紱docDefaults 鐢熸晥鍚?Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:513:
+     // 渚濇棫鎴愮珛锛氫笁鑰呭悓鎼哄甫 docDefaults textStyle锛屽悎骞朵负涓€涓妭鐐癸級銆?     assert_eq!(blocks[11]["content"].as_array().unwrap().len(), 1);
+     assert_eq!(
+[31m-        blocks[11]["content"][0]["marks"][0]["attrs"]["fontFamily"],
+[0m[31m-        "Source Han Sans CN",
+[0m[32m+        blocks[11]["content"][0]["marks"][0]["attrs"]["fontFamily"], "Source Han Sans CN",
+[0m         "docDefaults 瀛椾綋缁?D3 閾剧敓鏁?
+     );
+ 
+Diff in \\?\D:\Next Story\src-tauri\tests\word_import_test.rs:522:
+     let after = project::recover_then_read_content_tree(&root).expect("reread tree");
+     let source_node = after.nodes.get(&source_doc).expect("婧愭枃妗ｄ粛鍦?);
+     assert_eq!(source_node.name, "寰€杩旀祴璇曟枃妗?);
+[31m-    let source_after = fs::read_to_string(
+[0m[31m-        ProjectPaths::new(root.clone()).document_file(&source_doc),
+[0m[31m-    )
+[0m[31m-    .unwrap();
+[0m[32m+    let source_after =
+[0m[32m+        fs::read_to_string(ProjectPaths::new(root.clone()).document_file(&source_doc)).unwrap();
+[0m     assert_eq!(source_after, source_json, "婧愭枃妗ｆ鏂囬€愬瓧鑺備笉鍙?);
+ }
+ 
+

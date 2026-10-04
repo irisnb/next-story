@@ -1,0 +1,120 @@
+﻿  92:1   error  'console' is not defined                                               no-undef
+  93:13  error  'process' is not defined                                               no-undef
+D:\Next Story\鏈湴娴嬭瘯鏂囨。\瀵煎叆鍐掔儫璇佹嵁\word\smoke-tree.mjs
+   5:42  error  'setTimeout' is not defined                                                   no-undef
+   7:30  error  'fetch' is not defined                                                        no-undef
+   9:16  error  'WebSocket' is not defined                                                    no-undef
+  16:19  error  'setTimeout' is not defined                                                   no-undef
+  17:30  error  'clearTimeout' is not defined                                                 no-undef
+  17:51  error  Expected an assignment or function call and instead saw an expression         @typescript-eslint/no-unused-expressions
+  28:40  error  'Buffer' is not defined                                                       no-undef
+  29:3   error  'console' is not defined                                                      no-undef
+  37:1   error  'console' is not defined                                                      no-undef
+  47:1   error  'console' is not defined                                                      no-undef
+  53:1   error  'console' is not defined                                                      no-undef
+  55:3   error  'console' is not defined                                                      no-undef
+  56:9   error  't' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  59:3   error  'console' is not defined                                                      no-undef
+  62:5   error  'console' is not defined                                                      no-undef
+  70:7   error  'console' is not defined                                                      no-undef
+  74:10  error  'console' is not defined                                                      no-undef
+  77:3   error  'console' is not defined                                                      no-undef
+  83:3   error  'console' is not defined                                                      no-undef
+  86:1   error  'console' is not defined                                                      no-undef
+  87:13  error  'process' is not defined                                                      no-undef
+D:\Next Story\鏈湴娴嬭瘯鏂囨。\瀵煎叆鍐掔儫璇佹嵁\word\smoke-ui.mjs
+   5:42  error  'setTimeout' is not defined                                            no-undef
+   7:30  error  'fetch' is not defined                                                 no-undef
+   9:16  error  'WebSocket' is not defined                                             no-undef
+  16:19  error  'setTimeout' is not defined                                            no-undef
+  17:30  error  'clearTimeout' is not defined                                          no-undef
+  17:51  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  41:40  error  'Buffer' is not defined                                                no-undef
+  42:3   error  'console' is not defined                                               no-undef
+  45:1   error  'console' is not defined                                               no-undef
+  47:1   error  'console' is not defined                                               no-undef
+  54:1   error  'console' is not defined                                               no-undef
+  56:16  error  'console' is not defined                                               no-undef
+  56:42  error  'process' is not defined                                               no-undef
+  58:1   error  'console' is not defined                                               no-undef
+  63:1   error  'console' is not defined                                               no-undef
+  65:1   error  'console' is not defined                                               no-undef
+  67:1   error  'console' is not defined                                               no-undef
+  72:1   error  'console' is not defined                                               no-undef
+  75:1   error  'console' is not defined                                               no-undef
+  76:1   error  'console' is not defined                                               no-undef
+  77:13  error  'process' is not defined                                               no-undef
+D:\Next Story\鏈湴娴嬭瘯鏂囨。\瀵煎叆鍐掔儫璇佹嵁\淇濈湡\fidelity-probe-text-style.mjs
+   3:24  error  'fetch' is not defined         no-undef
+   3:75  error  'AbortSignal' is not defined   no-undef
+   6:16  error  'WebSocket' is not defined     no-undef
+   8:17  error  'setTimeout' is not defined    no-undef
+   9:23  error  'clearTimeout' is not defined  no-undef
+  10:24  error  'clearTimeout' is not defined  no-undef
+  14:19  error  'setTimeout' is not defined    no-undef
+  18:7   error  'clearTimeout' is not defined  no-undef
+  45:3   error  'console' is not defined       no-undef
+  54:3   error  'console' is not defined       no-undef
+D:\Next Story\鏈湴娴嬭瘯鏂囨。\瀵煎叆鍐掔儫璇佹嵁\淇濈湡\fidelity-smoke.mjs
+    9:42  error  'setTimeout' is not defined                                            no-undef
+   11:30  error  'fetch' is not defined                                                 no-undef
+   13:16  error  'WebSocket' is not defined                                             no-undef
+   20:19  error  'setTimeout' is not defined                                            no-undef
+   21:30  error  'clearTimeout' is not defined                                          no-undef
+   21:51  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+   32:40  error  'Buffer' is not defined                                                no-undef
+   33:3   error  'console' is not defined                                               no-undef
+   59:1   error  'console' is not defined                                               no-undef
+   62:1   error  'console' is not defined                                               no-undef
+   64:1   error  'console' is not defined                                               no-undef
+   66:1   error  'console' is not defined                                               no-undef
+   73:1   error  'console' is not defined                                               no-undef
+   75:1   error  'console' is not defined                                               no-undef
+  100:3   error  'console' is not defined                                               no-undef
+  103:3   error  'console' is not defined                                               no-undef
+  105:1   error  'console' is not defined                                               no-undef
+  106:13  error  'process' is not defined                                               no-undef
+D:\Next Story\鏈湴娴嬭瘯鏂囨。\瀵煎叆鍐掔儫璇佹嵁\瀵硅瘽妗哱dlg-smoke.mjs
+   11:42   error  'setTimeout' is not defined                                                     no-undef
+   12:30   error  'fetch' is not defined                                                          no-undef
+   14:16   error  'WebSocket' is not defined                                                      no-undef
+   21:19   error  'setTimeout' is not defined                                                     no-undef
+   22:30   error  'clearTimeout' is not defined                                                   no-undef
+   22:51   error  Expected an assignment or function call and instead saw an expression           @typescript-eslint/no-unused-expressions
+   33:40   error  'Buffer' is not defined                                                         no-undef
+   34:3    error  'console' is not defined                                                        no-undef
+   82:1    error  'console' is not defined                                                        no-undef
+   90:1    error  'console' is not defined                                                        no-undef
+   92:1    error  'console' is not defined                                                        no-undef
+   96:1    error  'console' is not defined                                                        no-undef
+   97:1    error  'console' is not defined                                                        no-undef
+   98:1    error  'console' is not defined                                                        no-undef
+  102:1    error  'console' is not defined                                                        no-undef
+  104:1    error  'console' is not defined                                                        no-undef
+  109:1    error  'console' is not defined                                                        no-undef
+  110:1    error  'console' is not defined                                                        no-undef
+  112:19   error  'Buffer' is not defined                                                         no-undef
+  112:42   error  'Buffer' is not defined                                                         no-undef
+  113:1    error  'console' is not defined                                                        no-undef
+  117:1    error  'console' is not defined                                                        no-undef
+  118:1    error  'console' is not defined                                                        no-undef
+  119:1    error  'console' is not defined                                                        no-undef
+  124:1    error  'console' is not defined                                                        no-undef
+  126:1    error  'console' is not defined                                                        no-undef
+  128:7    error  'ok3' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  132:1    error  'console' is not defined                                                        no-undef
+  133:28   error  'console' is not defined                                                        no-undef
+  133:77   error  'console' is not defined                                                        no-undef
+  137:1    error  'console' is not defined                                                        no-undef
+  140:5    error  The value assigned to 'nativeShown' is not used in subsequent statements        no-useless-assignment
+  145:10   error  'e' is defined but never used. Allowed unused caught errors must match /^_/u    @typescript-eslint/no-unused-vars
+  146:1    error  'console' is not defined                                                        no-undef
+  147:1    error  'console' is not defined                                                        no-undef
+  148:100  error  'console' is not defined                                                        no-undef
+  151:1    error  'console' is not defined                                                        no-undef
+  153:28   error  'console' is not defined                                                        no-undef
+  153:75   error  Empty block statement                                                           no-empty
+  157:1    error  'console' is not defined                                                        no-undef
+  158:1    error  'console' is not defined                                                        no-undef
+  159:13   error  'process' is not defined                                                        no-undef
+鉁?363 problems (363 errors, 0 warnings)

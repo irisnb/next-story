@@ -1,0 +1,29 @@
+﻿
+> next-story@0.1.0 clippy:rust
+> cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+node.exe :     Checking next-story v0.1.0 (D:\Next Story\src-tauri)
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ne...tory\src-tauri):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error: manual check for common ascii range
+  --> examples\docx_read_spike.rs:59:18
+   |
+59 |         .all(|c| matches!(c, '0'..='9') || "涓€浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨闆朵袱".contains(c))
+   |                  ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.96.0/index.html#manual_is_ascii
+_check
+   = note: `-D clippy::manual-is-ascii-check` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::manual_is_ascii_check)]`
+help: try
+   |
+59 -         .all(|c| matches!(c, '0'..='9') || "涓€浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨闆朵袱".contains(c))
+59 +         .all(|c: char| c.is_ascii_digit() || "涓€浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨闆朵袱".contains(c))
+   |
+
+error: could not compile `next-story` (example "docx_read_spike") due to 1 previous error
+

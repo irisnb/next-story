@@ -42,6 +42,7 @@ const PRINT_PAGE_PATH: &str = "print.html";
 const PAGE_READY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// `PrintToPdf` 回调等待上限（长文档打印可能超过页面就绪时长）。
+#[cfg(windows)]
 const PRINT_CALLBACK_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// 全局串行打印队列：WebView2 同一 webview 同时仅允许一个打印任务。
@@ -187,6 +188,7 @@ fn reload_print_page(app: &AppHandle, window: &WebviewWindow) -> Result<(), Expo
 
 /// 打印过程中的两类信号：PrintToPdf 调用本身同步返回（是否成功受理），
 /// 完成回调异步返回（是否生成文件）。
+#[cfg(windows)]
 enum PrintSignal {
     Dispatched(Result<(), String>),
     Completed(Result<(), String>),
@@ -249,6 +251,7 @@ fn print_webview_to_file(window: &WebviewWindow, target_path: &Path) -> Result<(
     }
 }
 
+#[cfg(windows)]
 const PDF_SDK_UNSUPPORTED: &str =
     "当前系统的 WebView2 版本不支持导出 PDF，请更新 WebView2 运行时后重试";
 

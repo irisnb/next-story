@@ -1,0 +1,219 @@
+{
+  "blockCount": 26,
+  "blocks": [
+    {
+      "tag": "p",
+      "text": "BEGIN marker paragraph A01 plain docDefaults baseline."
+    },
+    {
+      "tag": "p",
+      "text": "Run A02a inherits docDefaults. A02b 中文运行保持原样。"
+    },
+    {
+      "tag": "p",
+      "text": "A03 AcceptanceBase expects 12pt color 1F4E79 not bold."
+    },
+    {
+      "tag": "p",
+      "text": "A04 AcceptanceMid expects bold italic 12pt color 7030A0."
+    },
+    {
+      "tag": "p",
+      "text": "A05 AcceptanceLeaf expects bold italic underline 14pt color C00000."
+    },
+    {
+      "tag": "p",
+      "text": "A06R1 chain A06R2 charstyle A06R3 direct"
+    },
+    {
+      "tag": "p",
+      "text": "SYM01 wingdings F0FC then ✔ then wingdings F0FB then 🗶 then symbol 006C then λ then symbol F0B7 then • then wingdings F0A7 then ▪ then unknown unmappedfont 0047 then  then unknown bogussymbol 002A then  SYM01 end"
+    },
+    {
+      "tag": "ol",
+      "start": 1,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C01 first decimal item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "ol",
+      "start": 1,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C02 first alpha interleave item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "ol",
+      "start": 2,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C03 second decimal item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "ol",
+      "start": 2,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C04 second alpha interleave item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "ol",
+      "start": 3,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C05 third decimal item before interruption"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "p",
+      "text": "C06 interruption paragraph without list numbering."
+    },
+    {
+      "tag": "ol",
+      "start": 4,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C07 decimal resumes after interruption"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "ol",
+      "start": 3,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C08 alpha resumes after interruption"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "p",
+      "text": "MIDDLE marker paragraph M00 for middle inspection."
+    },
+    {
+      "tag": "ol",
+      "start": 5,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C09 parent item five"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "p",
+      "text": "C10 first child under five"
+    },
+    {
+      "tag": "p",
+      "text": "C11 second child under five"
+    },
+    {
+      "tag": "p",
+      "text": "C12 grandchild under second child"
+    },
+    {
+      "tag": "p",
+      "text": "C13 third child after grandchild"
+    },
+    {
+      "tag": "ol",
+      "start": 6,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C14 parent item six"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "p",
+      "text": "C15 first child under six resets"
+    },
+    {
+      "tag": "ol",
+      "start": 7,
+      "children": [
+        {
+          "tag": "li",
+          "children": [
+            {
+              "tag": "p",
+              "text": "C16 last parent item seven"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "p",
+      "text": "Z01 final chain paragraph."
+    },
+    {
+      "tag": "p",
+      "text": "END marker paragraph Z02 with direct bold black."
+    }
+  ]
+}

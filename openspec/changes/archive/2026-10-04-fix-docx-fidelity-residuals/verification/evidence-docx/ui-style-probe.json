@@ -1,0 +1,17 @@
+{
+  "latin": {
+    "fontFamily": "Calibri",
+    "fontSize": "16px"
+  },
+  "cjk": {
+    "fontFamily": "\"Microsoft YaHei\""
+  },
+  "p1": {
+    "lineHeight": "18.4px",
+    "fontSize": "16px"
+  },
+  "p3": {
+    "lineHeight": "18.4px",
+    "fontSize": "16px"
+  }
+}

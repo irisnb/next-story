@@ -1,0 +1,15 @@
+{
+  "open": true,
+  "conclusion": "保留 1,141 字，另有 7 处内容需降级或丢弃",
+  "structure": "整个文件将作为 1 个文档导入：《acceptance-complex》",
+  "lossItems": [
+    "编号降级为普通段落：5 处（5 个段落的编号定义无法映射为列表，按普通段落导入）",
+    "符号字符丢弃：2 处（2 个符号字符无法可靠映射，已丢弃）"
+  ],
+  "lossesHidden": false,
+  "splitHidden": true,
+  "splitMarkerLabel": "",
+  "splitWholeChecked": true,
+  "targetValue": "",
+  "mdNoteHidden": true
+}

@@ -1,0 +1,20 @@
+﻿cargo :    Compiling next-story v0.1.0 (D:\Next Story\src-tauri)
+所在位置 行:1 字符: 1
++ cargo run --manifest-path src-tauri/Cargo.toml --example docx_gold_re ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling ne...tory\src-tauri):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.17s
+     Running `src-tauri\target\debug\examples\docx_gold_reprobe.exe 鏈湴娴嬭瘯鏂囨。\瀵煎叆娴嬭瘯鏍锋湰\瀵煎叆娴嬭瘯-鐭墽鍓ф湰.docx`
+== preview ==
+char_count = 55331
+paragraph_count = 2718
+LOSS numbering_degraded x2: 2 涓钀界殑缂栧彿瀹氫箟鏃犳硶鏄犲皠涓哄垪琛紝鎸夋櫘閫氭钀藉鍏?== blocks = 2719
+== fontFamily 鍒嗗竷锛堝惈涓滀簹瀛楃 run锛?=
+  瀹嬩綋 x2527
+  榛戜綋 x31
+== fontFamily 鍒嗗竷锛堢函鎷変竵 run锛?=
+  Times New Roman x102
+== 娈佃惤灞炴€э細lineHeight 0 娈碉紡spacingAfter 0 娈碉紡涓よ€呭悓娈?0 娈?
+

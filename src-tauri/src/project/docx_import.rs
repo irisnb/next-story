@@ -616,7 +616,17 @@ impl Converter {
             .and_then(|value| value.as_object().cloned())
             .unwrap_or_default();
         overlay_map(&mut effective, &direct);
-        let marks = marks_from_char_map(&effective, link_href);
+        // 字体选择按 run 文字字符类别（F05）：文本取全部 w:t 子项拼接
+        // （符号/Tab 子项不参与判类；纯符号 run 走空文本回退链）。
+        let run_text: String = run
+            .children
+            .iter()
+            .filter_map(|child| match child {
+                RunChild::Text(t) => Some(t.text.clone()),
+                _ => None,
+            })
+            .collect();
+        let marks = marks_from_char_map(&effective, &run_text, link_href);
         for child in &run.children {
             match child {
                 RunChild::Text(t) => {
@@ -729,14 +739,40 @@ impl Converter {
 
 // ========== run 级 marks（格式标记全保留） ==========
 
+/// 东亚字符判定（F05 字体选择的字符类别依据）：覆盖 CJK 统一表意与
+/// 扩展 A、CJK 符号标点、假名（平假名／片假名及注音扩展）、注音符号、
+/// 谚文（音节／兼容字母／扩展 A/B）、CJK 兼容表意、全角形式。
+/// 判定的是「需要东亚字体渲染的字符类别」，不追求 Unicode 块完备。
+fn is_east_asian_char(ch: char) -> bool {
+    matches!(ch,
+        '\u{3000}'..='\u{303F}'   // CJK 符号和标点
+        | '\u{3040}'..='\u{309F}' // 平假名
+        | '\u{30A0}'..='\u{30FF}' // 片假名
+        | '\u{3100}'..='\u{312F}' // 注音符号
+        | '\u{3130}'..='\u{318F}' // 谚文兼容字母
+        | '\u{31F0}'..='\u{31FF}' // 片假名注音扩展
+        | '\u{3400}'..='\u{4DBF}' // CJK 扩展 A
+        | '\u{4E00}'..='\u{9FFF}' // CJK 统一表意
+        | '\u{A960}'..='\u{A97F}' // 谚文扩展 A
+        | '\u{AC00}'..='\u{D7AF}' // 谚文音节
+        | '\u{D7B0}'..='\u{D7FF}' // 谚文扩展 B
+        | '\u{F900}'..='\u{FAFF}' // CJK 兼容表意
+        | '\u{FF00}'..='\u{FFEF}' // 全角形式（含全角 ASCII／假名）
+    )
+}
+
 /// run 级格式 → canonical marks（按 rank 排序：bold·italic·underline·strike·
 /// textStyle·highlight·link）。docx-rs 多个属性结构字段为私有但实现 Serialize，
 /// 统一经 serde_json::to_value 读取。
 /// 生效字符属性 map（D3 合并产物，serde camelCase 键）→ canonical marks。
 /// 键形态：bold/italic→bool，underline→string，strike→bool，color→string，
-/// sz→number（半点），fonts→object（eastAsia/ascii/hiAnsi 键优先，主题键
+/// sz→number（半点），fonts→object（按 run 文本字符类别选键，主题键
 /// 不解析——docDefaults 显式字体兜底），highlight→string。
-fn marks_from_char_map(map: &Map<String, Value>, link_href: Option<&str>) -> Vec<Value> {
+fn marks_from_char_map(
+    map: &Map<String, Value>,
+    run_text: &str,
+    link_href: Option<&str>,
+) -> Vec<Value> {
     let mut marks = Vec::new();
     if map.get("bold").and_then(Value::as_bool) == Some(true) {
         marks.push(json!({ "type": "bold" }));
@@ -768,10 +804,20 @@ fn marks_from_char_map(map: &Map<String, Value>, link_href: Option<&str>) -> Vec
         }
     }
     if let Some(fonts) = map.get("fonts").and_then(Value::as_object) {
-        // 中英混排优先 eastAsia，其次 ascii / hiAnsi；主题键（asciiTheme 等）
-        // 不做主题解析、不计损耗（docDefaults 显式字体兜底，WPS 金样本
-        // 零 style_degraded 的口径之一，见报告）。
-        let family = ["eastAsia", "ascii", "hiAnsi"]
+        // 字体选择按 run 文字字符类别（fix-docx-fidelity-residuals F05）。
+        // 选定类别键缺失时按剩余键序回退；主题键（asciiTheme 等）不做
+        // 主题解析、不计损耗（docDefaults 显式字体兜底，WPS 金样本零
+        // style_degraded 的口径之一，见报告）。
+        let keys: [&str; 3] = if run_text.is_empty() || run_text.chars().any(is_east_asian_char) {
+            // 含东亚字符（混排 run 取东亚字体承载，不拆 run——已知取舍，
+            // 不计损耗），或空文本 run（纯符号/Tab，无字符类别可判）——
+            // 均维持原回退链 eastAsia 优先。
+            ["eastAsia", "ascii", "hiAnsi"]
+        } else {
+            // 纯拉丁——西文主字体 ascii 优先。
+            ["ascii", "hiAnsi", "eastAsia"]
+        };
+        let family = keys
             .iter()
             .find_map(|key| fonts.get(*key).and_then(Value::as_str).map(str::to_string))
             .unwrap_or_default();
@@ -797,8 +843,9 @@ fn marks_from_char_map(map: &Map<String, Value>, link_href: Option<&str>) -> Vec
     marks
 }
 
-/// map 字段级合并（overlay 覆盖 base；fonts 子对象按属性位再合并，显式键
-/// 与主题键共存时互不整替）。
+/// map 字段级合并（overlay 覆盖 base；fonts 与 lineSpacing 两个复合对象
+/// 按属性位再合并——仅覆盖部分子属性不得丢失其余继承子属性；其余键整替。
+/// 显式键与主题键共存时互不整替）。
 fn overlay_map(base: &mut Map<String, Value>, overlay: &Map<String, Value>) {
     for (key, value) in overlay {
         if key == "fonts" {
@@ -808,6 +855,20 @@ fn overlay_map(base: &mut Map<String, Value>, overlay: &Map<String, Value>) {
             ) {
                 for (font_key, font_value) in overlay_fonts {
                     base_fonts.insert(font_key.clone(), font_value.clone());
+                }
+                continue;
+            }
+        }
+        if key == "lineSpacing" {
+            // 间距复合对象按子属性（before/after/line/lineRule）逐项覆盖
+            // （fix-docx-fidelity-residuals F04）：样式仅覆盖段后间距时，
+            // 继承的行距（line/lineRule）不得从合并结果消失。
+            if let (Some(base_spacing), Some(overlay_spacing)) = (
+                base.get_mut("lineSpacing").and_then(Value::as_object_mut),
+                value.as_object(),
+            ) {
+                for (spacing_key, spacing_value) in overlay_spacing {
+                    base_spacing.insert(spacing_key.clone(), spacing_value.clone());
                 }
                 continue;
             }
@@ -1341,40 +1402,47 @@ fn symbol_to_unicode(font: &str, char_code: &str) -> Option<char> {
     }
 }
 
-/// Wingdings 常用符号（Alan Wood 映射表中高置信常用子集）。
+/// Wingdings 符号映射：以 Alan Wood 公开编码对照表为规范依据
+/// （https://www.alanwood.net/demos/wingdings.html），逐条按码位与
+/// Unicode 名称对齐（fix-docx-fidelity-residuals F01/F03 修正）；
+/// 未列码位返回 None → `symbol_dropped` 告知，不静默。
 fn wingdings_char(code: u32) -> Option<char> {
     Some(match code {
-        0xFC => '✓',  // 0x2713 勾
-        0xFD => '✗',  // 0x2717 叉
-        0xFE => '☑',  // 0x2611 勾选框
-        0x4A => '☺',  // 0x263A 笑脸（Wingdings J）
-        0x4B => '😐', // 0x1F610 中性脸（Wingdings K）
-        0x4C => '🙁', // 0x1F642→frown 近似：Wingdings L 难过脸，取 0x1F641 风格保守映射
-        0x6E => '■',  // 0x25A0 实心方块（Wingdings n）
-        0x6F => '□',  // 0x25A1 空心方块（Wingdings o）
-        0x71 => '❑',  // 0x2751 阴影方框（Wingdings q）
-        0xA7 => '▪',  // 0x25AA 小实心方块（Word 方块项目符）
-        0xA8 => '▫',  // 0x25AB 小空心方块
-        0xB7 => '●',  // 0x25CF 实心圆点（Wingdings 圆项目符）
-        0xCB => '◦',  // 0x25E6 小空心圆点（Wingdings ）
-        0xD8 => '○',  // 0x25CB 空心圆（Wingdings Ø）
-        0xE8 => '→',  // 0x2192 右箭头（Wingdings è）
-        0xE9 => '↔',  // 0x2194 双向箭头
-        0xEA => '↑',  // 0x2191 上箭头
-        0xEB => '↓',  // 0x2193 下箭头
-        0xF2 => '⇒',  // 0x21D2 双线右箭头
-        0xAB => '«',  // Wingdings « 左书名号形箭头，保守原样
-        0xBB => '»',
-        0xE7 => '←', // 0x2190 左箭头
-        0xDC => '✄', // 0x2704 剪刀
-        0xC7 => '✎', // 0x270E 铅笔
-        0x28 => '☎', // 0x260E 电话
-        0x3F => '✈', // 0x2708 飞机
+        0x28 => '\u{1F57F}', // BLACK TOUCHTONE TELEPHONE
+        0x3F => '\u{270D}',  // WRITING HAND
+        0x4A => '\u{263A}',  // WHITE SMILING FACE
+        0x4B => '\u{1F610}', // NEUTRAL FACE
+        0x4C => '\u{2639}',  // WHITE FROWNING FACE
+        0x6E => '\u{25A0}',  // BLACK SQUARE
+        0x6F => '\u{25A1}',  // WHITE SQUARE
+        0x71 => '\u{2751}',  // LOWER RIGHT SHADOWED WHITE SQUARE
+        0xA7 => '\u{25AA}',  // BLACK SMALL SQUARE
+        0xA8 => '\u{25FB}',  // WHITE MEDIUM SQUARE
+        0xAB => '\u{2605}',  // BLACK STAR
+        0xB7 => '\u{1F550}', // CLOCK FACE ONE OCLOCK
+        0xBB => '\u{1F554}', // CLOCK FACE FIVE OCLOCK
+        0xC7 => '\u{2BB4}',  // RIBBON ARROW LEFT UP
+        0xCB => '\u{1F66A}', // SOLID QUILT SQUARE ORNAMENT
+        0xD8 => '\u{2B9A}',  // THREE-D TOP-LIGHTED RIGHTWARDS EQUILATERAL ARROWHEAD
+        0xDC => '\u{2B8A}',  // RIGHTWARDS BLACK CIRCLED WHITE ARROW
+        0xE7 => '\u{1F878}', // WIDE-HEADED LEFTWARDS HEAVY BARB ARROW
+        0xE8 => '\u{1F87A}', // WIDE-HEADED RIGHTWARDS HEAVY BARB ARROW
+        0xE9 => '\u{1F879}', // WIDE-HEADED UPWARDS HEAVY BARB ARROW
+        0xEA => '\u{1F87B}', // WIDE-HEADED DOWNWARDS HEAVY BARB ARROW
+        0xEB => '\u{1F87C}', // WIDE-HEADED NORTH WEST HEAVY BARB ARROW
+        0xF2 => '\u{21E9}',  // DOWNWARDS WHITE ARROW
+        0xFB => '\u{1F5F6}', // BALLOT BOLD SCRIPT X
+        0xFC => '\u{2714}',  // HEAVY CHECK MARK
+        0xFD => '\u{1F5F7}', // BALLOT BOX WITH BOLD SCRIPT X
+        0xFE => '\u{1F5F9}', // BALLOT BOX WITH BOLD CHECK
         _ => return None,
     })
 }
 
 /// Symbol 字体（Adobe Symbol 编码，希腊字母＝ASCII 位，极稳定）。
+/// 数学符号区以 Unicode 托管的 Adobe Symbol 映射表为规范依据
+/// （https://www.unicode.org/Public/MAPPINGS/VENDORS/ADOBE/symbol.txt，
+/// fix-docx-fidelity-residuals F02 修正）。
 fn symbol_font_char(code: u32) -> Option<char> {
     Some(match code {
         // 数学常用。
@@ -1387,12 +1455,12 @@ fn symbol_font_char(code: u32) -> Option<char> {
         0xB3 => '≥',
         0xA5 => '∞',
         0xB0 => '°',
-        0xD6 => '−', // 真减号 U+2212
-        0xB7 => '•', // Symbol 圆点符（Word 默认项目符）
-        0xD7 => '≡',
-        0xB2 => '⊃',
-        0xA1 => '¬',
-        0xD1 => '∴',
+        0xA1 => '\u{03D2}', // GREEK UPSILON WITH HOOK SYMBOL
+        0xB2 => '\u{2033}', // DOUBLE PRIME
+        0xB7 => '•',        // Symbol 圆点符（Word 默认项目符）
+        0xD1 => '\u{2207}', // NABLA
+        0xD6 => '\u{221A}', // SQUARE ROOT
+        0xD7 => '\u{22C5}', // DOT OPERATOR
         // 希腊小写（Symbol 字体 ASCII 位即希腊字母）。
         0x61 => 'α',
         0x62 => 'β',
@@ -2362,6 +2430,8 @@ mod tests {
     // ===== fix-import-fidelity 复现测试（先失败后修复） =====
 
     /// 复现 D2：`w:sym` 符号字符当前被静默丢弃（collect_run 的 `_ => {}`）。
+    /// F01 修正后 F0FC → U+2714（HEAVY CHECK MARK，Alan Wood 公开表；
+    /// 旧值 U+2713 为审计判定的映射错误）。
     #[test]
     fn repro_symbol_characters_mapped_to_unicode() {
         let docx = Docx::new().add_paragraph(
@@ -2370,14 +2440,285 @@ mod tests {
                 .add_run(Run::new().add_text(" 已完成")),
         );
         let parsed = parse(&pack(docx));
-        // 期望：勾号成为正文文字（✓ 已完成）。
-        assert_eq!(block_text(&parsed.blocks[0]), "✓ 已完成");
+        // 期望：勾号成为正文文字（✔ 已完成）。
+        assert_eq!(block_text(&parsed.blocks[0]), "\u{2714} 已完成");
         // 未知字体/码位 → symbol_dropped 计数（非静默）。
         let docx = Docx::new().add_paragraph(
             Paragraph::new().add_run(Run::new().add_sym(docx_rs::Sym::new("Webdings", "F0F0"))),
         );
         let parsed = parse(&pack(docx));
         assert_eq!(parsed.losses.symbols, 1, "未知符号字体计入丢弃");
+    }
+
+    /// fix-docx-fidelity-residuals 2.2：符号映射表逐条对齐公开编码表
+    /// （Wingdings＝Alan Wood 表；Symbol＝Unicode 托管 Adobe Symbol 表，
+    /// 取证见 change verification/audit-mapping-verification.md）。
+    /// 修正 21＋5 条、对照组不变、未知字体/码位 → None（→ symbol_dropped）。
+    #[test]
+    fn symbol_tables_match_public_codecharts() {
+        // Wingdings 修正条目（含新增 FB）：经 symbol_to_unicode 走 F0 前缀归一化。
+        let wingdings_corrected: &[(u32, char)] = &[
+            (0xFC, '\u{2714}'),  // HEAVY CHECK MARK
+            (0xFD, '\u{1F5F7}'), // BALLOT BOX WITH BOLD SCRIPT X
+            (0xFE, '\u{1F5F9}'), // BALLOT BOX WITH BOLD CHECK
+            (0x4C, '\u{2639}'),  // WHITE FROWNING FACE
+            (0xA8, '\u{25FB}'),  // WHITE MEDIUM SQUARE
+            (0xB7, '\u{1F550}'), // CLOCK FACE ONE OCLOCK
+            (0xCB, '\u{1F66A}'), // SOLID QUILT SQUARE ORNAMENT
+            (0xD8, '\u{2B9A}'),  // THREE-D TOP-LIGHTED RIGHTWARDS EQUILATERAL ARROWHEAD
+            (0xE8, '\u{1F87A}'), // WIDE-HEADED RIGHTWARDS HEAVY BARB ARROW
+            (0xE9, '\u{1F879}'), // WIDE-HEADED UPWARDS HEAVY BARB ARROW
+            (0xEA, '\u{1F87B}'), // WIDE-HEADED DOWNWARDS HEAVY BARB ARROW
+            (0xEB, '\u{1F87C}'), // WIDE-HEADED NORTH WEST HEAVY BARB ARROW
+            (0xF2, '\u{21E9}'),  // DOWNWARDS WHITE ARROW
+            (0xAB, '\u{2605}'),  // BLACK STAR
+            (0xBB, '\u{1F554}'), // CLOCK FACE FIVE OCLOCK
+            (0xE7, '\u{1F878}'), // WIDE-HEADED LEFTWARDS HEAVY BARB ARROW
+            (0xDC, '\u{2B8A}'),  // RIGHTWARDS BLACK CIRCLED WHITE ARROW
+            (0xC7, '\u{2BB4}'),  // RIBBON ARROW LEFT UP
+            (0x28, '\u{1F57F}'), // BLACK TOUCHTONE TELEPHONE
+            (0x3F, '\u{270D}'),  // WRITING HAND
+            (0xFB, '\u{1F5F6}'), // BALLOT BOX WITH BOLD SCRIPT X（F03 补缺）
+        ];
+        for (code, expected) in wingdings_corrected {
+            let via_prefix = format!("F0{code:02X}");
+            assert_eq!(
+                symbol_to_unicode("Wingdings", &via_prefix),
+                Some(*expected),
+                "Wingdings F0{code:02X} 应映射公开表字符"
+            );
+        }
+        // Wingdings 对照组（公开表一致，不得改）。
+        for (code, expected) in [
+            (0x4A, '\u{263A}'),
+            (0x4B, '\u{1F610}'),
+            (0x6E, '\u{25A0}'),
+            (0x6F, '\u{25A1}'),
+            (0x71, '\u{2751}'),
+            (0xA7, '\u{25AA}'),
+        ] {
+            assert_eq!(
+                wingdings_char(code),
+                Some(expected),
+                "Wingdings {code:#04X}"
+            );
+        }
+        // Symbol 修正条目（F02；Adobe Symbol 表）。
+        for (code, expected) in [
+            (0xD6, '\u{221A}'), // SQUARE ROOT
+            (0xD7, '\u{22C5}'), // DOT OPERATOR
+            (0xB2, '\u{2033}'), // DOUBLE PRIME
+            (0xA1, '\u{03D2}'), // GREEK UPSILON WITH HOOK SYMBOL
+            (0xD1, '\u{2207}'), // NABLA
+        ] {
+            assert_eq!(symbol_font_char(code), Some(expected), "Symbol {code:#04X}");
+        }
+        // Symbol 对照组（不得改；一对多条目按既有首行取值）。
+        for (code, expected) in [
+            (0xB1, '±'),
+            (0xB4, '×'),
+            (0xB8, '÷'),
+            (0xB9, '≠'),
+            (0xBB, '≈'),
+            (0xA3, '≤'),
+            (0xB3, '≥'),
+            (0xA5, '∞'),
+            (0xB0, '°'),
+            (0xB7, '•'),
+            (0x6C, 'λ'),
+            (0x44, 'Δ'),
+            (0x57, 'Ω'),
+            (0x6D, 'μ'),
+        ] {
+            assert_eq!(symbol_font_char(code), Some(expected), "Symbol {code:#04X}");
+        }
+        // 未知字体 / 未知码位 → None（→ symbol_dropped 计数告知，不静默）。
+        assert_eq!(symbol_to_unicode("Webdings", "F0F0"), None, "未知字体");
+        assert_eq!(
+            symbol_to_unicode("Wingdings", "F040"),
+            None,
+            "未知 Wingdings 码位"
+        );
+        assert_eq!(
+            symbol_to_unicode("Symbol", "F090"),
+            None,
+            "未知 Symbol 码位"
+        );
+        assert_eq!(symbol_to_unicode("Wingdings", "ZZ"), None, "非法十六进制");
+    }
+
+    /// fix-docx-fidelity-residuals 2.3：构造覆盖全部修正条目的符号样本，
+    /// 经完整导入管线逐字符断言（零错误映射、零丢弃）。
+    #[test]
+    fn symbol_spike_docx_covers_all_corrected_entries() {
+        // (字体, w:char 写法, 期望字符)：Wingdings 21 条＋Symbol 5 条；
+        // 混用 F0 前缀与裸写法，覆盖读取层前缀归一化。
+        let entries: &[(&str, &str, char)] = &[
+            ("Wingdings", "F0FC", '\u{2714}'),
+            ("Wingdings", "F0FD", '\u{1F5F7}'),
+            ("Wingdings", "F0FE", '\u{1F5F9}'),
+            ("Wingdings", "F04C", '\u{2639}'),
+            ("Wingdings", "F0A8", '\u{25FB}'),
+            ("Wingdings", "F0B7", '\u{1F550}'),
+            ("Wingdings", "F0CB", '\u{1F66A}'),
+            ("Wingdings", "F0D8", '\u{2B9A}'),
+            ("Wingdings", "F0E8", '\u{1F87A}'),
+            ("Wingdings", "F0E9", '\u{1F879}'),
+            ("Wingdings", "F0EA", '\u{1F87B}'),
+            ("Wingdings", "F0EB", '\u{1F87C}'),
+            ("Wingdings", "F0F2", '\u{21E9}'),
+            ("Wingdings", "F0AB", '\u{2605}'),
+            ("Wingdings", "F0BB", '\u{1F554}'),
+            ("Wingdings", "F0E7", '\u{1F878}'),
+            ("Wingdings", "F0DC", '\u{2B8A}'),
+            ("Wingdings", "F0C7", '\u{2BB4}'),
+            ("Wingdings", "F028", '\u{1F57F}'),
+            ("Wingdings", "F03F", '\u{270D}'),
+            ("Wingdings", "F0FB", '\u{1F5F6}'),
+            ("Symbol", "F0D6", '\u{221A}'),
+            ("Symbol", "F0D7", '\u{22C5}'),
+            ("Symbol", "B2", '\u{2033}'),
+            ("Symbol", "F0A1", '\u{03D2}'),
+            ("Symbol", "D1", '\u{2207}'),
+        ];
+        let mut paragraph = Paragraph::new();
+        let mut expected = String::new();
+        for (font, code, ch) in entries {
+            paragraph = paragraph.add_run(Run::new().add_sym(docx_rs::Sym::new(*font, *code)));
+            expected.push(*ch);
+        }
+        let parsed = parse(&pack(Docx::new().add_paragraph(paragraph)));
+        assert_eq!(
+            block_text(&parsed.blocks[0]),
+            expected,
+            "全部修正条目逐字符一致"
+        );
+        assert_eq!(parsed.losses.symbols, 0, "已知条目零丢弃");
+    }
+
+    /// fix-docx-fidelity-residuals 3.3（F05）：字体选择按 run 文字字符类别。
+    #[test]
+    fn font_selection_by_script_class() {
+        let fonts = || {
+            RunFonts::new()
+                .ascii("Calibri")
+                .east_asia("Microsoft YaHei")
+        };
+        let docx = Docx::new()
+            .add_paragraph(
+                Paragraph::new().add_run(Run::new().fonts(fonts()).add_text("Latin text")),
+            )
+            .add_paragraph(Paragraph::new().add_run(Run::new().fonts(fonts()).add_text("中文文本")))
+            .add_paragraph(
+                Paragraph::new().add_run(Run::new().fonts(fonts()).add_text("mixed 中文text")),
+            )
+            // 纯拉丁但缺 ascii 键 → 按西文键序回退 hiAnsi（缺）→ eastAsia。
+            .add_paragraph(
+                Paragraph::new().add_run(
+                    Run::new()
+                        .fonts(RunFonts::new().east_asia("Microsoft YaHei"))
+                        .add_text("no ascii key"),
+                ),
+            )
+            // 空文本 run（仅符号）：维持原回退链（eastAsia 优先）。
+            .add_paragraph(
+                Paragraph::new().add_run(
+                    Run::new()
+                        .fonts(fonts())
+                        .add_sym(docx_rs::Sym::new("Wingdings", "F0FC")),
+                ),
+            );
+        let parsed = parse(&pack(docx));
+        let blocks = blocks_of(&parsed);
+        let family = |block: usize| {
+            blocks[block]["content"][0]["marks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find_map(|m| m["attrs"]["fontFamily"].as_str().map(str::to_string))
+                .unwrap()
+        };
+        assert_eq!(family(0), "Calibri", "纯拉丁 run 取 ascii 字体");
+        assert_eq!(family(1), "Microsoft YaHei", "纯中文 run 取 eastAsia 字体");
+        assert_eq!(
+            family(2),
+            "Microsoft YaHei",
+            "混排 run 取东亚字体（不拆 run）"
+        );
+        assert_eq!(
+            family(3),
+            "Microsoft YaHei",
+            "纯拉丁缺 ascii → 按键序回退至 eastAsia"
+        );
+        assert_eq!(
+            family(4),
+            "Microsoft YaHei",
+            "空文本 run（符号）维持原回退链 eastAsia"
+        );
+    }
+
+    /// fix-docx-fidelity-residuals 3.3（F04）：样式链 spacing 按子属性合并。
+    #[test]
+    fn style_chain_line_spacing_subproperty_merge() {
+        let mut base = Style::new("SpBase", StyleType::Paragraph).name("sp-base");
+        base.paragraph_property = base.paragraph_property.clone().line_spacing(
+            LineSpacing::new()
+                .line_rule(LineSpacingType::Auto)
+                .line(276),
+        );
+        let mut mid = Style::new("SpMid", StyleType::Paragraph)
+            .name("sp-mid")
+            .based_on("SpBase");
+        // Mid 仅覆盖段后间距——继承行距不得丢失（F04）。
+        mid.paragraph_property = mid
+            .paragraph_property
+            .clone()
+            .line_spacing(LineSpacing::new().after(80));
+        let docx = Docx::new()
+            .add_style(base)
+            .add_style(mid)
+            // 场景一：仅样式链（Base line=276 + Mid after=80）。
+            .add_paragraph(
+                Paragraph::new()
+                    .style("SpMid")
+                    .add_run(Run::new().add_text("一")),
+            )
+            // 场景二：直接属性另覆盖 before（多子属性混合；line/after 继承保留）。
+            .add_paragraph(
+                Paragraph::new()
+                    .style("SpMid")
+                    .line_spacing(LineSpacing::new().before(120))
+                    .add_run(Run::new().add_text("二")),
+            )
+            // 场景三：直接属性覆盖 line（直接值优先；after 继承保留）。
+            .add_paragraph(
+                Paragraph::new()
+                    .style("SpMid")
+                    .line_spacing(
+                        LineSpacing::new()
+                            .line_rule(LineSpacingType::Auto)
+                            .line(360),
+                    )
+                    .add_run(Run::new().add_text("三")),
+            );
+        let parsed = parse(&pack(docx));
+        let blocks = blocks_of(&parsed);
+        assert_eq!(
+            blocks[0]["attrs"]["lineHeight"], "1.15",
+            "仅覆盖段后间距时继承行距保留"
+        );
+        assert_eq!(blocks[0]["attrs"]["spacingAfter"], "4pt");
+        assert_eq!(
+            blocks[1]["attrs"]["lineHeight"], "1.15",
+            "直接覆盖 before 不影响继承 line"
+        );
+        assert_eq!(blocks[1]["attrs"]["spacingBefore"], "6pt");
+        assert_eq!(blocks[1]["attrs"]["spacingAfter"], "4pt");
+        assert_eq!(blocks[2]["attrs"]["lineHeight"], "1.5", "直接覆盖行距优先");
+        assert_eq!(
+            blocks[2]["attrs"]["spacingAfter"], "4pt",
+            "直接覆盖行距不影响继承段后距"
+        );
     }
 
     /// 复现 D3：basedOn 三层链的样式格式当前丢失（styles_by_id 只存名称）。

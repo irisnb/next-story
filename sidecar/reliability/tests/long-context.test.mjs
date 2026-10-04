@@ -4,7 +4,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { materialHash, countChars, estimateTokens, mulberry32, generateTier } from "../long-context/generator.mjs";
+import {
+  materialHash,
+  countChars,
+  estimateTokens,
+  mulberry32,
+  generateTier,
+  normalizeHandwrittenText,
+} from "../long-context/generator.mjs";
 import {
   validateAll,
   validateTier,
@@ -66,6 +73,14 @@ test("磁盘夹具全部通过校验（0 项失败）", () => {
   assert.equal(report.ok, true, "全部校验项应通过");
   const failed = report.tiers.flatMap((t) => t.checks.filter((c) => !c.ok));
   assert.deepEqual(failed, [], "不应有失败校验项");
+});
+
+test("CRLF 变体手写档经归一后哈希不漂移（跨平台防护）", () => {
+  const { materials } = loadFromDisk();
+  const lf = materials["coherent-10k"].text;
+  const crlf = lf.replace(/\n/g, "\r\n");
+  assert.equal(normalizeHandwrittenText(crlf), lf);
+  assert.equal(materialHash(normalizeHandwrittenText(crlf)), materials["coherent-10k"].hash);
 });
 
 test("每档查询数达标且七类风险全覆盖", () => {

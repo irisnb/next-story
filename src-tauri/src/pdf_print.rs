@@ -363,6 +363,6 @@ fn dispatch_print_to_pdf(
 fn dispatch_print_to_pdf(
     _window: &WebviewWindow,
     _temp_path: &Path,
-) -> Result<impl FnOnce() -> Result<(), String>, String> {
+) -> Result<Box<dyn FnOnce() -> Result<(), String>>, String> {
     Err("当前平台不支持导出 PDF：打印能力依赖 Windows WebView2".to_string())
 }

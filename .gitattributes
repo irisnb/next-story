@@ -1,0 +1,2 @@
+# 内容哈希夹具：跨平台检出统一 LF（Windows autocrlf 不得转换）
+sidecar/reliability/long-context/materials/*.txt text eol=lf

@@ -31,6 +31,11 @@ export function materialHash(text) {
   return "sha256:" + createHash("sha256").update(text, "utf8").digest("hex");
 }
 
+/** 跨平台归一：手写档读取前统一换行为 LF（CRLF 检出/手工编辑不得改变内容哈希）。 */
+export function normalizeHandwrittenText(text) {
+  return text.replace(/\r\n?/g, "\n");
+}
+
 /** 按 Unicode 码点计字（中文一字一码点，比 UTF-16 长度更符合「字数」直觉）。 */
 export function countChars(s) {
   return [...s].length;
@@ -183,7 +188,7 @@ export function generateTier(tierKey, manifest) {
     // 手写档：正文来自手写 txt，不走种子生成；seed 记 null 表示非生成档。
     const txtPath = handwrittenTextPath(tierKey);
     if (!existsSync(txtPath)) throw new Error(`手写档缺少正文文件：${txtPath}`);
-    text = readFileSync(txtPath, "utf8");
+    text = normalizeHandwrittenText(readFileSync(txtPath, "utf8"));
     seed = null;
   } else {
     text = buildText(spec, tierCfg.seed, tierCfg.target_chars);

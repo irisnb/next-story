@@ -6,6 +6,8 @@
 //!   旧行为对齐）；`Folder` 范围内子节点按嵌套深度逐层递进（直接子级二级），
 //!   封顶六级；`Document` 范围根即文档名，正文直接跟随；文档内部标题按自身层级。
 //! - 列表：无序 `- `、有序从其 `start` 起始编号；嵌套列表按 4 空格缩进逐层递进。
+//!   字母/罗马编号样式无法用 Markdown 表达（规范只支持数字标记），降级为数字
+//!   并由导出命令在结果 message 如实告知（add-list-numbering-formats D6）。
 //! - 行内：粗体 `**`、斜体 `*`、删除线 `~~`、下划线 `<u>`、链接 `[文字](地址)`；
 //!   文字颜色、fontFamily、fontSize、highlight 降级为纯文字，不丢字符。
 //! - 转义：正文中会被 CommonMark 解释为格式的 ASCII 标点以反斜杠转义，保证渲染后
@@ -99,7 +101,7 @@ fn push_block(out: &mut Vec<String>, block: &ExportBlock) {
             }
             out.push(lines.join("\n"));
         }
-        ExportBlock::OrderedList { start, items } => {
+        ExportBlock::OrderedList { start, items, .. } => {
             let mut lines = Vec::new();
             for (index, item) in items.iter().enumerate() {
                 push_list_item(&mut lines, item, Some(start + index as u64), 0);
@@ -130,7 +132,7 @@ fn push_list_item(
                     push_list_item(lines, nested_item, None, depth + 1);
                 }
             }
-            ExportBlock::OrderedList { start, items } => {
+            ExportBlock::OrderedList { start, items, .. } => {
                 for (index, nested_item) in items.iter().enumerate() {
                     push_list_item(lines, nested_item, Some(start + index as u64), depth + 1);
                 }
@@ -138,6 +140,41 @@ fn push_list_item(
             _ => {}
         }
     }
+}
+
+/// 导出序列是否含字母/罗马编号的有序列表（顶层或嵌套；`"1"` 缺省不算）。
+/// 供导出命令生成 Markdown 降级告知（add-list-numbering-formats D6）。
+pub fn has_styled_ordered_lists(project: &ExportProject) -> bool {
+    fn node_has(node: &ExportNode) -> bool {
+        match node {
+            ExportNode::Document { blocks, .. } => blocks.iter().any(block_has),
+            ExportNode::Folder { children, .. } => children.iter().any(node_has),
+        }
+    }
+    fn block_has(block: &ExportBlock) -> bool {
+        match block {
+            ExportBlock::OrderedList {
+                list_type, items, ..
+            } => {
+                if list_type
+                    .as_deref()
+                    .is_some_and(|style| matches!(style, "A" | "a" | "I" | "i"))
+                {
+                    return true;
+                }
+                items
+                    .iter()
+                    .filter_map(|item| item.nested.as_deref())
+                    .any(block_has)
+            }
+            ExportBlock::BulletList { items } => items
+                .iter()
+                .filter_map(|item| item.nested.as_deref())
+                .any(block_has),
+            _ => false,
+        }
+    }
+    project.children.iter().any(node_has)
 }
 
 fn heading_line(level: usize, text: &str) -> String {

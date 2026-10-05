@@ -50,6 +50,7 @@ export const IMPORT_LOSS_LABELS: Record<ImportLoss["kind"], string> = {
   list_overflow_degraded: "列表溢出内容降级为普通段落",
   symbol_dropped: "符号字符丢弃",
   style_degraded: "样式属性未解析",
+  numbering_format_degraded: "编号格式降级为数字",
   block_skipped: "无法识别的块跳过",
 };
 

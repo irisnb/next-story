@@ -141,7 +141,20 @@
             <button id="btn-toolbar-underline" class="toolbar-btn" type="button" aria-label="下划线" aria-pressed="false" title="下划线 (Ctrl+U)"><span class="mark-underline">U</span></button>
             <button id="btn-toolbar-strike" class="toolbar-btn" type="button" aria-label="删除线" aria-pressed="false"><span class="mark-strike">S</span></button>
             <button id="btn-bullet-list" class="toolbar-btn" type="button" aria-label="无序列表" aria-pressed="false">• 列表</button>
-            <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
+            <div class="ol-style-row">
+              <button id="btn-ordered-list" class="toolbar-btn" type="button" aria-label="有序列表" aria-pressed="false">1. 列表</button>
+              <button id="btn-ordered-list-style" class="ol-style-trigger" type="button" aria-label="有序列表编号样式" title="编号样式" aria-haspopup="true" aria-expanded="false" aria-controls="ordered-list-style-menu" disabled>
+                <span class="ol-style-caret" aria-hidden="true"></span>
+              </button>
+              <div id="ordered-list-style-menu" class="ol-style-menu hidden" role="menu" aria-label="有序列表编号样式">
+                <span id="ordered-list-style-current" class="ol-style-current"></span>
+                <button id="btn-ol-style-1" class="ol-style-item" type="button" role="menuitemradio" data-style="1" aria-checked="false"><span class="ol-style-mark" aria-hidden="true">1.</span>数字</button>
+                <button id="btn-ol-style-A" class="ol-style-item" type="button" role="menuitemradio" data-style="A" aria-checked="false"><span class="ol-style-mark" aria-hidden="true">A.</span>大写字母</button>
+                <button id="btn-ol-style-a" class="ol-style-item" type="button" role="menuitemradio" data-style="a" aria-checked="false"><span class="ol-style-mark" aria-hidden="true">a.</span>小写字母</button>
+                <button id="btn-ol-style-I" class="ol-style-item" type="button" role="menuitemradio" data-style="I" aria-checked="false"><span class="ol-style-mark" aria-hidden="true">I.</span>大写罗马</button>
+                <button id="btn-ol-style-i" class="ol-style-item" type="button" role="menuitemradio" data-style="i" aria-checked="false"><span class="ol-style-mark" aria-hidden="true">i.</span>小写罗马</button>
+              </div>
+            </div>
             <button id="btn-undo" class="toolbar-btn" type="button" aria-label="撤销" title="撤销 (Ctrl+Z)">撤销</button>
             <button id="btn-redo" class="toolbar-btn" type="button" aria-label="重做" title="重做 (Ctrl+Y)">重做</button>
             <button id="btn-find" class="toolbar-btn" type="button" aria-label="查找" title="查找 (Ctrl+F)">查找</button>

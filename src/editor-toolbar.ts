@@ -5,8 +5,13 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
-import { analyzeSelection, type FormatCommand, type TriState } from "./format-commands.ts";
-import { canonicalDoc } from "./structured-notebook.ts";
+import {
+  analyzeSelection,
+  orderedListStyleState,
+  type FormatCommand,
+  type TriState,
+} from "./format-commands.ts";
+import { canonicalDoc, type OrderedListStyle } from "./structured-notebook.ts";
 import {
   DEFAULT_MARGIN_PRESET,
   nextMarginPreset,
@@ -35,6 +40,18 @@ const COLUMN_WIDTH_LABELS: Record<ColumnWidthPreset, string> = {
   wide: "宽",
 };
 
+/** 编号样式子菜单的五值（与有序列表按钮旁 flyout 的 data-style 一一对应）。 */
+const ORDERED_LIST_STYLE_VALUES: readonly OrderedListStyle[] = ["1", "A", "a", "I", "i"];
+
+/** 编号样式的中文名（子菜单状态行与触发器提示共用）。 */
+const ORDERED_LIST_STYLE_LABELS: Record<OrderedListStyle, string> = {
+  "1": "数字",
+  "A": "大写字母",
+  "a": "小写字母",
+  "I": "大写罗马",
+  "i": "小写罗马",
+};
+
 const DRAWER_CLOSE_DELAY_MS = 350;
 
 /** 工具栏模块所需的编辑器窄能力。 */
@@ -56,6 +73,10 @@ export interface EditorToolbarDeps {
     | "btnToolbarStrike"
     | "btnBulletList"
     | "btnOrderedList"
+    | "btnOrderedListStyle"
+    | "orderedListStyleMenu"
+    | "orderedListStyleCurrent"
+    | "orderedListStyleItems"
     | "btnUndo"
     | "btnRedo"
     | "btnMargin"
@@ -118,6 +139,17 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     cleanup.push(() => element.removeEventListener(type, listener));
   }
 
+  /** 带事件参数的绑定（Escape 等键盘交互）；与 bind 同一清理通道。 */
+  function bindEvent<E extends Event>(
+    element: HTMLElement,
+    type: string,
+    listener: (event: E) => void,
+  ): void {
+    const handler = listener as (event: Event) => void;
+    element.addEventListener(type, handler);
+    cleanup.push(() => element.removeEventListener(type, handler));
+  }
+
   function pressedValue(state: TriState): string {
     return state === "on" ? "true" : state === "off" ? "false" : "mixed";
   }
@@ -125,6 +157,12 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
   /** 抽屉下拉的显示值：多种→"mixed" 占位项（禁用、仅程序选中），无→""（默认/无），统一值→原值。 */
   function drawerSelectValue(state: string | null | "mixed"): string {
     return state === "mixed" ? "mixed" : state ?? "";
+  }
+
+  /** 编号样式 flyout 的开合与触发器 aria-expanded 同步。 */
+  function setOrderedListStyleMenuOpen(open: boolean): void {
+    dom.orderedListStyleMenu.classList.toggle("hidden", !open);
+    dom.btnOrderedListStyle.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
   // 抽屉内所有格式控件：无文字选区时整体禁用。
@@ -159,6 +197,8 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnToolbarStrike.disabled = true;
     dom.btnBulletList.disabled = true;
     dom.btnOrderedList.disabled = true;
+    dom.btnOrderedListStyle.disabled = true;
+    setOrderedListStyleMenuOpen(false);
     dom.btnUndo.disabled = true;
     dom.btnRedo.disabled = true;
     for (const control of drawerControls) control.disabled = true;
@@ -172,11 +212,8 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     }
     const selection = current.getSelection();
     const hasSelection = selection.from < selection.to;
-    const format = analyzeSelection(
-      canonicalDoc(current.getDocument()),
-      selection.from,
-      selection.to,
-    );
+    const canonical = canonicalDoc(current.getDocument());
+    const format = analyzeSelection(canonical, selection.from, selection.to);
     const canUndo = current.canUndo();
     const canRedo = current.canRedo();
 
@@ -188,6 +225,27 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnToolbarStrike.setAttribute("aria-pressed", pressedValue(format.strike));
     dom.btnBulletList.setAttribute("aria-pressed", format.list === "bullet" ? "true" : "false");
     dom.btnOrderedList.setAttribute("aria-pressed", format.list === "ordered" ? "true" : "false");
+
+    // 有序列表编号样式（flyout 子菜单）：沿用工具栏既有口径——非空文字选区
+    // 且选区触及有序列表项（样式状态非 null）才可用；禁用时随 render 收起菜单。
+    const olStyle = orderedListStyleState(canonical, selection.from, selection.to);
+    const olStyleUsable = hasSelection && olStyle !== null;
+    dom.btnOrderedListStyle.disabled = !olStyleUsable;
+    if (!olStyleUsable) setOrderedListStyleMenuOpen(false);
+    dom.btnOrderedListStyle.title =
+      olStyle === "mixed"
+        ? "编号样式：多种格式"
+        : olStyle !== null
+          ? `编号样式：${ORDERED_LIST_STYLE_LABELS[olStyle]}`
+          : "编号样式";
+    dom.orderedListStyleCurrent.textContent =
+      olStyle === "mixed" ? "多种格式" : olStyle !== null ? ORDERED_LIST_STYLE_LABELS[olStyle] : "";
+    for (const item of dom.orderedListStyleItems) {
+      const checked =
+        olStyle !== null && olStyle !== "mixed" && item.getAttribute("data-style") === olStyle;
+      item.setAttribute("aria-checked", checked ? "true" : "false");
+      item.classList.toggle("active", checked);
+    }
 
     // 格式抽屉：字符格式
     dom.btnUnderline.setAttribute("aria-pressed", pressedValue(format.underline));
@@ -256,6 +314,54 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
   bind(dom.btnToolbarStrike, "click", () => runSelectionCommand({ kind: "strike" }));
   bind(dom.btnBulletList, "click", () => runSelectionCommand({ kind: "bulletList" }));
   bind(dom.btnOrderedList, "click", () => runSelectionCommand({ kind: "orderedList" }));
+
+  // ---- 有序列表编号样式 flyout（PS 风格紧邻子菜单） ----
+
+  bind(dom.btnOrderedListStyle, "click", () => {
+    setOrderedListStyleMenuOpen(dom.orderedListStyleMenu.classList.contains("hidden"));
+  });
+  for (const item of dom.orderedListStyleItems) {
+    bind(item, "click", () => {
+      const style = ORDERED_LIST_STYLE_VALUES.find(
+        (value) => value === item.getAttribute("data-style"),
+      );
+      if (!style) return;
+      // 经既有命令对当前选区生效（可撤销由命令保证）；点击后收起菜单。
+      runSelectionCommand({ kind: "orderedListStyle", style });
+      setOrderedListStyleMenuOpen(false);
+    });
+  }
+  // 外点与 Escape 关闭（浏览器环境接线；node 单测无 document 时跳过）。
+  if (typeof document !== "undefined") {
+    const insideStyleFlyout = (target: EventTarget | null): boolean => {
+      if (typeof target !== "object" || target === null) return false;
+      try {
+        return (
+          dom.orderedListStyleMenu.contains(target as globalThis.Node) ||
+          dom.btnOrderedListStyle.contains(target as globalThis.Node)
+        );
+      } catch {
+        // target 不是真实 DOM 节点（测试桩）时按“在 flyout 之外”处理。
+        return false;
+      }
+    };
+    const onDocMouseDown = (event: MouseEvent): void => {
+      if (
+        !dom.orderedListStyleMenu.classList.contains("hidden") &&
+        !insideStyleFlyout(event.target)
+      ) {
+        setOrderedListStyleMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    cleanup.push(() => document.removeEventListener("mousedown", onDocMouseDown));
+  }
+  // Escape 关闭：焦点通常在触发器或编辑器内（都在编辑页容器里），冒泡即可达；
+  // 不挂全局 keydown，避免叠加应用级快捷键监听。
+  bindEvent<KeyboardEvent>(dom.editorPage, "keydown", (event) => {
+    if (event.key === "Escape") setOrderedListStyleMenuOpen(false);
+  });
+
   bind(dom.btnUndo, "click", () => runFormatCommand({ kind: "undo" }));
   bind(dom.btnRedo, "click", () => runFormatCommand({ kind: "redo" }));
   bind(dom.paragraphStyle, "change", () => {

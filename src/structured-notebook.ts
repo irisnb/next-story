@@ -1,4 +1,4 @@
-// 结构化文档：格式版本 2 的精确外层、grammar、严格校验与规范输出。
+// 结构化文档：格式版本 3 的精确外层、grammar、严格校验与规范输出。
 //
 // 这是每篇文档在磁盘上的唯一事实源契约。前端与 Rust 后端共享同一份
 // 规范 / 非规范 JSON 样例（见 tests/fixtures/notebook-samples.json），确保
@@ -8,9 +8,13 @@
 // highlight（color）、link（href）字符标记；段落属性（textAlign/lineHeight/段前后间距/
 // 首行缩进/左右缩进）；一到六级标题；嵌套列表。版本 1 是版本 2 的严格子集，打开时按
 // 版本 2 接受，保存时写回版本 2。
+//
+// 格式版本 3 相对版本 2 新增：有序列表编号样式键 `orderedList.attrs.type`
+// （取值 "1"/"A"/"a"/"I"/"i"；值为 "1" 或缺失时必须省略）。版本 1、2 是版本 3
+// 的严格子集，打开时按版本 3 grammar 接受，保存时写回版本 3。
 
 export const NOTEBOOK_FORMAT = "next-story-tiptap";
-export const NOTEBOOK_VERSION = 2;
+export const NOTEBOOK_VERSION = 3;
 /** JavaScript 安全整数上限 2^53 - 1。 */
 export const MAX_SAFE_INTEGER = 9007199254740991;
 
@@ -66,9 +70,15 @@ export interface BulletListNode {
 
 export interface OrderedListNode {
   type: "orderedList";
-  attrs: { start: number };
+  attrs: { start: number; type?: OrderedNonDecimalStyle };
   content: ListItemNode[];
 }
+
+/** 有序列表编号样式（五值域；缺省等同 `"1"`）。 */
+export type OrderedListStyle = "1" | "A" | "a" | "I" | "i";
+
+/** 非十进制编号样式（`"1"` 是缺省值，规范形态必须省略该键）。 */
+export type OrderedNonDecimalStyle = Exclude<OrderedListStyle, "1">;
 
 export interface ListItemNode {
   type: "listItem";
@@ -164,6 +174,9 @@ const MEASURE_ATTR_KEYS = [
   "indentRight",
 ] as const;
 const TEXT_ALIGN_VALUES = new Set(["left", "center", "right", "justify"]);
+
+/** 有序列表编号样式值域；`"1"` 为缺省值，出现即非规范（必须省略）。 */
+const NON_DECIMAL_ORDERED_STYLES = new Set(["A", "a", "I", "i"]);
 
 /** 颜色规范：小写 #rrggbb 六位十六进制。 */
 const HEX_COLOR = /^#[0-9a-f]{6}$/;
@@ -443,8 +456,8 @@ function validateOrderedList(value: unknown, where: string): string | null {
     return `${where}：orderedList 含额外或缺失字段`;
   }
   if (value.type !== "orderedList") return `${where}：节点类型应为 orderedList`;
-  if (!isPlainObject(value.attrs) || !checkKeys(value.attrs, ["start"])) {
-    return `${where}：orderedList 的 attrs 应为恰好含 start`;
+  if (!isPlainObject(value.attrs) || !checkKeys(value.attrs, ["start"], ["type"])) {
+    return `${where}：orderedList 的 attrs 应为恰好含 start（可另含 type）`;
   }
   const start = value.attrs.start;
   if (typeof start !== "number" || !Number.isInteger(start)) {
@@ -452,6 +465,13 @@ function validateOrderedList(value: unknown, where: string): string | null {
   }
   if (start < 1 || start > MAX_SAFE_INTEGER) {
     return `${where}：start 必须在 1 到 2^53-1 之间`;
+  }
+  const style = value.attrs.type;
+  if (style !== undefined) {
+    if (style === "1") return `${where}：type 为 1 时必须省略`;
+    if (typeof style !== "string" || !NON_DECIMAL_ORDERED_STYLES.has(style)) {
+      return `${where}：type 取值非法`;
+    }
   }
   const itemsError = validateListItems(value.content, where);
   if (itemsError) return itemsError;
@@ -508,7 +528,7 @@ export function validateNotebookDocument(value: unknown): ValidationResult {
     return fail("文档外层字段不正确");
   }
   if (value.format !== NOTEBOOK_FORMAT) return fail("文档格式不受支持");
-  if (value.version !== 1 && value.version !== 2) {
+  if (value.version !== 1 && value.version !== 2 && value.version !== 3) {
     return fail("文档版本不受支持");
   }
   const docError = validateDocNode(value.document);
@@ -679,16 +699,28 @@ function canonicalOrderedList(raw: unknown): OrderedListNode | null {
   if (!isPlainObject(raw) || raw.type !== "orderedList" || !Array.isArray(raw.content)) {
     return null;
   }
-  const start = isPlainObject(raw.attrs) ? raw.attrs.start : undefined;
+  const attrs = isPlainObject(raw.attrs) ? raw.attrs : {};
+  const start = attrs.start;
   if (typeof start !== "number" || !Number.isInteger(start)) return null;
   if (start < 1 || start > MAX_SAFE_INTEGER) return null;
+  // 编号样式规范化：非十进制四值保留；"1"、null 与非法值按缺省省略。
+  const style = attrs.type;
+  const listType: OrderedNonDecimalStyle | undefined =
+    typeof style === "string" && NON_DECIMAL_ORDERED_STYLES.has(style)
+      ? (style as OrderedNonDecimalStyle)
+      : undefined;
   const content: ListItemNode[] = [];
   for (const item of raw.content) {
     const listItem = canonicalListItem(item);
     if (listItem) content.push(listItem);
   }
   if (content.length === 0) return null;
-  return { type: "orderedList", attrs: { start }, content };
+  const node: OrderedListNode = {
+    type: "orderedList",
+    attrs: listType ? { start, type: listType } : { start },
+    content,
+  };
+  return node;
 }
 
 function canonicalBlock(raw: unknown): BlockNode | null {

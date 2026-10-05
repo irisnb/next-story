@@ -133,6 +133,11 @@ pub(crate) struct LossCounter {
     pub(crate) symbols: usize,
     /// docx：样式链上存在但无法解析/映射的属性计数（fix-import-fidelity D3）。
     pub(crate) style_degraded: usize,
+    /// docx：编号格式降级为十进制的段落数（add-list-numbering-formats：
+    /// numFmt 不在五值映射或 lvlText 非 `%N.` 简单模板）。
+    pub(crate) numbering_format_degraded: usize,
+    /// docx：编号格式降级的去重详情（numFmt／lvlText 形态，进入告知 note）。
+    pub(crate) numbering_format_details: Vec<String>,
 }
 
 impl LossCounter {
@@ -304,6 +309,30 @@ impl LossCounter {
             "style_degraded",
             self.style_degraded,
             format!("{} 处样式链属性无法解析映射，已忽略", self.style_degraded),
+        );
+        push(
+            "numbering_format_degraded",
+            self.numbering_format_degraded,
+            format!(
+                "{} 个段落的编号格式（字母/罗马之外的 numFmt 或非简单模板 lvlText）已按数字编号导入（如：{}）",
+                self.numbering_format_degraded,
+                if self.numbering_format_details.is_empty() {
+                    "无".to_string()
+                } else {
+                    let preview: Vec<&str> = self
+                        .numbering_format_details
+                        .iter()
+                        .take(3)
+                        .map(String::as_str)
+                        .collect();
+                    let suffix = if self.numbering_format_details.len() > 3 {
+                        format!(" 等 {} 种", self.numbering_format_details.len())
+                    } else {
+                        String::new()
+                    };
+                    format!("{}{suffix}", preview.join("、"))
+                }
+            ),
         );
         out
     }

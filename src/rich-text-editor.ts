@@ -20,7 +20,7 @@ import Text from "@tiptap/extension-text";
 import type { FormatCommand } from "./format-commands.ts";
 import { showMessage } from "./app-dialog.ts";
 import { FontSize, ParagraphStyle } from "./editor-extensions.ts";
-import { fixSplitOrderedListStart } from "./list-numbering.ts";
+import { fixSplitOrderedListStart, setOrderedListStyleInSelection } from "./list-numbering.ts";
 import { decidePasteAction, parseHtmlToBlocks, plainTextToDocument } from "./controlled-paste.ts";
 import { canonicalDoc, serializeSelectionToPlainText } from "./structured-notebook.ts";
 import {
@@ -268,6 +268,8 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
         return chain.toggleBulletList().run();
       case "orderedList":
         return this.toggleOrderedList();
+      case "orderedListStyle":
+        return this.setOrderedListStyle(command.style);
       case "sinkListItem":
         return chain.sinkListItem("listItem").run();
       case "liftListItem":
@@ -330,6 +332,19 @@ class TiptapRichTextEditorEngine implements RichTextEditorEngine {
       .focus()
       .updateAttributes("paragraph", { [attr]: value })
       .updateAttributes("heading", { [attr]: value })
+      .run();
+  }
+
+  /** 把选区触及的完整有序列表的编号样式设为指定值（可撤销；底层逻辑见 list-numbering.ts）。 */
+  private setOrderedListStyle(style: "1" | "A" | "a" | "I" | "i"): boolean {
+    const { from, to } = this.editor.state.selection;
+    return this.editor
+      .chain()
+      .focus()
+      .command(({ tr }) => {
+        setOrderedListStyleInSelection(tr.doc, tr, from, to, style);
+        return true;
+      })
       .run();
   }
 

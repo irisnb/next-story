@@ -14,6 +14,12 @@
 //!   del）/ 缺 Fallback 的 AlternateContent 与脚注引用在 document.xml 上按
 //!   本地名扫描计数（docx-rs 读侧对两者分别缺少解析与完全不解析）/
 //!   `wpsCustomData` 等私货不解析。
+//! - **编号格式映射**（add-list-numbering-formats D5）：numFmt 五值→有序
+//!   编号样式（decimal/upperLetter/lowerLetter/upperRoman/lowerRoman），
+//!   `bullet`→无序、`none`→无编号；其余 numFmt 与非 `%N.` 简单模板的
+//!   lvlText →十进制＋`numbering_format_degraded` 告知；`lvlOverride.lvl`
+//!   整套替换抽象层对应级别（F06），起点优先链 startOverride ＞ 覆盖层
+//!   起点 ＞ 抽象定义起点；`ilvl>0` 维持降级＋告知（F08，多级语义留 D-2）。
 //!
 //! 值约定（与前端编辑器 CSS 值一致）：fontSize/spacing 用 pt（如 `12pt`），
 //! 行距 auto 规则为无单位倍数（如 `1.5`），缩进优先用字符单位 em
@@ -43,16 +49,99 @@ const MAX_IMPORT_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 
 /// 单个编号层级的可见性与形态。`visible=false` 表示编号不可见（numFmt=none、
 /// lvlText 为空或定义缺失），按普通段落处理（编号可见性规则）。
+/// `style`：有序编号样式（编辑器五值 `"1"`/`"A"`/`"a"`/`"I"`/`"i"`；降级为 `"1"`）。
+/// `format_degraded`：numFmt 不在五值映射、或 lvlText 不是 `%N.` 简单模板——
+/// 按数字编号导入并以 `numbering_format_degraded` 告知（add-list-numbering-formats D5）。
 #[derive(Debug, Clone)]
 struct LevelInfo {
     visible: bool,
     ordered: bool,
     start: u64,
+    style: &'static str,
+    format_degraded: bool,
+    degraded_note: Option<String>,
 }
 
-/// numId → 各层级定义（按 ilvl 下标）。仅解析 num/abstractNum 两级引用；
-/// lvlOverride 的 startOverride 消费（fix-import-fidelity D4，spike 结论：
-/// `LevelOverride{level, override_start}` 字段 pub、reader 完整读取）；
+/// numFmt 分类：bullet→无序；none→无编号；五值→可映射样式；其余→降级。
+enum NumFmtKind {
+    Bullet,
+    Hidden,
+    Mapped(&'static str),
+    Degraded,
+}
+
+fn classify_num_fmt(num_fmt: &str) -> NumFmtKind {
+    match num_fmt {
+        "bullet" => NumFmtKind::Bullet,
+        "none" => NumFmtKind::Hidden,
+        "decimal" => NumFmtKind::Mapped("1"),
+        "upperLetter" => NumFmtKind::Mapped("A"),
+        "lowerLetter" => NumFmtKind::Mapped("a"),
+        "upperRoman" => NumFmtKind::Mapped("I"),
+        "lowerRoman" => NumFmtKind::Mapped("i"),
+        _ => NumFmtKind::Degraded,
+    }
+}
+
+/// 由一个级别定义构造 [`LevelInfo`]（抽象层与 `lvlOverride.lvl` 覆盖层共用）。
+/// 简单模板＝恰好 `%{ilvl+1}.`（该层自身占位符＋句点）；其余 lvlText 模板
+/// （如 `%1)`、`第%1章`、`%1.%2.`）按降级告知处理。
+fn level_info_from(lvl_text: &str, num_fmt: &str, start: u64, ilvl: usize) -> LevelInfo {
+    let visible = !lvl_text.trim().is_empty() && num_fmt != "none";
+    match classify_num_fmt(num_fmt) {
+        NumFmtKind::Bullet => LevelInfo {
+            visible,
+            ordered: false,
+            start,
+            style: "1",
+            format_degraded: false,
+            degraded_note: None,
+        },
+        NumFmtKind::Hidden => LevelInfo {
+            visible: false,
+            ordered: num_fmt != "bullet",
+            start,
+            style: "1",
+            format_degraded: false,
+            degraded_note: None,
+        },
+        NumFmtKind::Mapped(style) => {
+            let simple_template = format!("%{}.", ilvl + 1);
+            if lvl_text == simple_template {
+                LevelInfo {
+                    visible,
+                    ordered: true,
+                    start,
+                    style,
+                    format_degraded: false,
+                    degraded_note: None,
+                }
+            } else {
+                LevelInfo {
+                    visible,
+                    ordered: true,
+                    start,
+                    style: "1",
+                    format_degraded: true,
+                    degraded_note: Some(format!("{num_fmt}（lvlText“{lvl_text}”）")),
+                }
+            }
+        }
+        NumFmtKind::Degraded => LevelInfo {
+            visible,
+            ordered: true,
+            start,
+            style: "1",
+            format_degraded: true,
+            degraded_note: Some(format!("{num_fmt}（lvlText“{lvl_text}”）")),
+        },
+    }
+}
+
+/// numId → 各层级定义（按 ilvl 下标，含 `lvlOverride.lvl` 整套替换，F06）。
+/// 仅解析 num/abstractNum 两级引用；`lvlOverride`：`override_level` 整套替换
+/// 抽象层对应级别（起点与格式均取覆盖值），`override_start` 仍经 overrides
+/// 表参与起点优先链（startOverride ＞ 覆盖层起点 ＞ 抽象定义起点）；
 /// 样式链编号（numStyleLink）仍不解析，解析不到按降级告知。
 #[derive(Default)]
 struct NumberingIndex {
@@ -69,12 +158,8 @@ impl NumberingIndex {
             for level in &abs.levels {
                 let lvl_text = ser_str(&level.text).unwrap_or_default();
                 let num_fmt = level.format.val.clone();
-                let visible = !lvl_text.trim().is_empty() && num_fmt != "none";
-                let info = LevelInfo {
-                    visible,
-                    ordered: num_fmt != "bullet",
-                    start: ser_u64(&level.start).unwrap_or(1).max(1),
-                };
+                let start = ser_u64(&level.start).unwrap_or(1).max(1);
+                let info = level_info_from(&lvl_text, &num_fmt, start, level.level);
                 if levels.len() <= level.level {
                     levels.resize(level.level + 1, None);
                 }
@@ -85,28 +170,49 @@ impl NumberingIndex {
         let mut map = HashMap::new();
         let mut overrides = HashMap::new();
         for num in &numberings.numberings {
-            if let Some(levels) = abstract_levels.get(&num.abstract_num_id) {
-                map.insert(num.id, levels.clone());
-            }
+            // 覆盖层从抽象层克隆后按 lvlOverride 整套替换（F06：覆盖层提供的
+            // lvl 整体替换抽象定义的对应层，起点与格式均取覆盖值）。
+            let mut levels = abstract_levels.get(&num.abstract_num_id).cloned();
             for level_override in &num.level_overrides {
-                if let Some(start) = level_override.override_start {
-                    overrides.insert(
-                        (num.id, level_override.level),
-                        u64::try_from(start).unwrap_or(1).max(1),
-                    );
+                let target = level_override.level;
+                if let Some(lvl) = &level_override.override_level {
+                    let lvl_text = ser_str(&lvl.text).unwrap_or_default();
+                    let num_fmt = lvl.format.val.clone();
+                    let start = ser_u64(&lvl.start).unwrap_or(1).max(1);
+                    let info = level_info_from(&lvl_text, &num_fmt, start, target);
+                    let slots = levels.get_or_insert_with(Vec::new);
+                    if slots.len() <= target {
+                        slots.resize(target + 1, None);
+                    }
+                    slots[target] = Some(info);
                 }
+                if let Some(start) = level_override.override_start {
+                    overrides.insert((num.id, target), u64::try_from(start).unwrap_or(1).max(1));
+                }
+            }
+            if let Some(levels) = levels {
+                map.insert(num.id, levels);
             }
         }
         Self { map, overrides }
     }
 
-    /// 取 numId 的第 0 层定义；不可见或缺失返回 None（调用方按普通段落处理）。
-    fn level0(&self, num_id: usize) -> Option<&LevelInfo> {
+    /// 取 numId 指定层级的定义（可见性过滤；缺失或不可见返回 None）。
+    fn level(&self, num_id: usize, ilvl: usize) -> Option<&LevelInfo> {
         self.map
             .get(&num_id)?
-            .first()?
+            .get(ilvl)?
             .as_ref()
             .filter(|info| info.visible)
+    }
+
+    /// 取 numId 指定层级的定义起点（不做可见性过滤；计数器语义用）。
+    fn level_start(&self, num_id: usize, ilvl: usize) -> Option<u64> {
+        self.map
+            .get(&num_id)?
+            .get(ilvl)?
+            .as_ref()
+            .map(|info| info.start)
     }
 
     /// numId 在指定层级的 startOverride（无覆盖返回 None）。
@@ -147,8 +253,9 @@ impl ParaAccum {
 #[derive(Clone)]
 struct ParaOut {
     node: Value,
-    /// (numId, ordered, start)：参与列表归组的段落携带。
-    list: Option<(usize, bool, u64)>,
+    /// (numId, ordered, start, style)：参与列表归组的段落携带；style 为有序
+    /// 编号样式（`"1"`/`"A"`/`"a"`/`"I"`/`"i"`，降级层为 `"1"`）。
+    list: Option<(usize, bool, u64, &'static str)>,
     /// (family_key, trimmed text)：仅顶层、非列表、全加粗段落识别。
     marker: Option<(String, String)>,
 }
@@ -454,15 +561,17 @@ impl Converter {
     }
 
     /// D4 编号解析：生效 numberingProperty（含样式链携带的编号，如
-    /// ListNumber 样式的 pPr numPr）→ 计数器语义下的 (numId, ordered, 当前值)。
+    /// ListNumber 样式的 pPr numPr）→ 计数器语义下的 (numId, ordered, 当前值, 样式)。
     /// 墓碑/缺失→普通段落不计数；ilvl>0/表格内/定义不可见→numbering_degraded
-    /// （计数器仍按语义推进，供将来多层渲染）；同 numId 计数跨打断持续、
-    /// 更深层级在更浅出现时重置、startOverride 改写起点。
+    /// （计数器仍按语义推进，供将来多层渲染）；numFmt 不在五值映射或 lvlText
+    /// 非简单模板→十进制导入＋numbering_format_degraded（计数＋详情，不静默）；
+    /// 同 numId 计数跨打断持续、更深层级在更浅出现时重置；起点优先链
+    /// startOverride ＞ 覆盖层 lvl 起点 ＞ 抽象定义起点（F06）。
     fn resolve_numbering(
         &mut self,
         effective_ppr: &Map<String, Value>,
         in_table: bool,
-    ) -> Option<(usize, bool, u64)> {
+    ) -> Option<(usize, bool, u64, &'static str)> {
         let numbering = effective_ppr
             .get("numberingProperty")
             .and_then(Value::as_object)?;
@@ -483,11 +592,12 @@ impl Converter {
         for key in keys_to_reset {
             self.numbering_counters.remove(&key);
         }
-        // 首见计数器起点＝startOverride（若该 numId 覆盖了此层）否则定义层起点。
+        // 首见计数器起点＝startOverride（若该 numId 覆盖了此层）＞ 生效层定义
+        // 起点（覆盖层 lvl 整套替换后已含覆盖值）＞ 1。
         let start = self
             .numbering
             .override_start(num_id, ilvl)
-            .or_else(|| self.numbering.level0(num_id).map(|info| info.start))
+            .or_else(|| self.numbering.level_start(num_id, ilvl))
             .unwrap_or(1);
         let counter = self
             .numbering_counters
@@ -500,8 +610,18 @@ impl Converter {
             self.losses.numbering_degraded += 1;
             return None;
         }
-        match self.numbering.level0(num_id) {
-            Some(info) => Some((num_id, info.ordered, current)),
+        match self.numbering.level(num_id, 0) {
+            Some(info) => {
+                if info.format_degraded {
+                    self.losses.numbering_format_degraded += 1;
+                    if let Some(note) = &info.degraded_note {
+                        if !self.losses.numbering_format_details.contains(note) {
+                            self.losses.numbering_format_details.push(note.clone());
+                        }
+                    }
+                }
+                Some((num_id, info.ordered, current, info.style))
+            }
             None => {
                 self.losses.numbering_degraded += 1;
                 None
@@ -683,7 +803,7 @@ impl Converter {
         &mut self,
         acc: ParaAccum,
         top_level: bool,
-        list: Option<(usize, bool, u64)>,
+        list: Option<(usize, bool, u64, &'static str)>,
     ) -> ParaOut {
         let (content, text_total) = merge_inline_runs(acc.inline);
         self.char_count += text_total.chars().count();
@@ -1076,7 +1196,7 @@ fn group_blocks_with_markers(paras: Vec<ParaOut>) -> (Vec<Value>, Vec<(usize, St
     let mut out: Vec<Value> = Vec::new();
     let mut markers: Vec<(usize, String, String)> = Vec::new();
     let mut items: Vec<Value> = Vec::new();
-    let mut current: Option<(usize, bool, u64)> = None;
+    let mut current: Option<(usize, bool, u64, &'static str)> = None;
     for para in paras {
         match (current, para.list) {
             (_, None) => {
@@ -1107,9 +1227,9 @@ fn group_blocks_with_markers(paras: Vec<ParaOut>) -> (Vec<Value>, Vec<(usize, St
 fn flush_list(
     out: &mut Vec<Value>,
     items: &mut Vec<Value>,
-    current: &mut Option<(usize, bool, u64)>,
+    current: &mut Option<(usize, bool, u64, &'static str)>,
 ) {
-    let Some((_, ordered, start)) = current.take() else {
+    let Some((_, ordered, start, style)) = current.take() else {
         return;
     };
     if items.is_empty() {
@@ -1117,7 +1237,12 @@ fn flush_list(
     }
     let drained: Vec<Value> = std::mem::take(items);
     let list = if ordered {
-        json!({ "type": "orderedList", "attrs": { "start": start }, "content": drained })
+        // 编号样式为缺省 "1" 时省略 type（与存储 grammar 的规范形态一致）。
+        if style == "1" {
+            json!({ "type": "orderedList", "attrs": { "start": start }, "content": drained })
+        } else {
+            json!({ "type": "orderedList", "attrs": { "start": start, "type": style }, "content": drained })
+        }
     } else {
         json!({ "type": "bulletList", "content": drained })
     };
@@ -2829,6 +2954,282 @@ mod tests {
             .collect();
         assert_eq!(ordered.len(), 1);
         assert_eq!(ordered[0]["attrs"]["start"], 5, "startOverride 改写起点");
+    }
+
+    // ===== add-list-numbering-formats：numFmt 映射 / 降级告知 / F06 / F08 =====
+
+    fn level_of(num_fmt: &str, lvl_text: &str, start: usize) -> Level {
+        Level::new(
+            0,
+            Start::new(start),
+            NumberFormat::new(num_fmt),
+            LevelText::new(lvl_text),
+            LevelJc::new("left"),
+        )
+    }
+
+    fn ordered_blocks_of(parsed: &ParsedDocument) -> Vec<&Value> {
+        parsed
+            .blocks
+            .iter()
+            .filter(|b| b["type"] == "orderedList")
+            .collect()
+    }
+
+    /// 3.1：numFmt 五值映射逐值（decimal/upperLetter/lowerLetter/upperRoman/lowerRoman）。
+    #[test]
+    fn numfmt_five_values_map_to_list_styles() {
+        for (num_fmt, expected) in [
+            ("decimal", "1"),
+            ("upperLetter", "A"),
+            ("lowerLetter", "a"),
+            ("upperRoman", "I"),
+            ("lowerRoman", "i"),
+        ] {
+            let abstract_num = AbstractNumbering::new(1).add_level(level_of(num_fmt, "%1.", 1));
+            let docx = Docx::new()
+                .add_abstract_numbering(abstract_num)
+                .add_numbering(docx_rs::Numbering::new(1, 1))
+                .add_paragraph(
+                    Paragraph::new()
+                        .numbering(NumberingId::new(1), IndentLevel::new(0))
+                        .add_run(Run::new().add_text("编号项")),
+                );
+            let parsed = parse(&pack(docx));
+            let ordered = ordered_blocks_of(&parsed);
+            assert_eq!(ordered.len(), 1, "{num_fmt} 应产出有序列表");
+            if expected == "1" {
+                assert!(
+                    ordered[0]["attrs"].get("type").is_none(),
+                    "{num_fmt} 缺省样式必须省略 type"
+                );
+            } else {
+                assert_eq!(
+                    ordered[0]["attrs"]["type"], expected,
+                    "{num_fmt} 应映射为 {expected}"
+                );
+            }
+            // 支持格式零降级告知。
+            assert_eq!(
+                parsed.losses.numbering_format_degraded, 0,
+                "{num_fmt} 不应出现编号格式降级"
+            );
+        }
+    }
+
+    /// 3.1：不支持格式（ordinal/decimalZero/chineseCounting/cardinalText）→
+    /// 十进制导入＋numbering_format_degraded 计数与详情。
+    #[test]
+    fn unmappable_numfmt_degrades_to_decimal_with_notice() {
+        for num_fmt in ["ordinal", "decimalZero", "chineseCounting", "cardinalText"] {
+            let abstract_num = AbstractNumbering::new(1).add_level(level_of(num_fmt, "%1.", 1));
+            let docx = Docx::new()
+                .add_abstract_numbering(abstract_num)
+                .add_numbering(docx_rs::Numbering::new(1, 1))
+                .add_paragraph(
+                    Paragraph::new()
+                        .numbering(NumberingId::new(1), IndentLevel::new(0))
+                        .add_run(Run::new().add_text("序数一")),
+                )
+                .add_paragraph(
+                    Paragraph::new()
+                        .numbering(NumberingId::new(1), IndentLevel::new(0))
+                        .add_run(Run::new().add_text("序数二")),
+                );
+            let parsed = parse(&pack(docx));
+            let ordered = ordered_blocks_of(&parsed);
+            assert_eq!(ordered.len(), 1, "{num_fmt} 仍按有序列表导入");
+            assert_eq!(ordered[0]["attrs"]["start"], 1);
+            assert!(
+                ordered[0]["attrs"].get("type").is_none(),
+                "{num_fmt} 降级为数字样式（省略 type）"
+            );
+            assert_eq!(
+                parsed.losses.numbering_format_degraded, 2,
+                "{num_fmt} 每段计入一次降级"
+            );
+            assert!(
+                parsed
+                    .losses
+                    .numbering_format_details
+                    .iter()
+                    .any(|note| note.contains(num_fmt)),
+                "{num_fmt} 详情应包含 numFmt 名称：{:?}",
+                parsed.losses.numbering_format_details
+            );
+        }
+    }
+
+    /// 3.1：可映射 numFmt 但 lvlText 非简单模板（`%1)`、`第%1章`、`%1.%2.`）→
+    /// 降级＋详情含 lvlText。
+    #[test]
+    fn non_simple_lvltext_degrades_with_notice() {
+        for lvl_text in ["%1)", "第%1章", "%1.%2."] {
+            let abstract_num =
+                AbstractNumbering::new(1).add_level(level_of("upperLetter", lvl_text, 1));
+            let docx = Docx::new()
+                .add_abstract_numbering(abstract_num)
+                .add_numbering(docx_rs::Numbering::new(1, 1))
+                .add_paragraph(
+                    Paragraph::new()
+                        .numbering(NumberingId::new(1), IndentLevel::new(0))
+                        .add_run(Run::new().add_text("模板项")),
+                );
+            let parsed = parse(&pack(docx));
+            let ordered = ordered_blocks_of(&parsed);
+            assert_eq!(ordered.len(), 1);
+            assert!(
+                ordered[0]["attrs"].get("type").is_none(),
+                "lvlText {lvl_text} 非简单模板，样式降级为数字"
+            );
+            assert_eq!(parsed.losses.numbering_format_degraded, 1);
+            assert!(
+                parsed
+                    .losses
+                    .numbering_format_details
+                    .iter()
+                    .any(|note| note.contains(lvl_text)),
+                "详情应包含 lvlText：{:?}",
+                parsed.losses.numbering_format_details
+            );
+        }
+    }
+
+    /// 3.1：预检呈现——numbering_format_degraded 进入 ImportLoss（kind/计数/note）。
+    #[test]
+    fn numbering_format_loss_reaches_preview_notice() {
+        let abstract_num = AbstractNumbering::new(1).add_level(level_of("ordinal", "%1.", 1));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(docx_rs::Numbering::new(1, 1))
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("序数项")),
+            );
+        let bytes = pack(docx);
+        let (temp, root) = seed_project("格式降级预检");
+        let file = temp.path().join("序数.docx");
+        fs::write(&file, &bytes).unwrap();
+        let preview =
+            super::super::document_import::import_document_preview(&root, &file).expect("预检");
+        let loss = preview
+            .losses
+            .iter()
+            .find(|loss| loss.kind == "numbering_format_degraded")
+            .expect("预检必须出现编号格式降级告知");
+        assert_eq!(loss.count, 1);
+        assert!(loss.note.contains("ordinal"), "note：{}", loss.note);
+    }
+
+    /// 3.2（F06）：lvlOverride.lvl 整套替换——覆盖层起点 4（无 startOverride）
+    /// 生效，而非抽象层起点 1。
+    #[test]
+    fn override_level_start_replaces_abstract_start() {
+        let abstract_num = AbstractNumbering::new(1).add_level(level_of("decimal", "%1.", 1));
+        let docx =
+            Docx::new()
+                .add_abstract_numbering(abstract_num)
+                .add_numbering(docx_rs::Numbering::new(2, 1).add_override(
+                    docx_rs::LevelOverride::new(0).level(level_of("decimal", "%1.", 4)),
+                ))
+                .add_paragraph(
+                    Paragraph::new()
+                        .numbering(NumberingId::new(2), IndentLevel::new(0))
+                        .add_run(Run::new().add_text("覆盖起点项")),
+                );
+        let parsed = parse(&pack(docx));
+        let ordered = ordered_blocks_of(&parsed);
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(
+            ordered[0]["attrs"]["start"], 4,
+            "覆盖层 lvl.start=4 应整套替换抽象层起点 1"
+        );
+    }
+
+    /// 3.2（F06）：覆盖层样式同样整套替换（upperLetter 覆盖 decimal）。
+    #[test]
+    fn override_level_style_replaces_abstract_style() {
+        let abstract_num = AbstractNumbering::new(1).add_level(level_of("decimal", "%1.", 1));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(docx_rs::Numbering::new(2, 1).add_override(
+                docx_rs::LevelOverride::new(0).level(level_of("upperLetter", "%1.", 1)),
+            ))
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(2), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("覆盖样式项")),
+            );
+        let parsed = parse(&pack(docx));
+        let ordered = ordered_blocks_of(&parsed);
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(ordered[0]["attrs"]["type"], "A", "覆盖层 numFmt 应生效");
+    }
+
+    /// 3.2（F06）：startOverride 优先于覆盖层 lvl 内起点。
+    #[test]
+    fn start_override_takes_priority_over_override_level_start() {
+        let abstract_num = AbstractNumbering::new(1).add_level(level_of("decimal", "%1.", 1));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(
+                docx_rs::Numbering::new(2, 1).add_override(
+                    docx_rs::LevelOverride::new(0)
+                        .level(level_of("decimal", "%1.", 4))
+                        .start(6),
+                ),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(2), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("优先链项")),
+            );
+        let parsed = parse(&pack(docx));
+        let ordered = ordered_blocks_of(&parsed);
+        assert_eq!(ordered.len(), 1);
+        assert_eq!(
+            ordered[0]["attrs"]["start"], 6,
+            "startOverride=6 应优先于覆盖层起点 4"
+        );
+    }
+
+    /// 3.3（F08）：深层（ilvl>0）维持降级＋告知；深层定义不产生貌似正确的
+    /// 列表编号（钉住回归：深层段落必须是普通段落，永不进入列表块）。
+    #[test]
+    fn deep_level_stays_degraded_and_never_renders_as_list() {
+        let abstract_num = AbstractNumbering::new(1)
+            .add_level(level_of("decimal", "%1.", 1))
+            .add_level(Level::new(
+                1,
+                Start::new(1),
+                NumberFormat::new("lowerLetter"),
+                LevelText::new("%2."),
+                LevelJc::new("left"),
+            ));
+        let docx = Docx::new()
+            .add_abstract_numbering(abstract_num)
+            .add_numbering(docx_rs::Numbering::new(1, 1))
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(0))
+                    .add_run(Run::new().add_text("顶层项")),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .numbering(NumberingId::new(1), IndentLevel::new(1))
+                    .add_run(Run::new().add_text("深层项")),
+            );
+        let parsed = parse(&pack(docx));
+        // 深层段落降级为普通段落并计入 numbering_degraded 告知。
+        assert_eq!(parsed.losses.numbering_degraded, 1);
+        let texts: Vec<String> = parsed.blocks.iter().map(block_text).collect();
+        assert!(texts.contains(&"深层项".to_string()), "文字无损：{texts:?}");
+        // 列表块只含顶层项；深层定义（lowerLetter）绝不产出带样式的列表。
+        let ordered = ordered_blocks_of(&parsed);
+        assert_eq!(ordered.len(), 1, "仅顶层产出列表");
+        assert_eq!(ordered[0]["content"].as_array().unwrap().len(), 1);
+        assert!(ordered[0]["attrs"].get("type").is_none());
     }
 
     /// D4 矩阵：双列表交错——各自计数互不干扰、同打断续算。

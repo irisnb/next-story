@@ -134,6 +134,31 @@ const roundTripCases: { name: string; doc: JSONContent }[] = [
       ],
     },
   },
+  {
+    name: "ordered list with letter and roman styles",
+    doc: {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 3, type: "A" },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "父" }] },
+                {
+                  type: "orderedList",
+                  attrs: { start: 1, type: "i" },
+                  content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "子" }] }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 for (const { name, doc } of roundTripCases) {
@@ -144,6 +169,23 @@ for (const { name, doc } of roundTripCases) {
     assert.equal(JSON.stringify(reCanonicalized), JSON.stringify(canonicalDoc(doc)));
   });
 }
+
+test("schema orderedList node exposes the type attribute", () => {
+  const schema = getSchema(buildRichTextExtensions());
+  const orderedList = schema.nodes.orderedList;
+  assert.ok(orderedList);
+  // Tiptap 3.31.3 OrderedList 原生 type 属性（add-list-numbering-formats 1.1 核对）：
+  // 五值域可写入 schema，缺省为 null（序列化时省略）。
+  const node = orderedList.createAndFill(
+    { start: 2, type: "A" },
+    [schema.nodes.listItem.createAndFill({}, schema.nodes.paragraph.create())!],
+  );
+  assert.ok(node);
+  assert.equal(node.attrs.type, "A");
+  assert.equal(node.attrs.start, 2);
+  const toJSON = node.toJSON() as { attrs: { start: number; type: string | null } };
+  assert.equal(toJSON.attrs.type, "A");
+});
 
 // ---------------------------------------------------------------------------
 // 适配器（fake engine）

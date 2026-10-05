@@ -1,16 +1,19 @@
-//! 结构化本子文档：格式版本 2 的严格 grammar 校验。
+//! 结构化本子文档：格式版本 3 的严格 grammar 校验。
 //!
 //! 与前端 `src/structured-notebook.ts` 共享同一组规范 / 非规范 JSON 样例
 //! （见 `tests/fixtures/notebook-samples.json`），确保前后端对额外字段、空数组、
 //! marks、列表结构、孤立代理项和整数域范围的判定一致。
 //!
 //! 格式版本 2 相对版本 1 新增下划线、删除线、textStyle、highlight、link 字符标记，
-//! 段落属性、一到六级标题与嵌套列表；版本 1 是版本 2 的严格子集，打开时按版本 2 接受。
+//! 段落属性、一到六级标题与嵌套列表；版本 1 是版本 2 的严格子集。
+//! 格式版本 3 相对版本 2 新增有序列表编号样式键 `orderedList.attrs.type`
+//! （五值域；值为 "1" 或缺失时必须省略）；版本 1、2 是版本 3 的严格子集。
+//! 打开时按版本 3 grammar 接受，保存时写回版本 3。
 
 use serde_json::{Map, Value};
 
 pub const NOTEBOOK_FORMAT: &str = "next-story-tiptap";
-pub const NOTEBOOK_VERSION: u64 = 2;
+pub const NOTEBOOK_VERSION: u64 = 3;
 /// JavaScript 安全整数上限 2^53 - 1。
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -398,13 +401,21 @@ fn validate_ordered_list(value: &Value, loc: &str) -> Result<(), String> {
         .get("attrs")
         .and_then(|v| v.as_object())
         .ok_or_else(|| format!("{loc}: attrs 不是对象"))?;
-    check_keys(attrs, &["start"], &[])?;
+    check_keys(attrs, &["start"], &["type"])?;
     let start = attrs
         .get("start")
         .and_then(|v| v.as_u64())
         .ok_or_else(|| format!("{loc}: start 必须为整数"))?;
     if !(1..=MAX_SAFE_INTEGER).contains(&start) {
         return Err(format!("{loc}: start 必须在 1 到 2^53-1 之间"));
+    }
+    // 编号样式：可另含 type（五值域）；"1" 是缺省值，出现即非规范（必须省略）。
+    if let Some(style) = attrs.get("type") {
+        match style.as_str() {
+            Some("1") => return Err(format!("{loc}: type 为 1 时必须省略")),
+            Some("A" | "a" | "I" | "i") => {}
+            _ => return Err(format!("{loc}: type 取值非法")),
+        }
     }
     let content = obj
         .get("content")
@@ -454,7 +465,7 @@ fn validate_doc_node(value: &Value) -> Result<(), String> {
 }
 
 /// 校验完整本子文档（外层 + document grammar），失败返回中文错误。
-/// 版本 1 是版本 2 的严格子集，打开时按版本 2 grammar 接受。
+/// 版本 1、2 是版本 3 的严格子集，打开时按版本 3 grammar 接受。
 pub fn validate_notebook_document(value: &Value) -> Result<(), String> {
     let obj = object_keys(value, "文档")?;
     check_keys(obj, &["format", "version", "document"], &[])?;
@@ -462,7 +473,7 @@ pub fn validate_notebook_document(value: &Value) -> Result<(), String> {
         return Err("文档格式不受支持".to_string());
     }
     match obj.get("version").and_then(|v| v.as_u64()) {
-        Some(1) | Some(2) => {}
+        Some(1) | Some(2) | Some(3) => {}
         _ => return Err("文档版本不受支持".to_string()),
     }
     let document = obj

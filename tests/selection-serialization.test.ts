@@ -73,6 +73,33 @@ test("projects full ordered list items with actual numbers", () => {
   assert.equal(serializeSelectionToPlainText(doc, 3, 13), "3. 第三项\n4. 第四项");
 });
 
+test("projects styled ordered list items with letter and roman markers", () => {
+  const doc: DocNode = {
+    type: "doc",
+    content: [
+      {
+        type: "orderedList",
+        attrs: { start: 3, type: "A" },
+        content: [
+          { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "甲项" }] }] },
+          { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "乙项" }] }] },
+        ],
+      },
+      {
+        type: "orderedList",
+        attrs: { start: 4, type: "i" },
+        content: [
+          { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "丙项" }] }] },
+        ],
+      },
+    ],
+  };
+  // 第一列表文字 [3,5]、[9,11]；大写字母从 C 起。
+  assert.equal(serializeSelectionToPlainText(doc, 3, 11), "C. 甲项\nD. 乙项");
+  // 第二列表块 [14,22]，文字 [17,19]；小写罗马从 iv 起。
+  assert.equal(serializeSelectionToPlainText(doc, 17, 19), "iv. 丙项");
+});
+
 test("projects a partial list item without marker", () => {
   const doc: DocNode = {
     type: "doc",

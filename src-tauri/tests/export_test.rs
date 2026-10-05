@@ -708,6 +708,7 @@ fn render_docx_preserves_list_text() {
                 },
                 ExportBlock::OrderedList {
                     start: 3,
+                    list_type: None,
                     items: vec![ExportListItem {
                         content: vec![text_run("丙")],
                         nested: None,
@@ -724,6 +725,136 @@ fn render_docx_preserves_list_text() {
     assert!(xml.contains("乙"));
     assert!(xml.contains("丙"));
     assert!(xml.contains("3. "), "有序列表从 start 起始编号");
+}
+
+/// add-list-numbering-formats 4.1：有序列表字面前缀按编号样式生成
+/// （大写字母 A./B./C.、小写罗马 i./ii./iii.、字母进位 AA、罗马标准减法式）。
+#[test]
+fn render_docx_ordered_list_prefixes_follow_style() {
+    let project = ExportProject {
+        scope: ExportScope::Work,
+        root_name: "作品".into(),
+        children: vec![ExportNode::Document {
+            name: "样式清单".into(),
+            blocks: vec![
+                ExportBlock::OrderedList {
+                    start: 1,
+                    list_type: Some("A".into()),
+                    items: vec![
+                        ExportListItem {
+                            content: vec![text_run("字母一")],
+                            nested: None,
+                        },
+                        ExportListItem {
+                            content: vec![text_run("字母二")],
+                            nested: None,
+                        },
+                    ],
+                },
+                ExportBlock::OrderedList {
+                    start: 1,
+                    list_type: Some("i".into()),
+                    items: vec![
+                        ExportListItem {
+                            content: vec![text_run("罗马一")],
+                            nested: None,
+                        },
+                        ExportListItem {
+                            content: vec![text_run("罗马二")],
+                            nested: None,
+                        },
+                        ExportListItem {
+                            content: vec![text_run("罗马三")],
+                            nested: None,
+                        },
+                    ],
+                },
+                // 字母进位：start=27 → AA.；start=53 → BA.。
+                ExportBlock::OrderedList {
+                    start: 27,
+                    list_type: Some("A".into()),
+                    items: vec![ExportListItem {
+                        content: vec![text_run("进位项")],
+                        nested: None,
+                    }],
+                },
+                ExportBlock::OrderedList {
+                    start: 53,
+                    list_type: Some("A".into()),
+                    items: vec![ExportListItem {
+                        content: vec![text_run("再进位")],
+                        nested: None,
+                    }],
+                },
+                // 罗马标准减法式：1954 → MCMLIV。
+                ExportBlock::OrderedList {
+                    start: 1954,
+                    list_type: Some("I".into()),
+                    items: vec![ExportListItem {
+                        content: vec![text_run("罗马年")],
+                        nested: None,
+                    }],
+                },
+                // 缺省样式仍为数字。
+                ExportBlock::OrderedList {
+                    start: 2,
+                    list_type: None,
+                    items: vec![ExportListItem {
+                        content: vec![text_run("数字项")],
+                        nested: None,
+                    }],
+                },
+            ],
+        }],
+    };
+
+    let bytes = render_docx(&project).expect("render");
+    let (_temp, path) = write_docx_to_temp(&bytes);
+    let xml = read_document_xml(&path);
+    // 前缀与正文是两个 run（导出实现把标记作为独立 run），断言对准 <w:t> 元素。
+    let marker = |text: &str| format!("<w:t xml:space=\"preserve\">{text}</w:t>");
+    assert!(xml.contains(&marker("A. ")), "大写字母前缀：{xml}");
+    assert!(xml.contains(&marker("B. ")));
+    assert!(xml.contains(&marker("i. ")), "小写罗马前缀");
+    assert!(xml.contains(&marker("ii. ")));
+    assert!(xml.contains(&marker("iii. ")));
+    assert!(xml.contains(&marker("AA. ")), "字母 >26 双射进位");
+    assert!(xml.contains(&marker("BA. ")));
+    assert!(xml.contains(&marker("MCMLIV. ")), "标准减法式罗马");
+    assert!(xml.contains(&marker("2. ")), "缺省样式保持数字前缀");
+}
+
+/// add-list-numbering-formats 4.1：嵌套有序列表前缀同样按样式生成（缩进策略不变）。
+#[test]
+fn render_docx_nested_styled_ordered_list_keeps_indent_strategy() {
+    let project = ExportProject {
+        scope: ExportScope::Work,
+        root_name: "作品".into(),
+        children: vec![ExportNode::Document {
+            name: "嵌套样式".into(),
+            blocks: vec![ExportBlock::BulletList {
+                items: vec![ExportListItem {
+                    content: vec![text_run("父项")],
+                    nested: Some(Box::new(ExportBlock::OrderedList {
+                        start: 2,
+                        list_type: Some("I".into()),
+                        items: vec![ExportListItem {
+                            content: vec![text_run("子项")],
+                            nested: None,
+                        }],
+                    })),
+                }],
+            }],
+        }],
+    };
+
+    let bytes = render_docx(&project).expect("render");
+    let (_temp, path) = write_docx_to_temp(&bytes);
+    let xml = read_document_xml(&path);
+    assert!(
+        xml.contains("<w:t xml:space=\"preserve\">  II. </w:t>"),
+        "嵌套层前缀按样式从 start 续起、缩进两空格：{xml}"
+    );
 }
 
 // ---------------------------------------------------------------------------

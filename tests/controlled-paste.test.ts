@@ -6,6 +6,7 @@ import {
   compareHtmlAndPlain,
   decidePasteAction,
   normalizeColor,
+  orderedListType,
   plainTextToDocument,
   stripListMarker,
   tableRowsToText,
@@ -230,4 +231,83 @@ test("nodesToDocument outputs character marks in rank order", () => {
     paragraph.content[0].marks.map((m) => m.type),
     ["bold", "underline", "textStyle", "highlight", "link"],
   );
+});
+
+// ---------------------------------------------------------------------------
+// 格式版本 3：有序列表编号样式（ol[type] 与行内 list-style-type）
+// ---------------------------------------------------------------------------
+
+/** 构造最小假 Element（仅覆盖 orderedListType 用到的接口面）。 */
+function fakeListEl(options: {
+  typeAttribute?: string;
+  olStyle?: string;
+  firstLiStyle?: string;
+}): Element {
+  const firstLi = {
+    getAttribute: (name: string) => (name === "style" ? options.firstLiStyle ?? null : null),
+  };
+  return {
+    getAttribute: (name: string) => {
+      if (name === "type") return options.typeAttribute ?? null;
+      if (name === "style") return options.olStyle ?? null;
+      return null;
+    },
+    querySelector: (selector: string) => (selector === "li" ? firstLi : null),
+  } as unknown as Element;
+}
+
+test("orderedListType reads the HTML type attribute first", () => {
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "A" })), "A");
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "a" })), "a");
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "I" })), "I");
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "i" })), "i");
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "1" })), "1");
+  // 非法或无法识别的 type 按数字处理。
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "x" })), "1");
+  assert.equal(orderedListType(fakeListEl({ typeAttribute: "" })), "1");
+});
+
+test("orderedListType falls back to inline list-style-type", () => {
+  // ol 自身行内样式（upper-roman → I）。
+  assert.equal(
+    orderedListType(fakeListEl({ olStyle: "list-style-type: upper-roman" })),
+    "I",
+  );
+  assert.equal(
+    orderedListType(fakeListEl({ olStyle: "list-style-type: lower-alpha" })),
+    "a",
+  );
+  // 首个 li 的行内样式（Google Docs 形态）。
+  assert.equal(
+    orderedListType(fakeListEl({ firstLiStyle: "list-style-type: upper-latin" })),
+    "A",
+  );
+  // 无样式线索 → 数字。
+  assert.equal(orderedListType(fakeListEl({})), "1");
+  // 不相关的 CSS 值不误判。
+  assert.equal(
+    orderedListType(fakeListEl({ olStyle: "color: red" })),
+    "1",
+  );
+});
+
+test("nodesToDocument writes non-decimal style into orderedList attrs", () => {
+  const doc = nodesToDocument([
+    {
+      type: "orderedList",
+      start: 2,
+      listType: "A",
+      items: [{ textRuns: [run("乙")], nested: null }],
+    },
+    {
+      type: "orderedList",
+      start: 1,
+      listType: "1",
+      items: [{ textRuns: [run("甲")], nested: null }],
+    },
+  ]);
+  const styled = doc.content[0] as { attrs?: { start: number; type?: string } };
+  const plain = doc.content[1] as { attrs?: { start: number; type?: string } };
+  assert.deepEqual(styled.attrs, { start: 2, type: "A" });
+  assert.deepEqual(plain.attrs, { start: 1 });
 });

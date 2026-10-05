@@ -45,7 +45,7 @@ type ExportBlock =
   | { kind: "paragraph"; align: ExportAlign | null; content: ExportText[] }
   | { kind: "heading"; level: number; align: ExportAlign | null; content: ExportText[] }
   | { kind: "bulletList"; items: ExportListItem[] }
-  | { kind: "orderedList"; start: number; items: ExportListItem[] };
+  | { kind: "orderedList"; start: number; listType: string | null; items: ExportListItem[] };
 
 type ExportNode =
   | { kind: "folder"; name: string; children: ExportNode[] }
@@ -135,8 +135,15 @@ function renderList(block: Extract<ExportBlock, { kind: "bulletList" | "orderedL
     block.kind === "bulletList"
       ? document.createElement("ul")
       : document.createElement("ol");
-  if (block.kind === "orderedList" && block.start !== 1) {
-    list.setAttribute("start", String(block.start));
+  if (block.kind === "orderedList") {
+    if (block.start !== 1) {
+      list.setAttribute("start", String(block.start));
+    }
+    // 编号样式透传：ol[type] 由浏览器按 presentational hint 原生渲染
+    // （项目样式表不以 list-style-type 覆盖，见 add-list-numbering-formats D1）。
+    if (block.listType !== null && block.listType !== "1") {
+      list.setAttribute("type", block.listType);
+    }
   }
   for (const item of block.items) {
     const listItem = document.createElement("li");

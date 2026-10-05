@@ -5,7 +5,7 @@ use next_story_lib::project::{
     create_document, create_new_project, open_existing_project, read_directory_projection,
     read_document, read_material, recover_then_read_content_tree, rename_node, save_document,
     set_document_ai_visibility, validate_project_name, CreateProjectParams, MaterialDenialReason,
-    ProjectError, ReadMaterialRequest,
+    ProjectError, ReadMaterialRequest, NOTEBOOK_VERSION,
 };
 use tempfile::TempDir;
 
@@ -172,7 +172,7 @@ fn create_new_project_writes_valid_blank_structured_notebooks() {
         .expect("read document file");
         let value: serde_json::Value = serde_json::from_str(&content).expect("parse notebook");
         assert_eq!(value["format"], "next-story-tiptap");
-        assert_eq!(value["version"], 2);
+        assert_eq!(value["version"], NOTEBOOK_VERSION);
         assert_eq!(value["document"]["type"], "doc");
         assert_eq!(value["document"]["content"][0]["type"], "paragraph");
     }
@@ -606,7 +606,7 @@ fn open_rejects_corrupted_notebook_json() {
 fn open_rejects_unsupported_notebook_document_version() {
     let doc = serde_json::json!({
         "format": "next-story-tiptap",
-        "version": 3,
+        "version": 4,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
     });
     assert_open_rejects_invalid_notebook(

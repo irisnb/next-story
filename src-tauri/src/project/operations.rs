@@ -2383,7 +2383,7 @@ mod tests {
         let content = fs::read_to_string(&doc_path).expect("read new doc");
         let value: serde_json::Value = serde_json::from_str(&content).expect("parse new doc");
         assert_eq!(value["format"], "next-story-tiptap");
-        assert_eq!(value["version"], 2);
+        assert_eq!(value["version"], super::super::NOTEBOOK_VERSION);
         assert_eq!(value["document"]["type"], "doc");
 
         // 元信息 updated_at 已更新

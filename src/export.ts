@@ -269,7 +269,12 @@ export function setupExport(
         return;
       }
       if (result.ok && result.path) {
-        showMessage(`导出成功：${result.path}`);
+        // 成功路径附带后端如实告知（如 Markdown 编号降级），复用既有结果提示位。
+        showMessage(
+          result.message
+            ? `导出成功：${result.path}（${result.message}）`
+            : `导出成功：${result.path}`,
+        );
       } else {
         showMessage(`导出失败：${result.message ?? "未知错误"}`);
       }

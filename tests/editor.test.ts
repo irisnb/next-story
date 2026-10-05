@@ -36,11 +36,11 @@ function notebookJson(text: string): string {
   });
 }
 
-/** 当前格式版本 2 的本子 JSON（保存后的期望形态）。 */
+/** 当前格式版本 3 的本子 JSON（保存后的期望形态）。 */
 function notebookJsonCurrent(text: string): string {
   return JSON.stringify({
     format: "next-story-tiptap",
-    version: 2,
+    version: 3,
     document: paragraphDoc(text),
   });
 }
@@ -249,6 +249,8 @@ const EDITOR_DOM_IDS = [
   "editor-textarea", "current-doc-toggle", "current-document-name",
   "document-list", "writing-empty-state", "paragraph-style", "btn-bold",
   "btn-italic", "btn-bullet-list", "btn-ordered-list", "btn-toolbar-underline",
+  "btn-ordered-list-style", "ordered-list-style-menu", "ordered-list-style-current",
+  "btn-ol-style-1", "btn-ol-style-A", "btn-ol-style-a", "btn-ol-style-I", "btn-ol-style-i",
   "btn-toolbar-strike", "btn-undo", "btn-redo", "btn-find", "btn-margin",
   "btn-column-width",
   "btn-format-drawer", "format-toolbar", "format-drawer", "btn-format-drawer-close",
@@ -313,6 +315,12 @@ function fakeDom(): {
       btnItalic: elements.get("btn-italic") as unknown as HTMLButtonElement,
       btnBulletList: elements.get("btn-bullet-list") as unknown as HTMLButtonElement,
       btnOrderedList: elements.get("btn-ordered-list") as unknown as HTMLButtonElement,
+      btnOrderedListStyle: elements.get("btn-ordered-list-style") as unknown as HTMLButtonElement,
+      orderedListStyleMenu: elements.get("ordered-list-style-menu") as unknown as HTMLElement,
+      orderedListStyleCurrent: elements.get("ordered-list-style-current") as unknown as HTMLElement,
+      orderedListStyleItems: [
+        "btn-ol-style-1", "btn-ol-style-A", "btn-ol-style-a", "btn-ol-style-I", "btn-ol-style-i",
+      ].map((id) => elements.get(id) as unknown as HTMLButtonElement),
       btnToolbarUnderline: elements.get("btn-toolbar-underline") as unknown as HTMLButtonElement,
       btnToolbarStrike: elements.get("btn-toolbar-strike") as unknown as HTMLButtonElement,
       btnUndo: elements.get("btn-undo") as unknown as HTMLButtonElement,

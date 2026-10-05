@@ -106,8 +106,20 @@ function fixture(options: FixtureOptions = {}) {
   // 三个 setup 共享同一份 DOM；所有元素属于同一 document 且可通过 ID 找到。
   // happy-dom 提供真实 childNodes/replaceChildren/事件接口，不伪造 session 的提交行为。
   const elements = new Map<string, HTMLElement>();
+  // 编号样式 flyout 的五个样式项是数组契约（AppDom.orderedListStyleItems），单独缓存。
+  let orderedListStyleItems: HTMLButtonElement[] | null = null;
   const dom = new Proxy({} as AppDom, {
     get(_target, key: string) {
+      if (key === "orderedListStyleItems") {
+        orderedListStyleItems ??= ["1", "A", "a", "I", "i"].map((style) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.setAttribute("data-style", style);
+          document.body.appendChild(item);
+          return item;
+        });
+        return orderedListStyleItems;
+      }
       if (!elements.has(key)) {
         const tag = key === "leaveDialog" ? "dialog" : /^(btn|tab|fmNew)/.test(key) || ["currentDocToggle", "fmOpenRecycleBin", "fmBackFromRecycle"].includes(key)
           ? "button"

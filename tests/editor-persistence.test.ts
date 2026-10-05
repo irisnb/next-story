@@ -23,6 +23,6 @@ test("persistence writes the canonical document and updates the save status", as
   const result = await persistence.save();
 
   assert.equal(result, true);
-  assert.match(written, /"version":2/);
+  assert.match(written, /"version":3/);
   assert.equal(status.textContent, "已保存");
 });

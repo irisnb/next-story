@@ -161,6 +161,7 @@ fn lists_map_nesting_and_ordered_start() {
                             content: vec![text_run("甲")],
                             nested: Some(Box::new(ExportBlock::OrderedList {
                                 start: 3,
+                                list_type: None,
                                 items: vec![ExportListItem {
                                     content: vec![text_run("甲内")],
                                     nested: None,
@@ -175,6 +176,7 @@ fn lists_map_nesting_and_ordered_start() {
                 },
                 ExportBlock::OrderedList {
                     start: 5,
+                    list_type: None,
                     items: vec![ExportListItem {
                         content: vec![text_run("丙")],
                         nested: None,
@@ -188,6 +190,129 @@ fn lists_map_nesting_and_ordered_start() {
         markdown, "# 清单\n\n- 甲\n    3. 甲内\n- 乙\n\n5. 丙\n",
         "嵌套列表按 4 空格缩进；有序列表从 start 起始"
     );
+}
+
+// ---------------------------------------------------------------------------
+// add-list-numbering-formats：字母/罗马编号降级为数字＋如实告知
+// ---------------------------------------------------------------------------
+
+#[test]
+fn styled_ordered_lists_degrade_to_numbers_from_start() {
+    let project = ExportProject {
+        scope: ExportScope::Document("d".into()),
+        root_name: "清单".into(),
+        children: vec![ExportNode::Document {
+            name: "清单".into(),
+            blocks: vec![
+                ExportBlock::OrderedList {
+                    start: 3,
+                    list_type: Some("A".into()),
+                    items: vec![
+                        ExportListItem {
+                            content: vec![text_run("丙")],
+                            nested: None,
+                        },
+                        ExportListItem {
+                            content: vec![text_run("丁")],
+                            nested: None,
+                        },
+                    ],
+                },
+                ExportBlock::BulletList {
+                    items: vec![ExportListItem {
+                        content: vec![text_run("甲")],
+                        nested: Some(Box::new(ExportBlock::OrderedList {
+                            start: 2,
+                            list_type: Some("i".into()),
+                            items: vec![ExportListItem {
+                                content: vec![text_run("甲内")],
+                                nested: None,
+                            }],
+                        })),
+                    }],
+                },
+            ],
+        }],
+    };
+    let markdown = render_markdown(&project);
+    assert_eq!(
+        markdown, "# 清单\n\n3. 丙\n4. 丁\n\n- 甲\n    2. 甲内\n",
+        "字母/罗马样式降级为从 start 起的数字标记，嵌套缩进保持"
+    );
+}
+
+#[test]
+fn markdown_export_notifies_numbering_style_degradation() {
+    let temp = TempDir::new().expect("temp");
+    let project_path = create_new_project(CreateProjectParams {
+        name: "样式降级作品".into(),
+        save_location: temp.path().to_string_lossy().to_string(),
+    })
+    .expect("create project");
+
+    let tree_json = fs::read_to_string(
+        project_path
+            .join("next-story-system")
+            .join("content-tree.json"),
+    )
+    .expect("read tree");
+    let tree: ContentTree = serde_json::from_str(&tree_json).expect("parse tree");
+    let doc_id = tree.root_children[0].clone();
+
+    // 带字母样式的有序列表（格式版本 3 文档）。
+    let doc = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+            "type": "doc",
+            "content": [
+                { "type": "orderedList", "attrs": { "start": 1, "type": "A" }, "content": [
+                    { "type": "listItem", "content": [
+                        { "type": "paragraph", "content": [{ "type": "text", "text": "甲" }] }
+                    ] }
+                ] }
+            ]
+        }
+    });
+    let doc_json = serde_json::to_string(&doc).expect("serialize");
+    next_story_lib::project::save_document(&project_path, &doc_id, &doc_json).expect("save");
+
+    let target = temp.path().join("样式降级.md");
+    let result = export_project_to_markdown(
+        &project_path,
+        &ExportScope::Document(doc_id.clone()),
+        &target,
+    )
+    .expect("export");
+    assert!(result.ok);
+    let message = result.message.expect("带样式列表必须给出降级告知");
+    assert!(message.contains("数字"), "告知文案：{message}");
+    let markdown = fs::read_to_string(&target).expect("read md");
+    assert!(markdown.contains("1. 甲"), "文件内为数字标记：{markdown}");
+
+    // 换回无样式列表：不再产生告知。
+    let plain = serde_json::json!({
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+            "type": "doc",
+            "content": [
+                { "type": "orderedList", "attrs": { "start": 1 }, "content": [
+                    { "type": "listItem", "content": [
+                        { "type": "paragraph", "content": [{ "type": "text", "text": "乙" }] }
+                    ] }
+                ] }
+            ]
+        }
+    });
+    let plain_json = serde_json::to_string(&plain).expect("serialize");
+    next_story_lib::project::save_document(&project_path, &doc_id, &plain_json).expect("save");
+    let target2 = temp.path().join("无样式.md");
+    let result2 =
+        export_project_to_markdown(&project_path, &ExportScope::Document(doc_id), &target2)
+            .expect("export");
+    assert!(result2.ok);
+    assert!(result2.message.is_none(), "无样式列表不产生降级告知");
 }
 
 // ---------------------------------------------------------------------------

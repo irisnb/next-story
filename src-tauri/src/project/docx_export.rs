@@ -19,7 +19,8 @@
 //! 段落、粗体、斜体、下划线、删除线与文字颜色映射为对应 Word 格式；链接沿既有
 //! 降级策略输出纯文字（Word 导出内容保真骨架不动）。列表以可见的项目符号 / 编号
 //! 前缀输出（docx-rs 不经 numbering 定义输出列表，采用不损失可见文字与块顺序的
-//! 降级策略，见 design.md 风险与取舍）。
+//! 降级策略，见 design.md 风险与取舍）；有序前缀按编号样式生成（`A.`/`a.`/`I.`/
+//! `i.`/数字；字母 >26 双射进位如 AA，罗马为标准减法式，add-list-numbering-formats D6）。
 
 use std::io::Cursor;
 
@@ -59,6 +60,68 @@ fn alignment_type(align: ExportAlign) -> AlignmentType {
         // OOXML 的两端对齐 jc 值为 both。
         ExportAlign::Justify => AlignmentType::Both,
     }
+}
+
+/// 大写字母编号（双射二十六进制：1→A、26→Z、27→AA）；`upper` 为假时小写。
+fn letter_marker(value: u64, upper: bool) -> String {
+    let base = if upper { b'A' } else { b'a' };
+    let mut n = value;
+    let mut out = Vec::new();
+    while n > 0 {
+        let rem = ((n - 1) % 26) as u8;
+        out.push(base + rem);
+        n = (n - 1) / 26;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_else(|_| value.to_string())
+}
+
+/// 标准减法式罗马数字（1954→MCMXCIV）；`upper` 为假时小写。
+fn roman_marker(value: u64, upper: bool) -> String {
+    const TABLE: [(u64, &str); 13] = [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ];
+    let mut n = value;
+    let mut out = String::new();
+    for (num, symbol) in TABLE {
+        while n >= num {
+            out.push_str(symbol);
+            n -= num;
+        }
+    }
+    if upper {
+        out
+    } else {
+        out.to_lowercase()
+    }
+}
+
+/// 按编号样式生成有序列表标记（不含尾部 `. `）。
+fn ordered_marker(value: u64, style: &str) -> String {
+    match style {
+        "A" => letter_marker(value, true),
+        "a" => letter_marker(value, false),
+        "I" => roman_marker(value, true),
+        "i" => roman_marker(value, false),
+        _ => value.to_string(),
+    }
+}
+
+/// 有序列表前缀：`标记. `（数字、字母或罗马形态）。缺省/未知样式按数字。
+fn ordered_prefix(value: u64, list_type: Option<&str>) -> String {
+    format!("{}. ", ordered_marker(value, list_type.unwrap_or("1")))
 }
 
 /// 把导出序列渲染为 `.docx` 字节。
@@ -185,11 +248,16 @@ fn render_block(docx: Docx, block: &ExportBlock) -> Docx {
             }
             docx
         }
-        ExportBlock::OrderedList { start, items } => {
+        ExportBlock::OrderedList {
+            start,
+            list_type,
+            items,
+        } => {
             let mut docx = docx;
             for (index, item) in items.iter().enumerate() {
                 let number = start + index as u64;
-                docx = render_list_item(docx, item, &format!("{number}. "), 0);
+                docx =
+                    render_list_item(docx, item, &ordered_prefix(number, list_type.as_deref()), 0);
             }
             docx
         }
@@ -230,13 +298,18 @@ fn render_list_item(docx: Docx, item: &ExportListItem, marker: &str, depth: usiz
                     docx = render_list_item(docx, nested_item, &format!("{indent}• "), depth + 1);
                 }
             }
-            ExportBlock::OrderedList { start, items } => {
+            ExportBlock::OrderedList {
+                start,
+                list_type,
+                items,
+            } => {
                 for (index, nested_item) in items.iter().enumerate() {
                     let number = start + index as u64;
+                    let prefix = ordered_prefix(number, list_type.as_deref());
                     docx = render_list_item(
                         docx,
                         nested_item,
-                        &format!("{indent}{number}. "),
+                        &format!("{indent}{prefix}"),
                         depth + 1,
                     );
                 }

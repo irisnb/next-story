@@ -206,3 +206,73 @@ test("ordered list numbering at MAX_SAFE_INTEGER with one item is accepted", () 
   };
   assert.equal(validateNotebookDocument(value).ok, true);
 });
+
+// ---------------------------------------------------------------------------
+// 格式版本 3：有序列表编号样式
+// ---------------------------------------------------------------------------
+
+test("serializer preserves non-decimal ordered list style", () => {
+  const raw = {
+    type: "doc",
+    content: [
+      {
+        type: "orderedList",
+        attrs: { start: 2, type: "A" },
+        content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "乙" }] }] }],
+      },
+    ],
+  };
+  const doc = serializeNotebookDocument(raw);
+  assert.equal(doc.version, 3);
+  const list = doc.document.content[0];
+  assert.equal(list.type, "orderedList");
+  if (list.type === "orderedList") {
+    assert.deepEqual(list.attrs, { start: 2, type: "A" });
+  }
+  assert.equal(validateNotebookDocument(doc).ok, true);
+});
+
+test("serializer omits style key for decimal default and null attr", () => {
+  for (const attrs of [{ start: 1 }, { start: 1, type: null }, { start: 1, type: "1" }, { start: 1, type: "x" }]) {
+    const raw = {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs,
+          content: [{ type: "listItem", content: [{ type: "paragraph" }] }],
+        },
+      ],
+    };
+    const doc = serializeNotebookDocument(raw);
+    const list = doc.document.content[0];
+    assert.equal(list.type, "orderedList");
+    if (list.type === "orderedList") {
+      assert.deepEqual(list.attrs, { start: 1 }, `attrs ${JSON.stringify(attrs)} 应规范化省略 type`);
+    }
+  }
+});
+
+test("v3 document with type round-trips through validation", () => {
+  const value = {
+    format: "next-story-tiptap",
+    version: 3,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 1, type: "I" },
+          content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "罗马" }] }] }],
+        },
+      ],
+    },
+  };
+  assert.equal(validateNotebookDocument(value).ok, true);
+  const roundTrip = parseNotebookDocumentJson(JSON.stringify(value));
+  const roundTripList = roundTrip.document.content[0];
+  assert.equal(roundTripList.type, "orderedList");
+  if (roundTripList.type === "orderedList") {
+    assert.equal(roundTripList.attrs.type, "I");
+  }
+});

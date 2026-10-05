@@ -258,6 +258,26 @@ test("导出失败显示中文说明", async () => {
   alertBox.restore();
 });
 
+test("导出成功附带后端降级告知（Markdown 编号降级为数字）", async () => {
+  const { btnExport } = makeDom();
+  const alertBox = installAlert();
+  setup({ btnExport }, {
+    openDialog: async () => ({ format: "markdown", scope: { type: "document", id: "d1" }, fileName: "小芳" }),
+    runExport: async () => ({
+      ok: true,
+      path: "/导出/小芳.md",
+      message: "Markdown 规范只支持数字列表标记，字母或罗马编号的有序列表已降级为数字（缩进保持层级）",
+    }),
+  });
+
+  btnExport.click();
+  await flushUntil(() => !btnExport.disabled);
+  assert.deepEqual(alertBox.alerts, [
+    "导出成功：/导出/小芳.md（Markdown 规范只支持数字列表标记，字母或罗马编号的有序列表已降级为数字（缩进保持层级））",
+  ]);
+  alertBox.restore();
+});
+
 test("范围包含当前文档且有未保存修改时提示使用已保存版本", async () => {
   const { btnExport } = makeDom();
   const alertBox = installAlert();

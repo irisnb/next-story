@@ -4,6 +4,7 @@ import type {
   ParagraphAttrs,
   ParagraphNode,
   HeadingNode,
+  OrderedListStyle,
 } from "./structured-notebook.ts";
 import { collectSharedBlocks } from "./shared-document-models.ts";
 
@@ -16,6 +17,7 @@ export type FormatCommand =
   | { kind: "strike" }
   | { kind: "bulletList" }
   | { kind: "orderedList" }
+  | { kind: "orderedListStyle"; style: OrderedListStyle }
   | { kind: "sinkListItem" }
   | { kind: "liftListItem" }
   | { kind: "clearFormatting" }
@@ -301,4 +303,35 @@ export function analyzeSelection(doc: DocNode, from: number, to: number): Format
     indentLeft,
     indentRight,
   };
+}
+
+/**
+ * 查询选区 [from, to) 触及的列表项**直接所属**的有序列表的编号样式
+ * （add-list-numbering-formats 底层查询，供工具栏子菜单呈现当前值）。
+ * 纯函数、无 DOM：
+ * - 「触及的列表项」＝其自身段落范围与选区相交（嵌套子列表范围不算——
+ *   选区位于子列表内不牵动父层，父项被触及不牵动其内子层）；
+ * - 未触及任何有序列表项 → null；触及的列表样式统一（缺省按 "1"）→ 该值；
+ * - 触及多个不同样式的列表 → "mixed"。
+ * 与 setOrderedListStyleInSelection（list-numbering.ts）同一收窄口径，
+ * 保证子菜单显示与命令效果一致。
+ */
+export function orderedListStyleState(
+  doc: DocNode,
+  from: number,
+  to: number,
+): OrderedListStyle | "mixed" | null {
+  const touched = new Map<string, OrderedListStyle>();
+  for (const record of collectSharedBlocks(doc)) {
+    const list = record.list;
+    if (!list || list.kind !== "ordered") continue;
+    // record.start/end 即列表项自身段落的范围：直接所属列表按此判定触及。
+    if (record.end > from && record.start < to) {
+      touched.set(`${list.listStart}:${list.listEnd}`, list.style);
+    }
+  }
+  if (touched.size === 0) return null;
+  const styles = new Set(touched.values());
+  if (styles.size === 1) return [...styles][0];
+  return "mixed";
 }

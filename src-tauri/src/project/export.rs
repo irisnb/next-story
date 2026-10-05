@@ -101,6 +101,9 @@ pub enum ExportBlock {
     },
     OrderedList {
         start: u64,
+        /// 编号样式（`"A"`/`"a"`/`"I"`/`"i"`；None 或 `"1"` 为缺省十进制）。
+        #[serde(rename = "listType")]
+        list_type: Option<String>,
         items: Vec<ExportListItem>,
     },
 }
@@ -335,13 +338,20 @@ fn parse_block(node: &Value) -> Option<ExportBlock> {
             items: parse_list_items(node.get("content")),
         }),
         "orderedList" => {
-            let start = node
-                .get("attrs")
+            let attrs = node.get("attrs");
+            let start = attrs
                 .and_then(|v| v.get("start"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(1);
+            // 编号样式透传：五值域中非十进制四值保留（"1"/缺省/非法 → None）。
+            let list_type = attrs
+                .and_then(|v| v.get("type"))
+                .and_then(|v| v.as_str())
+                .filter(|style| matches!(*style, "A" | "a" | "I" | "i"))
+                .map(str::to_string);
             Some(ExportBlock::OrderedList {
                 start,
+                list_type,
                 items: parse_list_items(node.get("content")),
             })
         }
@@ -448,7 +458,8 @@ pub fn export_project_to_word(
 }
 
 /// 按所选范围导出当前作品为 UTF-8 编码的 `.md` 文件：只读取已保存内容，
-/// 渲染与原子写边界与 Word 导出一致。
+/// 渲染与原子写边界与 Word 导出一致。文档含字母/罗马编号的有序列表时，
+/// Markdown 规范只支持数字标记，导出按数字降级并在结果 message 如实告知。
 pub fn export_project_to_markdown(
     project_root: &Path,
     scope: &ExportScope,
@@ -457,9 +468,19 @@ pub fn export_project_to_markdown(
     let export_project = load_scoped_export_project(project_root, scope)?;
     let markdown = super::markdown_export::render_markdown(&export_project);
     write_bytes_atomically(target_path, markdown.as_bytes())?;
-    Ok(ExportFileResult::success(
-        target_path.to_string_lossy().to_string(),
-    ))
+    let message = if super::markdown_export::has_styled_ordered_lists(&export_project) {
+        Some(
+            "Markdown 规范只支持数字列表标记，字母或罗马编号的有序列表已降级为数字（缩进保持层级）"
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    Ok(ExportFileResult {
+        ok: true,
+        path: Some(target_path.to_string_lossy().to_string()),
+        message,
+    })
 }
 
 /// 把字节先写入目标目录下的临时文件，成功后再原子重命名到目标路径；

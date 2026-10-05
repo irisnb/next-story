@@ -1,6 +1,9 @@
 // 受控粘贴：只保留本轮支持的可见文字与结构，清除未支持样式，表格降级为文字，
 // 图片忽略，无法保证文字完整时整次拒绝。
 // 格式版本 2 扩展：下划线、删除线、文字颜色、背景高亮、链接、一到六级标题、嵌套列表。
+// 格式版本 3 扩展：有序列表编号样式（`ol[type]` 与行内 `list-style-type`，非法按数字）。
+
+import type { OrderedListStyle } from "./structured-notebook.ts";
 
 /** 把纯文本规范化为比较用行数组：CRLF/CR→LF、NBSP→空格、去行尾空白、去至多一个末尾 LF。 */
 export function normalizePlainLines(raw: string): string[] {
@@ -79,7 +82,7 @@ export type ParsedNode =
   | { type: "paragraph"; textRuns: TextRun[] }
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; textRuns: TextRun[] }
   | { type: "bulletList"; items: ParsedListItem[] }
-  | { type: "orderedList"; start: number; items: ParsedListItem[] };
+  | { type: "orderedList"; start: number; listType: OrderedListStyle; items: ParsedListItem[] };
 
 export interface ParsedListItem {
   textRuns: TextRun[];
@@ -249,7 +252,12 @@ function normalizeList(
       if (childTag === "ol") {
         const childItems = normalizeList(childEl, state);
         if (childItems.length > 0) {
-          nested = { type: "orderedList", start: orderedListStart(childEl), items: childItems };
+          nested = {
+            type: "orderedList",
+            start: orderedListStart(childEl),
+            listType: orderedListType(childEl),
+            items: childItems,
+          };
         }
         break;
       }
@@ -266,6 +274,56 @@ function orderedListStart(list: Element): number {
   const parsed = raw === null ? NaN : Number(raw);
   if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 9007199254740991) return parsed;
   return 1;
+}
+
+/** CSS list-style-type → 编号样式（与 Tiptap OrderedList 的解析口径一致）。 */
+function cssListStyleTypeToStyle(style: string): OrderedListStyle | null {
+  const match = style.match(/list-style-type\s*:\s*([^;]+)/i);
+  if (!match) return null;
+  switch (match[1].trim().toLowerCase()) {
+    case "upper-roman":
+      return "I";
+    case "lower-roman":
+      return "i";
+    case "upper-alpha":
+    case "upper-latin":
+      return "A";
+    case "lower-alpha":
+    case "lower-latin":
+      return "a";
+    default:
+      return null;
+  }
+}
+
+/**
+ * 读取有序列表的编号样式（格式版本 3）：`ol[type]` 优先，其次 `<ol>` 行内
+ * `list-style-type`，再次首个 `<li>` 的行内样式（Google Docs 常见形态）。
+ * 无法识别或非法的样式按数字（"1"）处理，不影响其余解析与拒绝规则。
+ */
+export function orderedListType(list: Element): OrderedListStyle {
+  const htmlType = list.getAttribute("type");
+  if (htmlType !== null) {
+    const trimmed = htmlType.trim();
+    if (trimmed === "1" || trimmed === "A" || trimmed === "a" || trimmed === "I" || trimmed === "i") {
+      return trimmed;
+    }
+    return "1";
+  }
+  const olStyle = list.getAttribute("style");
+  if (olStyle !== null) {
+    const fromOl = cssListStyleTypeToStyle(olStyle);
+    if (fromOl !== null) return fromOl;
+  }
+  const firstLi = list.querySelector("li");
+  if (firstLi !== null) {
+    const liStyle = firstLi.getAttribute("style");
+    if (liStyle !== null) {
+      const fromLi = cssListStyleTypeToStyle(liStyle);
+      if (fromLi !== null) return fromLi;
+    }
+  }
+  return "1";
 }
 
 /** 单元格文字：多块扁平化为空格连接。 */
@@ -304,7 +362,12 @@ export function parseHtmlToBlocks(
         continue;
       }
       if (tag === "ol") {
-        content.push({ type: "orderedList", start: orderedListStart(el), items: normalizeList(el, state) });
+        content.push({
+          type: "orderedList",
+          start: orderedListStart(el),
+          listType: orderedListType(el),
+          items: normalizeList(el, state),
+        });
         continue;
       }
       if (tag === "table") {
@@ -393,8 +456,14 @@ function nodeToDocument(node: ParsedNode): unknown {
     }
     case "bulletList":
       return { type: "bulletList", content: node.items.map(itemToDocument) };
-    case "orderedList":
-      return { type: "orderedList", attrs: { start: node.start }, content: node.items.map(itemToDocument) };
+    case "orderedList": {
+      // 编号样式：非十进制四值写入 attrs.type（"1" 为缺省、省略——与存储 grammar 一致）。
+      const attrs =
+        node.listType === "1"
+          ? { start: node.start }
+          : { start: node.start, type: node.listType };
+      return { type: "orderedList", attrs, content: node.items.map(itemToDocument) };
+    }
   }
 }
 

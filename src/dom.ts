@@ -180,6 +180,14 @@ export interface AppDom {
   btnItalic: HTMLButtonElement;
   btnBulletList: HTMLButtonElement;
   btnOrderedList: HTMLButtonElement;
+  /** 有序列表编号样式 flyout 触发器（「有序列表」按钮旁，PS 风格；见 editor-toolbar.ts）。 */
+  btnOrderedListStyle: HTMLButtonElement;
+  /** 编号样式 flyout 菜单容器（紧邻触发器右侧弹出）。 */
+  orderedListStyleMenu: HTMLElement;
+  /** 菜单顶部状态行：统一样式显示中文名，多种样式显示「多种格式」。 */
+  orderedListStyleCurrent: HTMLElement;
+  /** 菜单内五个样式项按钮（`data-style` 标识样式值）。 */
+  orderedListStyleItems: readonly HTMLButtonElement[];
   btnToolbarUnderline: HTMLButtonElement;
   btnToolbarStrike: HTMLButtonElement;
   btnUndo: HTMLButtonElement;
@@ -416,6 +424,16 @@ export function getAppDom(): AppDom {
     btnItalic: requireElement("btn-italic"),
     btnBulletList: requireElement("btn-bullet-list"),
     btnOrderedList: requireElement("btn-ordered-list"),
+    btnOrderedListStyle: requireElement<HTMLButtonElement>("btn-ordered-list-style"),
+    orderedListStyleMenu: requireElement("ordered-list-style-menu"),
+    orderedListStyleCurrent: requireElement("ordered-list-style-current"),
+    orderedListStyleItems: [
+      requireElement<HTMLButtonElement>("btn-ol-style-1"),
+      requireElement<HTMLButtonElement>("btn-ol-style-A"),
+      requireElement<HTMLButtonElement>("btn-ol-style-a"),
+      requireElement<HTMLButtonElement>("btn-ol-style-I"),
+      requireElement<HTMLButtonElement>("btn-ol-style-i"),
+    ],
     btnToolbarUnderline: requireElement("btn-toolbar-underline"),
     btnToolbarStrike: requireElement("btn-toolbar-strike"),
     btnUndo: requireElement("btn-undo"),

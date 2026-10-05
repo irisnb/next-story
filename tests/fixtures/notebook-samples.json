@@ -549,8 +549,112 @@
       "valid": false,
       "value": {
         "format": "next-story-tiptap",
+        "version": 4,
+        "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "version 3 blank document accepted",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
         "version": 3,
         "document": { "type": "doc", "content": [{ "type": "paragraph" }] }
+      }
+    },
+    {
+      "name": "ordered list with letter style type accepted",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "orderedList",
+              "attrs": { "start": 3, "type": "A" },
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "三" }] }] },
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "四" }] }] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "nested ordered list with roman style type accepted",
+      "valid": true,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "orderedList",
+              "attrs": { "start": 1 },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph", "content": [{ "type": "text", "text": "父" }] },
+                    {
+                      "type": "orderedList",
+                      "attrs": { "start": 2, "type": "i" },
+                      "content": [
+                        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子" }] }] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ordered list with explicit decimal style type rejected",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 1, "type": "1" }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ordered list with invalid style type rejected",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 1, "type": "x" }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ordered list with non-string style type rejected",
+      "valid": false,
+      "value": {
+        "format": "next-story-tiptap",
+        "version": 3,
+        "document": {
+          "type": "doc",
+          "content": [
+            { "type": "orderedList", "attrs": { "start": 1, "type": 1 }, "content": [{ "type": "listItem", "content": [{ "type": "paragraph" }] }] }
+          ]
+        }
       }
     },
     {

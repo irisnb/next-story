@@ -107,6 +107,7 @@ export interface ImportLoss {
     | "list_overflow_degraded"
     | "symbol_dropped"
     | "style_degraded"
+    | "numbering_format_degraded"
     | "block_skipped";
   count: number;
   note: string;

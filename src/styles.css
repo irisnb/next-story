@@ -1867,6 +1867,107 @@ body.ai-window-dragging { user-select: none; }
   color: var(--color-on-primary);
 }
 
+/* ==== 有序列表编号样式：按钮旁紧邻 flyout 子菜单（PS 风格） ==== */
+/* 主按钮保持工具栏标准整宽（标签「1. 列表」完整可见——本列按钮为零余量
+   布局，按钮内叠放触发器必压文字）；▾ 触发器是紧贴按钮下缘的窄柄（右对齐
+   小三角），不与文字同行、整条可点。flyout 从行右缘紧邻弹出、覆盖正文短暂
+   出现（点选/外点/Escape 即关），不持续占用正文列宽，窄窗口下同样成立。 */
+.ol-style-row {
+  position: relative;
+  width: 100%;
+}
+
+.ol-style-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  height: 13px;
+  padding: 0 5px 1px 0;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.ol-style-trigger:hover:not(:disabled) {
+  color: var(--color-ink);
+}
+
+.ol-style-trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ol-style-caret {
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.ol-style-trigger[aria-expanded="true"] .ol-style-caret {
+  transform: rotate(-135deg);
+}
+
+.ol-style-menu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 0.4rem);
+  z-index: 45;
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  background: var(--color-surface);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-control);
+}
+
+/* 状态行：统一值显示中文名；选区触及多种样式时如实显示「多种格式」 */
+.ol-style-current {
+  padding: 0.2rem 0.5rem 0.35rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  border-bottom: var(--border-hairline);
+}
+
+.ol-style-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ol-style-item:hover {
+  background: var(--color-surface-hover);
+}
+
+/* 固定宽度标记槽：1./A./a./I./i. 右对齐纵列，样式序列一眼可比 */
+.ol-style-mark {
+  flex: none;
+  min-width: 1.7rem;
+  text-align: right;
+  font-weight: 600;
+}
+
+.ol-style-item.active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
 /* 覆盖式抽屉：从左侧滑出，不挤压编辑区（与窄窗口 AI 面板同一形态，方向镜像） */
 .format-drawer {
   position: fixed;

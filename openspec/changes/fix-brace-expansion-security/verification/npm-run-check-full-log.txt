@@ -1,0 +1,2186 @@
+
+> next-story@0.1.0 check
+> npm run typecheck && npm run lint && npm run test:frontend && npm run test:reliability && npm run test:driver && npm run test:validation && npm run build && npm run fmt:rust && npm run clippy:rust && npm run test:rust
+
+
+> next-story@0.1.0 typecheck
+> tsc --noEmit
+
+
+> next-story@0.1.0 lint
+> eslint .
+
+
+> next-story@0.1.0 test:frontend
+> node --test tests/*.test.ts
+
+✔ 7.1a 授权请求进入讨论状态并在窗口显示原因与权限边界 (47.2798ms)
+✔ 7.1b 措辞红线：授权卡不得表述为「现在才允许 AI 查看作品」 (0.4044ms)
+✔ 7.1c 允许：调 ai_resolve_reading_request(true)，授权卡消失，普通保存不携带后端授权 (73.3944ms)
+✔ 7.1d 拒绝：调 ai_resolve_reading_request(false)，授权卡消失，讨论保持未授权 (26.4192ms)
+✔ 7.1e 回填失败（迟到 / 身份不符）：清除授权卡但不伪造授权 (3.9156ms)
+✔ 7.2a 窗口菜单开关：开启 / 关闭调用后端命令并更新状态，关闭文案明示不清除已读 (28.1465ms)
+✔ 7.2b 开关命令失败：授权状态不变并给出可见提示 (14.6872ms)
+✔ 7.2c 停止生成只结束当前轮：清除等待中的授权卡，但不改变授权状态 (12.0368ms)
+✔ 7.3a 工具调用驱动轻量状态行：正在检索 / 正在阅读，可展开已读文档列表 (12.8994ms)
+✔ 7.3b 过程状态不含模型内部推理：noteToolCall 只记录活动类型与文档身份 (0.4293ms)
+✔ 7.3c 传输层按在途消息路由工具调用、按讨论身份路由授权请求 (9.4243ms)
+✔ 7.4a 参考说明按轮显示按需补读文档与三档阅读程度 (0.6178ms)
+✔ 7.4b 轮次终态后从档案刷新补读出处并合入讨论 (32.5456ms)
+✔ 7.6 等待授权期间退出：重开后该轮显示中断，开启授权后可重发 (13.9719ms)
+✔ 7.5a 关闭可见性前提示受影响讨论：文案明示永久只读与脱敏，取消则不执行 (17.8346ms)
+✔ 7.5b 确认后关闭生效 (15.924ms)
+✔ 7.5c 没有受影响讨论时不弹确认 (0.363ms)
+✔ 7.5d 受影响讨论查询失败时保守拦截（失败关闭） (0.3273ms)
+✔ resolves identity when both conversation id and project path are present (16.337ms)
+✔ keeps surrounding whitespace in resolved values (guard reads trim, does not rewrite) (0.2569ms)
+✔ returns null when either value is blank (including whitespace-only) (0.2555ms)
+✔ returns null when either value is null or undefined (0.184ms)
+✔ clampWidth and clampHeight enforce the minimum window size (10.5421ms)
+✔ clampLeft and clampTop keep a window inside the app bounds (0.2333ms)
+✔ snapResult snaps start and end edges and reports the aligned edge as guide (14.5219ms)
+✔ window geometry never enters the reducer state (27.7794ms)
+✔ one discussion maps to at most one window, and delete closes its window (0.5439ms)
+✔ sideBySideFloatingGeometry lays two floating windows equal-width, top-aligned and inside bounds (0.3564ms)
+✔ sideBySideFloatingGeometry clamps to min size in a narrow bounds (0.2338ms)
+✔ 2.8 未打开讨论软删除后，撤销先恢复再读取，不依赖内存全文 (39.6319ms)
+✔ 撤销删除恢复补读-only 受限讨论：当前隐藏 (0.7846ms)
+✔ 撤销删除恢复补读-only 受限讨论：统一锁存、已重新可见 (0.391ms)
+✔ 2.8 恢复失败保留删除守卫及撤销提示，再次撤销可成功 (17.1602ms)
+✔ 2.8 恢复已提交而读取失败，只重试读取；不重新恢复或保存 (0.6641ms)
+✔ 2.8 撤销读档期间切换作品，迟到内容不进入新作品 (0.5265ms)
+✔ 撤销提示生命周期：删除后立即通知订阅者，撤销成功后清空并通知 (0.7973ms)
+✔ 撤销提示生命周期：六秒超时清空提示并立即通知订阅者 (17.3005ms)
+✔ 撤销提示生命周期：clearUndo 只在实际清除提示时通知 (0.4786ms)
+✔ direct question without selection sends a question-only request (58.2119ms)
+✔ direct question with selection sends question and frozen selection (0.4881ms)
+✔ direct question with selection carries the frozen unsaved body snapshot (0.3815ms)
+✔ empty direct question is rejected without sending (0.4105ms)
+✔ missing config routes direct question to configuration-required without sending (0.5399ms)
+✔ direct question keeps the frozen selection after the editor selection changes (12.4854ms)
+✔ direct question preflight result is discarded when the project changes (0.5115ms)
+✔ blocked direct question (single-flight) reports an error without sending (0.4389ms)
+✔ different discussions preflight concurrently without a shared gate (11.6287ms)
+✔ a direct question preflight is not invalidated by newConversation and still sends (0.6335ms)
+✔ a direct question preflight still enters configuration-required after newConversation (5.9133ms)
+✔ a direct question preflight still surfaces a late loadConfig rejection after newConversation (0.6225ms)
+✔ direct question with a hidden-document selection is not sent and shows a message (0.4754ms)
+✔ direct question without selection is unaffected by the visibility guard (11.0057ms)
+✔ permission closed during preflight aborts before sending (0.4516ms)
+✔ forged document identity cannot bypass the guard with bare text (0.392ms)
+✔ 快车道并发：常规生成进行中，及时召唤独立发起而不排队 (177.6452ms)
+✔ 达到全局上限后排队的请求只在对应讨论显示排队状态 (42.0556ms)
+✔ 停止排队中的请求：取消派发并留下已停止终态、计时收束与持久化 (55.3878ms)
+✔ 派发前复核：无冻结锚点时回落到关注文档判定 (29.4841ms)
+✔ 派发前复核：优先按冻结锚点判定（锚点文档隐藏时拒绝，关注文档仍可见也不放行） (44.9682ms)
+✔ 派发前复核：锚点文档可见时放行，不受关注文档可见性变化影响 (68.8575ms)
+✔ waitTiming 四点接线：立即开始与排队两条路径都记录完整时间线 (30.3465ms)
+✔ 停止后的追问重试：经窗口「重试」重新发送原问题并回到生成中 (22.93ms)
+✔ 2.4 列表不读全文；打开中有提示，成功显示回答，再次点击只聚焦 (96.7431ms)
+✔ 2.4 读档失败结束加载并保留具体错误，关闭后可重新打开 (27.1222ms)
+✔ 2.4 switch 后丢弃迟到读档，不复活窗口 (15.8341ms)
+✔ 2.4 delete 后丢弃迟到读档，不复活窗口 (26.5523ms)
+✔ 2.4 close 后丢弃迟到读档，不复活窗口 (32.2849ms)
+✔ 2.4 destroy 后丢弃迟到读档，不复活窗口 (0.829ms)
+✔ 2.4 关闭并重开同一讨论，第一次读取不得覆盖第二次 (20.0996ms)
+✔ 2.5 超限原文只显示于保存失败的讨论窗口 (89.4904ms)
+✔ 2.6 保存后更新轻量列表，不重新 list 或重建其他窗口 (2.6559ms)
+✔ 2.7 未打开条目通过窄命令重命名和置顶，不读取或重存全文 (85.18ms)
+✔ 4.1 user turn accepted saves a pending record, terminal result updates it (14.4748ms)
+✔ F07 close waits for every pending discussion save before destroying controllers and window (2.2752ms)
+✔ F07 drain includes a terminal save registered while the accepted save is pending (16.0481ms)
+✔ F07 drain waits for its batch to settle and rejects with the original save error (4.389ms)
+✔ 4.2 save failure is visible and not faked as saved (38.5963ms)
+✔ 4.3 beginProject loads the conversation list for the project (14.1682ms)
+✔ 4.4 reopening shows saved turns and an interrupted pending turn without auto-resend (1.6621ms)
+✔ 4.5 deleteDiscussion ends the session and removes the archive (0.5292ms)
+✔ 5.1 reopening a discussion whose provenance references a hidden document is restricted and not continuable (12.9293ms)
+✔ 5.2 reopening an archive missing provenance is conservatively restricted (0.7106ms)
+✔ 5.3 reopening a discussion whose materials are still visible stays continuable (0.8412ms)
+✔ 5.6 driverLost recovery re-checks current visibility before replay (hidden source is not replayed) (11.1918ms)
+✔ 5.7 driverLost recovery still replays a discussion whose material remains visible (1.3782ms)
+✔ 5.8 driverLost recovery replays a no-material direct question (14.5596ms)
+✔ 5.8a replay transport failure enters recovery error instead of completing recovery (17.6026ms)
+✔ 补读-only 来源隐藏：真实编排过滤恢复、锁存、列表脱敏，关闭窗口后重读仍受限 (32.1919ms)
+✔ 5.9 recomputeRestrictions latches an open discussion and persists it so re-enable + reopen stays restricted (1.485ms)
+✔ routes configuration_required to the configuration panel state (22.8412ms)
+✔ routes non-configuration failures to the ordinary error state (1.6821ms)
+✔ first request preflight previews selection before requiring configuration (16.8444ms)
+✔ discards the preflight result when the project changes during config loading (0.4789ms)
+✔ preflight failure after a project switch is discarded too (0.4009ms)
+✔ a preflight is not invalidated by newConversation and still sends (9.3735ms)
+✔ a preflight still enters configuration-required after newConversation (10.4476ms)
+✔ a preflight still surfaces a late loadConfig rejection after newConversation (0.6305ms)
+✔ first request keeps the submitted snapshot after the editor selection changes (10.0938ms)
+✔ retry enters loading only when the coordinator accepts the request (15.6215ms)
+✔ first retry uses the failed request snapshot instead of the current editor selection (0.3876ms)
+✔ summon retry retains the frozen body snapshot from the stored first request (13.7295ms)
+✔ builds a follow-up payload from the frozen anchor and successful turns exactly once (1.085ms)
+✔ summon request carries the frozen unsaved body snapshot (0.3764ms)
+✔ follow-up retains the frozen unsaved body snapshot together with full identity (0.2609ms)
+✔ follow-up with a snapshot but incomplete identity omits both identity and snapshot (10.3675ms)
+✔ follow-up and its retry keep the conversation anchor after later editor changes (1.1711ms)
+✔ preserves a failed follow-up as configuration-required without auto-requesting (0.7091ms)
+✔ rejected follow-up retry preserves the failed question and original error (0.3849ms)
+✔ rejected edit-resend preserves the old failed question and error atomically (0.3193ms)
+✔ accepted edit-resend sends the edited payload then commits question and loading (0.3682ms)
+✔ direct question origin follow-up sends the full Q&A payload with origin (6.9446ms)
+✔ direct question origin follow-up retry preserves the failed question (1.3339ms)
+✔ opening configuration preserves conversation and never auto-fires a request (0.3922ms)
+✔ summon from a hidden document is not sent and surfaces a Chinese message (0.5083ms)
+✔ production wiring sends an allowed selection with source identity (70.3359ms)
+✔ production wiring rejects a hidden-document selection before sending (2.3237ms)
+✔ production wiring rejects a cross-project selection before sending (8.3914ms)
+✔ production wiring rejects a stale-version selection before sending (13.957ms)
+✔ production wiring re-checks permission when it closes during preflight (15.6076ms)
+✔ 关注文档在讨论创建时固定，明确切换后从下一轮生效并持久化 (102.4841ms)
+✔ 查看其他文档不改变关注对象，追问仍用原关注文档 (34.9624ms)
+✔ 追问按发送时刻取关注文档的最新未保存快照与版本（版本更新） (41.2476ms)
+✔ 窗口内的关注文档选择器只列可见文档，选择后从下一轮生效 (28.3674ms)
+✔ 及时召唤讨论的追问不携带常规关注文档材料（快车道隔离） (19.9113ms)
+✔ 及时召唤讨论（对话已建立）不显示窗口头切换入口，窗口菜单隐藏切换条目 (12.8293ms)
+✔ 及时召唤首轮在途也不显示切换入口（按待定首轮材料判定） (0.9973ms)
+✔ 常规讨论的窗口菜单照常提供切换关注文档条目并可打开选择器 (17.2441ms)
+✔ aiStartSession sends the session id with no notebook write args (15.0168ms)
+✔ aiSendMessage sends a direct first message with question and optional selection (0.3161ms)
+✔ aiSendMessage omits selectedText for follow-up questions (0.1966ms)
+✔ aiCancelMessage and aiEndSession are idempotent-shaped commands (0.3373ms)
+✔ aiReplayHistory sends projected turns and aiReplayDone marks the end (9.6758ms)
+✔ 生产代码对 ai-panel-reducer 的 import 语句仅出现在状态外观模块 (350.839ms)
+✔ reducer 的迁移函数名不出现在状态外观之外的生产代码 (160.1391ms)
+✔ AiPanelEvent 联合与配套请求/进度类型只在事件类型模块定义一份 (621.7123ms)
+✔ ai-feature-* 编排聚焦模块不访问 document / window DOM 全局 (29.5891ms)
+✔ ai-dock.ts 不导入 ai-feature.ts 及其内部模块（动作只经注入的 AiDockActions 传入） (2.5744ms)
+✔ scheduler 准入与 coordinator 请求调用的组合仅出现在请求网关模块 (253.5436ms)
+✔ 组合根（ai-feature.ts）不含派发、材料组装与停止/重试规则的实现体 (2.355ms)
+✔ formatRelativeTime shows relative labels (37.0659ms)
+✔ formatRelativeTime is empty for invalid or missing time (0.2572ms)
+✔ describeConversationStatus maps terminal states to unified words (1.032ms)
+✔ describeWindowStatus maps window states to unified words (19.8467ms)
+✔ conversationGroupKey places timestamps into the correct bucket (0.3773ms)
+✔ effectiveTitle prefers the custom title over the derived title (0.2875ms)
+✔ buildConversationGroups sorts pinned first and groups by time (155.812ms)
+✔ buildConversationGroups marks the active discussion and returns month sections for earlier (1.8505ms)
+✔ buildConversationGroups omits empty groups (0.368ms)
+✔ createFromFirstSuccess accepts direct_question material with a null anchor (13.9181ms)
+✔ readonlyView handles a null anchor without throwing (12.6836ms)
+✔ createFromFirstSuccess freezes the anchor and rejects external mutation (12.1604ms)
+✔ beginFollowUp allows only one active pending turn and rejects blank questions (11.5508ms)
+✔ an interrupted pending turn can be replaced by a new question (0.288ms)
+✔ succeedFollowUp appends one successful turn and clears pending (0.3138ms)
+✔ failFollowUp preserves question; stale turn ids are rejected (0.2498ms)
+✔ direct-question-origin follow-up request carries the full Q&A with origin (0.3629ms)
+✔ summon-origin follow-up request omits origin (9.6664ms)
+✔ followUpIdentityOf passes through document, project, and version identity from the anchor (0.4914ms)
+✔ followUpIdentityOf returns empty for a direct question without selection (0.1801ms)
+✔ followUpIdentityOf omits identity when only part of the trio is present (0.2039ms)
+✔ buildFollowUpRequest carries the full identity trio with the snapshot (0.3468ms)
+✔ buildFollowUpRequest keeps a no-selection direct-question follow-up without identity (0.1719ms)
+✔ readonlyView cannot mutate internal conversation state (0.2765ms)
+✔ frozenSnapshot freezes a shallow copy (0.1905ms)
+✔ buildConversationRecord and conversationFromRecord round-trip a completed discussion (14.3835ms)
+✔ conversationFromRecord marks an in-flight pending turn as interrupted (0.5104ms)
+✔ buildDiscussionRecord covers the first-round in-flight state (0.6353ms)
+✔ conversationFromRecord flags a summon first-round pending turn as interrupted (0.2226ms)
+✔ conversationFromRecord flags a direct-question first-round pending turn as interrupted (11.9459ms)
+✔ conversationFromRecord keeps a completed summon first round uninterrupted (0.2373ms)
+✔ buildConversationRecord writes a pending first assistant turn when the first round is interrupted with no response (0.1563ms)
+✔ round-trip preserves the interrupted first round through buildConversationRecord and conversationFromRecord (0.1848ms)
+✔ buildConversationRecord keeps the first assistant turn done for a completed first round (0.1375ms)
+✔ summaryOf reports an interrupted first round as pending with a pending first turn (0.3249ms)
+✔ complete page assembly returns a valid AI dock contract (7.8622ms)
+✔ missing required dock node fails assembly with its identifier (1.0704ms)
+✔ buildAiWindowDom assembles a full contract from a window root by role (8.0661ms)
+✔ buildAiWindowDom fails with the missing role identifier when a node is absent (0.395ms)
+✔ multiple windows get independent contracts from independent roots (10.2129ms)
+✔ setupAiWindow renders from the explicit contract without global lookups and destroys without leaks (50.1643ms)
+✔ window renders a conversation with user and assistant messages (65.3598ms)
+✔ window streams incremental text into the conversation thread (14.9721ms)
+✔ window stop and close buttons invoke the bound actions (0.8463ms)
+✔ window badge shows generating, hides after success, and labels stopped state (12.532ms)
+✔ restricted discussion window shows a notice, disables follow-up, and offers a new conversation (1.537ms)
+✔ real AI feature flow submits a direct question into its own window (98.1455ms)
+✔ stopRequest marks only the target discussion stopped (29.5052ms)
+✔ closeWindow ends display but keeps the discussion (18.2482ms)
+✔ project lifecycle reset clears windows and discussions (64.9822ms)
+✔ AI feature destroy releases owned resources once and ignores late work (14.9824ms)
+✔ AI panel source never exposes writeback entry points (20.3877ms)
+✔ selection entry menu keeps its locked trigger anchor styling (19.2217ms)
+✔ focus switch opens the picker and shows a clear Chinese notice when switching (19.6669ms)
+✔ materials toggle shows the actual material sources and hides them again (1.0338ms)
+✔ a hidden focus document is masked in the window header (0.3948ms)
+✔ undo_notice_changed 只使渲染失效，不修改业务状态 (55.8827ms)
+✔ preview_first_request 展开面板并进入首轮预览 (0.4103ms)
+✔ preview_first_request 冻结快照：事后修改原对象不影响已存状态 (0.2215ms)
+✔ block_first_request 记录阻塞预览并展开面板 (0.2247ms)
+✔ begin_request 建立召唤首轮 loading 讨论，打开停靠窗口并聚焦 (0.4483ms)
+✔ begin_request 复用聚焦的空讨论并按本次发起重新绑定关注文档 (0.2756ms)
+✔ succeed 把召唤首轮 loading 迁移为成功并建立对话 (10.6215ms)
+✔ succeed 的非法迁移返回同一引用：未知讨论、追问中、非生成态 (0.8256ms)
+✔ fail 把召唤首轮 loading 迁移为 error 并保留冻结快照与讨论身份 (0.6111ms)
+✔ fail 在旧式预览态把瞬态预览迁移为 error (7.4199ms)
+✔ fail 的非法迁移返回同一引用：非生成中讨论、无预览的空状态 (0.3934ms)
+✔ require_configuration 把召唤首轮 loading 迁移为缺配置态 (0.269ms)
+✔ require_configuration 的非法迁移返回同一引用：非生成中讨论、空状态 (0.1716ms)
+✔ begin_follow_up 在聚焦讨论建立待答轮并进入追问 loading (0.2009ms)
+✔ begin_follow_up 的非法迁移返回同一引用：空白问题、无聚焦讨论、受限讨论、已有待答轮 (0.3162ms)
+✔ succeed_follow_up 把待答轮落为成功轮次并回到成功显示 (12.2979ms)
+✔ succeed_follow_up 的非法迁移返回同一引用：轮次不符、未知讨论 (0.3692ms)
+✔ fail_follow_up 在待答轮上记录错误并进入追问 error 显示 (0.706ms)
+✔ fail_follow_up 的非法迁移返回同一引用：轮次不符、未知讨论 (0.2513ms)
+✔ require_follow_up_configuration 把待答轮标记为缺配置并引导配置 (36.3432ms)
+✔ require_follow_up_configuration 的非法迁移返回同一引用：轮次不符、未知讨论 (0.3017ms)
+✔ accept_edited_follow_up 以编辑后的问题重发并清除旧错误 (0.3144ms)
+✔ accept_edited_follow_up 的非法迁移返回同一引用：待答轮无错误 (0.6178ms)
+✔ cancel_follow_up 取消待答轮并显示既有内容 (0.2283ms)
+✔ cancel_follow_up 的非法迁移返回同一引用：轮次不符、无待答轮 (0.1502ms)
+✔ accept_follow_up_retry 以原问题重发失败轮并重置流式草稿 (0.2113ms)
+✔ accept_follow_up_retry 的非法迁移返回同一引用：待答轮无错误 (0.1081ms)
+✔ accept_first_retry 从首轮 error 重回 loading，并保留讨论身份 (0.1937ms)
+✔ accept_first_retry 从已停止的首轮重回 loading (0.1439ms)
+✔ accept_first_retry 的非法迁移返回同一引用：无聚焦讨论、非可重试状态 (0.1482ms)
+✔ update_direct_question_draft 按讨论写入草稿 (0.189ms)
+✔ set_pending_selection 附带冻结选区并清除忽略标记 (10.8392ms)
+✔ set_pending_selection 对被忽略的同一选区不再附带 (0.2343ms)
+✔ set_pending_selection 传 null 清除待附带选区 (0.1302ms)
+✔ remove_pending_selection 清除选区并记录忽略身份 (0.1496ms)
+✔ remove_pending_selection 无待附带选区时返回同一引用 (0.1374ms)
+✔ begin_direct_question 冻结问题与选区、消费待附带选区并打开聚焦窗口 (0.1901ms)
+✔ begin_direct_question 的非法迁移返回同一引用：空白问题 (0.1242ms)
+✔ succeed_direct_question 建立统一对话并清除该讨论草稿 (0.2487ms)
+✔ succeed_direct_question 的非法迁移返回同一引用：未知讨论、非 loading (0.1297ms)
+✔ fail_direct_question 进入 error 终态并丢弃流式草稿 (0.1565ms)
+✔ fail_direct_question 的非法迁移返回同一引用：未知讨论、非 loading (0.1277ms)
+✔ require_direct_question_configuration 进入缺配置终态 (0.1252ms)
+✔ require_direct_question_configuration 的非法迁移返回同一引用：未知讨论、非 loading (0.1356ms)
+✔ append_stream_text 按讨论身份路由增量到对应载体 (0.1889ms)
+✔ append_stream_text 的非法迁移返回同一引用：未知讨论、无接受载体 (0.1018ms)
+✔ begin_recovery 进入恢复态，保留对话与锚点 (0.1786ms)
+✔ begin_recovery 的非法迁移返回同一引用：未知讨论、无对话本体 (0.1172ms)
+✔ complete_recovery 回到成功显示（首轮回应） (0.1208ms)
+✔ complete_recovery 的非法迁移返回同一引用：非恢复态、未知讨论 (0.1064ms)
+✔ fail_recovery 进入 error 并引导新建对话 (0.1248ms)
+✔ fail_recovery 的非法迁移返回同一引用：非恢复态、未知讨论 (10.8062ms)
+✔ close 收起展开的面板；已收起返回同一引用 (0.2181ms)
+✔ open 展开面板；已展开返回同一引用 (0.121ms)
+✔ new_conversation 开启新的空讨论窗口并清掉瞬态字段 (0.1883ms)
+✔ new_conversation 聚焦窗口已是空讨论时复用并返回同一引用 (0.1279ms)
+✔ reset 清空讨论、窗口与草稿并推进代次 (12.5396ms)
+✔ load_discussions 只刷新摘要，保留窗口与运行态 (0.3315ms)
+✔ load_discussions 按隐藏文档集合把出处受限的讨论标记为受限 (0.1895ms)
+✔ recompute_restrictions 把出处引用新隐藏文档的讨论标记受限（单调锁存） (0.347ms)
+✔ recompute_restrictions 无变化时返回同一引用 (0.1375ms)
+✔ open_discussion 重开讨论：打开窗口、聚焦并显示已保存轮次 (0.2676ms)
+✔ open_discussion 已打开的讨论只聚焦，不重复开窗 (0.1515ms)
+✔ delete_discussion 移除讨论、窗口与草稿，聚焦被删讨论时清聚焦与瞬态预览 (0.4573ms)
+✔ delete_discussion 未知讨论返回同一引用 (0.1177ms)
+✔ set_save_error 设置保存失败提示，clear_save_error 清除 (0.1281ms)
+✔ clear_save_error 无错误时返回同一引用 (0.0972ms)
+✔ stop_request 停止直接提问：保留问题与已流式内容，进入已停止终态 (0.1515ms)
+✔ stop_request 停止召唤首轮：保留冻结材料与已流式内容 (0.1793ms)
+✔ stop_request 停止追问：待答轮标记中断并保留已流式内容 (9.5823ms)
+✔ stop_request 停止排队中的直接提问并清掉排队标记 (0.1908ms)
+✔ stop_request 清除等待中的授权卡与补读过程状态，但不改变授权状态 (4.9165ms)
+✔ stop_request 的非法迁移返回同一引用：非生成中且无残留、未知讨论、追问待答轮已收束 (9.2101ms)
+✔ focus_window 聚焦已打开的窗口 (0.1908ms)
+✔ focus_window 的非法迁移返回同一引用：非窗口讨论、已聚焦 (1.0274ms)
+✔ close_window 结束显示但保留讨论；关闭聚焦窗口时清聚焦 (0.1886ms)
+✔ close_window 的非法迁移返回同一引用：未打开窗口的讨论 (0.1136ms)
+✔ retry_direct_question 从已停止直接提问重回 loading 并重置流式草稿 (0.2212ms)
+✔ retry_direct_question 的非法迁移返回同一引用：非已停止、未知讨论 (0.1297ms)
+✔ retry_stopped_follow_up 恢复中断待答轮为追问 loading (0.1579ms)
+✔ retry_stopped_follow_up 的非法迁移返回同一引用：无待答轮、未中断、受限讨论 (0.2207ms)
+✔ set_window_placement 把停靠窗口切为浮动 (0.1374ms)
+✔ set_window_placement 的非法迁移返回同一引用：未知窗口、同值 (6.818ms)
+✔ reset_layout 把浮动窗口收回停靠 (0.2717ms)
+✔ reset_layout 全部已停靠时返回同一引用 (0.1305ms)
+✔ queue_request 把生成中的请求标记排队（直接提问与召唤首轮） (0.1956ms)
+✔ queue_request 的非法迁移返回同一引用：非生成中、已排队、未知讨论 (0.1389ms)
+✔ start_queued_request 把排队请求恢复为生成中 (0.1319ms)
+✔ start_queued_request 的非法迁移返回同一引用：未排队、未知讨论 (0.1073ms)
+✔ reject_queued_request 把排队直接提问转为可读失败终态 (0.8731ms)
+✔ reject_queued_request 把排队召唤首轮转为首轮失败 (0.236ms)
+✔ reject_queued_request 把排队追问转为追问失败并在待答轮记录错误 (0.188ms)
+✔ reject_queued_request 的非法迁移返回同一引用：未排队、未知讨论 (0.1289ms)
+✔ rename_discussion 更新讨论自定义标题 (0.1228ms)
+✔ rename_discussion 的非法迁移返回同一引用：同标题、未知讨论、无对话本体 (0.1244ms)
+✔ set_discussion_pinned 更新置顶标记 (0.1205ms)
+✔ set_discussion_pinned 的非法迁移返回同一引用：同值、未知讨论 (0.1041ms)
+✔ record_round_provenance 追加本轮自动取材出处 (0.1493ms)
+✔ record_round_provenance 的非法迁移返回同一引用：未知讨论、无对话本体 (0.3352ms)
+✔ set_focus_document 显式改绑讨论的关注文档 (0.2086ms)
+✔ set_focus_document 的非法迁移返回同一引用：同值、未知讨论、受限讨论 (0.1813ms)
+✔ reading_request 显示授权卡：写入待决授权请求 (0.1454ms)
+✔ reading_request 的非法迁移返回同一引用：未知讨论、同一待决重复到达 (0.1204ms)
+✔ resolve_reading_request 允许：清除授权卡并把授权写入讨论与对话本体 (0.1929ms)
+✔ resolve_reading_request 拒绝：清除授权卡且不写授权 (0.141ms)
+✔ resolve_reading_request 的非法迁移返回同一引用：无待决的拒绝、已授权且无待决的允许、未知讨论 (21.8943ms)
+✔ set_on_demand_reading 开启写授权，关闭清授权 (0.3726ms)
+✔ set_on_demand_reading 已授权再开启保持原授权时间并清残留授权卡 (0.1817ms)
+✔ set_on_demand_reading 的非法迁移返回同一引用：关闭已关闭、未知讨论 (0.1174ms)
+✔ note_tool_call 记录活动类型与已读文档（去重、按出现顺序） (0.2189ms)
+✔ note_tool_call 的非法迁移返回同一引用：未知工具、未知讨论、重复同类活动 (0.1178ms)
+✔ update_on_demand_state 轮后合并档案授权与补读出处 (0.146ms)
+✔ update_on_demand_state 的非法迁移返回同一引用：无对话本体、未知讨论、同值 (0.1131ms)
+✔ resets for the initial request and each different snapshot identity (1.2067ms)
+✔ preserves scroll when retrying the same frozen snapshot (0.2848ms)
+✔ preserves scroll across visibility renders and same-snapshot completion (0.2023ms)
+✔ preserves scroll when appending or retrying within one conversation (0.2211ms)
+✔ resets scroll for a new conversation identity even with the same anchor (0.1871ms)
+✔ state-driven scroll resets for an accepted new summon with the same snapshot (60.6711ms)
+✔ beginRequest opens the panel and enters loading with the frozen snapshot (56.8015ms)
+✔ recordRoundProvenance is scoped per discussion without cross-window leakage (10.8718ms)
+✔ visibility and request change independently (0.5396ms)
+✔ a new first request opens a new discussion and switches the active view (3.042ms)
+✔ failure keeps the original snapshot and does not auto-expand a collapsed panel (0.5642ms)
+✔ configuration_required preserves the snapshot and stays collapsed (0.3418ms)
+✔ blocked first request preserves the preview snapshot without creating a conversation (9.9172ms)
+✔ retry uses the original frozen snapshot, not any new selection (0.3248ms)
+✔ retry snapshot is null unless in error or configuration_required (12.6704ms)
+✔ reset clears the panel after project unload or replace (12.4683ms)
+✔ notifies listeners on every state change (0.3628ms)
+✔ subscribe returns an unsubscribe function that removes the listener (0.2933ms)
+✔ forms one anchored linear conversation after the first success (0.6063ms)
+✔ previews and commits an edited failed question without changing successful turns (9.6282ms)
+✔ a new summon opens a new discussion while keeping the old one archived (0.3883ms)
+✔ allocates and preserves conversation identity from accepted first summon through success (0.2727ms)
+✔ returns a defensive conversation view that cannot mutate payload state (0.5162ms)
+✔ direct question draft updates and notifies once (0.3166ms)
+✔ pending selection is replaced by a new meaningful selection and cleared when empty (0.2102ms)
+✔ beginDirectQuestion freezes question and selection into loading and clears pending selection (0.3234ms)
+✔ empty direct question is rejected without entering loading (0.1528ms)
+✔ beginDirectQuestion freezes the selection so later mutation of the original object is inert (9.6581ms)
+✔ direct question success enters the unified conversation and clears the draft (0.5685ms)
+✔ direct question without selection succeeds with a null anchor and null snapshot (0.4823ms)
+✔ direct question success enables follow-up turns in the unified conversation (15.8839ms)
+✔ direct question failure keeps the draft for retry (6.9671ms)
+✔ direct question configuration-required keeps the draft and question (0.3684ms)
+✔ direct question transitions are inert outside loading (0.2222ms)
+✔ collapse and reopen preserve direct question draft and pending selection (1.4007ms)
+✔ reset clears direct question draft and pending selection (0.2836ms)
+✔ beginDirectQuestion opens a new discussion when a prior conversation exists (0.2862ms)
+✔ removing the pending selection keeps the same selection ignored on re-sync (0.2208ms)
+✔ clearing the editor selection does not mark it as ignored (0.1515ms)
+✔ reset clears the ignored selection marker (11.1501ms)
+✔ newConversation opens a new empty discussion and keeps the old one archived (11.7943ms)
+✔ newConversation during first-round loading routes late results to the old discussion (0.5125ms)
+✔ newConversation during a pending follow-up keeps it in the archived discussion (0.2915ms)
+✔ newConversation notifies exactly once when it changes state (0.2242ms)
+✔ newConversation opens an empty discussion window even at zero discussions (10.5013ms)
+✔ drafts are isolated per discussion window (0.6347ms)
+✔ newConversation reopens a collapsed panel that has an existing conversation (0.2793ms)
+✔ newConversation clears drafts, pending selection and ignored selection markers (0.2256ms)
+✔ newConversation is distinct from project reset which still closes the panel (0.1712ms)
+✔ newConversation assigns distinct conversation ids so requests never reuse old identities (0.311ms)
+✔ a result arriving while the panel shows a blocked request is still applied (0.1663ms)
+✔ appendStreamText advances the direct question loading draft and is inert elsewhere (21.5096ms)
+✔ appendStreamText advances the pending follow-up draft and resets on retry (0.3439ms)
+✔ driver recovery keeps the conversation and returns to success display (0.3249ms)
+✔ failed recovery enters the error state with a new-conversation guidance message (0.2052ms)
+✔ deleteDiscussion removes the discussion and drops its late results (0.2759ms)
+✔ openDiscussion shows saved turns including an interrupted pending turn (0.2008ms)
+✔ loadDiscussions replaces the in-memory list without auto-opening a discussion (11.3137ms)
+✔ setSaveError and clearSaveError expose the save error bit (0.2285ms)
+✔ concurrent streams in two discussions route increments to their own discussion (0.2158ms)
+✔ late increments and terminal results for a removed discussion do not pollute others (0.1945ms)
+✔ window structure opens a docked window and focuses it on first request (0.14ms)
+✔ window structure reopens an open discussion by focusing without duplicating (0.1663ms)
+✔ window structure removes the window on delete and focuses nothing when it was focused (0.1317ms)
+✔ reset clears windows but list refresh preserves them (0.1532ms)
+✔ window structure notifies once per transition and is silent on illegal transitions (0.1508ms)
+✔ stopRequest marks a loading first round stopped and preserves streamed text (0.174ms)
+✔ stopRequest marks a loading direct question stopped and preserves its question (24.2007ms)
+✔ stopRequest marks a loading follow-up stopped and keeps the pending question (0.2945ms)
+✔ stopRequest only affects the target discussion, not others generating in parallel (0.356ms)
+✔ retryStoppedFollowUp resumes the interrupted pending turn into loading (0.2616ms)
+✔ retryDirectQuestion re-enters loading with the same question and selection (0.1983ms)
+✔ focusWindow focuses an open window and is inert for non-window discussions (0.1695ms)
+✔ closeWindow ends display but keeps the discussion; reopen re-adds a window (0.2186ms)
+✔ closeWindow is inert for a discussion without an open window (0.1465ms)
+✔ queueRequest marks a loading request queued and startQueuedRequest resumes it (0.2095ms)
+✔ stopRequest marks a queued request stopped (0.1308ms)
+✔ recovery covers each open discussion independently (0.1489ms)
+✔ renameDiscussion updates the list title and persists the custom title (15.3288ms)
+✔ setDiscussionPinned toggles the pinned flag (0.2964ms)
+✔ custom title and pinned survive a record round-trip (0.7603ms)
+✔ deriveConversationSummary projects lightweight metadata from an archive (0.1513ms)
+✔ loadDiscussions marks a discussion restricted when its provenance references a hidden document (0.2702ms)
+✔ loadDiscussions keeps a visible discussion unrestricted and continuable (0.2998ms)
+✔ recomputeRestrictions latches already-open discussions when a source document becomes hidden (5.2) (11.0191ms)
+✔ recomputeRestrictions leaves no-material discussions unaffected (0.2336ms)
+✔ rejectQueuedRequest transitions a queued direct question to a visible failure (0.2382ms)
+✔ rejectQueuedRequest transitions a queued summon first round to a visible failure (0.1843ms)
+✔ rejectQueuedRequest fails the pending turn of a queued follow-up (0.1871ms)
+✔ rejectQueuedRequest is inert for a non-queued request (0.1361ms)
+✔ setFocusDocument changes only the target discussion focus and keeps others untouched (0.1856ms)
+✔ setFocusDocument is a no-op when the focus is unchanged (0.1125ms)
+✔ switching focus does not disturb an in-flight request (0.1013ms)
+✔ a restricted discussion rejects focus switching (permanent read-only) (0.1668ms)
+✔ summaryOf marks a restricted discussion so the list can mask the focus title (0.1325ms)
+✔ success request with a null snapshot renders without a snapshot block (11.4669ms)
+✔ idle state hides every content region and marks the panel collapsed (0.5669ms)
+✔ first preview shows the frozen snapshot without loading, response, or conversation (24.8927ms)
+✔ first loading shows the snapshot and the first-phase loading indicator (25.5815ms)
+✔ first success without a follow-up conversation shows the standalone response (0.6745ms)
+✔ first error shows the error block and makes retry available (0.3908ms)
+✔ configuration required shows the config block and offers retry when no conversation exists (0.3457ms)
+✔ first blocked shows a terminal feedback message without creating a conversation (9.3056ms)
+✔ follow-up loading shows the pending question in-thread and disables the follow-up input (0.6376ms)
+✔ follow-up success appends the answered turn and re-enables the input (1.57ms)
+✔ follow-up failure shows the follow-up error with retry and edit available (0.8406ms)
+✔ accepting a plain follow-up retry returns to loading for the same question (0.9377ms)
+✔ accepting an edited follow-up resends with the revised question and clears the error (13.6612ms)
+✔ building the same view model twice is deterministic and does not mutate its inputs (16.6457ms)
+✔ follow-up configuration failure keeps the thread and exposes retry and edit actions (10.0348ms)
+✔ idle open panel shows the direct question input with submit disabled for blank draft (0.2105ms)
+✔ direct question input enables submit once the draft is non-blank (0.6223ms)
+✔ direct question shows the attached pending selection as focus material (0.1847ms)
+✔ direct question loading disables duplicate submission (0.333ms)
+✔ direct question success enters the unified conversation and hides the direct question form (0.3249ms)
+✔ direct question conversation shows original question, first answer, then follow-up turns in order (0.2788ms)
+✔ direct question error shows the error message and keeps submit enabled (11.9025ms)
+✔ direct question configuration-required shows the config state (0.7889ms)
+✔ direct question entry is hidden during a legacy selection-summon request (0.1879ms)
+✔ direct question entry is hidden while the panel is collapsed (0.1794ms)
+✔ new conversation control is hidden in the blank direct-question idle state (0.133ms)
+✔ new conversation control is visible once a conversation exists (0.1632ms)
+✔ new conversation control is visible across first preview, loading, blocked, error and configuration states (0.272ms)
+✔ new conversation control is visible during follow-up and direct-question requests (13.3364ms)
+✔ recovering request reuses the loading placeholder with the recovery message (0.4018ms)
+✔ direct question loading renders the unified turn with the streamed draft in the conversation view (0.7073ms)
+✔ empty idle panel shows the welcome message and hides it once the conversation starts (0.4022ms)
+✔ welcome message stays hidden during legacy request states (0.1909ms)
+✔ an interrupted summon first round renders the selection text and an interrupted status, without an empty assistant message (0.7682ms)
+✔ an interrupted direct-question first round renders the question and an interrupted status (0.2283ms)
+✔ a completed summon first round renders the selection text and the assistant response (11.0874ms)
+✔ a discussion restricted by hidden material shows a non-identifying notice and disables follow-up (2.7179ms)
+✔ an archive missing provenance shows the conservative notice and disables follow-up (0.1919ms)
+✔ a discussion whose materials remain visible has no notice and keeps follow-up enabled (0.1781ms)
+✔ no conversation has no material view (0.1055ms)
+✔ material view lists actual materials, versions, unsaved state and retrieval sources (0.717ms)
+✔ material view distinguishes receipt-confirmed rounds from assembled-only rounds (0.2546ms)
+✔ material view reports not_found and no_query_terms as retrieval results, not body content (0.3632ms)
+✔ material view masks hidden sources without leaking names, ids or matched terms (0.1997ms)
+✔ material view groups multiple rounds and is unavailable for an archive without provenance (0.2817ms)
+✔ default concurrency limit is at least 2 (16.8057ms)
+✔ requests below the limit start immediately (0.5238ms)
+✔ requests above the limit queue in FIFO order and start as slots free (15.1935ms)
+✔ a queued request still occupies its discussion's single-request lock (0.2623ms)
+✔ cancelQueued removes a queued request without starting it (0.3605ms)
+✔ a queued request is revalidated before dispatch and rejected when beforeDispatch returns false (16.2231ms)
+✔ a queued request whose beforeDispatch passes still starts (1.2963ms)
+✔ an immediately-started request ignores beforeDispatch (already preflighted) (0.2388ms)
+✔ a synchronous throw on immediate dispatch propagates and releases the slot (5.6194ms)
+✔ a synchronous throw from a queued request releases the slot and the queue continues (0.5801ms)
+✔ executes exactly one client call for the same discussion even when summoned repeatedly (6.9941ms)
+✔ delivers the success result to callbacks (0.2834ms)
+✔ delivers the error result and unlocks afterwards (7.4819ms)
+✔ maps an unexpected invoke rejection to a visible safe error and unlocks (9.2349ms)
+✔ a success callback exception propagates without dispatching a network error (8.5755ms)
+✔ ignores late results after the project token changed (0.3364ms)
+✔ applies the result when the project token is unchanged (0.2773ms)
+✔ does not re-execute a second call while one is in flight for the same discussion (0.2559ms)
+✔ rejects a second structured request in the same discussion (7.9209ms)
+✔ different discussions generate in parallel without blocking each other (0.6617ms)
+✔ releaseStaleRequestOwnership invalidates in-flight results after a project switch (1.5689ms)
+✔ direct question request routes success to the direct question callback (11.6719ms)
+✔ direct question request routes failure to the direct question callback (0.3918ms)
+✔ direct question result is discarded after the project token changes (0.2835ms)
+✔ direct question request shares the single-flight lock with a same-discussion request (0.9363ms)
+✔ cancel releases the discussion lock and drops its late result (0.312ms)
+✔ cancel only affects the target discussion and does not disturb others (0.2743ms)
+✔ first direct question starts a session and sends kind first with a conversation-prefixed message id (40.4939ms)
+✔ first selection sends its frozen work, document, and version identity through the transport (0.3559ms)
+✔ direct question without selection omits the selectedText argument (0.3203ms)
+✔ first round forwards the unsaved body snapshot through the transport (0.3038ms)
+✔ direct question forwards focus document identity and snapshot through the transport (0.2884ms)
+✔ follow_up forwards focus document identity through the transport (2.253ms)
+✔ summon first round forwards the unsaved body snapshot (0.3944ms)
+✔ follow_up forwards the retained snapshot when present (0.2589ms)
+✔ follow_up forwards document, project, and version identity together with the snapshot (0.7739ms)
+✔ follow_up without selection or snapshot forwards no identity (15.5781ms)
+✔ a request without a snapshot omits the snapshot argument (13.7794ms)
+✔ follow_up sends only the last user message as the incremental question (0.3757ms)
+✔ subsequent sends in the same conversation reuse the resident session with incrementing global counter (0.4244ms)
+✔ different conversations get separate sessions and non-colliding message ids (0.2848ms)
+✔ all three send kinds carry the conversation identity when a project path is available (16.2026ms)
+✔ conversation identity rides along with focus document identity on a first send (0.2621ms)
+✔ sends omit the conversation identity when no project path accessor is injected (0.2611ms)
+✔ sends omit the conversation identity when getCurrentProjectPath returns null (0.6057ms)
+✔ a failed send clears the in-flight stream target (1.157ms)
+✔ endSession ends the conversation's session so the next send starts fresh (0.3794ms)
+✔ endSession for an unknown conversation sends nothing (0.2087ms)
+✔ endSession swallows end-session failures (198.8184ms)
+✔ endAllSessions ends every started session (0.4242ms)
+✔ cancelMessage during startup rejects the send, ends the late session, and allows a fresh start (0.7094ms)
+✔ cancelMessage during replay ai_start_session rejects recovery and never registers the late session (0.4789ms)
+✔ cancelMessage during replay ai_replay_history rejects recovery and never registers the late session (15.4169ms)
+✔ cancelMessage during replay ai_replay_done rejects recovery and never registers the late session (0.9649ms)
+✔ endSession during startup rejects the send, ends the late session, and allows a fresh start (0.386ms)
+✔ endSession during replay ai_start_session rejects recovery and never registers the late session (0.2246ms)
+✔ endSession during replay ai_replay_history rejects recovery and never registers the late session (0.1968ms)
+✔ endSession during replay ai_replay_done rejects recovery and never registers the late session (0.1949ms)
+✔ endAllSessions during startup rejects the send, ends the late session, and allows a fresh start (0.2033ms)
+✔ endAllSessions during replay ai_start_session rejects recovery and never registers the late session (13.4893ms)
+✔ endAllSessions during replay ai_replay_history rejects recovery and never registers the late session (0.2564ms)
+✔ endAllSessions during replay ai_replay_done rejects recovery and never registers the late session (0.2397ms)
+✔ invalidated startup preserves its original failure and allows a fresh attempt (0.3644ms)
+✔ invalidated startup still rejects with cancellation when ending the late session fails (0.3134ms)
+✔ replaySession starts a new session, replays turns with origin, and marks done (0.3028ms)
+✔ replaySession rejects a start business failure without replaying or registering the session (13.116ms)
+✔ replaySession rejects a history business failure and ends the partial session (0.3047ms)
+✔ replaySession rejects a done business failure and ends the partial session (0.2929ms)
+✔ stream text routes only deltas matching the in-flight message (0.3882ms)
+✔ stream text carries the conversation identity so concurrent streams do not cross (0.4861ms)
+✔ onStreamText unsubscribe stops delivering deltas (0.3017ms)
+✔ onDriverLost notifies subscribers and supports unsubscribe (8.0512ms)
+✔ installSessionEventRouting is idempotent and installs each listener once (0.6828ms)
+✔ destroySessionEventRouting unlistens both completed registrations and is idempotent (0.5515ms)
+✔ destroySessionEventRouting before registration completes unlistens late registrations (17.3768ms)
+✔ event routing can reinstall after destroy without accepting late callbacks from the old cycle (6.2007ms)
+✔ cancelMessage sends ai_cancel_message for the in-flight message of the conversation (0.2815ms)
+✔ cancelMessage for a conversation without an in-flight message sends nothing (0.1367ms)
+✔ records queued, first-response and total durations separately (27.4808ms)
+✔ queuedDurationMs is null when the request was never queued (0.2317ms)
+✔ first response is recorded once and not overwritten by later deltas (0.246ms)
+✔ same conversation completing multiple rounds keeps every round in exportJson (0.3154ms)
+✔ replaced in-flight round is archived as-is with missing timestamps kept null (0.2434ms)
+✔ history is bounded: oldest dropped beyond injected limit (19.2642ms)
+✔ exportJson returns records and summary; clear empties the collector (1.2062ms)
+✔ shared singleton exposes the same interface (0.1665ms)
+✔ documents default to AI-visible when the field is absent (16.2939ms)
+✔ explicitly hidden documents are not AI-visible (0.2117ms)
+✔ allows a selection from a visible document (24.2825ms)
+✔ denies a selection from a hidden document without leaking its name (0.5194ms)
+✔ denies a selection whose document id is forged (not in tree) (0.2014ms)
+✔ denies a selection whose document id points at a folder (0.1663ms)
+✔ missing tree denies any selection (0.1546ms)
+✔ hiddenDocumentIdsFromTree derives hidden document ids and ignores folders (0.309ms)
+✔ authorizeSelection allows a visible in-project current-version selection (16.935ms)
+✔ authorizeSelection denies a hidden-document selection without leaking its name (0.8864ms)
+✔ authorizeSelection denies a selection whose source project differs from the current project (0.212ms)
+✔ authorizeSelection denies a selection whose document version is stale (0.5146ms)
+✔ authorizeSelection skips cross-project check when the snapshot lacks a project identity (0.2082ms)
+✔ authorizeSelection skips version check when the snapshot or current version is absent (0.1509ms)
+✔ 无计时数据时两个开发者菜单项禁用并带说明 (39.6118ms)
+✔ 有计时数据时菜单项可用，开发者项之前有分隔线 (18.8323ms)
+✔ 导出成功：真实路由调用保存对话框与后端命令，提示条成功态显示条数 (46.6919ms)
+✔ 用户取消保存对话框：不产生任何提示，也不调用后端命令 (1.844ms)
+✔ 导出失败：警示条提示失败原因且不自动消失样式为警告 (1.5354ms)
+✔ 顶替规则：失败警示条显示期间新出现的保存失败提示将其顶替 (15.8028ms)
+✔ 清空确认流：先确认可取消；确认后清空内存并提示成功 (16.7932ms)
+✔ 导出成功提示数秒后自动消失（与撤销提示同寿命） (14.2828ms)
+✔ 默认文件名格式：wait-timing-YYYYMMDD-HHmm.json（本机时区，两位补零） (0.2179ms)
+✔ legacy textarea mirror coordinate module is absent from production (12.7038ms)
+✔ editor coordinates delegate directly to the kernel position API (1.0496ms)
+✔ flattenDocuments lists all documents in root order without folders (17.1321ms)
+✔ firstDocument returns the first document in root order (0.3243ms)
+✔ isDocumentInTree distinguishes live documents from folders and recycled nodes (0.2739ms)
+✔ resolveCurrentDocument keeps a valid remembered id and falls back to the first document (0.2957ms)
+✔ moveTargets offers the root and folders, excluding self and descendants (0.4042ms)
+✔ collectFolders lists all folders (0.1962ms)
+✔ compare normalizes CRLF, NBSP, and trailing whitespace (27.704ms)
+✔ compare strips a single trailing LF on both sides (0.3469ms)
+✔ compare accepts plain-text list markers for html list items (0.2156ms)
+✔ compare preserves empty lines and Tab (0.2606ms)
+✔ compare rejects when text differs (2.683ms)
+✔ compare rejects when line counts differ (0.2812ms)
+✔ stripListMarker strips bullet and numbered markers (0.1639ms)
+✔ normalizeColor normalizes hex and rgb (4.1853ms)
+✔ plainTextToDocument converts lines to paragraphs (15.3233ms)
+✔ tableRowsToText joins cells with Tab (0.3787ms)
+✔ inserts plain text when no HTML is present (0.2945ms)
+✔ inserts HTML when projection matches plain text (11.9845ms)
+✔ rejects when projection does not match plain text (0.1809ms)
+✔ rejects image-only content as a no-op (0.1751ms)
+✔ rejects unknown visible embed when only HTML is present (0.1454ms)
+✔ nodesToDocument assembles headings and flat lists (15.8349ms)
+✔ nodesToDocument preserves nested lists (0.3387ms)
+✔ nodesToDocument outputs character marks in rank order (0.8743ms)
+✔ orderedListType reads the HTML type attribute first (0.3036ms)
+✔ orderedListType falls back to inline list-style-type (0.4077ms)
+✔ nodesToDocument writes non-decimal style into orderedList attrs (0.2315ms)
+✔ 2.3 单档读取、窄更新、锁存按真实 IPC 顶层参数调用 (19.9046ms)
+✔ 2.8 恢复失败不能提前解除保存及窄更新的删除守卫 (8.4781ms)
+✔ roundProvenanceToMaterialProvenance maps backend entries to archive shape (0.3518ms)
+✔ entered_model_context represents intent-to-send, never provider-sent (13.1522ms)
+✔ sent_confirmed is only marked when the message_sent receipt was observed (0.4145ms)
+✔ roundProvenanceToMaterialProvenance preserves unsaved state and retrieval status (5.1) (0.2315ms)
+✔ generateConversationId produces distinct unique ids across calls (44.4431ms)
+✔ generateConversationId combines a timestamp prefix with the random segment (0.4024ms)
+✔ deriveConversationTitle prefers the direct-question text and truncates (9.6566ms)
+✔ deriveConversationTitle prefers the summon selection text and falls back to time (0.2808ms)
+✔ conversationSave, conversationList, and conversationDelete invoke the shared commands (8.495ms)
+✔ after delete, saving the same conversation_id does not invoke conversation_save (0.3237ms)
+✔ an in-flight save cannot resurrect a deleted archive; a late save is safely skipped (0.4993ms)
+✔ normal save is unaffected by the deleted guard (0.2296ms)
+✔ overlapping saves serialize in issue order: the later save waits for the earlier one (0.3041ms)
+✔ delete drains every queued save and lands last, with no spurious failure (89.0554ms)
+✔ a late save rejected by the backend tombstone is an expected outcome, not a failure (14.3753ms)
+✔ after undo (restore), the conversation can be saved again (0.4671ms)
+✔ a failed save does not block the next save on the same conversation chain (0.5249ms)
+✔ IPC 摘要含 version：重启后空 hidden 集仍识别已锁存出处 (11.0603ms)
+✔ IPC 摘要含 version：普通出处命中 hidden 时受限 (14.244ms)
+✔ IPC 摘要含 version：provenance 为 null 时保守受限 (0.264ms)
+✔ IPC 摘要含 version：provenance 为 undefined 时保守受限 (0.2152ms)
+✔ IPC 摘要含 version：仅补读出处命中也受限 (0.2268ms)
+✔ IPC 摘要含 version：列表对受限关注文档标题脱敏 (0.2359ms)
+✔ load_discussions：首次加载真实 IPC 摘要即锁存并脱敏，无需交互 (16.9897ms)
+✔ materialProvenanceFromAnchor records minimal provenance without body copy (0.9806ms)
+✔ materialProvenanceFromAnchor records the document version when the snapshot carries it (13.3756ms)
+✔ materialProvenanceFromAnchor returns empty for a null or blank anchor (0.4761ms)
+✔ buildConversationRecord emits provenance from the frozen anchor (0.9768ms)
+✔ a missing provenance field is conservative-restricted (old archive) (1.1704ms)
+✔ an empty provenance array is not restricted (new archive with no materials) (0.2223ms)
+✔ provenance referencing a hidden document is restricted (0.1963ms)
+✔ provenance referencing only visible documents is not restricted (0.1371ms)
+✔ conversationFromRecord marks a hidden-document discussion restricted and blocks follow-up (0.4211ms)
+✔ conversationFromRecord keeps a visible discussion continuable (0.1594ms)
+✔ conversationRestrictionNotice returns the right message without leaking hidden names (8.9921ms)
+✔ re-saving a missing-provenance archive preserves the conservative restriction (0.194ms)
+✔ re-saving a hidden-material restricted archive preserves provenance without fabricating revoked markers (0.174ms)
+✔ isConversationRestrictedForRecovery re-checks current visibility before replay (1.047ms)
+✔ isConversationRestrictedForRecovery derives provenance from a live anchor (0.6538ms)
+✔ isRevokedMaterial recognizes only revoked provenance entries (0.126ms)
+✔ a revoked provenance entry keeps the discussion restricted even when the document is re-enabled (0.1537ms)
+✔ latchConversationRestriction marks a newly-hidden source restricted and stays monotonic (0.2315ms)
+✔ restricted discussions cannot build follow-up or retry payloads (9.8212ms)
+✔ isConversationRestrictedForRecovery blocks a latched (revoked) discussion (0.2869ms)
+✔ conversationProvenanceForArchive preserves both ordinary provenance and legacy revoked entries (0.1959ms)
+✔ 三种消费文档推导合并并去重两类出处，运行期仅在缺出处时回退锚点 (14.025ms)
+✔ 补读出处存在但普通出处为 null 仍保持 missing_provenance (0.3672ms)
+✔ 补读出处存在但普通出处为 undefined 仍保持 missing_provenance (0.1125ms)
+✔ 补读-only 隐藏来源：重开、摘要、恢复和实时锁存统一受限 (0.3635ms)
+✔ 统一锁存优先于缺出处（），可见性重新开启也不解除 (0.5768ms)
+✔ 统一锁存优先于缺出处（null），可见性重新开启也不解除 (0.6494ms)
+✔ 统一锁存优先于缺出处（undefined），可见性重新开启也不解除 (0.1729ms)
+✔ 旧 revoked 标记在摘要派生与恢复中保留，不能被运行期 false 覆盖 (4.6921ms)
+✔ recomputeRestrictions 对补读-only 打开窗口和仅列表摘要统一锁存、脱敏 (0.883ms)
+✔ 列表首载与摘要更新识别受限来源 {"on_demand_document_ids":["supplement"]} (0.3693ms)
+✔ 列表首载与摘要更新识别受限来源 {"restricted":true} (0.1673ms)
+✔ 列表首载与摘要更新识别受限来源 {"provenance_has_revoked":true,"restricted":false} (12.5459ms)
+✔ 后端锁存回执只设置统一受限，不伪造 provenance_has_revoked (1.0674ms)
+✔ 普通保存不携带授权字段（运行期授权 undefined） (6.7571ms)
+✔ 普通保存不携带授权字段（运行期授权 null） (0.2445ms)
+✔ 普通保存不携带授权字段（运行期授权 {"granted_at":"t1"}） (8.2301ms)
+✔ formatCount 千位分隔 (10.8361ms)
+✔ 预检结论：无损耗显示全部保留，有损耗显示降级或丢弃总项数 (0.313ms)
+✔ 结构说明：默认整文件一个文档；选拆分时新建文件夹按标记拆分 (0.2465ms)
+✔ 拆分选项文案带标记样例与数量；无建议时为空 (0.2055ms)
+✔ 损耗条目：中文标签＋数量，备注为空时不追加括号 (0.262ms)
+✔ 损耗标签表：md 分支新增 kind 全部有平实中文标签 (0.2374ms)
+✔ 损耗标签表：fdx 分支新增 kind 全部有平实中文标签 (10.327ms)
+✔ isMarkdownFile 按扩展名判断且大小写不敏感 (0.2718ms)
+✔ 目标位置选项：根级默认在首位，其后按树序缩进列出文件夹 (1.1814ms)
+✔ 用户取消文件选择：不预检、不提交、不弹对话框，静默结束 (15.0604ms)
+✔ 用户在预检对话框取消：不提交、对话框关闭、零副作用 (12.9236ms)
+✔ 预检呈现：无损耗文件显示全部保留，损耗区与拆分区不出现 (0.4557ms)
+✔ 预检呈现：选中 .md 文件时呈现软换行接合说明，.docx 与 .fdx 不出现 (15.0511ms)
+✔ 预检呈现：损耗明细逐项完整渲染（标签＋数量），默认不拆分 (0.509ms)
+✔ 确认导入：默认不拆＋根级，按预检哈希提交，成功后回调并提示 (7.5518ms)
+✔ 用户选拆分＋指定文件夹：按拍板结果提交 (18.9742ms)
+✔ 哈希不一致：留在对话框重新预检并提示，再次确认用最新哈希 (11.067ms)
+✔ 预检失败（如畸形文件）：中文报错、不弹对话框、零副作用 (0.4453ms)
+✔ 提交失败（非哈希原因）：关闭对话框并中文报错 (0.5012ms)
+✔ last document memory is keyed per project path (12.0197ms)
+✔ clearLastDocumentId removes the memory for a project (19.8205ms)
+✔ the storage key embeds the project path (0.537ms)
+✔ empty document memory is unavailable and a later write replaces it (0.2174ms)
+✔ getItem SecurityError safely degrades document memory and logs no content (16.0581ms)
+✔ setItem SecurityError safely degrades document memory and logs no content (0.4594ms)
+✔ removeItem SecurityError safely degrades document memory and logs no content (0.2852ms)
+✔ getItem QuotaExceededError safely degrades document memory and logs no content (14.2598ms)
+✔ setItem QuotaExceededError safely degrades document memory and logs no content (10.5986ms)
+✔ removeItem QuotaExceededError safely degrades document memory and logs no content (0.3427ms)
+✔ getItem Error safely degrades document memory and logs no content (0.2147ms)
+✔ setItem Error safely degrades document memory and logs no content (0.331ms)
+✔ removeItem Error safely degrades document memory and logs no content (0.2616ms)
+✔ production uses a single generic editor mount and three module tabs (7.708ms)
+✔ writing module exposes a lightweight document switcher and empty state (0.3965ms)
+✔ writing module exposes a unified export entry with format/scope/filename dialog (0.543ms)
+✔ LLM config lives inside the settings module, not a standalone page (0.4183ms)
+✔ file management module exposes tree, recycle bin, and new-node actions (0.4998ms)
+✔ document import dialog exposes conclusion, collapsible losses, split choice, and target (7.6339ms)
+✔ AI dock header exposes new-conversation and collapse entries (0.3843ms)
+✔ session ignores a stale document load (21.4235ms)
+✔ session applies deleted document fallback to empty state (9.353ms)
+✔ session awaits asynchronous discard decision: false (16.8469ms)
+✔ session awaits asynchronous discard decision: true (17.2224ms)
+✔ applyTree with the same document refreshes the tree without a full load (6.5905ms)
+✔ document view renders empty state and toggles the list (19.1566ms)
+✔ document view renders documents and forwards selection (10.2289ms)
+✔ openFindBar shows the bar, focuses the find input, and runs the initial find (15.7068ms)
+✔ openFindBar with replace target focuses the replace input instead (0.278ms)
+✔ closeFindBar hides the bar, clears the active find, and refocuses the editor (0.2727ms)
+✔ closeFindBar is a no-op when the bar is not open (0.2894ms)
+✔ find next and previous step through matches cyclically (13.5797ms)
+✔ replace and replace-all use the current replacement value (0.3816ms)
+✔ replace buttons are disabled and do nothing when there are no matches (0.3654ms)
+✔ typing in the find input re-runs the find (0.2536ms)
+✔ case-sensitive toggle re-runs the find (0.3148ms)
+✔ refreshFindAfterEdit re-runs the find only while the bar is open with a query (7.0534ms)
+✔ dispose removes listeners and resets the find bar (0.3813ms)
+✔ Tiptap notebooks preserve the bounded writing surface and focus treatment (3.9769ms)
+✔ ordered-list numbering flyout keeps the full-width button and a slim handle below it (13.3823ms)
+✔ linkHrefAt finds the link at a cursor strictly inside the text (7.5443ms)
+✔ linkHrefAt returns null for a cursor at the text boundary (0.3072ms)
+✔ linkHrefAt finds the link under a selection (0.1897ms)
+✔ linkHrefAt returns null when there is no link (0.2075ms)
+✔ update shows the popover positioned at the link (0.7988ms)
+✔ update hides the popover when there is no link at the selection (0.279ms)
+✔ update hides the popover when there is no editor (0.2742ms)
+✔ hide hides the popover (0.2502ms)
+✔ link open button opens the link and hides the popover (7.2759ms)
+✔ link edit button edits the link and hides the popover (0.4233ms)
+✔ link remove button removes the link and hides the popover (0.2589ms)
+✔ dispose removes listeners so buttons no longer act (5.0717ms)
+✔ openLinkHref opens http links and alerts for non-http links (0.5815ms)
+✔ editLinkHref prompts and runs setLink (0.3241ms)
+✔ createLinkHref prompts and runs setLink (0.2538ms)
+✔ removeLinkHref runs unsetLink (0.2286ms)
+✔ parseMarginPreset 缺失回退默认档位 (12.7391ms)
+✔ parseMarginPreset 合法档位原样返回 (0.2452ms)
+✔ parseMarginPreset 非法值回退默认档位 (0.1756ms)
+✔ nextMarginPreset 三档循环 (0.2365ms)
+✔ readMarginPreset 无键时回退默认 (10.4294ms)
+✔ readMarginPreset 读取已保存档位 (0.2302ms)
+✔ readMarginPreset 非法保存值回退默认 (0.2669ms)
+✔ writeMarginPreset 写入指定键 (0.2247ms)
+✔ write 后 read 恢复同一档位（往返一致） (0.2509ms)
+✔ persistence writes the canonical document and updates the save status (30.8042ms)
+✔ derives unsaved state from the current document baseline and recognizes a full revert (9.3707ms)
+✔ freezes a save snapshot so edits made during saving remain unsaved (2.0167ms)
+✔ shares one in-flight save and keeps the baseline unchanged after failure (0.3645ms)
+✔ keeps contents unsaved when a standalone backend save is rejected (0.3289ms)
+✔ retries the current document content after a failed save (8.6779ms)
+✔ render disables all toolbar controls when there is no editor (28.6755ms)
+✔ render reflects bold, undo, and redo state from the current selection (11.4259ms)
+✔ runFormatCommand runs the command and re-renders the toolbar (1.2578ms)
+✔ runSelectionCommand does nothing without a selection (0.3322ms)
+✔ runSelectionCommand runs the command when there is a selection (13.1229ms)
+✔ format drawer toggles open and closes (0.4357ms)
+✔ drawer section toggle collapses its group (0.3851ms)
+✔ margin preset is restored from storage and cycles on click (0.4581ms)
+✔ margin falls back to the default preset without storage (12.5638ms)
+✔ column width preset is restored from storage and cycles on click (0.6716ms)
+✔ column width falls back to the default preset without storage (0.256ms)
+✔ dispose removes listeners so buttons no longer run commands (18.2404ms)
+✔ style trigger is disabled without a text selection (0.3226ms)
+✔ style trigger is disabled when the selection is outside ordered lists (0.3062ms)
+✔ style trigger is enabled inside an ordered list and marks the active item (14.2477ms)
+✔ default decimal style marks the numeric item (0.439ms)
+✔ mixed styles show 多种格式 with no active item (24.9592ms)
+✔ trigger toggles the style flyout menu (0.482ms)
+✔ clicking a style item runs the style command and closes the menu (0.5091ms)
+✔ clicking a style item without a selection runs nothing (0.1921ms)
+✔ render closes an open menu once the trigger becomes disabled (9.7197ms)
+✔ no editor disables the style trigger and closes its menu (0.321ms)
+✔ dispose stops the style flyout from opening and running commands (0.271ms)
+✔ real kernel restores the captured reverse selection without changing the document (76.2319ms)
+✔ pause restoration preserves node selection type (17.1946ms)
+✔ pause restoration preserves all selection type (13.2986ms)
+✔ selection restoration adds no undo step and preserves pre-pause edit undo/redo (32.6954ms)
+✔ an older pause handle cannot restore selection or resume a newer permit (17.9771ms)
+✔ a completed pause handle is inert after its editor is destroyed (12.7987ms)
+✔ selection restoration refuses a changed document without rewriting it (18.5355ms)
+✔ resume preserves editable=true and neither resume nor default restoration steals focus (19.5412ms)
+✔ resume preserves editable=false and neither resume nor default restoration steals focus (14.3706ms)
+✔ DOM sync is an explicit synchronous focus opt-in after resume (not desktop certification) (29.2017ms)
+✔ real kernel waits for composition final update before pausing (synthetic, not native IME certification) (29.8782ms)
+✔ pause rejects adapter commands, direct transactions, history, native input, paste/cut/drop; release preserves history (27.0312ms)
+✔ late paste and cut never execute after pause and restoration of the same kernel (20.5704ms)
+✔ destroy resolves a composition waiter without restoring a destroyed editor (12.7574ms)
+✔ applyTree rechecks refresh ownership after fallback body success (84.3513ms)
+✔ applyTree rechecks refresh ownership after fallback body failure (38.1344ms)
+✔ showProject begins the AI project and unload ends it (28.0104ms)
+✔ applyTree with the same document does not reset the AI project (1.4615ms)
+✔ switching to another document does not reset the AI project (92.1493ms)
+✔ creates a single editor for the current document without dirtying initialization (30.7018ms)
+✔ detects a format-only change as unsaved and a full revert clears it (10.2205ms)
+✔ saves exact edits to the current document (0.7156ms)
+✔ replacing a project destroys the old editor and ignores its late edits (11.0947ms)
+✔ unloading destroys the editor and ignores late edits (0.7153ms)
+✔ switching documents silently saves the current document then loads the target (23.7745ms)
+✔ reopening a project returns to the remembered document (1.5107ms)
+✔ falls back to the first document when the remembered document was deleted (0.8422ms)
+✔ shows the empty state when the project has no documents (0.4313ms)
+✔ global shortcuts yield to non-editor text input controls (11.2481ms)
+✔ editor surface Ctrl+S still saves (0.7073ms)
+✔ editor surface Cmd+S still saves (0.5527ms)
+✔ unload then showProject restores one keyboard and context-menu listener (6.3741ms)
+✔ editor shortcuts still run when the editor surface has focus (0.8069ms)
+✔ applyTree awaits asynchronous deletion confirmation: false (0.8559ms)
+✔ applyTree awaits asynchronous deletion confirmation: true (9.7376ms)
+✔ applyTree awaits asynchronous deletion confirmation: reject (1.005ms)
+✔ applyTree keeps the dirty editor when the user cancels deletion (0.889ms)
+✔ applyTree switches to the first remaining document when deletion is confirmed (7.2831ms)
+✔ applyTree shows the empty state when deletion is confirmed and no documents remain (10.2752ms)
+✔ applyTree switches away without prompting when the current document is clean (5.9581ms)
+✔ switching to an unreadable document keeps the current editor and alerts in Chinese (10.4885ms)
+✔ switching to a document with invalid content keeps the current editor and alerts in Chinese (1.0834ms)
+✔ first load read failure alerts in Chinese and does not open the document (11.675ms)
+✔ first load parse failure alerts in Chinese and does not open the document (0.9454ms)
+✔ margin preset is restored from injected storage on setup (0.608ms)
+✔ margin button cycles presets and persists to injected storage (0.5481ms)
+✔ margin falls back to default and keeps working when storage is unavailable (31.8929ms)
+✔ column width preset is restored from injected storage on setup (1.9005ms)
+✔ column width button cycles presets and persists to injected storage (0.6196ms)
+✔ column width falls back to default and keeps working when storage is unavailable (16.2235ms)
+✔ unload disposes the find module and hides the find bar (0.6468ms)
+✔ find bar resets and stays usable after unload and reopening a project (0.8191ms)
+✔ toolbar module is re-created on reopening a project and re-reads the margin preset (0.4998ms)
+✔ toolbar module is re-created on reopening a project and re-reads the column width preset (0.4731ms)
+✔ 范围选项：默认当前文档，其后整个作品与按树序缩进的文件夹 (15.353ms)
+✔ 范围选项：无当前文档时省略文档选项，默认整个作品 (16.4718ms)
+✔ 默认格式为 Word（与既有习惯衔接） (0.1813ms)
+✔ scopeFromOptionValue 解析选择器取值 (0.2586ms)
+✔ 范围是否包含当前文档：作品恒含、文档看自身、文件夹看嵌套子树 (0.5849ms)
+✔ 无作品时不打开导出对话框 (0.6881ms)
+✔ 关闭导出对话框静默结束：不执行导出、不显示错误、按钮不卡死 (14.8315ms)
+✔ 保存对话框取消不视为错误 (0.3691ms)
+✔ 导出成功提示目标位置并恢复按钮 (13.4644ms)
+✔ 导出失败显示中文说明 (1.6711ms)
+✔ 导出成功附带后端降级告知（Markdown 编号降级为数字） (0.6593ms)
+✔ 范围包含当前文档且有未保存修改时提示使用已保存版本 (0.3756ms)
+✔ 范围不含当前文档时不弹未保存提示（即使有未保存修改） (0.3547ms)
+✔ 范围含当前文档但无未保存修改时不提示 (0.3239ms)
+✔ 导出中防重复触发 (20.714ms)
+✔ renders the file tree with folders and documents in root order (37.0407ms)
+✔ new document at root invokes createDocument and refreshes the tree (1.0837ms)
+✔ document import entry is disabled without a project and enabled after opening one (0.5082ms)
+✔ deleting a node invokes deleteNode (13.0636ms)
+✔ recycle bin lists deleted subtrees and restore invokes restoreNode (0.7416ms)
+✔ rename via prompt invokes renameNode with the entered name (11.689ms)
+✔ renders an AI visibility toggle only for documents, not folders (15.2008ms)
+✔ toggling a visible document flips to not-visible via the service (11.4554ms)
+✔ toggle failure keeps the original state and shows a Chinese message (0.69ms)
+✔ late refresh from A is discarded after switching to B (25.4698ms)
+✔ same path reopened gets a new load generation (0.8259ms)
+✔ visibility usage query does not confirm or write after unload (21.5962ms)
+✔ visibility change awaits confirmation and retains ownership: false (0.5359ms)
+✔ visibility change awaits confirmation and retains ownership: true (0.356ms)
+✔ visibility change awaits confirmation and retains ownership: reject (0.2179ms)
+✔ visibility change awaits confirmation and retains ownership: unload (10.2781ms)
+✔ visibility change awaits confirmation and retains ownership: new-operation (0.372ms)
+✔ refresh 2 wins when refresh 1 returns later (0.6041ms)
+✔ latest refresh failure keeps its error and does not accept old success (0.4839ms)
+✔ a delayed row operation keeps its original project path (13.2301ms)
+TextSelection endpoint not pointing into a node with inline content (doc)
+✔ wraps paragraphs into a bullet list (53.7749ms)
+✔ splitting an ordered list preserves the trailing segment numbering via the fix (9.8459ms)
+✔ fix leaves a non-split ordered list untouched (0.3403ms)
+✔ splitting a styled ordered list keeps the style on both fragments (17.6418ms)
+✔ setOrderedListStyleInSelection restyles complete touched lists only (7.4417ms)
+✔ setOrderedListStyleInSelection writes null for the decimal default (0.5039ms)
+✔ setOrderedListStyleInSelection is a no-op for untouched or same-style lists (0.4059ms)
+✔ setOrderedListStyleInSelection inside a nested list only restyles that list (0.5692ms)
+✔ setOrderedListStyleInSelection on parent item text does not touch its nested list (25.8138ms)
+✔ setOrderedListStyleInSelection across parent text and nested list restyles each owning list (1.3837ms)
+✔ reports a plain paragraph selection (13.4453ms)
+✔ reports heading level 1 (0.3498ms)
+✔ reports mixed paragraph style across touched blocks (10.8056ms)
+✔ reports bold and italic tri-state over mixed marks (17.4511ms)
+✔ reports a fully bold selection (0.3026ms)
+✔ reports bullet list selection (0.4603ms)
+✔ reports ordered list selection (8.1859ms)
+✔ reports mixed list state when a paragraph and a list item are touched (0.4466ms)
+✔ orderedListStyleState returns null when no ordered list is touched (0.53ms)
+✔ orderedListStyleState reports the unified style of touched lists (0.5125ms)
+✔ orderedListStyleState treats nested lists as independent entries (0.457ms)
+✔ A 层语料自校验：全部输入为合法格式版本 2 文档 (7.3512ms)
+✔ A 层金样本：paragraph-plain（普通文本段落） (58.3794ms)
+✔ A 层金样本：headings-all-levels（一到六级标题各一） (24.6503ms)
+✔ A 层金样本：marks-inline-basic（粗体、斜体、下划线、删除线与相邻异格式文本） (12.5474ms)
+✔ A 层金样本：textstyle-color（textStyle 单属性：颜色（小写 #rrggbb）） (16.9688ms)
+✔ A 层金样本：textstyle-font-family（textStyle 单属性：字体（固定字族字符串）） (10.4556ms)
+✔ A 层金样本：textstyle-font-size（textStyle 单属性：字号（固定档位字符串）） (8.8365ms)
+✔ A 层金样本：textstyle-combined（textStyle 多属性组合：颜色 + 字体 + 字号） (13.0053ms)
+✔ A 层金样本：highlight（高亮（恰好 color）） (12.813ms)
+✔ A 层金样本：link（链接（恰好 href）） (21.9152ms)
+✔ A 层金样本：marks-stacked（同一文本叠满全部七种 mark（按 rank 顺序排列）） (16.7684ms)
+✔ A 层金样本：paragraph-attrs-full（段落属性全集与部分属性组合） (15.3327ms)
+✔ A 层金样本：bullet-list（无序列表（项内含粗体 mark）） (9.5838ms)
+✔ A 层金样本：ordered-list-start-3（有序列表 start=3（非 1 起始）） (20.8705ms)
+✔ A 层金样本：nested-lists（嵌套列表（无序嵌有序 start=4、无序嵌无序）） (10.2825ms)
+✔ A 层金样本：empty-document（空文档（单个省略 content 的空段落）） (13.6715ms)
+✔ A 层金样本：empty-paragraphs-edges（首、尾与连续空段落） (10.3168ms)
+✔ A 层金样本：empty-heading（省略 content 的空标题） (13.4918ms)
+✔ A 层金样本：link-at-text-edges（链接在文本两端边界（段首与段尾）） (13.3713ms)
+✔ A 层金样本：chinese-and-emoji（中文与 emoji 内容） (10.7486ms)
+✔ B 层粘贴样本：basic-formats（基础格式映射：标题、粗斜、下划线、删除线、颜色、高亮、链接） (127.0288ms)
+✔ B 层粘贴样本：nested-lists（嵌套列表重建） (34.0191ms)
+✔ B 层粘贴样本：table-degrade（表格降级为按行段落、单元格 Tab 分隔） (38.9549ms)
+✔ B 层粘贴样本：br-split（br 拆分为多个段落（连续 br 之间的空段被丢弃是当前管线行为，一并冻结）） (28.3697ms)
+✔ B 层粘贴样本：ordered-start-3（有序列表 start=3，plain 侧带真实列表标记（覆盖 stripListMarker 路径）） (31.4394ms)
+✔ B 层粘贴样本：image-mixed（图文混合：图片被忽略、文字保留） (32.6262ms)
+✔ B 层粘贴样本：reject-mismatch（整次拒绝：html 投影与 plain 不一致） (2.5077ms)
+✔ URL/autolink：URL 后紧跟中文不触发自动链接（冻结 v2 现状，记录性断言） (8.8187ms)
+✔ URL/autolink：URL 后跟空格触发自动链接并冻结 mark 范围 (9.4943ms)
+✔ restores focus to the connected element that invoked the leave dialog (9.6121ms)
+✔ does not focus an invoking element that was disconnected before the dialog finished (0.2301ms)
+✔ focus helper consumes its capture once (0.2131ms)
+✔ real leave dialog cancel preserves default focus behavior (external owner=false) (111.5601ms)
+✔ real leave dialog cancel preserves default focus behavior (external owner=true) (9.7997ms)
+✔ handles dirty leave choice save-and-leave (23.7454ms)
+✔ handles dirty leave choice discard-and-leave (11.2076ms)
+✔ handles dirty leave choice cancel (10.4708ms)
+✔ leaves clean state without prompting and stays after failed save (0.8287ms)
+✔ discard authorization stays valid without mutating project state (15.1527ms)
+✔ cancelled leave retains the current document content for a later save (1.479ms)
+✔ duplicate leave requests share one pending authorization (0.3052ms)
+✔ save-and-leave waits for an in-flight A save then saves current B before unloading (0.78ms)
+✔ save-and-leave keeps the project loaded when the follow-up B save fails (0.647ms)
+✔ confirmed native close save-and-leave prevents the event and destroys the window exactly once (0.4778ms)
+✔ confirmed native close discard-and-leave prevents the event and destroys the window exactly once (0.2302ms)
+✔ clean native close prevents default and runs frontend cleanup before window destroy (0.2827ms)
+✔ application destroyer releases AI and editor before the native window exactly once (0.3916ms)
+✔ F09 failed window destruction retries only the unfinished stage (1.3039ms)
+✔ F09 application destroyer shares pending work and awaits each asynchronous stage (30.0194ms)
+✔ F07 drain failure keeps the window open without destruction; retry drains before cleanup (0.5816ms)
+✔ cancelled or failed native close stays open without destroying the window (0.1739ms)
+✔ native destroy rejection is reported and keeps the window open (0.2456ms)
+✔ native close is dirty when only LLM configuration has unsaved changes (0.2682ms)
+✔ native close requires editor and LLM configuration guards before destroying (11.5061ms)
+✔ duplicate native close requests share one confirmation and destroy exactly once (0.4897ms)
+✔ duplicate clean native close requests share one cleanup and destroy (0.2967ms)
+✔ LLM config page distinguishes connection test data from AI generation data (10.5314ms)
+✔ LLM config back cancel keeps dirty input in the settings module (9.4778ms)
+✔ LLM config back save failure keeps dirty input in the settings module (0.7488ms)
+✔ LLM config back save success leaves and records the new clean baseline (15.2734ms)
+✔ LLM config back discard leaves without saving current input (12.4715ms)
+✔ max_tokens: valid value is carried into the saved config (0.739ms)
+✔ max_tokens: empty input keeps the field omitted (default behavior) (0.3759ms)
+✔ max_tokens: invalid values are blocked with a visible error (12.813ms)
+✔ keeps controls disabled while an operation is busy (1.4238ms)
+✔ ignores stale refreshes and does not overwrite dirty input (11.1931ms)
+✔ loaded and saved LLM config values become the clean baseline (0.3565ms)
+✔ user-typed key counts as unsaved; mask or empty key reuses the saved one (0.2493ms)
+✔ discard clears LLM config dirty state without saving edited values (0.2386ms)
+✔ failed save leaves edited LLM config dirty against the saved baseline (0.1832ms)
+✔ installNativeDialogs routes confirm to the injected implementation (12.5191ms)
+✔ installNativeDialogs routes alert to message and consumes rejection (65.4409ms)
+✔ confirmDialog accepts synchronous false (8.5544ms)
+✔ confirmDialog awaits Promise(false) (7.9543ms)
+✔ confirmDialog accepts synchronous true (9.0846ms)
+✔ confirmDialog awaits Promise(true) (20.6547ms)
+✔ confirmDialog treats synchronous errors and Promise rejection as unconfirmed (7.2195ms)
+✔ confirmDialog preserves permission to proceed when confirm is not a function (8.7262ms)
+✔ showMessage calls a synchronous alert with the original message (0.3277ms)
+✔ showMessage does nothing when alert is not a function (0.5904ms)
+✔ showMessage consumes asynchronous rejection without unhandledRejection (24.1892ms)
+✔ main window capabilities authorize message but not deprecated confirm (52.0417ms)
+✔ open clears its busy state and restores controls before owner release (38.9477ms)
+✔ open owner release can start another operation without the old finally unlocking it (11.0245ms)
+✔ open late finally after destroy does not release twice or touch controls (20.6398ms)
+✔ create clears its busy state and restores controls before owner release (5.734ms)
+✔ create owner release can start another operation without the old finally unlocking it (6.2194ms)
+✔ create late finally after destroy does not release twice or touch controls (5.5811ms)
+✔ 内容树命令封装：命令名与参数映射正确 (13.5726ms)
+✔ saveDocument 在超过字节上限时不调用写盘命令 (123.8119ms)
+✔ importDocumentPreview 按契约调用 import_document_preview 并透传预检结果 (17.6555ms)
+✔ importDocumentCommit 按契约调用 import_document_commit（folder / split） (10.2986ms)
+✔ importDocumentCommit 根级目标 parent 为 null、默认不拆分 (0.8154ms)
+✔ hash_mismatch 前缀错误原样透传给调用方（协议随泛化不变） (0.4603ms)
+✔ selectDocumentFile 弹文件选择对话框：.docx / .md / .fdx 过滤、单选、不依赖 MIME (0.5701ms)
+✔ selectDocumentFile 用户取消返回 null (0.2451ms)
+✔ exportProject（word）按格式弹保存对话框并调用对应导出命令（带范围） (9.8481ms)
+✔ exportProject（pdf）按格式弹保存对话框并调用对应导出命令（带范围） (0.2879ms)
+✔ exportProject（markdown）按格式弹保存对话框并调用对应导出命令（带范围） (11.7036ms)
+✔ exportProject 文件夹范围与整作品范围的载荷形状 (0.5181ms)
+✔ exportProject 用户取消时不调用导出命令且不视为错误 (0.3169ms)
+✔ exportProject 透传后端稳定失败结果 (0.3373ms)
+✔ open project is single-flight: a second click during an in-flight open is ignored (22.4119ms)
+✔ a new project operation is rejected while an open is in flight (10.1154ms)
+✔ cancelled folder selection never reaches authorization or replacement (11.4694ms)
+✔ open failure retains the old project state and save ability (0.5896ms)
+✔ authorization runs only after the candidate project is read, immediately before replacement (11.4926ms)
+✔ edits made while the candidate is being read are covered by the final leave guard (0.4577ms)
+✔ cancelled final authorization keeps the read candidate unapplied (10.9034ms)
+✔ destroy rejection after approved leave retains editor state and future save protection (0.8225ms)
+读取最近作品失败: Error: 存储读取失败
+    at file:///D:/Next%20Story/tests/recent-works.test.ts:324:15
+    at Object.invoke (file:///D:/Next%20Story/node_modules/@tauri-apps/api/mocks.js:131:16)
+    at invoke (file:///D:/Next%20Story/node_modules/@tauri-apps/api/core.js:202:39)
+    at Object.loadRecentWorks (file:///D:/Next%20Story/src/project-api.ts:432:10)
+    at refreshRecentWorks (file:///D:/Next%20Story/src/new-project-form.ts:263:36)
+    at setupProjectFlow (file:///D:/Next%20Story/src/new-project-form.ts:295:8)
+    at projectFlowFixture (file:///D:/Next%20Story/tests/recent-works.test.ts:128:3)
+    at TestContext.<anonymous> (file:///D:/Next%20Story/tests/recent-works.test.ts:329:16)
+    at Test.runInAsyncScope (node:async_hooks:227:14)
+    at Test.run (node:internal/test_runner/test:1201:25)
+✔ selectDirectory forwards optional defaultPath to the folder dialog (13.6026ms)
+✔ welcome page renders recent works with name and path subtitle (1.216ms)
+✔ welcome page renders exactly the entries the backend returned (0.404ms)
+✔ welcome page shows the empty hint when there are no recent works (0.3733ms)
+✔ welcome page fails open to the empty hint when reading recent works errors (2.0859ms)
+✔ renderRecentWorkEntries replaces previous entries on re-render (11.3395ms)
+✔ clicking a recent work entry opens it through the shared authorized open flow (17.7749ms)
+✔ clicking a recent work entry keeps the current work when authorization is denied (0.6714ms)
+✔ opening via the dialog starts at the most recent work path (17.4751ms)
+✔ opening via the dialog passes no default path when the recent list is empty (18.9733ms)
+✔ schema exposes only the supported nodes and marks (40.4517ms)
+✔ heading supports levels 1 through 6 (8.4008ms)
+✔ round-trips blank document through the schema and canonicalization (7.4965ms)
+✔ round-trips leading trailing and consecutive empty paragraphs through the schema and canonicalization (11.0428ms)
+✔ round-trips chinese and emoji text through the schema and canonicalization (5.7085ms)
+✔ round-trips heading level 1 and 2 through the schema and canonicalization (1.1798ms)
+✔ round-trips bold italic and adjacent different marks through the schema and canonicalization (5.4022ms)
+✔ round-trips bullet list through the schema and canonicalization (6.888ms)
+✔ round-trips ordered list with start 3 through the schema and canonicalization (1.0687ms)
+✔ round-trips ordered list with letter and roman styles through the schema and canonicalization (0.89ms)
+✔ schema orderedList node exposes the type attribute (6.8586ms)
+✔ reads the engine document (0.2512ms)
+✔ subscribes to edits and returns a working unsubscribe function (2.6565ms)
+✔ returns an ordered selection while preserving its head (0.3422ms)
+✔ destroy removes subscriptions and destroys the engine (0.2315ms)
+✔ captures a structured selection as a plain-text slice with Tiptap positions (26.0262ms)
+✔ normalizes forward and backward selections to the same ordered range (0.3788ms)
+✔ returns null for a collapsed selection (2.0533ms)
+✔ meaningful selection requires at least one non-whitespace character (0.3153ms)
+✔ captures selection identity when a context is provided (0.4443ms)
+✔ omits identity fields when no context is provided (0.2379ms)
+✔ freezes the snapshot when the editor later changes (0.2728ms)
+✔ shows the entry for a meaningful selection whose focus end is visible (20.6369ms)
+✔ offers one summon action for a visible selection (1.0181ms)
+✔ offers no selection entry actions when the entry is hidden (12.1288ms)
+✔ selection entry summons directly and freezes the editor selection (10.0325ms)
+✔ submitted summon snapshot survives later edits, selection changes, and document switches (0.6561ms)
+✔ selection entry supports forward and backward editor selections (6.2194ms)
+✔ coalesces repeated editor updates into one geometry measurement frame (0.6198ms)
+✔ reads the editor head coordinate once for repeated same-position updates (7.5372ms)
+✔ ignores document selectionchange outside the active editor (0.5242ms)
+✔ responds to document selectionchange when focus is inside the editor mount (9.0588ms)
+✔ destroy removes editor listeners so stale selection events do not update (0.4873ms)
+✔ hides the entry when the active editor blurs outside the entry (0.3791ms)
+✔ hides the entry when the internal editor surface scrolls the selection out of view (0.4112ms)
+✔ hides the entry when the internal editor surface blurs outside the entry (0.2286ms)
+✔ keeps the entry visible when editor blur moves into the summon trigger (0.2378ms)
+✔ hides the entry for whitespace-only selection (11.9935ms)
+✔ hides the entry when the selection is collapsed (click elsewhere) (0.1873ms)
+✔ hides the entry when the focus end scrolls out of the viewport (0.1117ms)
+✔ hides when both selection is empty and focus end is out of view (0.0872ms)
+✔ same coordinates with different text are a new selection (0.1222ms)
+✔ same notebook range and text remain the summoned selection (0.1187ms)
+✔ places the trigger to the right of the focus end when right-side space is enough (0.1267ms)
+✔ selection entry trigger keeps the required AI pill hit area (0.0873ms)
+✔ falls back below the selected line near the right side when the line is full (0.4599ms)
+✔ clamps below-line placement so the trigger stays inside the editor bounds (13.018ms)
+✔ places the trigger left of the focus end at the right edge when that avoids the selected text (0.2385ms)
+✔ places the trigger above the selected line near the bottom edge (0.1552ms)
+✔ keeps the trigger inside a narrow editor when no preferred side has room (0.1471ms)
+✔ clamps four-corner placement inside the editor bounds (0.152ms)
+✔ moves below the selected text when side placement would overlap the selection (0.1372ms)
+✔ projects a plain paragraph selection (8.7884ms)
+✔ drops heading level and inline marks (0.2304ms)
+✔ projects full bullet list items with markers (0.3678ms)
+✔ projects full ordered list items with actual numbers (0.26ms)
+✔ projects styled ordered list items with letter and roman markers (14.1746ms)
+✔ projects a partial list item without marker (0.2173ms)
+✔ joins a full list item and a following paragraph with a single LF (8.7762ms)
+✔ projects a partial list item crossing into a paragraph without marker (0.3422ms)
+✔ preserves an empty paragraph as an empty line (0.222ms)
+✔ produces no leading or trailing LF for boundary-aligned selection (0.2928ms)
+✔ preserves leading and trailing spaces and emoji (0.1888ms)
+✔ returns empty string for an empty range (0.1509ms)
+✔ projects nested list items with indentation (9.4975ms)
+✔ partial nested list item gets no prefix or indent (0.186ms)
+✔ shared nodeSize follows the ProseMirror position model (11.3216ms)
+✔ collectSharedBlocks records a plain paragraph with positions (0.3041ms)
+✔ collectSharedBlocks records a heading like a paragraph (17.9121ms)
+✔ collectSharedBlocks records bullet list items with prefix and depth (1.7858ms)
+✔ collectSharedBlocks numbers ordered list items from attrs.start (0.303ms)
+✔ collectSharedBlocks generates letter and roman prefixes by list style (0.5091ms)
+✔ nested ordered lists keep independent styles and prefixes (0.344ms)
+✔ letterMarker uses bijective base-26 (11.1035ms)
+✔ romanMarker uses standard subtractive notation (0.3095ms)
+✔ orderedListMarker dispatches by style (0.2746ms)
+✔ collectSharedBlocks tracks nested list depth (0.2502ms)
+✔ resolveLocalStorage returns a StorageLike adapter when localStorage is available (1.4904ms)
+✔ resolveLocalStorage returns null when window is unavailable (0.2705ms)
+✔ resolveLocalStorage returns null when localStorage access throws (0.2472ms)
+✔ resolveLocalStorage returns null when localStorage is null (0.2025ms)
+✔ sameSelectionSnapshot returns true for identical identity fields (0.2941ms)
+✔ sameSelectionSnapshot returns false when any identity field differs (0.199ms)
+✔ StorageLike is the shared minimal storage contract (5.8612ms)
+✔ source tree contains no real NUL bytes (464.9252ms)
+✔ shared sample "blank minimal document" is accepted (23.1209ms)
+✔ shared sample "version 1 blank document still accepted" is accepted (0.251ms)
+✔ shared sample "heading level 1 and 2" is accepted (0.5013ms)
+✔ shared sample "heading levels 3 through 6" is accepted (0.225ms)
+✔ shared sample "bold and italic marks" is accepted (0.4452ms)
+✔ shared sample "underline and strike marks" is accepted (0.1971ms)
+✔ shared sample "textStyle color mark" is accepted (7.383ms)
+✔ shared sample "textStyle fontFamily and fontSize marks" is accepted (0.2243ms)
+✔ shared sample "textStyle with combined attrs" is accepted (0.2556ms)
+✔ shared sample "highlight mark" is accepted (0.2732ms)
+✔ shared sample "link mark" is accepted (0.1587ms)
+✔ shared sample "full mark ordering across all rank levels" is accepted (0.1761ms)
+✔ shared sample "adjacent text with different marks stays separate" is accepted (0.1502ms)
+✔ shared sample "adjacent text with different textStyle color stays separate" is accepted (0.1301ms)
+✔ shared sample "paragraph with textAlign center" is accepted (0.1848ms)
+✔ shared sample "paragraph with all paragraph attrs" is accepted (0.146ms)
+✔ shared sample "heading with paragraph attrs" is accepted (0.098ms)
+✔ shared sample "bullet list" is accepted (0.3372ms)
+✔ shared sample "ordered list with start 3" is accepted (5.0634ms)
+✔ shared sample "nested bullet list" is accepted (0.1978ms)
+✔ shared sample "nested ordered list with start" is accepted (0.1483ms)
+✔ shared sample "leading trailing and consecutive empty paragraphs" is accepted (0.2292ms)
+✔ shared sample "chinese and emoji text" is accepted (0.0903ms)
+✔ shared sample "empty heading omits content" is accepted (0.0934ms)
+✔ shared sample "extra outer field" is rejected (0.1361ms)
+✔ shared sample "missing version" is rejected (0.0763ms)
+✔ shared sample "missing format" is rejected (0.0833ms)
+✔ shared sample "missing document" is rejected (9.938ms)
+✔ shared sample "wrong format value" is rejected (0.1232ms)
+✔ shared sample "version as string" is rejected (0.0819ms)
+✔ shared sample "version as null" is rejected (7.7945ms)
+✔ shared sample "version as fraction" is rejected (0.1092ms)
+✔ shared sample "version as negative" is rejected (0.0825ms)
+✔ shared sample "version zero" is rejected (0.0735ms)
+✔ shared sample "unsupported future version" is rejected (0.0572ms)
+✔ shared sample "version 3 blank document accepted" is accepted (0.1082ms)
+✔ shared sample "ordered list with letter style type accepted" is accepted (0.152ms)
+✔ shared sample "nested ordered list with roman style type accepted" is accepted (0.1202ms)
+✔ shared sample "ordered list with explicit decimal style type rejected" is rejected (0.0814ms)
+✔ shared sample "ordered list with invalid style type rejected" is rejected (0.0584ms)
+✔ shared sample "ordered list with non-string style type rejected" is rejected (6.6648ms)
+✔ shared sample "doc with empty content array" is rejected (0.1297ms)
+✔ shared sample "doc missing content" is rejected (0.0738ms)
+✔ shared sample "doc with extra field" is rejected (0.0761ms)
+✔ shared sample "paragraph with extra field" is rejected (0.0725ms)
+✔ shared sample "paragraph with empty content array" is rejected (0.1451ms)
+✔ shared sample "paragraph with empty attrs object" is rejected (0.1199ms)
+✔ shared sample "paragraph with invalid textAlign" is rejected (0.0663ms)
+✔ shared sample "paragraph with extra attr key" is rejected (0.0859ms)
+✔ shared sample "paragraph with non-string lineHeight" is rejected (0.0876ms)
+✔ shared sample "heading missing attrs" is rejected (0.0727ms)
+✔ shared sample "heading with extra attr field" is rejected (0.0759ms)
+✔ shared sample "heading level 7" is rejected (0.0717ms)
+✔ shared sample "heading level 0" is rejected (0.0665ms)
+✔ shared sample "heading level as string" is rejected (0.0856ms)
+✔ shared sample "text empty string" is rejected (0.057ms)
+✔ shared sample "text containing CR" is rejected (0.0886ms)
+✔ shared sample "text containing LF" is rejected (5.4183ms)
+✔ shared sample "text with extra field" is rejected (0.1304ms)
+✔ shared sample "text with empty marks array" is rejected (0.0904ms)
+✔ shared sample "marks out of order" is rejected (0.1059ms)
+✔ shared sample "marks out of order across textStyle" is rejected (0.1005ms)
+✔ shared sample "duplicate marks" is rejected (0.1027ms)
+✔ shared sample "mark with extra field" is rejected (0.1264ms)
+✔ shared sample "unknown mark type" is rejected (0.0695ms)
+✔ shared sample "textStyle missing attrs" is rejected (0.08ms)
+✔ shared sample "textStyle empty attrs" is rejected (0.102ms)
+✔ shared sample "textStyle invalid color" is rejected (0.07ms)
+✔ shared sample "textStyle uppercase color" is rejected (0.1078ms)
+✔ shared sample "textStyle short hex color" is rejected (0.0793ms)
+✔ shared sample "textStyle extra attr key" is rejected (0.0718ms)
+✔ shared sample "highlight missing color" is rejected (4.5127ms)
+✔ shared sample "highlight invalid color" is rejected (0.133ms)
+✔ shared sample "highlight extra attr" is rejected (0.0936ms)
+✔ shared sample "link missing href" is rejected (0.092ms)
+✔ shared sample "link empty href" is rejected (0.1062ms)
+✔ shared sample "link extra attr" is rejected (0.0814ms)
+✔ shared sample "unmerged adjacent identical-mark text" is rejected (0.072ms)
+✔ shared sample "unmerged adjacent identical textStyle text" is rejected (0.096ms)
+✔ shared sample "bulletList with empty content" is rejected (0.064ms)
+✔ shared sample "bulletList containing paragraph directly" is rejected (0.0763ms)
+✔ shared sample "listItem with two paragraphs" is rejected (0.0752ms)
+✔ shared sample "listItem with empty content" is rejected (0.0666ms)
+✔ shared sample "listItem containing heading" is rejected (0.0655ms)
+✔ shared sample "listItem starting with nested list" is rejected (0.1063ms)
+✔ shared sample "listItem with two nested lists" is rejected (0.0702ms)
+✔ shared sample "orderedList missing attrs" is rejected (0.052ms)
+✔ shared sample "orderedList start zero" is rejected (0.0796ms)
+✔ shared sample "orderedList start fractional" is rejected (0.0544ms)
+✔ shared sample "orderedList start above safe integer" is rejected (0.0564ms)
+✔ shared sample "orderedList numbering overflow" is rejected (0.095ms)
+✔ shared sample "orderedList start as string" is rejected (9.2743ms)
+✔ shared sample "image node" is rejected (0.1128ms)
+✔ shared sample "table node" is rejected (1.5236ms)
+✔ shared sample "hard break node" is rejected (0.222ms)
+✔ rejects text containing an isolated high surrogate (0.1394ms)
+✔ rejects text containing an isolated low surrogate (7.4025ms)
+✔ accepts a valid surrogate pair inside text (0.1809ms)
+✔ emptyNotebookDocument is a valid minimal blank document (0.8724ms)
+✔ serializer merges adjacent identical-mark text (0.5269ms)
+✔ serializer sorts marks bold before italic (7.3104ms)
+✔ serializer produces minimal blank doc for empty content (0.1545ms)
+✔ serializer output always passes validation (0.4161ms)
+✔ serializer preserves nested ordered list type (0.1802ms)
+✔ canonicalNotebookJson is deterministic (0.1477ms)
+✔ parseNotebookDocumentJson round-trips an empty document (0.188ms)
+✔ parseNotebookDocumentJson rejects malformed JSON (6.5454ms)
+✔ parseNotebookDocumentJson rejects structurally invalid document (0.2974ms)
+✔ ordered list numbering at MAX_SAFE_INTEGER with one item is accepted (0.15ms)
+✔ serializer preserves non-decimal ordered list style (0.3847ms)
+✔ serializer omits style key for decimal default and null attr (0.3956ms)
+✔ v3 document with type round-trips through validation (0.2555ms)
+✔ showModule activates exactly one module at a time (7.2462ms)
+✔ tree deletion jointly accepts editor and files only after fallback preparation (success) (83.04ms)
+✔ tree deletion jointly accepts editor and files only after fallback preparation (read-failure) (27.7248ms)
+✔ tree deletion jointly accepts editor and files only after fallback preparation (parse-failure) (18.9651ms)
+✔ tree deletion jointly accepts editor and files only after fallback preparation (cancel) (17.1178ms)
+✔ late older refresh cannot start fallback; latest success owns state (24.6084ms)
+✔ late older refresh cannot start fallback; latest failure owns state (14.3811ms)
+✔ old-load fallback success after same-path new load cannot commit or clear new protection (26.5607ms)
+✔ old-load fallback failure after same-path new load cannot commit or clear new protection (15.584ms)
+✔ refresh during project transition resumes only latest original candidate after cancel (17.0841ms)
+✔ refresh during project transition resumes only latest original candidate after failure (19.0058ms)
+✔ refresh during project transition resumes only latest original candidate after success (14.5971ms)
+✔ real workspace assembly keeps A while B body is pending, then commits once (15.1667ms)
+✔ real workspace assembly commits B after dirty A discard despite document-memory quota failure (27.6324ms)
+✔ real workspace assembly preserves dirty A after discard when B editor construction fails (13.9947ms)
+✔ real workspace assembly preserves A and has no success side effects when B body read fails (19.165ms)
+✔ created directory survives failed body load; duplicate create is blocked and openPath retries it (17.0578ms)
+✔ same-path reopen waits for save and issued structural write (save-first), rejects late old refresh (37.0267ms)
+✔ same-path reopen waits for save and issued structural write (structure-first), rejects late old refresh (30.0777ms)
+✔ same-path reopen with failed save preserves dirty A and never rereads candidate tree or body (12.4681ms)
+✔ real leave cancel restores only after resume, navigation unlock and flow release (38.6785ms)
+✔ open cancellation restores editor only after all flow locks are cleared (54.2881ms)
+✔ create cancellation restores editor only after all flow locks are cleared (29.9484ms)
+✔ failed candidate restores the original editor after the open flow is unlocked (23.8015ms)
+✔ successful commit discards old focus and selection recovery (16.9907ms)
+✔ successful unload discards old focus and selection recovery (28.9456ms)
+✔ AI input takeover preserves its DOM selection while restoring only the kernel selection (13.8402ms)
+✔ old release and notify(false) reentry never recover over the new owner (13.2399ms)
+✔ an original disabled target does not cause an editor focus fallback (16.8846ms)
+✔ an original inert target does not cause an editor focus fallback (8.7389ms)
+✔ an original disconnected target does not cause an editor focus fallback (12.0816ms)
+✔ backToWelcome cancellation retains dirty A; authorized exit unloads both sides without open effects (10.2817ms)
+✔ destroy during B body read prevents late completion from reviving either workspace side (11.5357ms)
+✔ recent-work DOM click uses workspace coordinator (success) (15.4084ms)
+✔ recent-work DOM click uses workspace coordinator (failure) (14.8325ms)
+ℹ tests 1224
+ℹ suites 0
+ℹ pass 1224
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12806.8992
+
+> next-story@0.1.0 test:reliability
+> node --test sidecar/reliability/tests/*.test.mjs
+
+✔ buildEvidenceRecord 包含规格要求的全部字段 (21.9488ms)
+✔ 运行失败证据区分于模型回答失败 (0.346ms)
+✔ apiBaseLabel 只保留协议与主机，去掉路径与凭证 (0.6536ms)
+✔ evidenceOutputPath 确定性命名 (5.4455ms)
+✔ materialHash 返回 sha256:<64 位十六进制> (9.6221ms)
+✔ countChars 按码点计中文 (0.2029ms)
+✔ estimateTokens = 字数 × 每字比例 (0.2801ms)
+✔ mulberry32 确定性：同种子同序列 (5.0682ms)
+✔ generateTier 确定性：两次调用产出相同材料哈希与裁判 (241.1775ms)
+✔ 不同档位产出不同材料 (67.1306ms)
+✔ 磁盘夹具全部通过校验（0 项失败） (131.1592ms)
+✔ CRLF 变体手写档经归一后哈希不漂移（跨平台防护） (6.9834ms)
+✔ 每档查询数达标且七类风险全覆盖 (5.824ms)
+✔ 每档 trial_count=3 且 trial id 稳定唯一 (7.4697ms)
+✔ 正文（重放材料）不含密钥、裁判标签或查询问题 (6.6039ms)
+✔ 每个锚点语句逐字出现在正文中 (5.3837ms)
+✔ 组装出的案例通过现有 schema 校验（可被 runner 运行） (36.1149ms)
+✔ 手写档标记 handwritten 且 seed 为 null，正文来自手写 txt (5.8228ms)
+✔ validateTier 拒绝 mustNegate/wrongConclusions 中的裸亲属称谓、裸职业词与缺主语谓词 (127.0957ms)
+✔ validateTier 拒绝 mustNegate/wrongConclusions 中的时态助词（还在/仍然/依旧/已经） (22.831ms)
+✔ validateTier 接受不含时态助词的边界短语（磁盘档全过为正例基准） (9.6116ms)
+✔ findNegationEquivalentsProblems：键不在同查询 mustNegate、裸实体、裸称谓、缺主语谓词均报问题 (0.5869ms)
+✔ validateTier 接受合法的 negationEquivalents 声明（键绑定 mustNegate、等价短语为完整命题） (7.3055ms)
+✔ secretsFromEnv 忽略过短或空值 (10.2325ms)
+✔ redactSecrets 替换精确密钥与通用 sk- 模式 (0.4415ms)
+✔ redactObject 深度脱敏字符串值 (6.6308ms)
+✔ findSecretLeaks 检测精确密钥与 sk- 模式 (0.3498ms)
+✔ assertNoSecrets 对干净内容通过，对含密钥内容失败 (1.1668ms)
+✔ buildExpectIndex 同时索引 fixtures 单案例与 oracle 查询 (41.4541ms)
+✔ buildExpectIndex 在目录缺失时返回空索引而不崩溃 (4.0328ms)
+✔ rescoreRecord 用当前 screenAnswer 重评，产出与旧结果不同的新结果 (1.5975ms)
+✔ rescoreRecord 保留 RUNTIME_ERROR，不把空回答重评成 FAIL_LIKELY (0.259ms)
+✔ rescoreRecord 对缺失 oracle 的案例标记未匹配，next 为 null (0.2803ms)
+✔ scanEvidenceRuns 扫描每个运行的 cases 子目录 (46.5732ms)
+✔ scanEvidenceRuns 对缺失目录返回空数组 (5.4224ms)
+✔ rescoreAll 输出每档与总体四态分布、缺失 oracle 计数与变更计数 (63.6139ms)
+✔ 集成：默认 evidence/fixtures/oracle 目录可被重评并产出四态分布 (271.3195ms)
+✔ 干跑（rescoreAll）零写入：证据与 manifest 逐字节不变 (38.6436ms)
+✔ 写回（writeBackRescore）：历史保留、human_review 不动、manifest counts 重算＋rescored_at (29.9746ms)
+✔ refreshRecordResult：旧值与新值一致时返回 changed=false 且零变动 (0.2785ms)
+✔ refreshRecordResult：已存在 automatic_history 时追加而非覆盖 (0.2809ms)
+✔ recomputeManifestCounts：按重评后四态计数，缺 oracle 记录保留原结果 (0.2042ms)
+✔ isValidOutcome 只接受四态，拒绝非法值 (1.1138ms)
+✔ applyReview 写入 human_review/reviewer_notes，不改 automatic 等自动结果 (2.9453ms)
+✔ applyReview 空白 notes 归一为 null；重复裁决覆盖同一条（幂等） (0.2698ms)
+✔ parseReviewArgs 解析位置参数与选项 (0.3224ms)
+✔ 端到端：applyReview 落盘后重读，自动结果保持原样 (27.1202ms)
+✔ runCase 注入材料种子并按序发送问题，记录完整回答 (17.743ms)
+✔ runCase 支持多轮步骤并逐轮关联回答 (0.568ms)
+✔ message_failed 记入运行错误并区分于模型回答失败 (0.355ms)
+✔ 证据构建 + 脱敏：完整回答落证据且无密钥 (5.9311ms)
+✔ normalizeScreen 把 screenAnswer 的 { result, reasons } 归一为 { automatic, reasons } (5.7933ms)
+✔ normalizeScreen 对已归一形状原样返回 (1.2572ms)
+✔ buildRunSummary 对 screenAnswer 形状的结果正确计数且不崩溃 (0.4001ms)
+✔ buildRunSummary 对 runtimeError 形状的 { automatic, reasons } 同样正确 (0.1896ms)
+✔ buildRunSummary 对缺失结果的 screen 防御性不崩溃 (0.215ms)
+✔ materialHash 返回 sha256:<64 位十六进制> (7.3674ms)
+✔ 合法案例通过校验 (1.9474ms)
+✔ 缺失 id / 材料身份 / 问题被拒绝 (1.1696ms)
+✔ 材料哈希不匹配被拒绝（文本被改动但哈希未更新） (0.3216ms)
+✔ 哈希格式非法被拒绝 (0.3756ms)
+✔ 缺失证据位置 / 风险标签被拒绝 (0.2694ms)
+✔ steps 中非对象或缺失 text 被拒绝 (0.2589ms)
+✔ 合法 steps 通过校验 (0.303ms)
+✔ parseCaseSource 解析单个对象 / 数组 / JSONL (0.4327ms)
+✔ parseCaseSource 对坏 JSONL 报错并给出行号 (0.3495ms)
+✔ loadAndValidate 分离合法与非法案例 (2.5578ms)
+✔ 全部固定 fixtures 通过校验 (10.2212ms)
+✔ fixtures 覆盖全部八类核心风险标签 (14.6885ms)
+✔ classifyPhrase 区分断言、否定、引用、缺失 (6.6523ms)
+✔ classifyPhrase 对否定词窗口敏感 (0.4706ms)
+✔ 结果常量覆盖四种状态，人工复核结论独立 (1.517ms)
+✔ 空回答判 FAIL_LIKELY (0.4034ms)
+✔ 明确断言错误结论判 FAIL_LIKELY (0.4928ms)
+✔ 错误结论被否定时不算失败 (3.041ms)
+✔ 本应否定的旧事实被断言判 FAIL_LIKELY（版本冲突） (0.2735ms)
+✔ 未知信息案例：明确表达不确定判 PASS_LIKELY (0.2423ms)
+✔ 未知信息案例：给出确定性陈述且无不确定表达进入人工复核 (0.254ms)
+✔ 确定性案例：mustContain 未命中且含推断措辞进入人工复核（事实与推测边界） (0.4281ms)
+✔ 命中全部预期事实且无错误结论判 PASS_LIKELY (3.8421ms)
+✔ 缺少预期事实进入人工复核（措辞可能改写，保守） (0.2199ms)
+✔ 错误结论以引用形式出现进入人工复核 (0.1564ms)
+✔ 直接否定满足 mustNegate，命中上海判 PASS_LIKELY（明确否定） (0.1774ms)
+✔ 引用中的明确否定满足 mustNegate，不再误报 NEEDS_REVIEW (0.3137ms)
+✔ 引用否定「我没有偷那本书」不产生缺否定理由 (0.1654ms)
+✔ 引用否定后又反向断言，不判 PASS_LIKELY（判 FAIL_LIKELY） (0.1632ms)
+✔ 错误结论仅以引用出现，不判 FAIL_LIKELY，进入人工复核 (0.1738ms)
+✔ 错误结论仅以否定出现，不判 FAIL_LIKELY (0.1414ms)
+✔ classifyPhraseOccurrences 识别多次出现与引用内否定 (0.1445ms)
+✔ 未加引号的「否认偷书」识别为否定，不再判为直接断言 (0.1294ms)
+✔ 「辞去了盐镇中学的工作」中的盐镇中学判定为否定 (0.7298ms)
+✔ 「离开了盐城」「放弃了教师岗位」识别为语义否定 (0.1561ms)
+✔ 真实证据全文：引号内否定 + 「否认偷书」均判否定，PASS_LIKELY (0.1951ms)
+✔ 「否认偷书，但其实偷了」仍判 FAIL_LIKELY（否认后反向断言） (0.1623ms)
+✔ detectUncertainty 区分显式未知与推断措辞 (0.1257ms)
+✔ 版本冲突：mustNegate 写完整命题后，正确回答不再误判 FAIL (0.2098ms)
+✔ 相似实体：mustNegate 写完整命题后，提及另一主体的盐城不再误判 FAIL (0.1882ms)
+✔ 传承链：wrongConclusions 写完整命题后，追述传承链不再误判 FAIL (0.2231ms)
+✔ markdown 打断的否定短语仍被识别（评分前剥离 markdown） (0.1935ms)
+✔ 真实证据：加粗否定 + 引用原文命中 mustContain 判 PASS（案例 30k-11） (0.1978ms)
+✔ 引用的正确事实命中 mustContain（引用不算断言但仍算命中） (1.3247ms)
+✔ detectUncertainty 识别扩充的同义未知表达 (0.2017ms)
+✔ 未知信息案例：同义表达「无法得知」判 PASS_LIKELY (0.1989ms)
+✔ 未知信息案例：同义表达「没有提及」判 PASS_LIKELY (0.1293ms)
+✔ 明确结论含「可推断」不再阻断（事实边界已命中） (0.1653ms)
+✔ gapMatchOccurrence 正例：修饰语插入可命中（「陈渡是北境的一名邮差」命中「陈渡是邮差」） (0.3816ms)
+✔ gapMatchOccurrence 反例1：间隙跨子句边界不命中 (0.1304ms)
+✔ gapMatchOccurrence 反例2：间隙含过去标记不命中（前邮差 / 曾是邮差） (2.6886ms)
+✔ gapMatchOccurrence 反例3：间隙超限（>8 字符）不命中 (0.1758ms)
+✔ gapMatchOccurrence 反例4：首段否定前窗不满足即不命中 (0.1406ms)
+✔ gapMatchOccurrence：短于 4 字符的短语不做间隙匹配（只允许连续） (0.0938ms)
+✔ mustContain 修饰语插入命中，screenAnswer 不再误报 NEEDS_REVIEW（实锤 lc-50k-04 原文） (0.1976ms)
+✔ wrongConclusions 保持连续匹配：修饰语插入的错误结论不触发 FAIL_LIKELY (0.1925ms)
+✔ mustNegate 保持连续匹配：修饰语插入的旧事实不触发 FAIL_LIKELY、也不算被否定 (0.2049ms)
+✔ 声明的等价否定短语满足 mustNegate（实锤 lc-10k-08 原文） (0.3351ms)
+✔ 原短语肯定断言压倒等价否定：同时含等价否定与未引用肯定断言时不满足 (0.1369ms)
+✔ 无 negationEquivalents 声明时行为与现状一致（转述否定仍落 NEEDS_REVIEW） (2.9367ms)
+✔ 自带否定语义的等价短语被直接否定时不算满足（「没有辞去」＝肯定旧状态） (0.2367ms)
+✔ 纯转述等价短语须前窗口含否定/离开动词才满足（isEntryNegationSatisfied） (0.2013ms)
+✔ 等价短语以引用形式出现（自带离开动词、引用内无否定）也满足（lc-10k-08 pass1 句式） (0.2571ms)
+✔ 冒烟：lc-50k-04 证据原文＋tier-50k oracle 重评为 PASS_LIKELY (4.523ms)
+ℹ tests 121
+ℹ suites 0
+ℹ pass 121
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1106.4417
+
+> next-story@0.1.0 test:driver
+> node --test sidecar/driver/tests/*.test.mjs
+
+✔ protocol.json 覆盖生产 v1 全部命令与事件（含工具桥接两项），无 planned 残留 (3.732ms)
+✔ 生产 driver.mjs 接协议真相源：处理全部 active 命令、发出全部 active 事件 (0.2676ms)
+✔ driver.mjs 注册四件套工具面且只桥接：不读取作品文件、不落盘 (0.3568ms)
+✔ tool_result 拒绝落定透传可选 recovery：真相源已记录，缺失不造 (0.25ms)
+✔ driver.mjs 解析 --max-tokens，缺省维持 131072（透传来自宿主的可选配置） (0.1432ms)
+✔ 验证替身不再携带旧协议事件名与旧点分工具名 (0.2178ms)
+✔ denied-capabilities.json 驱动 cordis.driver.yaml：清单内全部条目默认拒绝 (0.3082ms)
+✔ gen-config.mjs 的 DENY_IDS 由 denied-capabilities.json 派生，不再硬编码清单 (0.1685ms)
+✔ 同一会话的命令按入队顺序串行执行 (78.004ms)
+✔ replay 场景：send 在慢速 replay 完成后才启动（不双建 Agent 的时序基础） (42.1234ms)
+✔ 不同会话并行：阻塞的会话不阻塞其他会话 (0.5079ms)
+✔ 前序任务失败不阻塞同会话后续任务 (3.7621ms)
+✔ 完成后队列清空，drain 等待全部收束 (10.8412ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 257.4588
+
+> next-story@0.1.0 test:validation
+> node --test sidecar/validation/tests/*.test.mjs
+
+✔ 2.1 直接回应：流式 delta + message_sent 回执 + 恰好一个终态（确定性替身） (26.3846ms)
+✔ 3.3 授权读取成功：tool_result 回填后材料回到同一轮并继续生成回应 (3.6991ms)
+✔ 3.2 用户拒绝读取：tool_result 拒绝回填，回应不引用被拒材料 (0.4504ms)
+✔ story-request-reading：授权通过后继续回答 (0.3529ms)
+✔ story-request-reading：授权被拒后转为有限回答 (0.3452ms)
+✔ 9.1 授权关闭后：后续补读调用被结构化拒绝，模型转有限回答 (0.3646ms)
+✔ 9.1 熔断触发后：补读调用收到 reading_stopped，模型基于已有材料收束 (5.8037ms)
+✔ tool_result.error 可选 recovery：真相源已记录，含/不含都照常收束 (0.4741ms)
+✔ 授权拒绝结果 {granted:false, recovery}：恢复提示随结果透传，替身照常转有限回答 (0.3675ms)
+✔ story-list 成功：目录结果回到同一轮，回应引用数量 (14.1169ms)
+✔ story-search 成功：命中片段结果回到同一轮 (0.3655ms)
+✔ 同一 call_id 跨会话不碰撞：各会话工具往返互不串扰 (0.4391ms)
+✔ 跨会话不能误回填：错误 session_id 的 tool_result 不生效 (0.313ms)
+✔ 越权工具计划（写入类）失败关闭，不发出 tool_call、不返回内容 (0.2038ms)
+✔ 未知工具名（含 dash 风格写入语义）失败关闭为 tool_unknown (4.0732ms)
+✔ 旧点分工具名不再属于允许面（命名统一后默认拒绝） (0.289ms)
+✔ 允许但不可见文档（隐藏）读取失败关闭，结构化拒绝且不暴露内容 (0.2903ms)
+✔ 4.4 真实 DSH 事件字段不可观测时明确降级，不伪装成实机观测 (0.2056ms)
+✔ 4.4 崩溃重启：文本轮次可恢复，工具往返明确不可恢复（降级路径） (0.396ms)
+✔ 6.1 追问 + 流式 + 取消 + 取消后追问可用 (3.858ms)
+✔ 6.1 等待 tool_result 的轮次可被停止取消，迟到结果不生效 (0.3592ms)
+✔ 6.1 迟到/未知工具结果身份不改变已结束请求 (0.2834ms)
+✔ 任务 1.5：替身断言覆盖生产事件全集（含 message_sent 与工具桥接），且不发协议外事件 (0.5389ms)
+✔ 协议版本号来自单一真相源且为 1 (0.1238ms)
+✔ 允许集只含 dash 风格受控只读 Agent 工具面（story-list/read/search/request-reading） (5.9272ms)
+✔ 命名统一后旧点分工具名不再被允许（default-deny） (0.2823ms)
+✔ 禁用集覆盖六类禁止能力：文件、Shell、网络、子代理、无限循环、作品写入 (0.3409ms)
+✔ isAllowed 默认拒绝未知能力 (0.1815ms)
+✔ authorize 对允许/禁止/未知给出结构化结果 (0.3587ms)
+✔ isStoryWrite 识别作品写入类能力 (0.1911ms)
+✔ toolToCapability 映射 dash 风格只读 Agent 工具面，未知/写入工具返回 null (18.1106ms)
+✔ authorizeReadTool 只放行只读能力，写入/未知默认拒绝 (0.9797ms)
+✔ readMaterial 对允许文档返回结构化材料（作品/文档/名称/版本/范围/内容） (0.3472ms)
+✔ readMaterial 失败关闭：作品不匹配 / 隐藏 / 回收站 / 另一部作品 / 缺失 (7.3349ms)
+✔ readMaterial 拒绝旧版本 / 非法范围 (0.2258ms)
+✔ readMaterial 返回指定范围切片 (0.2003ms)
+✔ readMaterial 合法快照优先于磁盘稿（最新未保存快照） (0.176ms)
+✔ readMaterial 无快照读 doc-05-unsaved 返回磁盘旧稿（不静默读未保存内容） (0.1722ms)
+✔ readMaterial 快照身份不匹配 / 空版本被拒绝（不返回内容） (0.6338ms)
+✔ listAllowedDocuments 只返回可见文档，排除隐藏/回收站/另一部作品 (0.973ms)
+✔ DENIAL_REASONS 覆盖八类结构化拒绝原因 (0.2307ms)
+✔ 6.3 生产 cordis.driver.yaml 对清单内危险工具/能力默认拒绝（disabled:true） (29.6506ms)
+✔ 6.3/5.1 生产驱动只注册受控只读故事工具四件套，不引入验证适配器/桥接 (1.4112ms)
+✔ 6.3 只读作品工具名不出现在生产 cordis 配置（尚未接入生产路径） (6.6496ms)
+✔ createRequestIdentity 保留提供的 requestId 并补齐身份字段 (1.2729ms)
+✔ createRequestIdentity 在未提供 requestId 时生成唯一非空标识 (4.7967ms)
+✔ validateRequestIdentity 通过完整身份，拒绝缺失字段 (0.9273ms)
+✔ validateRequestIdentity 拒绝非正数轮次 (0.2404ms)
+✔ requestKey 由 sessionId 与 requestId 组合，同名 messageId 也不冲突 (3.6208ms)
+✔ isSameRequest / isSameSession 按 sessionId+requestId 判定 (0.3175ms)
+✔ 两个会话交错事件，各收到自己的文本与工具结果（4.1） (10.5232ms)
+✔ 取消一个请求，另一个请求继续运行（4.2） (0.441ms)
+✔ 取消/失败状态不互相传播（4.2） (0.2908ms)
+✔ 未知请求身份被拒绝，不改变任何活动请求（spec: unknown request identity） (0.2178ms)
+✔ 已结束请求的迟到事件不污染其他作品与新请求（4.3） (0.2516ms)
+✔ 固定作品 fixture 覆盖五类文档：允许/隐藏/回收站/另一部作品/未保存 (6.8984ms)
+✔ 未保存快照版本高于已保存版本 (0.5033ms)
+✔ 隐藏/回收站文档可用谓词区分 (5.1021ms)
+✔ getDocument 按 id 取文档，未知 id 返回 null (0.2143ms)
+✔ fixture 自洽校验通过 (6.115ms)
+✔ 5.3 汇总分离确定性验证与真实模型验证，不伪装延迟结论 (6.2114ms)
+✔ 5.3 可复用 DSH 能力与必须新增桥接非空且自洽 (4.0555ms)
+✔ 5.3 全部真实模型项未验证时 conclusion 明确不提供延迟基线 (0.9467ms)
+✔ 记录提交/首字/完成并计算延迟（5.1） (7.3403ms)
+✔ 进度提示不计入首字（5.2） (0.3005ms)
+✔ 缺失完成标记或非完成终态时标记 incomplete，不生成延迟结论（5.2） (0.8627ms)
+✔ 计时源不可用（clock 抛错）时标记 incomplete（5.2） (7.4651ms)
+✔ 工具等待与确认等待的独立时长（5.1） (1.0944ms)
+✔ queue 时长可独立记录（5.1） (0.2492ms)
+✔ createToolInvocation 记录 tool_start 并处于 started 状态 (6.3931ms)
+✔ 工具成功进入终态 succeeded (0.3526ms)
+✔ 终态后再到 success/failure 记录为迟到，状态不变（3.4） (8.0625ms)
+✔ 取消后迟到的成功结果不会重新打开调用（3.4） (0.2893ms)
+✔ 超时后迟到结果记录为 late，不改变终态（3.4） (0.4589ms)
+✔ 用户确认流程：等待→确认→继续→成功 (0.2152ms)
+✔ 用户拒绝进入终态 denied (0.2183ms)
+✔ 非法转移被拒绝且状态不变（未等待就确认） (0.1876ms)
+✔ TOOL_TERMINAL_STATES 只含五类终态 (7.196ms)
+ℹ tests 78
+ℹ suites 0
+ℹ pass 78
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 497.5239
+
+> next-story@0.1.0 build
+> tsc && vite build
+
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 126 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mprint.html                        [39m[1m[2m  0.81 kB[22m[1m[22m[2m │ gzip:   0.52 kB[22m
+[2mdist/[22m[32mindex.html                        [39m[1m[2m 46.09 kB[22m[1m[22m[2m │ gzip:   9.42 kB[22m
+[2mdist/[22m[35massets/print-ByL2Pk4i.css         [39m[1m[2m  0.28 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[35massets/styles-D1GZpub5.css        [39m[1m[2m 46.80 kB[22m[1m[22m[2m │ gzip:   7.84 kB[22m
+[2mdist/[22m[36massets/styles-BgyjRwvu.js         [39m[1m[2m  0.71 kB[22m[1m[22m[2m │ gzip:   0.40 kB[22m
+[2mdist/[22m[36massets/print-Cg_1TepC.js          [39m[1m[2m  3.50 kB[22m[1m[22m[2m │ gzip:   1.52 kB[22m
+[2mdist/[22m[36massets/tauri-vendor-DTZukyek.js   [39m[1m[2m 16.14 kB[22m[1m[22m[2m │ gzip:   4.16 kB[22m
+[2mdist/[22m[36massets/main-KH3_7FIa.js           [39m[1m[2m255.40 kB[22m[1m[22m[2m │ gzip:  72.19 kB[22m
+[2mdist/[22m[36massets/editor-vendor-B_aHR7AI.js  [39m[1m[2m373.53 kB[22m[1m[22m[2m │ gzip: 118.87 kB[22m
+[32m✓ built in 2.95s[39m
+
+> next-story@0.1.0 fmt:rust
+> cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+
+> next-story@0.1.0 clippy:rust
+> cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.98s
+
+> next-story@0.1.0 test:rust
+> cargo test --manifest-path src-tauri/Cargo.toml
+
+   Compiling next-story v0.1.0 (D:\Next Story\src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 57.33s
+     Running unittests src\lib.rs (src-tauri\target\debug\deps\next_story_lib-51efc3e79b1cb044.exe)
+
+running 430 tests
+test ai_orchestration::tests::assemble_context_lock_unavailable_fails_closed_before_assembly ... ok
+test ai_orchestration::tests::selected_material_requires_complete_source_identity ... ok
+test ai_orchestration::tests::snapshot_without_identity_is_rejected ... ok
+test ai_orchestration::tests::story_recovery_required_error_uses_dedicated_code_and_fixed_message ... ok
+test capability_gateway::tests::forbidden_and_unknown_tools_are_rejected ... ok
+test ai_orchestration::tests::command_boundary_rejects_malformed_raw_requests_with_safe_results ... ok
+test ai_orchestration::tests::command_boundary_validates_semantics_before_loading_configuration ... ok
+test capability_gateway::tests::read_only_story_tools_are_authorized_and_never_forbidden ... ok
+test capability_gateway::tests::conversation_store_commands_are_not_ai_callable_tools ... ok
+test capability_gateway::tests::forbidden_tool_list_covers_file_and_command_and_network_and_subagent ... ok
+test capability_gateway::tests::read_only_tool_names_carry_no_write_semantics ... ok
+test capability_gateway::tests::streaming_and_cancellation_are_authorized_with_resident_session ... ok
+test capability_gateway::tests::text_generation_is_authorized ... ok
+test capability_gateway::tests::forbidden_tool_ids_match_denied_capabilities_truth_source ... ok
+test capability_gateway::tests::tool_call_by_name_authorizes_only_agent_story_tools ... ok
+test capability_gateway::tests::tool_call_is_authorized_but_multi_agent_stays_rejected ... ok
+test ai_orchestration::tests::generate_command_rejects_unknown_fields_without_touching_project_files ... ok
+test ai_orchestration::tests::authorized_selection_text_extracts_material_and_fails_closed ... ok
+test ai_orchestration::tests::authorized_snapshot_material_enters_prompt ... ok
+test ai_orchestration::tests::apply_authorized_selection_rewrites_request_selection_from_material ... ok
+test ai_orchestration::tests::valid_snapshot_is_authorized_and_wrong_snapshot_is_rejected ... ok
+test conversation_store::tests::list_on_missing_dir_returns_empty ... ok
+test conversation_store::tests::list_falls_back_to_derived_title_when_custom_title_is_blank ... ok
+test conversation_store::tests::list_skips_file_whose_id_mismatches_filename ... ok
+test conversation_store::tests::entered_model_context_is_assembled_intent_not_sent ... ok
+test conversation_store::tests::list_summary_carries_only_provenance_document_ids ... ok
+test conversation_store::tests::conversations_using_document_covers_material_and_on_demand_provenance ... ok
+test conversation_store::tests::latched_restriction_survives_stale_save_and_delete_restore ... ok
+test conversation_store::tests::delete_removes_file_and_is_idempotent ... ok
+test conversation_store::tests::old_archive_with_partial_provenance_fields_reads_defaults ... ok
+test conversation_store::tests::list_summary_returns_custom_title_and_pinned ... ok
+test conversation_store::tests::list_falls_back_to_time_title_when_first_round_has_no_text ... ok
+test conversation_store::tests::matched_term_and_search_metadata_round_trip ... ok
+test conversation_store::tests::old_archive_without_extended_fields_reads_as_defaults ... ok
+test conversation_store::tests::meta_deduplicates_both_reference_sets_and_summary_matches_meta ... ok
+test conversation_store::tests::list_skips_over_limit_file ... ok
+test conversation_store::tests::meta_write_failure_does_not_fail_body_save_and_list_rebuilds ... ok
+test conversation_store::tests::old_archive_without_provenance_reads_as_none_and_is_not_corrupt ... ok
+test conversation_store::tests::on_demand_reading_state_round_trips_across_restart ... ok
+test conversation_store::tests::list_summary_omits_body_and_reopen_reads_full_record ... ok
+test conversation_store::tests::provenance_metadata_contains_only_allowed_fields_and_no_body_copy_keys ... ok
+test conversation_store::tests::read_unknown_conversation_errors_with_not_found ... ok
+test conversation_store::tests::on_demand_provenance_stores_minimal_metadata_without_body_copy ... ok
+test conversation_store::tests::orphan_meta_is_cleaned_and_meta_and_trash_are_not_body_entries ... ok
+test conversation_store::tests::legacy_revoked_archive_and_meta_without_restriction_remain_restricted ... ok
+test conversation_store::tests::restore_rebuilds_missing_meta_and_missing_body_returns_not_found ... ok
+test conversation_store::tests::list_skips_corrupt_file_with_visible_hint ... ok
+test conversation_store::tests::save_preserves_backend_owned_on_demand_provenance_when_caller_omits_it ... ok
+test conversation_store::tests::save_after_delete_is_rejected_and_does_not_resurrect_file ... ok
+test conversation_store::tests::list_scans_directory_and_derives_summaries_sorted ... ok
+test conversation_store::tests::save_is_atomic_and_leaves_no_temp_files ... ok
+test conversation_store::tests::save_rejects_unsupported_version ... ok
+test conversation_store::tests::save_then_read_round_trips_custom_title_and_pinned ... ok
+test conversation_store::tests::save_then_read_round_trips_record ... ok
+test conversation_store::tests::delete_tolerates_meta_move_failure_and_restore_rebuilds ... ok
+test conversation_store::tests::save_then_read_round_trips_provenance_without_body_copy ... ok
+test conversation_store::tests::ordinary_save_cannot_revive_revoked_grant_or_clear_current_grant ... ok
+test conversation_store::tests::set_on_demand_reading_toggles_grant_and_keeps_provenance ... ok
+test conversation_store::tests::old_archive_without_on_demand_fields_reads_as_unauthorized ... ok
+test conversation_store::tests::missing_corrupt_and_oversized_meta_are_rebuilt ... ok
+test conversation_store::tests::turn_status_distinguishes_failed_from_cancelled ... ok
+test conversation_store::tests::unconfirmed_round_carries_no_fake_sent_marker ... ok
+test conversation_store::tests::save_stamps_updated_at_and_advances_on_repeated_saves ... ok
+test conversation_store::tests::save_rejects_invalid_conversation_id ... ok
+test dsh_driver::tests::commands_serialize_to_driver_protocol_shapes ... ok
+test conversation_store::tests::stale_body_bytes_rebuilds_title_and_reference_index ... ok
+test dsh_driver::tests::driver_failure_codes_map_to_stable_error_families ... ok
+test dsh_driver::tests::admission_permit_released_after_timeout ... ok
+test conversation_store::tests::oversized_save_preserves_last_readable_archive_and_meta ... ok
+test dsh_driver::tests::duplicate_pending_registration_is_rejected_not_overwritten ... ok
+test dsh_driver::tests::events_deserialize_from_driver_json ... ok
+test conversation_store::tests::ordinary_save_ignores_all_backend_fields_for_new_unreadable_and_existing_archives ... ok
+test conversation_store::tests::update_meta_sets_title_and_pinned_clears_title_and_none_keeps_fields ... ok
+test dsh_driver::tests::message_sent_parses_and_notifies_without_consuming_wait ... ok
+test conversation_store::tests::soft_delete_restore_preserves_body_and_allows_save_after_undo ... ok
+test dsh_driver::tests::pending_keys_isolate_messages_and_session_controls ... ok
+test dsh_driver::tests::poisoned_locks_do_not_cascade_into_cancel_or_shutdown ... ok
+test dsh_driver::tests::protocol_json_pins_driver_event_and_command_vocabularies ... ok
+test dsh_driver::tests::protocol_surface_has_no_document_write_channel ... ok
+test conversation_store::tests::latch_restrictions_is_idempotent_and_preserves_other_and_on_demand_provenance ... ok
+test dsh_driver::tests::stale_generation_delta_never_reaches_sink ... ok
+test dsh_driver::tests::deltas_after_tool_result_refresh_stall_clock_and_complete ... ok
+test dsh_driver::tests::max_tokens_is_passed_through_only_when_configured ... ok
+test dsh_driver::tests::startup_gate_rejects_driver_exiting_before_ready ... ok
+test dsh_driver::tests::dropped_tool_call_stall_is_also_covered ... ok
+test dsh_driver::tests::manual_cancel_during_silent_suspended_wait_returns_cancelled ... ok
+test dsh_driver::tests::stderr_diagnostic_never_leaks_body_path_or_key ... ok
+test dsh_driver::tests::authorization_wait_exempts_stall_until_resolved ... ok
+test dsh_driver::tests::tool_result_command_serializes_to_protocol_shapes ... ok
+test dsh_driver::tests::tool_result_error_recovery_is_opt_in_and_documented_in_protocol ... ok
+test dsh_driver::tests::unknown_event_type_fails_to_parse_and_is_dropped ... ok
+test conversation_store::tests::size_check_runs_after_preserving_backend_provenance_and_before_any_write ... ok
+test dsh_sidecar::tests::build_runtime_patch_injects_model_base_url_and_disables_tools ... ok
+test dsh_sidecar::tests::build_runtime_patch_escapes_single_quotes_in_model ... ok
+test dsh_sidecar::tests::dsh_headless_generates_real_response ... ignored, 需要 DSH sidecar + 钥匙串 + 网络，手动运行
+test dsh_sidecar::tests::map_dsh_failure_classifies_each_error_family ... ok
+test dsh_sidecar::tests::map_dsh_failure_never_leaks_stderr_into_message ... ok
+test dsh_sidecar::tests::strip_verbatim_prefix_keeps_normal_path_unchanged ... ok
+test dsh_sidecar::tests::strip_verbatim_prefix_removes_windows_extended_path ... ok
+test dsh_version::tests::activate_writes_pointer_and_current_version_reads_it ... ok
+test dsh_driver::tests::startup_gate_rejects_error_event_before_ready ... ok
+test dsh_version::tests::activate_is_idempotent ... ok
+test dsh_version::tests::current_version_falls_back_to_locked_when_pointer_missing ... ok
+test llm_config::generate::tests::build_task_string_for_first_includes_system_prompt_and_selection ... ok
+test dsh_version::tests::version_and_home_dirs_are_per_version ... ok
+test dsh_version::tests::current_version_falls_back_when_pointer_is_corrupt ... ok
+test llm_config::generate::tests::build_task_string_for_follow_up_preserves_turns_and_roles ... ok
+test llm_config::generate::tests::build_task_string_rejects_empty_selection ... ok
+test llm_config::generate::tests::compose_message_text_injects_context_only_for_regular_entries ... ok
+test llm_config::generate::tests::compose_system_prompt_keeps_all_constitution_clauses_for_both_entries ... ok
+test llm_config::generate::tests::direct_question_compose_declares_grounding_and_output_boundaries ... ok
+test llm_config::generate::tests::direct_question_rejects_blank_question ... ok
+test llm_config::generate::tests::direct_question_with_selection_distinguishes_question_and_material ... ok
+test llm_config::generate::tests::direct_question_without_selection_builds_task_with_question_only ... ok
+test llm_config::generate::tests::first_and_follow_up_still_require_non_empty_question ... ok
+test llm_config::generate::tests::replay_prompt_prefix_follows_replay_origin ... ok
+test llm_config::generate::tests::summon_compose_declares_summon_stance_and_output_boundaries ... ok
+test dsh_driver::tests::startup_gate_rejects_wrong_protocol_version ... ok
+test llm_config::generate::tests::summon_first_message_composes_selection_material_without_question ... ok
+test llm_config::generate::tests::summon_first_message_rejects_empty_selection ... ok
+test llm_config::generate::tests::tool_reading_prompt_is_composed_for_both_entries ... ok
+test project::content_tree::tests::ai_visible_serializes_and_deserializes_with_default ... ok
+test project::content_tree::tests::creates_mixed_nodes_with_unique_default_names ... ok
+test project::content_tree::tests::delete_and_restore_preserves_subtree_and_document_path ... ok
+test project::content_tree::tests::new_document_defaults_to_ai_visible ... ok
+test project::content_tree::tests::rejects_duplicate_and_invalid_names_and_cycles ... ok
+test project::content_tree::tests::rejects_content_tree_that_exceeds_maximum_depth ... ok
+test project::content_tree::tests::rejects_missing_or_non_folder_recycle_bin_parent ... ok
+test project::content_tree::tests::serializes_without_ai_metadata ... ok
+test project::content_tree::tests::set_ai_visibility_toggles_documents_but_not_folders ... ok
+test project::content_tree::tests::validates_child_deleted_before_parent_folder ... ok
+test project::docx_import::tests::chars_based_indents_prefer_em_units ... ok
+test project::docx_import::tests::chapter_markers_also_recognized ... ok
+test project::docx_import::tests::bullet_numbering_becomes_bullet_list ... ok
+test conversation_store::tests::reference_overflow_omits_whole_index_and_falls_back_for_usage_and_latching ... ok
+test conversation_store::tests::valid_meta_list_and_impact_query_do_not_parse_body ... ok
+test conversation_store::tests::upsert_merges_by_turn_and_document_and_preserves_other_fields ... ok
+test project::docx_import::tests::alternate_content_without_fallback_skipped_and_counted ... ok
+test project::docx_import::tests::cyclic_based_on_chain_guarded ... ok
+test dsh_driver::tests::tool_call_routes_to_sink_and_suspends_until_terminal ... ok
+test project::docx_import::tests::default_paragraph_style_applies_to_unstyled_paragraphs ... ok
+test project::docx_import::tests::deep_level_stays_degraded_and_never_renders_as_list ... ok
+test project::docx_import::tests::commit_hash_mismatch_fails_without_residue ... ok
+test project::docx_import::tests::episode_markers_suggest_split ... ok
+test project::docx_import::tests::empty_paragraphs_preserved_and_adjacent_same_marks_merged ... ok
+test conversation_store::tests::soft_delete_and_restore_failures_preserve_archive_and_undo ... ok
+test project::docx_import::tests::font_selection_by_script_class ... ok
+test project::docx_import::tests::footnote_reference_counting_scans_local_names ... ok
+test project::docx_import::tests::generator_extracted_from_doc_props ... ok
+test project::docx_import::tests::hex_and_highlight_normalization ... ok
+test project::docx_import::tests::heading_style_maps_level_from_id_and_chinese_name ... ok
+test project::docx_import::tests::missing_fallback_counting_ignores_prefix_and_closing_tags ... ok
+test project::docx_import::tests::non_bold_or_sparse_markers_do_not_suggest ... ok
+test project::docx_import::tests::numbered_marker_paragraphs_not_marker_eligible ... ok
+test project::docx_import::tests::numbering_deeper_level_reset_and_tombstone_coexistence ... ok
+test project::docx_import::tests::non_simple_lvltext_degrades_with_notice ... ok
+test project::docx_import::tests::numbering_with_empty_lvltext_is_not_a_list ... ok
+test project::docx_import::tests::numbering_two_lists_interleave_independently ... ok
+test project::docx_import::tests::override_level_start_replaces_abstract_start ... ok
+test project::docx_import::tests::override_level_style_replaces_abstract_style ... ok
+test project::docx_import::tests::paragraph_attrs_mapped_to_editor_units ... ok
+test project::docx_import::tests::numfmt_five_values_map_to_list_styles ... ok
+test project::docx_import::tests::numbering_format_loss_reaches_preview_notice ... ok
+test project::docx_import::tests::commit_single_doc_creates_validated_document ... ok
+test project::docx_import::tests::produced_single_doc_passes_strict_grammar ... ok
+test project::docx_import::tests::commit_dedupes_repeated_marker_names_and_existing_siblings ... ok
+test project::docx_import::tests::repro_numbering_continues_across_interruption ... ok
+test project::docx_import::tests::repro_start_override_consumed ... ok
+test project::docx_import::tests::repro_style_chain_formatting_applied ... ok
+test project::docx_import::tests::repro_symbol_characters_mapped_to_unicode ... ok
+test project::docx_import::tests::revisions_take_final_state ... ok
+test project::docx_import::tests::commit_split_creates_folder_and_docs_with_preamble_kept ... ok
+test project::docx_import::tests::run_marks_preserved_and_rank_ordered ... ok
+test project::docx_import::tests::rejects_non_docx_extension_and_non_zip_bytes ... ok
+test project::docx_import::tests::style_chain_line_spacing_subproperty_merge ... ok
+test project::docx_import::tests::preview_requires_three_markers_for_suggestion ... ok
+test project::docx_import::tests::split_docs_from_blocks_matches_legacy_boundaries ... ok
+test project::docx_import::tests::start_override_takes_priority_over_override_level_start ... ok
+test project::docx_import::tests::commit_into_existing_folder_and_rejects_document_parent ... ok
+test project::docx_import::tests::style_degraded_counted_for_unmappable_chain_props ... ok
+test project::docx_import::tests::symbol_tables_match_public_codecharts ... ok
+test project::docx_import::tests::symbol_spike_docx_covers_all_corrected_entries ... ok
+test project::docx_import::tests::style_linked_numbering_applies ... ok
+test project::docx_import::tests::preview_reports_counts_hash_and_no_suggestion_below_threshold ... ok
+test project::docx_import::tests::table_flattens_each_cell_into_paragraph ... ok
+test project::fdx_import::tests::bom_stripped_and_generator_extracted ... ok
+test project::fdx_import::tests::dual_dialogue_splits_in_order_with_notes_counted ... ok
+test project::fdx_import::tests::element_settings_center_alignment_mapped ... ok
+test project::docx_import::tests::tombstone_numbering_stays_plain_but_real_numbering_becomes_list ... ok
+test project::fdx_import::tests::element_settings_drive_alignment_and_relative_indents ... ok
+test project::fdx_import::tests::episode_scene_headings_suggest_split ... ok
+test project::fdx_import::tests::first_indent_maps_to_text_indent_with_negative_hanging ... ok
+test project::fdx_import::tests::first_line_leading_whitespace_preserved ... ok
+test project::fdx_import::tests::full_alignment_maps_to_justify ... ok
+test project::docx_import::tests::unmappable_numfmt_degrades_to_decimal_with_notice ... ok
+test project::fdx_import::tests::missing_settings_or_fields_fall_back_to_tiers ... ok
+test project::fdx_import::tests::no_titlepage_means_no_loss_and_no_prefix ... ok
+test project::fdx_import::tests::newlines_inside_text_split_into_adjacent_paragraphs ... ok
+test project::fdx_import::tests::non_default_base_from_general_or_action ... ok
+test project::fdx_import::tests::non_utf8_rejected ... ok
+test project::fdx_import::tests::numbered_scene_headings_still_recognized_without_prefix ... ok
+test project::fdx_import::tests::outline_level_clamped_and_invalid_falls_back ... ok
+test project::fdx_import::tests::paragraph_type_full_mapping ... ok
+test project::fdx_import::tests::produced_document_passes_strict_grammar ... ok
+test project::fdx_import::tests::revision_marks_ignored_with_text_intact ... ok
+test project::fdx_import::tests::scene_metadata_and_scriptnote_dropped_and_counted ... ok
+test project::fdx_import::tests::scene_number_merged_into_heading_prefix ... ok
+test project::fdx_import::tests::fdr_extension_rejected_with_hint ... ok
+test project::fdx_import::tests::sparse_scene_headings_do_not_suggest ... ok
+test project::fdx_import::tests::style_words_map_to_marks ... ok
+test project::fdx_import::tests::text_format_attributes_map_to_text_style ... ok
+test project::fdx_import::tests::title_page_paragraph_alignment_preserved ... ok
+test project::fdx_import::tests::titlepage_inlined_at_start_with_empty_dropped ... ok
+test project::fdx_import::tests::malformed_xml_rejected ... ok
+test project::fdx_import::tests::transition_explicit_left_does_not_fall_back_to_right ... ok
+test project::fdx_import::tests::transition_missing_alignment_falls_back_to_right ... ok
+test project::fdx_import::tests::unknown_alignment_value_treated_as_explicit_left ... ok
+test project::fdx_import::tests::unknown_elements_tolerated ... ok
+test project::fdx_import::tests::unknown_root_part_counted_but_furniture_silent ... ok
+test project::fdx_import::tests::wrong_root_element_rejected ... ok
+test project::md_import::tests::bom_stripped_before_parse ... ok
+test project::md_import::tests::attribute_bearing_u_tag_stripped ... ok
+test project::fdx_import::tests::oversize_rejected ... ok
+test project::md_import::tests::code_block_flattened_line_by_line ... ok
+test project::md_import::tests::continuation_before_first_sublist_preserves_reading_order ... ok
+test project::md_import::tests::dashes_not_at_start_is_not_frontmatter ... ok
+test project::md_import::tests::crlf_line_endings_treated_as_softbreak ... ok
+test project::md_import::tests::escapes_restored_to_literal_text ... ok
+test project::md_import::tests::footnote_reference_kept_literal_definition_dropped ... ok
+test project::md_import::tests::frontmatter_stripped_and_counted ... ok
+test project::md_import::tests::full_mapping_produces_valid_grammar ... ok
+test project::md_import::tests::gfm_table_flattened_cell_by_cell ... ok
+test project::md_import::tests::html_block_stripped_to_text_lines ... ok
+test project::md_import::tests::hard_break_splits_into_adjacent_paragraphs ... ok
+test project::md_import::tests::heading_sequence_suggests_split ... ok
+test project::md_import::tests::horizontal_rule_dropped ... ok
+test project::md_import::tests::image_dropped_with_alt_text ... ok
+test project::md_import::tests::leading_dashes_without_close_is_not_frontmatter ... ok
+test project::md_import::tests::mixed_heading_levels_do_not_suggest ... ok
+test project::md_import::tests::nested_lists_with_ordered_start_preserved ... ok
+test project::md_import::tests::no_losses_for_plain_supported_markdown ... ok
+test project::docx_import::tests::oversized_input_rejected_before_parse ... ok
+test project::md_import::tests::non_utf8_rejected_with_chinese_error ... ok
+test project::md_import::tests::list_overflow_preserves_source_reading_order ... ok
+test project::md_import::tests::obsidian_style_frontmatter_stripped ... ok
+test project::md_import::tests::ordered_list_overflow_continues_numbering ... ok
+test project::md_import::tests::other_inline_html_stripped_text_kept ... ok
+test project::md_import::tests::paragraph_markers_do_not_qualify_for_md ... ok
+test project::md_import::tests::softbreak_between_latin_inserts_space ... ok
+test project::md_import::tests::quote_degraded_to_plain_paragraphs ... ok
+test project::md_import::tests::softbreak_between_mixed_inserts_space ... ok
+test project::md_import::tests::softbreak_joins_cjk_without_space ... ok
+test project::md_import::tests::softbreak_long_wrapping_text_joins_into_one_paragraph ... ok
+test project::md_import::tests::sparse_headings_do_not_suggest ... ok
+test project::md_import::tests::tasklist_marker_literal_kept_in_bullet_list ... ok
+test project::md_import::tests::stray_close_and_nested_open_degrade ... ok
+test project::md_import::tests::tight_list_items_become_implicit_paragraphs ... ok
+test project::md_import::tests::unclosed_underline_degrades_with_text_kept ... ok
+test project::md_import::tests::underline_combined_with_other_marks_kept ... ok
+test project::md_import::tests::underline_pairs_to_mark ... ok
+test project::migration::tests::migrate_rejects_old_version_with_empty_registry ... ok
+test project::migration::tests::migrate_rejects_future_version_without_backup ... ok
+test project::migration::tests::migrate_rejects_invalid_step_definition_without_backup ... ok
+test project::migration::tests::migrate_returns_early_when_version_equals_target ... ok
+test project::migration::tests::migrate_chains_steps_level_by_level ... ok
+test project::migration::tests::migrate_runs_synthetic_step_keeps_backup_and_upgrades_version ... ok
+test project::migration::tests::migrate_reports_rollback_failure_and_keeps_backup ... ok
+test project::migration::tests::migrate_rolls_back_original_files_when_step_fails ... ok
+test dsh_driver::tests::stall_in_one_session_does_not_affect_other_session ... ok
+test dsh_driver::tests::stall_after_tool_result_silence_reports_error_and_releases_permit ... ok
+test project::migration::tests::migrate_rejects_step_that_does_not_advance_version ... ok
+test project::notebook::tests::accepts_valid_surrogate_pair_emoji ... ok
+test project::notebook::tests::empty_notebook_value_is_valid ... ok
+test project::notebook::tests::rejects_lone_surrogate_escape_at_parse_time ... ok
+test project::migration::tests::migrate_v3_to_v4_rolls_back_content_tree_and_metadata_on_failure ... ok
+test project::notebook::tests::shared_samples_agree_with_frontend ... ok
+test project::migration::tests::migrate_v3_to_v4_materializes_ai_visible_and_keeps_body ... ok
+test project::operations::tests::bounded_read_rejects_file_that_grew_past_limit_after_size_check ... ok
+test project::migration::tests::reopen_after_crash_during_migration_rollback_recovers_consistent_generation ... ok
+test dsh_driver::tests::admission_rejects_same_session_and_over_limit_without_touching_protocol ... ok
+test project::migration::tests::reopen_after_crash_before_metadata_during_migration_commit_completes ... ok
+test project::operations::tests::create_folder_persists_without_touching_document_files ... ok
+test project::migration::tests::migrate_v2_to_v3_reopens_after_partial_migration_crash ... ok
+test dsh_driver::tests::driver_process_loss_fires_loss_sink ... ok
+test project::migration::tests::migrate_v2_to_v3_converts_dual_notebooks_to_two_root_docs ... ok
+test project::operations::tests::failed_create_does_not_delete_preexisting_target_directory ... ok
+test project::operations::tests::create_document_persists_tree_document_file_and_metadata ... ok
+test project::migration::tests::reopen_after_crash_during_migration_commit_rolls_forward_from_manifest ... ok
+test project::migration::tests::v2_project_with_interrupted_legacy_save_recovers_before_migration ... ok
+test project::migration::tests::open_v3_project_with_leftover_old_duals_ignores_them ... ok
+test project::operations::tests::failed_structure_change_leaves_visible_generation_unchanged ... ok
+test project::operations::tests::manifest_delete_entries_rejected_for_non_migration_purposes ... ok
+test project::operations::tests::manifest_delete_entry_with_non_legacy_target_rejected ... ok
+test project::operations::tests::manifest_delete_entry_with_staged_content_rejected ... ok
+test project::operations::tests::delete_and_restore_document_persists_and_reopens ... ok
+test project::operations::tests::ai_read_entries_fail_closed_on_pending_transaction_without_touching_files ... ok
+test project::operations::tests::manifest_migration_delete_entries_are_accepted ... ok
+test project::operations::tests::concurrent_saves_of_same_project_serialize_without_mixing_generations ... ok
+test project::operations::tests::open_discards_staged_single_document_save_and_loads_old_generation ... ok
+test project::operations::tests::legacy_manifest_without_files_rolls_forward_fixed_three_files ... ok
+test project::operations::tests::fault_after_staging_keeps_visible_old_generation_and_stages_new_generation ... ok
+test project::operations::tests::fault_after_draft_replace_shows_new_draft_but_old_main_and_metadata ... ok
+test dsh_driver::tests::send_message_wait_records_sent_receipt_only_when_observed ... ok
+test project::operations::tests::open_discards_staged_structure_change_and_loads_old_generation ... ok
+test project::operations::tests::delete_folder_subtree_and_restore_persists ... ok
+test project::operations::tests::delete_child_then_parent_reopens_with_nested_recycle_bin_entries ... ok
+test project::operations::tests::open_rolls_forward_committing_structure_change_to_complete_generation ... ok
+test project::operations::tests::recover_then_read_content_tree_and_read_document_return_validated_structure ... ok
+test project::operations::tests::fault_after_main_replace_shows_new_notebooks_but_old_metadata ... ok
+test project::operations::tests::save_document_rejects_unknown_id_folder_and_invalid_content ... ok
+test project::operations::tests::concurrent_saves_of_different_projects_run_in_parallel ... ok
+test project::operations::tests::save_document_writes_body_and_updates_metadata ... ok
+test project::operations::tests::open_after_staging_fault_discards_transaction_and_loads_old_generation ... ok
+test project::operations::tests::open_after_draft_replace_fault_rolls_forward_to_new_generation ... ok
+test project::operations::tests::set_document_ai_visibility_rejects_folder_and_missing_node ... ok
+test project::operations::tests::open_after_main_replace_fault_rolls_forward_metadata ... ok
+test dsh_driver::tests::old_generation_eof_does_not_affect_new_generation ... ok
+test project::operations::tests::rename_move_reorder_persist_across_reopen ... ok
+test conversation_store::tests::successful_save_is_readable_at_7_9_mib_and_exact_limit_but_8_1_is_rejected ... ok
+test project::operations::tests::open_with_unrecoverable_transaction_manifest_rejects_project ... ok
+test project::operations::tests::set_document_ai_visibility_persists_and_keeps_body ... ok
+test project::operations::tests::open_discards_transaction_without_manifest_and_keeps_visible_generation ... ok
+test project::story_material::tests::directory_projection_drops_folder_with_only_hidden_content ... ok
+test project::story_material::tests::directory_projection_hides_hidden_docs_and_counts_them_anonymously ... ok
+test project::story_material::tests::directory_projection_keeps_necessary_folder_paths ... ok
+test project::operations::tests::recover_then_read_content_tree_recovers_pending_transaction ... ok
+test project::story_material::tests::folder_is_not_a_readable_document ... ok
+test project::story_material::tests::hidden_document_fails_closed ... ok
+test project::story_material::tests::missing_document_fails_closed ... ok
+test project::story_material::tests::expected_version_matching_current_succeeds ... ok
+test project::operations::tests::strict_read_content_tree_fails_closed_on_corrupt_manifest ... ok
+test project::operations::tests::save_with_unrecoverable_previous_transaction_rejects_before_new_save ... ok
+test project::story_material::tests::invalid_range_fails_closed ... ok
+test project::story_material::tests::recycled_document_fails_closed ... ok
+test project::story_material::tests::snapshot_from_ai_visible_false_document_fails_closed ... ok
+test project::story_material::tests::snapshot_version_must_match_snapshot_content ... ok
+test project::story_material::tests::authorized_document_read_returns_structured_material ... ok
+test project::story_material::tests::ai_visible_false_document_fails_closed_without_content ... ok
+test project::operations::tests::save_proceeds_after_manifestless_transaction_is_discarded ... ok
+test project::operations::tests::strict_read_content_tree_fails_closed_on_staged_transaction ... ok
+test project::operations::tests::strict_read_content_tree_fails_closed_when_transaction_path_is_plain_file ... ok
+test project::story_material::tests::snapshot_with_empty_version_fails_closed ... ok
+test project::story_material::tests::snapshot_with_invalid_content_fails_closed ... ok
+test project::operations::tests::strict_read_content_tree_fails_closed_without_manifest ... ok
+test project::story_search::tests::candidate_extraction_bigram_overflow_keeps_first_eight_in_order ... ok
+test project::story_search::tests::candidate_extraction_bigrams_chinese_segment ... ok
+test project::story_search::tests::candidate_extraction_caps_at_eight_terms ... ok
+test project::story_search::tests::candidate_extraction_dedups_by_first_appearance ... ok
+test project::story_search::tests::candidate_extraction_dedups_overlapping_bigrams ... ok
+test project::story_material::tests::read_material_slices_requested_range ... ok
+test project::story_search::tests::candidate_extraction_empty_question_has_no_terms ... ok
+test project::story_search::tests::candidate_extraction_extracts_chinese_and_latin_segments ... ok
+test project::story_search::tests::candidate_extraction_folds_fullwidth_and_case ... ok
+test project::story_search::tests::candidate_extraction_mixed_keeps_latin_segment_whole ... ok
+test project::story_search::tests::candidate_extraction_single_han_char_yields_no_bigram ... ok
+test project::story_search::tests::candidate_extraction_skips_single_char_segments ... ok
+test project::story_search::tests::compose_context_text_includes_focus_directory_and_snippets ... ok
+test project::story_search::tests::extract_plain_text_walks_notebook_blocks ... ok
+test project::story_search::tests::nfkc_folds_circled_digits ... ok
+test project::story_search::tests::nfkc_folds_ideographic_space_for_dedup ... ok
+test project::story_search::tests::nfkc_folds_ligature_into_latin_segment ... ok
+test project::story_search::tests::search_caps_documents_and_snippets_and_marks_limited ... ok
+test project::story_search::tests::search_excludes_focus_document ... ok
+test project::story_search::tests::search_hits_other_document_with_source_identity ... ok
+test project::story_search::tests::search_reports_no_query_terms ... ok
+test project::story_search::tests::search_reports_not_found_when_no_hits ... ok
+test project::story_search::tests::search_skips_hidden_document ... ok
+test project::story_search::tests::search_skips_orphan_node ... ok
+test project::story_search::tests::search_skips_recycled_document ... ok
+test project::story_search::tests::search_snippet_window_applies_context_and_merges_overlap ... ok
+test project::story_search::tests::search_title_does_not_count_as_body_hit ... ok
+test project::story_material::tests::range_not_on_char_boundary_fails_closed ... ok
+test project::story_material::tests::snapshot_with_wrong_document_fails_closed ... ok
+test recent_works::tests::corrupted_storage_fails_open_as_empty_list ... ok
+test recent_works::tests::missing_storage_fails_open_as_empty_list_without_creating_file ... ok
+test project::story_material::tests::snapshot_with_wrong_work_fails_closed ... ok
+test project::story_material::tests::reads_never_modify_project_files ... ok
+test project::story_material::tests::valid_snapshot_returns_latest_content_over_disk ... ok
+test recent_works::tests::load_drops_invalid_entries_and_heals_storage ... ok
+test project::operations::tests::strict_read_content_tree_reads_clean_project_like_normal_path ... ok
+test project::operations::tests::strict_read_content_tree_fails_closed_on_committing_transaction ... ok
+test project::story_material::tests::unavailable_version_fails_closed ... ok
+test project::story_material::tests::wrong_work_fails_closed_without_content ... ok
+test recent_works::tests::record_roundtrips_through_load ... ok
+test recent_works::tests::record_dedupes_by_path_and_moves_entry_to_front ... ok
+test project::tests::rebuilt_entry_after_expiry_still_serializes_same_path ... ok
+test project::story_search::tests::search_project_never_modifies_files ... ok
+test project::operations::tests::visibility_survives_rename_move_delete_and_restore ... ok
+test project::operations::tests::successful_save_commits_new_generation_and_removes_transaction_dir ... ok
+test project::story_search::tests::assemble_round_context_rejects_hidden_focus_document ... ok
+test project::story_search::tests::assemble_round_context_reads_focus_directory_and_search ... ok
+test recent_works::tests::record_trims_list_to_eight_entries ... ok
+test project::docx_import::tests::compression_bomb_rejected_with_chinese_error ... ok
+test story_tool_round_state::tests::round_state_dedups_same_version_and_range_only ... ok
+test story_tool_round_state::tests::round_state_fuse_trips_on_count_or_duration ... ok
+test story_tool_round_state::tests::round_state_judges_depth_by_cumulative_coverage ... ok
+test story_tool_round_state::tests::round_state_maps_version_unavailable_only_when_pinned ... ok
+test story_tool_round_state::tests::round_state_pins_version_and_blocks_on_mismatch ... ok
+test story_tool_channel::tests::channel_upsert_and_ordinary_save_keep_latest_turns_and_provenance_in_both_orders ... ok
+test story_tools::tests::authorized_list_read_search_return_structured_data ... ok
+test story_tool_channel::tests::authorized_read_tool_round_trips_through_channel ... ok
+test story_tool_channel::tests::tool_call_without_routing_context_fails_closed ... ok
+test story_tool_channel::tests::missing_reading_request_sink_fails_closed_immediately ... ok
+test story_tool_channel::tests::mid_round_save_maps_to_story_version_changed ... ok
+test story_tool_channel::tests::unauthorized_read_tool_denied_through_channel ... ok
+test story_tools::tests::host_entry_force_unauthorized_overrides_archive_grant ... ok
+test story_tools::tests::cross_work_nonexistent_folder_and_claimed_work_fail_closed ... ok
+test story_tools::tests::host_entry_authorizes_from_archive_and_executes ... ok
+test story_tools::tests::pending_recovery_transaction_fails_closed_for_all_four_tools ... ok
+test story_tool_channel::tests::summon_first_round_hard_gate_rejects_all_tool_calls ... ok
+test story_tool_channel::tests::cleared_session_fails_closed_for_late_tool_calls ... ok
+test story_tools::tests::unauthorized_state_rejects_reading_tools_before_any_read ... ok
+test tests::read_and_visibility_commands_are_not_ai_callable_tools ... ok
+test story_tools::tests::request_reading_returns_structured_waiting_without_story_data ... ok
+test tests::read_material_denial_messages_are_fixed_and_never_leak_details ... ok
+test story_tools::tests::recycled_document_fails_closed_across_tools ... ok
+test story_tools::tests::host_entry_rejects_reader_and_archive_from_different_works ... ok
+test story_tools::tests::host_entry_restores_authorization_across_restart ... ok
+test story_tools::tests::hidden_document_fails_closed_across_tools_without_identity_leak ... ok
+test story_tools::tests::strict_story_reader_surface_exposes_reads_only ... ok
+test story_tool_channel::tests::version_pin_round_trip_through_driver ... ok
+test story_tools::tests::host_entry_rejects_unauthorized_discussion_without_recording ... ok
+test tests::read_material_denial_hides_hidden_document_identity ... ok
+test story_tool_channel::tests::fuse_trips_after_threshold_and_default_config_leaves_normal_round_alone ... ok
+test story_tool_channel::tests::dedup_and_cumulative_depth_round_trip ... ok
+test story_tool_authorization::tests::pending_authorization_identity_must_match ... ok
+test story_tool_authorization::tests::grant_write_failure_backfills_denial_and_round_finishes ... ok
+test story_tool_channel::tests::suspended_round_can_be_cancelled_and_late_resolution_is_dropped ... ok
+test story_tools::tests::story_search_enforces_hard_limits_per_call ... ok
+test story_tool_channel::tests::reading_request_suspends_round_and_resolution_continues ... ok
+     Running unittests src\main.rs (src-tauri\target\debug\deps\next_story-9ce2a1b0a416d5b9.exe)
+
+test result: ok. 429 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 15.39s
+
+
+running 0 tests
+
+test result: ok     Running tests\export_test.rs (src-tauri\target\debug\deps\export_test-259f4288ffc93157.exe)
+. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 21 tests
+test document_scope_projects_single_document_with_document_root_name ... ok
+test empty_scopes_project_root_heading_only ... ok
+test export_sequence_excludes_recycle_bin ... ok
+test folder_scope_projects_subtree_with_folder_root_name ... ok
+test export_rejects_missing_project ... ok
+test scope_with_missing_or_wrong_kind_node_fails_in_chinese ... ok
+test render_docx_document_scope_uses_root_heading_without_document_title ... ok
+test render_docx_nested_styled_ordered_list_keeps_indent_strategy ... ok
+test work_scope_follows_tree_order_with_nested_folders ... ok
+test render_docx_ordered_list_prefixes_follow_style ... ok
+test render_docx_contains_required_ooxml_parts ... ok
+test render_docx_styles_align_with_editor_presentation ... ok
+test render_docx_preserves_chinese_emoji_and_marks ... ok
+test render_docx_folder_scope_headings_progress_by_depth ... ok
+test render_docx_preserves_list_text ... ok
+test render_docx_work_scope_preserves_heading_levels_and_text_order ... ok
+test render_docx_produces_valid_zip_with_document_xml ... ok
+test export_fails_cleanly_on_unwritable_target ... ok
+test parse_captures_text_align_and_link_marks ... ok
+     Running tests\fdx_import_test.rs (src-tauri\target\debug\deps\fdx_import_test-f513c5747c836fed.exe)
+test document_scope_export_single_document_and_leaves_project_unchanged ... ok
+test work_scope_export_matches_legacy_behavior_and_leaves_project_unchanged ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 10 tests
+test edge_parenthetical_fallback_tiers ... ok
+test edge_forced_action_splits_lines ... ok
+test existing_documents_untouched_after_fdx_import ... ok
+test synthetic_mixed_script_layouts_preserved ... ok
+test edge_indentation_leading_spaces_preserved ... ok
+test screenplain_dual_dialogue_order_preserved ... ok
+test edge_extended_characters_preserved ... ok
+test synthetic_episode_scene_headings_split_roundtrip ... ok
+test edge_utf8_bom_fixture_parses_with_bom_stripped ... ok
+test storyboarder_fixture_full_import_verbatim ... ok
+     Running tests\import_fidelity_test.rs (src-tauri\target\debug\deps\import_fidelity_test-f3b54dabd3878c26.exe)
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+
+running 4 tests
+test fixture_styles_part_parses_without_incident ... ok
+test fixture_num_via_style_becomes_ordered_list ... ok
+test acceptance_complex_symbol_count_and_mapping ... ok
+test fixture_known_styles_chain_format_applies ... ok
+     Running tests\llm_config_test.rs (src-tauri\target\debug\deps\llm_config_test-7c85ad31c759bef6.exe)
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 33 tests
+test app_data_dir_failure_is_a_safe_stable_result ... ok
+test direct_question_origin_follow_up_allows_empty_selection_and_user_first_messages ... ok
+test generate_error_codes_serialize_as_snake_case ... ok
+test direct_question_origin_follow_up_task_uses_direct_question_prompt_and_full_qa ... ok
+test generate_rejects_blank_selection_and_blank_messages_with_safe_stable_error ... ok
+test generate_rejects_illegal_follow_up_role_order_and_messages_after_pending_user ... ok
+test generate_rejects_incomplete_config_as_configuration_required ... ok
+test generate_request_parses_optional_snapshot_with_backward_compatibility ... ok
+test api_key_round_trips_through_secret_store ... ok
+test load_returns_none_when_config_absent ... ok
+test selection_origin_follow_up_still_rejects_empty_selection_and_requires_assistant_first ... ok
+test load_fails_clearly_when_file_exists_but_secret_store_is_empty ... ok
+test oversized_config_error_never_leaks_config_path ... ok
+test corrupted_saved_config_returns_stable_failure_result ... ok
+test legacy_plaintext_config_is_migrated_into_store_and_rewritten_without_key ... ok
+test load_rejects_oversized_config_file ... ok
+test validation_bounds_optional_max_tokens ... ok
+test test_connection_rejects_empty_204_response ... ok
+test load_summary_never_returns_plaintext_key_and_reports_has_api_key ... ok
+test save_and_reload_preserves_config_and_touches_no_notebooks ... ok
+test validation_rejects_ambiguous_or_complete_endpoint_urls ... ok
+test test_connection_fails_with_readable_error_on_401 ... ok
+test test_connection_succeeds_against_mock_server ... ok
+test validation_rejects_missing_fields_and_bad_url ... ok
+test test_connection_rejects_success_status_without_a_valid_model_result ... ok
+test validation_rejects_urls_without_a_host ... ok
+test validation_rejects_remote_http_but_allows_loopback_http ... ok
+test save_with_empty_api_key_reuses_existing_keyring_secret ... ok
+test saved_config_file_never_contains_api_key ... ok
+test save_rolls_back_keyring_when_disk_replace_fails_after_keyring_update ... ok
+test max_tokens_round_trips_and_default_keeps_file_shape ... ok
+test ai_generation_never_writes_back_to_notebooks_while_user_save_does ... ok
+test test_connection_does_not_follow_redirects ...      Running tests\markdown_export_test.rs (src-tauri\target\debug\deps\markdown_export_test-b5113efb9459b3d1.exe)
+ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+
+
+running 18 tests
+test ascii_punctuation_that_commonmark_interprets_is_escaped ... ok
+test combined_marks_wrap_in_order ... ok
+test lists_map_nesting_and_ordered_start ... ok
+test empty_scope_outputs_root_heading_only ... ok
+test folder_scope_headings_progress_by_depth ... ok
+test inline_marks_map_and_presentation_only_marks_degrade ... ok
+test document_scope_root_heading_only_once ... ok
+test styled_ordered_lists_degrade_to_numbers_from_start ... ok
+test markdown_special_literals_render_back_as_original_text ... ok
+test fullwidth_and_non_ascii_characters_are_never_escaped ... ok
+test link_destination_with_spaces_or_parentheses_uses_angle_form ... ok
+test inner_headings_use_own_levels ... ok
+test work_scope_headings_follow_flat_mapping ... ok
+test markdown_export_fails_cleanly_on_unwritable_target ... ok
+test markdown_export_rejects_missing_project_and_bad_scope ... ok
+test markdown_empty_scope_exports_root_heading_only ... ok
+test markdown_export_leaves_project_bytes_unchanged ... ok
+test markdown_export_notifies_numbering_style_degradation ... ok
+
+test result:      Running tests\markdown_import_test.rs (src-tauri\target\debug\deps\markdown_import_test-8cd89f2870afe3bc.exe)
+ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 6 tests
+test bom_and_hash_mismatch_via_public_commands ... ok
+test oversize_markdown_rejected_with_chinese_error ... ok
+test preview_and_commit_end_to_end_with_frontmatter_and_losses ... ok
+test markdown_split_commit_by_heading_sequence ... ok
+test export_import_roundtrip_diffs_limited_to_known_four ... ok
+     Running tests\on_demand_reading_negative_test.rs (src-tauri\target\debug\deps\on_demand_reading_negative_test-c8a93536c5f36153.exe)
+test combined_underline_strike_roundtrip_degrades_to_literal_tildes ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+
+running 2 tests
+test negative_tool_names_fail_to_parse_as_story_tool_calls ... ok
+test negative_direct_calls_fail_closed_with_zero_disk_side_effects ...      Running tests\project_test.rs (src-tauri\target\debug\deps\project_test-92dfdbf0df54dc69.exe)
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+
+
+running 33 tests
+test open_existing_project_rejects_oversized_metadata_before_opening ... ok
+test create_new_project_rejects_empty_invalid_reserved_and_existing_names ... ok
+test open_existing_project_rejects_required_file_symlink_when_it_escapes_root ... ok
+test open_existing_project_rejects_missing_or_malformed_project_files ... ok
+test create_new_project_creates_expected_chinese_structure ... ok
+test open_existing_project_rejects_project_root_symlink ... ok
+test open_rejects_old_txt_only_project ... ok
+test open_rejects_missing_version_field ... ok
+test open_rejects_old_project_structure_version_1 ... ok
+test create_new_project_writes_valid_blank_structured_notebooks ... ok
+test open_rejects_unknown_future_project_structure_version ... ok
+test project_error_display_never_leaks_sensitive_paths ... ok
+test project_error_keeps_existing_user_understandable_prompts ... ok
+test open_existing_project_rejects_oversized_draft_before_opening ... ok
+test open_rejects_version_as_string ... ok
+test open_rejects_version_as_negative ... ok
+test open_rejects_version_as_fraction ... ok
+test open_rejects_oversized_notebook_before_reading ... ok
+test open_rejects_version_as_null ... ok
+test open_existing_project_rejects_oversized_main_before_opening ... ok
+test open_rejects_committing_oversized_transaction ... ok
+test save_rejects_invalid_notebook_payload_before_staging ... ok
+test open_rejects_unrecoverable_transaction_with_invalid_staged_notebook ... ok
+test unsupported_version_with_interrupted_transaction_leaves_all_bytes_unchanged ... ok
+test save_and_reopen_preserves_document_through_production_api ... ok
+test open_rejects_unsupported_notebook_document_version ... ok
+test open_rejects_corrupted_notebook_json ... ok
+test open_rejects_unknown_node_type ... ok
+test open_discards_staged_oversized_transaction ... ok
+test visibility_and_directory_commands_never_leak_path_or_document_identity ... ok
+test open_accepts_nested_list ... ok
+test real_chain_visibility_walkthrough_keeps_document_bytes_unchanged ... ok
+test save_rejects_oversized_document_before_staging ...      Running tests\real_link_on_demand_reading_test.rs (src-tauri\target\debug\deps\real_link_on_demand_reading_test-f36796df76573c4d.exe)
+ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s
+
+
+running 3 tests
+     Running tests\word_import_test.rs (src-tauri\target\debug\deps\word_import_test-c324f00b587a0f3e.exe)
+test real_link_authorization_request_suspends_then_grant_continues ... ignored, 真实链路：需要 ZHIPU_API_KEY + 网络 + DSH sidecar，手动 --ignored 运行
+test real_link_fuse_stops_excess_reads_and_model_concludes ... ignored, 真实链路：需要 ZHIPU_API_KEY + 网络 + DSH sidecar，手动 --ignored 运行
+test real_link_tool_loop_reads_document_and_confirms_sent ... ignored, 真实链路：需要 ZHIPU_API_KEY + 网络 + DSH sidecar，手动 --ignored 运行
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test image_runs_counted_as_image_dropped ... ok
+test comment_ranges_counted_as_comment_dropped ... ok
+test footnote_references_counted_as_footnote_dropped ... ok
+test mixed_document_counts_each_loss_kind_independently ... ok
+test export_import_roundtrip_diffs_are_enumerable ... ok
+   Doc-tests next_story_lib
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+check exit=0

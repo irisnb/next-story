@@ -1,0 +1,12 @@
+{
+  "attempt_upper_bound": "6 轮 × 至多 3 次上游尝试（驱动内建重试缺省 2）＝ ≤18；推导上界，非实测计数",
+  "batch_started_at": "2026-10-06T01:13:25.054923600+08:00",
+  "endpoint_host": "open.bigmodel.cn",
+  "evidence_scope": "宿主可观测：送出字符串/终态/sent_confirmed/工具调用/时间；非 wire 层",
+  "max_tokens": 2048,
+  "model": "glm-5.3",
+  "outer_retry": "无（Err 不重发）",
+  "per_round_timeout_secs": 180,
+  "temperature": "未设置（生产未设置，核验沿用）",
+  "wall_limit_minutes": 15
+}

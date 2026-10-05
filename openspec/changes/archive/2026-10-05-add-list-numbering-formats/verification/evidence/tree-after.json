@@ -1,0 +1,23 @@
+{
+  "root_children": [
+    "node-1791171539943239300-1",
+    "node-1791171721725905000-2"
+  ],
+  "nodes": {
+    "node-1791171539943239300-1": {
+      "id": "node-1791171539943239300-1",
+      "name": "未命名文档",
+      "kind": "Document",
+      "children": [],
+      "ai_visible": true
+    },
+    "node-1791171721725905000-2": {
+      "id": "node-1791171721725905000-2",
+      "name": "acceptance-complex",
+      "kind": "Document",
+      "children": [],
+      "ai_visible": true
+    }
+  },
+  "recycle_bin": []
+}

@@ -1,0 +1,38 @@
+{
+  "file": "node-1791171721725905000-2.json",
+  "blockCount": 26,
+  "charCount": 1141,
+  "symbolsOk": true,
+  "noOldValues": true,
+  "alphaOk": true,
+  "alpha": [
+    {
+      "type": "A",
+      "start": 1,
+      "items": [
+        "C02 first alpha interleave item"
+      ]
+    },
+    {
+      "type": "A",
+      "start": 2,
+      "items": [
+        "C04 second alpha interleave item"
+      ]
+    },
+    {
+      "type": "A",
+      "start": 3,
+      "items": [
+        "C08 alpha resumes after interruption"
+      ]
+    }
+  ],
+  "latinFont": "Calibri",
+  "cjkFont": "Microsoft YaHei",
+  "p1LineHeight": "1.15",
+  "p3LineHeight": "1.15",
+  "diffIndexes": [
+    6
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "word": {
+    "ok": true,
+    "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\opencode\\编号导出验收\\acc-acceptance.docx",
+    "message": null
+  },
+  "markdown": {
+    "ok": true,
+    "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\opencode\\编号导出验收\\acc-acceptance.md",
+    "message": "Markdown 规范只支持数字列表标记，字母或罗马编号的有序列表已降级为数字（缩进保持层级）"
+  },
+  "pdf": {
+    "ok": true,
+    "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\opencode\\编号导出验收\\acc-acceptance.pdf",
+    "message": null
+  }
+}

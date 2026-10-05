@@ -1,0 +1,42 @@
+{
+  "orderedBtn": {
+    "sel": "#btn-ordered-list",
+    "text": "1. 列表",
+    "x": 8,
+    "y": 430,
+    "w": 70,
+    "h": 38,
+    "clientW": 66,
+    "scrollW": 66
+  },
+  "trigger": {
+    "sel": "#btn-ordered-list-style",
+    "text": "",
+    "x": 8,
+    "y": 468,
+    "w": 70,
+    "h": 13,
+    "clientW": 70,
+    "scrollW": 70
+  },
+  "row": {
+    "sel": ".ol-style-row",
+    "text": "1. 列表\n              \n                \n              \n              \n                \n                1.数字\n                A.大写字母\n                a.小写字母\n                I.大写罗马\n                i.小写罗马",
+    "x": 8,
+    "y": 430,
+    "w": 70,
+    "h": 51,
+    "clientW": 70,
+    "scrollW": 70
+  },
+  "toolbar": {
+    "sel": "#format-toolbar",
+    "text": "多种格式\n              正文\n              一级标题\n              二级标题\n              三级标题\n              四级标题\n              五级标题\n              六级标题\n            \n            B\n            I\n            U\n            S\n            • 列表\n            \n              1. 列表\n              \n                \n              \n              \n                \n                1.数字\n                A.大写字母\n                a.小写字母\n                I.大写罗马\n                i.小写罗马\n              \n            \n            撤销\n            重做\n            查找\n            标准\n            标准\n            格式",
+    "x": 0,
+    "y": 194,
+    "w": 88,
+    "h": 476,
+    "clientW": 86,
+    "scrollW": 86
+  }
+}

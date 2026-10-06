@@ -69,7 +69,15 @@ export function openAiConfiguration(
   openConfigPage();
 }
 
-/** 把讨论的显示历史投影为会话重放轮次（崩溃恢复用）。 */
+/**
+ * 把讨论的显示历史投影为会话重放轮次（崩溃恢复用）。
+ *
+ * 标签与后端首轮 user 组装一致（wire-system-prompt-channel）：直接提问＝
+ * `direct_question_user_content` 的「用户问题：／重点参考材料（可选）：」标签；
+ * 及时召唤＝`summon_user_content` 的裸选区原文（无标签）。重放首轮不再拼
+ * 提示词前缀——制度性内容由 start_session 携带的 system_prompt 信封提供，
+ * 前缀拼接已随后端 `replay_prompt_prefix` 移除而退场。
+ */
 export function historyTurnsOf(
   conversation: ReadonlyTemporaryConversation,
 ): AiReplayTurn[] {
@@ -81,7 +89,7 @@ export function historyTurnsOf(
       firstUserText += `\n\n重点参考材料（可选）：\n${material.selected_text}`;
     }
   } else {
-    firstUserText = `重点参考材料（可选）：\n${material.selected_text}`;
+    firstUserText = material.selected_text;
   }
   const turns: AiReplayTurn[] = [
     { role: "user", text: firstUserText },
@@ -94,7 +102,10 @@ export function historyTurnsOf(
   return turns;
 }
 
-/** 讨论的发起方式：重放时按来源组装入口层提示词。 */
+/**
+ * 讨论的发起方式。重放命令面仍携带该来源（历史兼容参数）；自信封分层迁移起
+ * 后端不再按来源拼装提示词（制度性内容走 start_session 信封，重放首轮为纯投影）。
+ */
 export function originOf(conversation: ReadonlyTemporaryConversation): AiReplayOrigin {
   return conversation.initialUserMaterial.kind === "direct_question" ? "direct_question" : "summon";
 }

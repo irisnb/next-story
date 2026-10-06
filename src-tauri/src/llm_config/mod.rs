@@ -338,7 +338,8 @@ pub mod generate;
 pub use generate::{
     ai_cancel_message_in_dir, ai_end_session_in_dir, ai_replay_done_in_dir,
     ai_replay_history_in_dir, ai_send_message_in_dir, ai_start_session_in_dir,
-    generate_ai_thinking, generate_ai_thinking_in_dir, AiMessageKind, ReplayOrigin,
+    generate_ai_thinking, generate_ai_thinking_in_dir, session_system_prompt, AiMessageKind,
+    ReplayOrigin,
 };
 
 mod http;

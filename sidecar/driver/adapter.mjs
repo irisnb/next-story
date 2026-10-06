@@ -79,6 +79,10 @@ export function createDeterministicAdapter(options = {}) {
   const registry = createIsolationRegistry();
   const seq = { value: 0 };
 
+  // start_session.system_prompt（宿主必发，wire-system-prompt-channel 设计 D5）：
+  // 生产驱动把它注册为 per-agent system 层段落（system-prompt-sections.mjs）；
+  // 本替身无真实 DSH 容器，按会话原样存储（逐字保留），供验证断言发送侧契约
+  // （必发、崩溃重发逐字一致），不自行组装 system 层。
   function newSession(id, systemPrompt = "") {
     return {
       id, systemPrompt, busy: null, pendingToolCall: null, seedTurns: [], turnHistory: [], turnNo: 1,

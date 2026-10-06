@@ -57,6 +57,10 @@ const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 pub enum DriverCommand {
     StartSession {
         session_id: String,
+        /// 会话信封（change: wire-system-prompt-channel 任务 2.2，design D3）：
+        /// 宿主必发的制度性 system 提示词，由 [`crate::llm_config::session_system_prompt`]
+        /// 纯常量组装——正常建会话与崩溃恢复重放由同一函数重算重发，逐字一致。
+        system_prompt: String,
     },
     SendMessage {
         session_id: String,
@@ -1188,8 +1192,12 @@ impl DshDriverManager {
         let runtime = self.current_runtime()?;
         let (_registration, rx) =
             runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
+        // 信封逐字一致（design D3）：system_prompt 来自纯常量组装函数，崩溃
+        // 恢复重放路径（replay 前的 start_session）同样经此重算重发——不存在
+        // 第二副本需要同步。
         self.write_command(&DriverCommand::StartSession {
             session_id: session_id.to_string(),
+            system_prompt: crate::llm_config::session_system_prompt(),
         })?;
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::SessionStarted { .. }) => Ok(()),
@@ -1473,10 +1481,16 @@ mod tests {
         // 协议形状锚点：与 sidecar/driver/driver.mjs 的协议 v1 对应。
         let start = serde_json::to_value(DriverCommand::StartSession {
             session_id: "s1".into(),
+            system_prompt: crate::llm_config::session_system_prompt(),
         })
         .unwrap();
         assert_eq!(start["type"], "start_session");
         assert_eq!(start["session_id"], "s1");
+        assert_eq!(
+            start["system_prompt"],
+            crate::llm_config::session_system_prompt(),
+            "start_session 必须携带信封（宿主必发）"
+        );
 
         let send = serde_json::to_value(DriverCommand::SendMessage {
             session_id: "s1".into(),
@@ -1491,6 +1505,67 @@ mod tests {
         assert_eq!(shutdown["type"], "shutdown");
     }
 
+    /// 信封契约（change: wire-system-prompt-channel 任务 2.2/2.5，design D3）：
+    /// `start_session` 携带 system_prompt，且两次建会话（模拟原发与崩溃恢复
+    /// 重放）发送的值逐字相等、与组装函数单一来源逐字相等——不存在第二副本。
+    #[test]
+    fn start_session_carries_verbatim_constant_system_prompt() {
+        // 假驱动记录每个会话收到的 start_session.system_prompt，send_message 时
+        // 原样回显，端到端断言宿主发送侧。
+        let script = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const envelopes = new Map();\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'start_session') {\n\
+                 envelopes.set(cmd.session_id, cmd.system_prompt);\n\
+                 console.log(JSON.stringify({ type: 'session_started', session_id: cmd.session_id }));\n\
+               } else if (cmd.type === 'send_message') {\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: envelopes.get(cmd.session_id) ?? '' }));\n\
+               } else if (cmd.type === 'end_session') {\n\
+                 console.log(JSON.stringify({ type: 'session_ended', session_id: cmd.session_id }));\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
+               }\n\
+             });\n\
+             rl.on('close', () => process.exit(0));\n\
+             setInterval(() => {}, 1000);\n";
+        let (_temp, paths, params) = fake_driver_paths(script);
+        let manager = DshDriverManager::new();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        // 原发会话与崩溃恢复重建会话（两个独立 start_session）。
+        manager.start_session("s1").expect("原发会话");
+        let original = manager
+            .send_message_and_wait("s1", "m1", "问题", Duration::from_secs(15))
+            .expect("回显原发信封");
+        manager.start_session("s2").expect("重放会话");
+        let replayed = manager
+            .send_message_and_wait("s2", "m2", "问题", Duration::from_secs(15))
+            .expect("回放重放信封");
+
+        let envelope = crate::llm_config::session_system_prompt();
+        assert_eq!(
+            original.text, envelope,
+            "start_session 发送的必须是组装函数原文"
+        );
+        assert_eq!(
+            replayed.text, original.text,
+            "崩溃恢复重发的 system_prompt 与原发逐字相等"
+        );
+        // 拆段契约锚点：首行身份句（驱动侧按首个换行拆 persona/红线段）。
+        assert!(
+            original
+                .text
+                .starts_with("你是陪伴剧本创作者思考与探索的助手。\n"),
+            "信封首行必须是身份句：{}",
+            original.text
+        );
+
+        manager.shutdown_best_effort();
+    }
+
     /// 铁律 1 锚点：协议命令面不存在任何向用户文档写入的通道。
     /// 全部命令变体序列化后不得出现作品文档写入语义的字段。
     #[test]
@@ -1498,6 +1573,7 @@ mod tests {
         let commands = vec![
             serde_json::to_value(DriverCommand::StartSession {
                 session_id: "s".into(),
+                system_prompt: crate::llm_config::session_system_prompt(),
             })
             .unwrap(),
             serde_json::to_value(DriverCommand::SendMessage {
@@ -1707,6 +1783,7 @@ mod tests {
         let rust_commands: Vec<String> = vec![
             tag_of(DriverCommand::StartSession {
                 session_id: "s".into(),
+                system_prompt: crate::llm_config::session_system_prompt(),
             }),
             tag_of(DriverCommand::SendMessage {
                 session_id: "s".into(),

@@ -1,8 +1,10 @@
 //! 使用唯一保存配置，通过 DSH headless 生成 AI 思考材料。
 //!
 //! 只接收选区原文（含可选方向与追问轮次），由本模块集中组装固定首版思考任务，
-//! 序列化为单个 task 字符串交给 DSH。前端不传入 API Key，也不持有任何写入
-//! 用户文档的入口。
+//! 序列化为单个 task 字符串交给 DSH。制度性提示（陪想身份＋宪法红线）自
+//! change: wire-system-prompt-channel 起迁入会话 system 层（信封，单一来源
+//! [`session_system_prompt`]），user 文本只承载入口姿态、工具说明、问题与材料。
+//! 前端不传入 API Key，也不持有任何写入用户文档的入口。
 
 use std::path::{Path, PathBuf};
 
@@ -23,17 +25,27 @@ pub enum PromptEntry {
     Summon,
 }
 
-/// 公共提示层：本轮保留现有身份、文档边界、候选限制、评价与输出格式要求；
-/// 此处保留不代表所有现有要求都是产品永久边界。
-/// 材料与追问语义按诚实材料边界声明（2026-10-06 修正，取代一刀切读取禁止与
-/// 强制锚定首次冻结选区：只依据实际提供与授权返回、不冒充未读、无跨讨论长期
-/// 记忆；追问围绕当前问题、首次选区相关时参考、AI 猜测不当作品事实）。
-/// 这是铁律 2/3 在提示词层的落地，不得在组装中弱化或省略。
-fn constitution_prompt() -> &'static str {
-    "你是陪剧本创作者思考的助手。不直接修改用户文档，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
+/// 陪想身份句（信封 persona 段文本；2026-10-06 用户拍板备选 A）。规格要求
+/// 「你是陪伴剧本创作者思考与探索的助手」在会话 system 层逐字在场。
+const IDENTITY_SENTENCE: &str = "你是陪伴剧本创作者思考与探索的助手。";
+
+/// 宪法红线文本：原文迁移自旧 `constitution_prompt()` 身份句之后的全部条款
+/// （永久边界、诚实材料边界、追问语义、纯文本输出要求），一字不改。
+const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
 只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围。未提供、未读取或未取得的内容，不得声称已经读过；目录不等于正文，检索片段不等于全文。不得声称具有跨讨论长期记忆。\
 追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考。当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实。\
-不要输出 Markdown 或 HTML 格式，使用纯文本回答。"
+不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
+
+/// 会话信封（`start_session.system_prompt`）纯常量组装（design D3，单一来源）：
+/// 首行＝陪想身份句，首个换行后＝宪法红线全文。首行换行即驱动侧拆段契约
+/// （首行遮蔽 `deployment:persona`，其余入 `nextstory:constitution`，见
+/// `sidecar/driver/system-prompt-sections.mjs` 与 `protocol.json`）。
+///
+/// 纯常量确定性组装：正常 `start_session` 与崩溃恢复重放由同一函数重算重发，
+/// 逐字一致由无状态保证（契约测试断言两次组装逐字相等）。文本不含 `{{`/`}}`
+/// （驱动侧 dsh-system-prompt 严格变量插值，未知引用会 fail loud）。
+pub fn session_system_prompt() -> String {
+    format!("{IDENTITY_SENTENCE}\n{CONSTITUTION_CLAUSES}")
 }
 
 /// 入口层：按入口给出本轮请求的立场句（含本轮可见材料的静态描述）。
@@ -77,12 +89,14 @@ fn tool_reading_prompt(entry: PromptEntry) -> &'static str {
     }
 }
 
-/// 三层组装系统提示词：红线层 + 入口层 + 语境层 + 工具使用层。
+/// 入口层＋工具层组装（信纸前缀）：入口姿态句＋语境层＋工具使用说明。
 ///
-/// 组装职责集中在后端生成用例，不散落在 DOM 事件、前端桥接或底层 HTTP 模块。
+/// 宪法红线与陪想身份已迁入会话 system 层（信封，[`session_system_prompt`]，
+/// change: wire-system-prompt-channel）；user 前缀不得再携带这些条款
+/// （禁止双份投递，system-prompt-layering 规格）。每轮差异（入口姿态、
+/// 按入口的工具使用说明）留在信纸。
 pub fn compose_system_prompt(entry: PromptEntry) -> String {
-    let mut prompt = String::from(constitution_prompt());
-    prompt.push_str(entry_stance(entry));
+    let mut prompt = String::from(entry_stance(entry));
     prompt.push_str(context_clause(entry));
     prompt.push_str(tool_reading_prompt(entry));
     prompt
@@ -120,10 +134,12 @@ pub async fn generate_ai_thinking_in_dir(
 
 /// 通过 DSH 生成一次回复（resident-ai-session 改造后）。
 ///
-/// legacy 命令入口（`generate_ai_thinking`）仍走本函数：把固定系统提示词、选区
-/// 原文与追问轮次组装成单个消息文本，经常驻驱动以**临时会话**发送（start →
-/// send → end），对前端保持一次性和非流式的旧契约。流式与增量由新的
-/// `ai_send_message` 命令族承接（见下方常驻会话编排函数）。
+/// legacy 命令入口（`generate_ai_thinking`）仍走本函数：把入口层提示（姿态句＋
+/// 工具使用说明）、选区原文与追问轮次组装成单个消息文本，经常驻驱动以**临时
+/// 会话**发送（start → send → end）。制度性内容（身份＋红线）不在 task 文本内
+/// ——`start_session` 携带 system_prompt 信封（与常驻链同一单一来源），对前端
+/// 保持一次性和非流式的旧契约。流式与增量由新的 `ai_send_message` 命令族承接
+/// （见下方常驻会话编排函数）。
 ///
 /// `dsh_home` 为版本隔离的 DSH_HOME；`None` 表示沿用 DSH 默认 home（仅测试路径）。
 /// `resource_dir` 为打包后的资源目录；`None` 表示开发目录回退。
@@ -382,25 +398,18 @@ pub enum ReplayOrigin {
     Summon,
 }
 
-/// 按重放来源组装首轮 user 轮的提示词前缀（纯函数，便于测试）。
-fn replay_prompt_prefix(origin: ReplayOrigin) -> String {
-    compose_system_prompt(match origin {
-        ReplayOrigin::DirectQuestion => PromptEntry::DirectQuestion,
-        ReplayOrigin::Summon => PromptEntry::Summon,
-    })
-}
-
 /// 常驻会话：注入崩溃恢复历史（前端显示历史的增量投影，不触发再生成）。
 ///
-/// 首个 user 轮由宿主按会话来源组装：把对应入口的系统提示词拼到最前
-/// （恢复后的模型上下文与原会话首轮一致，陪想姿态不因恢复而丢失）；
-/// 选区材料已由前端按 `direct_question_user_content` 的格式并入首轮文本。
+/// 重放首轮不再拼接提示词前缀（change: wire-system-prompt-channel）：制度性
+/// 内容由 `start_session` 携带的 system_prompt（信封）提供，重放会话与原会话
+/// 的 system 层逐字一致；`origin` 保留为命令面参数（前端仍传），组装行为上
+/// 已无作用。
 pub async fn ai_replay_history_in_dir(
     base_dir: &Path,
     resource_dir: Option<&Path>,
     session_id: String,
-    origin: ReplayOrigin,
-    mut turns: Vec<DriverReplayTurn>,
+    _origin: ReplayOrigin,
+    turns: Vec<DriverReplayTurn>,
 ) -> GenerateAiResult {
     let config = match load_saved_config(base_dir).await {
         Ok(config) => config,
@@ -408,11 +417,6 @@ pub async fn ai_replay_history_in_dir(
     };
     if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
         return GenerateAiResult::failure(error);
-    }
-    if let Some(first) = turns.first_mut() {
-        if first.role == "user" {
-            first.text = format!("{}\n\n{}", replay_prompt_prefix(origin), first.text);
-        }
     }
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::dsh_driver::global_driver_manager().replay_history(&session_id, turns)
@@ -455,8 +459,10 @@ pub async fn ai_replay_done_in_dir(
     }
 }
 
-/// 把请求序列化为单个 DSH task 字符串：固定系统提示词 + 选区原文（含可选方向）
-/// + 追问轮次（按角色标注），保持无状态临时对话语义。
+/// 把请求序列化为单个 DSH task 字符串：入口层提示（姿态句＋工具使用说明）＋
+/// 选区原文（含可选方向）＋追问轮次（按角色标注），保持无状态临时对话语义。
+/// 制度性内容（身份＋红线）不内嵌——legacy 与常驻链同样经 `start_session` 的
+/// system_prompt 信封携带（等价基准，change: wire-system-prompt-channel 2.4）。
 pub fn build_task_string(request: &GenerateAiRequest) -> Result<String, GenerateAiError> {
     validate_generate_ai_request(request)?;
 
@@ -708,9 +714,13 @@ mod tests {
         let task = build_task_string(&request).expect("build task");
         assert!(
             task.contains(&compose_system_prompt(PromptEntry::Summon)),
-            "必须包含召唤入口组装的系统提示词"
+            "必须包含召唤入口的入口层提示（姿态句＋工具使用说明）"
         );
         assert!(task.contains("林站在天台边。"), "必须包含选区原文");
+        assert!(
+            !task.contains(IDENTITY_SENTENCE),
+            "身份句已迁入信封，task 文本不得再内嵌（禁止双份投递）"
+        );
     }
 
     #[test]
@@ -767,12 +777,16 @@ mod tests {
         let task = build_task_string(&request).expect("build task");
         assert!(
             task.contains(&compose_system_prompt(PromptEntry::DirectQuestion)),
-            "必须包含直接提问入口组装的系统提示词"
+            "必须包含直接提问入口的入口层提示（姿态句＋工具使用说明）"
         );
         assert!(task.contains("用户问题：\n这个角色为什么犹豫？"));
         assert!(
             !task.contains("重点参考材料"),
             "无选区时不得出现重点参考材料"
+        );
+        assert!(
+            !task.contains(IDENTITY_SENTENCE),
+            "身份句已迁入信封，task 文本不得再内嵌（禁止双份投递）"
         );
     }
 
@@ -806,45 +820,78 @@ mod tests {
     }
 
     #[test]
-    fn direct_question_compose_declares_grounding_and_output_boundaries() {
+    fn direct_question_compose_declares_entry_stance_without_constitution() {
         let prompt = compose_system_prompt(PromptEntry::DirectQuestion);
-        for required in [
-            "用户直接提出的问题",
-            "用户可选的选区重点材料",
-            "不直接修改用户文档",
-            "不代写正文",
-            "不判断故事好坏",
-        ] {
+        // 入口姿态句（信纸：每轮差异）保留。
+        for required in ["用户直接提出的问题", "用户可选的选区重点材料"] {
             assert!(
                 prompt.contains(required),
-                "直接提问组装提示词缺少约束: {required}"
+                "直接提问组装提示词缺少入口姿态: {required}"
             );
         }
-        for grounding in [
+        // 诚实材料边界条款已迁入信封（system 层）：user 前缀不得携带（禁止双份投递）。
+        for migrated in [
             "只依据本次实际提供的作品材料及经授权工具实际返回的内容",
             "未提供、未读取或未取得的内容，不得声称已经读过",
             "目录不等于正文，检索片段不等于全文",
             "不得声称具有跨讨论长期记忆",
+            "不直接修改用户文档",
+            IDENTITY_SENTENCE,
         ] {
             assert!(
-                prompt.contains(grounding),
-                "直接提问组装提示词缺少诚实材料边界声明: {grounding}"
+                !prompt.contains(migrated),
+                "制度性条款不得留在 user 前缀: {migrated}"
             );
         }
-        assert!(
-            !prompt.contains("不能声称读取或使用"),
-            "直接提问组装提示词不得再包含一刀切读取禁止清单"
-        );
     }
 
-    /// 召唤入口组装的系统提示词必须声明召唤立场：只有冻结选区材料、
-    /// 没有用户问题，把选区当作希望继续探索的材料。
+    /// 召唤入口组装的提示词保留召唤立场（信纸），红线与身份条款已迁入信封。
     #[test]
-    fn summon_compose_declares_summon_stance_and_output_boundaries() {
+    fn summon_compose_declares_summon_stance_without_constitution() {
         let prompt = compose_system_prompt(PromptEntry::Summon);
         for required in [
             "当前请求只提供冻结选区原文，没有用户问题",
             "把这段选区当作用户希望继续探索的材料",
+        ] {
+            assert!(
+                prompt.contains(required),
+                "召唤组装提示词缺少入口姿态: {required}"
+            );
+        }
+        // 追问语义与永久边界条款已迁入信封：user 前缀不得携带。
+        for migrated in [
+            "追问围绕用户当前问题回应",
+            "首次选区仅在与当前问题相关时继续参考",
+            "不代写正文",
+            "不润色",
+            "不提供替换文本",
+            "不判断故事好坏",
+            IDENTITY_SENTENCE,
+        ] {
+            assert!(
+                !prompt.contains(migrated),
+                "制度性条款不得留在 user 前缀: {migrated}"
+            );
+        }
+    }
+
+    /// 信封单一来源（任务 2.1/2.5，design D3）：session_system_prompt 纯常量
+    /// 组装，红线条款逐字保留（一条不删），次序为身份句先于红线；两种入口的
+    /// user 前缀（信纸）不含任何制度性条款。
+    #[test]
+    fn session_system_prompt_is_pure_constant_envelope_single_source() {
+        let envelope = session_system_prompt();
+        // 纯常量：两次组装逐字相等（崩溃重放一致性的基础）。
+        assert_eq!(envelope, session_system_prompt());
+        // 拆段契约：首行＝身份句，其余＝红线全文（驱动侧按首个换行拆段）。
+        // 期望值用逐字字面量（2026-10-06 拍板备选 A）：常量漂移时此处必须失败。
+        let mut lines = envelope.split('\n');
+        assert_eq!(lines.next(), Some("你是陪伴剧本创作者思考与探索的助手。"));
+        let rest: Vec<&str> = lines.collect();
+        assert_eq!(rest.len(), 1, "信封恰有一个换行（拆段契约）");
+        // 全部红线条款逐字在场（dsh-headless-generation 规格：永久边界＋诚实
+        // 材料边界＋追问语义逐字保留于会话 system 层）。
+        for required in [
             "不直接修改用户文档",
             "不代写正文",
             "不润色",
@@ -852,69 +899,102 @@ mod tests {
             "不判断故事好坏",
             "不判断正确或错误",
             "不判断高级或低级",
-            "追问围绕用户当前问题回应",
-            "首次选区仅在与当前问题相关时继续参考",
-            "当前讨论中的既有问答可用于承接对话",
-            "AI 先前提出的猜测和候选不能当作作品事实",
+            "只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围",
+            "未提供、未读取或未取得的内容，不得声称已经读过",
+            "目录不等于正文，检索片段不等于全文",
+            "不得声称具有跨讨论长期记忆",
+            "追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考",
+            "当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实",
+            "不要输出 Markdown 或 HTML 格式，使用纯文本回答",
+        ] {
+            assert!(envelope.contains(required), "信封缺少红线条款: {required}");
+        }
+        // 过时限制不得复活（2026-10-06 修正的负断言随之迁移）。
+        for prohibited in [
+            "不能声称读取或使用",
+            "追问仍锚定首次冻结选区",
+            "只把已有轮次当作当前临时线性对话",
         ] {
             assert!(
-                prompt.contains(required),
-                "召唤组装提示词缺少约束: {required}"
+                !envelope.contains(prohibited),
+                "信封不得包含已修正的过时限制: {prohibited}"
             );
         }
+        // 驱动侧 dsh-system-prompt 严格变量插值：未知 {{…}} 引用会 fail loud。
         assert!(
-            !prompt.contains("追问仍锚定首次冻结选区"),
-            "召唤组装提示词不得再包含旧追问锚定段"
-        );
-        assert!(
-            !prompt.contains("只把已有轮次当作当前临时线性对话"),
-            "召唤组装提示词不得再包含旧历史定位段"
-        );
-        assert!(
-            !prompt.contains("不能声称读取或使用"),
-            "召唤组装提示词不得再包含一刀切读取禁止清单"
+            !envelope.contains("{{"),
+            "信封文本不得包含插值变量引用（{{）"
         );
     }
 
-    /// 红线条款完整性：两种入口的组装结果都必须逐条包含全部边界条款关键句，
-    /// 一条不删。2026-10-06 修正：两段过时限制（一刀切读取禁止、强制锚定首次
-    /// 冻结选区）以负断言钉死，不得复活。这是铁律 2/3 在提示词层的落地。
+    /// 禁止双份投递（任务 2.5，system-prompt-layering 规格）：任一轮 user 文本
+    /// （常驻链 compose_message_text 的三种消息与 legacy 链 build_task_string）
+    /// 都不得携带身份句与红线条款——制度性内容只经 start_session 信封投递。
     #[test]
-    fn compose_system_prompt_keeps_all_constitution_clauses_for_both_entries() {
-        for prompt in [
+    fn user_texts_carry_no_constitution_clauses() {
+        let identity = IDENTITY_SENTENCE;
+        let constitution_markers = [
+            "不直接修改用户文档",
+            "只依据本次实际提供的作品材料及经授权工具实际返回的内容",
+            "不得声称具有跨讨论长期记忆",
+            "不要输出 Markdown 或 HTML 格式，使用纯文本回答",
+        ];
+        let context = Some("关注文档《设定》正文：\n林晓站在天台边。");
+
+        let mut user_texts = vec![
+            compose_message_text(AiMessageKind::First, "这个角色为什么犹豫？", None, None)
+                .expect("first composes"),
+            compose_message_text(
+                AiMessageKind::First,
+                "这个角色为什么犹豫？",
+                Some("林站在天台边。"),
+                context,
+            )
+            .expect("first with material composes"),
+            compose_message_text(
+                AiMessageKind::SummonFirst,
+                "",
+                Some("林站在天台边。"),
+                context,
+            )
+            .expect("summon composes"),
+            compose_message_text(AiMessageKind::FollowUp, "他为什么离开？", None, context)
+                .expect("follow up composes"),
             compose_system_prompt(PromptEntry::DirectQuestion),
             compose_system_prompt(PromptEntry::Summon),
-        ] {
-            for required in [
-                "你是陪剧本创作者思考的助手",
-                "不直接修改用户文档",
-                "不代写正文",
-                "不润色",
-                "不提供替换文本",
-                "不判断故事好坏",
-                "不判断正确或错误",
-                "不判断高级或低级",
-                "只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围",
-                "未提供、未读取或未取得的内容，不得声称已经读过",
-                "目录不等于正文，检索片段不等于全文",
-                "不得声称具有跨讨论长期记忆",
-                "追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考",
-                "当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实",
-                "不要输出 Markdown 或 HTML 格式，使用纯文本回答",
-            ] {
+        ];
+        user_texts.push(
+            build_task_string(&GenerateAiRequest::First {
+                selected_text: "林站在天台边。".to_string(),
+                document_id: None,
+                project_path: None,
+                document_version: None,
+                snapshot: None,
+                thinking_direction: None,
+            })
+            .expect("legacy first task"),
+        );
+        user_texts.push(
+            build_task_string(&GenerateAiRequest::DirectQuestion {
+                question: "这段里人物在隐瞒什么？".to_string(),
+                selected_text: Some("林站在天台边，没有回头。".to_string()),
+                document_id: None,
+                project_path: None,
+                document_version: None,
+                snapshot: None,
+            })
+            .expect("legacy direct question task"),
+        );
+
+        for (index, text) in user_texts.iter().enumerate() {
+            assert!(
+                !text.contains(identity),
+                "user 文本[{index}]不得携带身份句（信封专属）: {text}"
+            );
+            for marker in constitution_markers {
                 assert!(
-                    prompt.contains(required),
-                    "组装提示词缺少红线条款: {required}"
-                );
-            }
-            for prohibited in [
-                "不能声称读取或使用",
-                "追问仍锚定首次冻结选区",
-                "只把已有轮次当作当前临时线性对话",
-            ] {
-                assert!(
-                    !prompt.contains(prohibited),
-                    "组装提示词不得再包含已修正的过时限制: {prohibited}"
+                    !text.contains(marker),
+                    "user 文本[{index}]不得携带红线条款「{marker}」（禁止双份投递）"
                 );
             }
         }
@@ -995,46 +1075,12 @@ mod tests {
         }
     }
 
-    /// 重放来源两种取值分别拼出直接提问 / 召唤提示词。
-    #[test]
-    fn replay_prompt_prefix_follows_replay_origin() {
-        let direct = replay_prompt_prefix(ReplayOrigin::DirectQuestion);
-        assert!(
-            direct.contains("当前请求提供用户直接提出的问题"),
-            "直接提问来源必须拼直接提问入口层"
-        );
-        assert!(
-            !direct.contains("当前请求只提供冻结选区原文"),
-            "直接提问来源不得拼召唤入口层"
-        );
-
-        let summon = replay_prompt_prefix(ReplayOrigin::Summon);
-        assert!(
-            summon.contains("当前请求只提供冻结选区原文，没有用户问题"),
-            "召唤来源必须拼召唤入口层"
-        );
-        assert!(
-            !summon.contains("用户直接提出的问题"),
-            "召唤来源不得拼直接提问入口层"
-        );
-
-        // 2026-10-06 修正：恢复前缀与首轮同源（同一 compose_system_prompt），
-        // 必须携带两段新条款；不存在需要单独同步的第二副本。
-        for prefix in [&direct, &summon] {
-            assert!(
-                prefix.contains("只依据本次实际提供的作品材料及经授权工具实际返回的内容"),
-                "恢复前缀必须包含诚实材料边界条款"
-            );
-            assert!(
-                prefix.contains("追问围绕用户当前问题回应"),
-                "恢复前缀必须包含追问围绕当前问题条款"
-            );
-            assert!(
-                !prefix.contains("不能声称读取或使用"),
-                "恢复前缀不得再包含旧读取禁止清单"
-            );
-        }
-    }
+    // 重放首轮不再拼提示词前缀（任务 2.3，system-prompt-layering 规格）：
+    // `replay_prompt_prefix` 已移除——重放会话的制度性内容由 start_session
+    // 携带的信封提供（原发与重发逐字一致由 session_system_prompt 纯常量
+    // 保证），重放轮次是前端显示历史的纯投影。前缀函数不再存在，此处无
+    // 纯函数可测；协议级断言见 dsh_driver.rs 的
+    // `start_session_carries_verbatim_constant_system_prompt`。
 
     /// First / FollowUp 的校验规则保持现状：question 非空。
     #[test]
@@ -1077,7 +1123,7 @@ mod tests {
             "FollowUp 应注入取材语境"
         );
         assert!(
-            !follow_up.contains("你是陪剧本创作者思考的助手"),
+            !follow_up.contains(IDENTITY_SENTENCE),
             "FollowUp 只发增量问题，不携带提示词前缀（消息结构不变）"
         );
 

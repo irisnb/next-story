@@ -335,7 +335,8 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
 
   /**
    * 崩溃恢复：用新会话 ID 启动会话，重放显示历史并标记完成。
-   * `origin` 携带讨论的发起方式，重放时按来源组装对应的入口层提示词。
+   * `origin` 携带讨论的发起方式（命令面历史兼容参数；后端已不按来源拼装
+   * 提示词——制度性内容由 start_session 携带的 system_prompt 信封提供）。
    */
   async replaySession(
     conversationId: string,

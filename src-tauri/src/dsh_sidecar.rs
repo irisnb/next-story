@@ -453,7 +453,7 @@ mod tests {
             api_base_url: "https://api.deepseek.com".to_string(),
             api_key,
         };
-        let task = "你是陪剧本创作者思考的助手。选区原文：『林站在天台边。』请提出两个帮助创作者继续思考的问题，纯文本回答。";
+        let task = "你是陪伴剧本创作者思考与探索的助手。选区原文：『林站在天台边。』请提出两个帮助创作者继续思考的问题，纯文本回答。";
         let result = generate_via_dsh(task, &params, &paths);
         assert!(result.is_ok(), "DSH 生成失败: {:?}", result.err());
         let text = result.unwrap();

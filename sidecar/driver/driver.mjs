@@ -19,6 +19,7 @@ import readline from "node:readline";
 
 import { createSessionQueues } from "./session-queue.mjs";
 import { loadProtocol } from "./protocol.mjs";
+import { registerSystemPromptSections } from "./system-prompt-sections.mjs";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -241,6 +242,12 @@ async function createAgentFor(session, seed) {
     agentOptions: { provider: selection.provider, model: selection.model },
     setup: (agentCtx) => {
       installModelSelection(agentCtx, { current: selection, assembled: undefined });
+      // 信封分层（change: wire-system-prompt-channel 任务 1.1，design D1/D2）：
+      // 制度性提示（陪想身份＋宪法红线＋链路卡挂载位）经 per-agent system 层
+      // 段落注入，遮蔽默认英文 persona。createAgentFor 是首条 send_message 建
+      // 会话与 replay_done 重建两路共同的必经点，setup 内一处注册两路一致
+      // （先例：installModelSelection）。
+      registerSystemPromptSections(agentCtx, session.systemPrompt);
       // 工具面四件套注册在 Agent 私有作用域（任务 5.1）；实现只桥接宿主。
       registerStoryTools(agentCtx, session);
     },
@@ -254,7 +261,12 @@ async function createAgentFor(session, seed) {
 // 探底 ⑤ 已验证合成 seed 可行）。最小闭合轮次：turn/start → step/start →
 // user/message → assistant/chunk(block-start/text-delta/block-end) →
 // assistant/message → step/end → turn/end。
-function buildSeedEvents(turns, system) {
+//
+// 制度性内容（身份＋红线＋链路卡挂载位）不走 seed：DSH seed 表面白名单只有
+// user/assistant/tool-result 三种角色（dsh-session surface.js:11-15），且 seed
+// request/header 会被 loop 首步覆盖——信封一律经 setup 回调的 per-agent
+// section 通道注入（registerSystemPromptSections，design D1）。
+function buildSeedEvents(turns) {
   const events = [];
   let seq = 0;
   const push = (type, data, extra) => {
@@ -418,7 +430,7 @@ async function handleCommand(cmd) {
       const session = sessions.get(sid);
       if (!session) return emit({ type: "error", session_id: sid, code: "session_not_found", message: "会话不存在" });
       if (session.agent) return emit({ type: "error", session_id: sid, code: "bad_request", message: "会话已启动" });
-      const seed = session.seedTurns.length > 0 ? buildSeedEvents(session.seedTurns, session.systemPrompt) : undefined;
+      const seed = session.seedTurns.length > 0 ? buildSeedEvents(session.seedTurns) : undefined;
       await createAgentFor(session, seed);
       session.seedTurns = [];
       emit({ type: "replay_ok", session_id: sid });

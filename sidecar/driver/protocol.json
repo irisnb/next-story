@@ -13,7 +13,7 @@
       "status": "active",
       "fields": {
         "session_id": "必填，string。会话身份（宿主侧使用讨论身份）。",
-        "system_prompt": "可选，string。系统提示词；驱动接受该字段，Rust 宿主 v1 不发送。"
+        "system_prompt": "宿主必发，string。制度性系统提示词（信封，Rust 侧纯常量组装）：首行＝陪想身份句，首个换行后＝宪法红线。驱动在 Agent 私有作用域注册为 system 层段落——首行遮蔽 deployment:persona（order 0），其余入 nextstory:constitution（order 10），链路卡挂载位 nextstory:chain-cards（order 20）本版本空置；默认英文 persona 被顶替不残留。崩溃恢复重放时宿主以相同常量重发，与原会话逐字一致。空字符串＝旧宿主兼容（不注册任何段，默认 persona 维持现状）。"
       },
       "description": "登记会话（不建 Agent）；replay 或首次 send 时才创建。"
     },

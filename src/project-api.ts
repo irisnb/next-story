@@ -551,9 +551,10 @@ export async function aiEndSession(
 }
 
 /**
- * 崩溃恢复：把显示历史重放进一个新会话。宿主会把系统提示词组装到首个
- * user 轮文本前面，前端只提交投影后的 `{role, text}` 轮次；`origin` 携带
- * 当前对话的发起方式，重放时按来源组装对应的入口层提示词。
+ * 崩溃恢复：把显示历史重放进一个新会话。前端只提交投影后的 `{role, text}`
+ * 轮次（标签与后端首轮 user 组装一致）；制度性提示由 start_session 携带的
+ * system_prompt 信封提供，重放首轮不再拼提示词前缀；`origin` 为历史兼容
+ * 参数（后端不再按来源组装入口层提示词）。
  */
 export async function aiReplayHistory(
   sessionId: string,

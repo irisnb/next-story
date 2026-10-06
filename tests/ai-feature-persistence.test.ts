@@ -54,6 +54,12 @@ interface PersistenceHarness {
   fireDriverLost(): void;
   /** 崩溃恢复实际调用的 replaySession 目标（按调用顺序记录 conversationId）。 */
   replayCalls: string[];
+  /** 崩溃恢复实际重放的轮次投影（按调用顺序记录；wire-system-prompt-channel）。 */
+  replayTurns: ReadonlyArray<{
+    conversationId: string;
+    origin: string;
+    turns: ReadonlyArray<{ role: string; text: string }>;
+  }>;
 }
 
 function persistenceHarness(overrides: {
@@ -78,6 +84,11 @@ function persistenceHarness(overrides: {
   const requests: GenerateAiRequest[] = [];
   const driverLostHandlers: Array<() => void> = [];
   const replayCalls: string[] = [];
+  const replayTurns: Array<{
+    conversationId: string;
+    origin: string;
+    turns: ReadonlyArray<{ role: string; text: string }>;
+  }> = [];
 
   const transport: AiSessionTransport = {
     sendViaResidentSession: (_conversationId, request) => {
@@ -89,8 +100,9 @@ function persistenceHarness(overrides: {
     cancelMessage: () => {},
     endSession: () => { endSessionCalls += 1; },
     endAllSessions: () => { endSessionCalls += 1; },
-    replaySession: (conversationId) => {
+    replaySession: (conversationId, turns, origin) => {
       replayCalls.push(conversationId);
+      replayTurns.push({ conversationId, origin, turns: [...turns] });
       if (overrides.replayError) return Promise.reject(overrides.replayError);
       return Promise.resolve();
     },
@@ -185,6 +197,7 @@ function persistenceHarness(overrides: {
       for (const handler of driverLostHandlers) handler();
     },
     replayCalls,
+    replayTurns,
     submitDirectQuestion(question: string): void {
       // 新建对话 → 空窗口 → 在窗口内直接提问。
       elements.get("ai-new-conversation")!.dispatch("click");
@@ -769,6 +782,94 @@ test("5.8a replay transport failure enters recovery error instead of completing 
     if (request?.kind === "error") {
       assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
     }
+  } finally {
+    ui.restore();
+  }
+});
+
+// ========== 任务 3.2（wire-system-prompt-channel）：崩溃恢复重放投影对齐 ==========
+
+test("5.8b 崩溃恢复重放的轮次投影与后端新组装一致：召唤首轮为裸选区、无标签、无提示词前缀", async () => {
+  const ui = persistenceHarness();
+  try {
+    await ui.openRecord({
+      version: 1,
+      conversation_id: "c-summon",
+      title: "召唤讨论",
+      created_at: "t0",
+      updated_at: "t0",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: { kind: "summon", question: "", selection_text: "林站在天台边，没有回头。" },
+      turns: [
+        { role: "assistant", text: "他好像在下决心。", status: "done" },
+        { role: "user", text: "他为什么离开？", status: "done" },
+        { role: "assistant", text: "可能是愧疚。", status: "done" },
+      ],
+      provenance: [],
+    });
+
+    ui.fireDriverLost();
+    await flush();
+
+    assert.deepEqual(ui.replayCalls, ["c-summon"]);
+    const replay = ui.replayTurns[0];
+    assert.ok(replay, "应记录重放轮次投影");
+    assert.equal(replay.origin, "summon", "命令面仍携带来源（历史兼容参数）");
+    assert.deepEqual(
+      replay.turns.map((turn) => turn.role),
+      ["user", "assistant", "user", "assistant"],
+    );
+    assert.equal(
+      replay.turns[0]?.text,
+      "林站在天台边，没有回头。",
+      "召唤首轮投影＝裸选区原文（与后端 summon_user_content 一致，无标签）",
+    );
+    const joined = replay.turns.map((turn) => turn.text).join("\n");
+    for (const forbidden of [
+      "重点参考材料（可选）：",
+      "你是陪伴剧本创作者思考与探索的助手",
+      "不直接修改用户文档",
+      "当前请求只提供冻结选区原文",
+    ]) {
+      assert.ok(!joined.includes(forbidden), `重放投影不得携带前缀或制度性文本：${forbidden}`);
+    }
+  } finally {
+    ui.restore();
+  }
+});
+
+test("5.8c 崩溃恢复重放直接提问讨论：首轮投影带后端同款标签", async () => {
+  const ui = persistenceHarness();
+  try {
+    await ui.openRecord({
+      version: 1,
+      conversation_id: "c-direct",
+      title: "直接提问讨论",
+      created_at: "t0",
+      updated_at: "t0",
+      focus_document_id: null,
+      focus_document_title: null,
+      first_round_material: {
+        kind: "direct_question",
+        question: "这个角色为什么犹豫？",
+        selection_text: "林站在天台边。",
+      },
+      turns: [{ role: "assistant", text: "他在害怕。", status: "done" }],
+      provenance: [],
+    });
+
+    ui.fireDriverLost();
+    await flush();
+
+    const replay = ui.replayTurns[0];
+    assert.ok(replay, "应记录重放轮次投影");
+    assert.equal(replay.origin, "direct_question");
+    assert.equal(
+      replay.turns[0]?.text,
+      "用户问题：\n这个角色为什么犹豫？\n\n重点参考材料（可选）：\n林站在天台边。",
+      "直接提问首轮投影＝后端 direct_question_user_content 的标签组装",
+    );
   } finally {
     ui.restore();
   }

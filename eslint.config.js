@@ -16,6 +16,8 @@ export default tseslint.config(
       // 本地工作目录（gitignored 的测试证据/草稿，不入库）：不是仓库源码，不参与 lint。
       "本地测试文档/**",
       ".omo/**",
+      // 方向文档区（含走通一例证据等存档材料）：是文档与证据，不是仓库源码，不参与 lint。
+      "方向/**",
     ],
   },
   js.configs.recommended,

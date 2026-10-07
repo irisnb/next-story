@@ -1,0 +1,126 @@
+{
+  "scenes": [
+    {
+      "name": "S0-打开最近作品",
+      "at": "2026-10-07T10:27:14.168Z",
+      "assertions": {
+        "alreadyOpen": true
+      },
+      "passed": true
+    },
+    {
+      "name": "S1-导图总览",
+      "at": "2026-10-07T10:27:14.175Z",
+      "assertions": {
+        "libraryExpandedFromCollapsed": true,
+        "libraryDrawerClosed": true,
+        "mapTabDefault": true,
+        "zones": [
+          "自定义要求",
+          "固定底座共用 · 只读\n",
+          "每轮动态自动\n     "
+        ],
+        "wireCount": 4,
+        "markerOnlyOnWires": true,
+        "outputIsDiv": true,
+        "readingNotes": [
+          "箭头只表示流向组装，不表示卡片执行顺序",
+          "启用对象是整个链路版本",
+          "展示链路的组装结构与适用条件，不代表 AI 内部思考过程。"
+        ],
+        "ghostText": "＋ 添加要求卡",
+        "cardCount": 1,
+        "chainName": "正在查看：装配验证链·第2版（草稿）",
+        "statusIdle": false
+      },
+      "passed": true
+    },
+    {
+      "name": "S2-卡片详情两级",
+      "at": "2026-10-07T10:27:17.747Z",
+      "assertions": {
+        "quickVisible": true,
+        "quickRect": {
+          "gx": 390,
+          "gy": 55,
+          "w": 450,
+          "h": 330,
+          "visible": true
+        },
+        "fullVisible": true,
+        "fullSections": [
+          "身份卡名「情节讨",
+          "身份",
+          "何时用适用：进行",
+          "何时用",
+          "怎么做情节讨论多",
+          "怎么做",
+          "本版变化相对上一",
+          "本版变化",
+          "试问记录尚无试问",
+          "试问记录"
+        ],
+        "fullBodyHasVerbatim": true,
+        "fullBodyLength": 196,
+        "backToQuick": true,
+        "closed": true
+      },
+      "passed": true
+    },
+    {
+      "name": "S3-统一详情位置",
+      "at": "2026-10-07T10:27:21.463Z",
+      "assertions": {
+        "baseRect": {
+          "gx": 390,
+          "gy": 55,
+          "w": 450,
+          "h": 330,
+          "visible": true
+        },
+        "sameAsCard": true,
+        "baseNoActions": true,
+        "dynSame": true,
+        "dynNoActions": true
+      },
+      "passed": true
+    },
+    {
+      "name": "S4-双标签切换",
+      "at": "2026-10-07T10:27:24.944Z",
+      "assertions": {
+        "chatVisible": true,
+        "mapHidden": true,
+        "statusStillThere": true,
+        "backToMap": true
+      },
+      "passed": true
+    },
+    {
+      "name": "S5-草稿三态分离",
+      "at": "2026-10-07T10:27:26.768Z",
+      "assertions": {
+        "deactivatedFirst": true,
+        "statusAfterEnable": "当前链路：装配验证链·第1版",
+        "statusSharedVisible": true,
+        "inspectorTitle": "正在查看：装配验证链·第2版（草稿）",
+        "inspectorState": "尚未启用",
+        "statusUnchanged": "当前链路：装配验证链·第1版",
+        "noActiveVisual": true,
+        "statusIdleRestored": true
+      },
+      "passed": true
+    }
+  ],
+  "consoleErrors": [],
+  "confirmCaptured": [
+    "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。",
+    "启用「装配验证链·第1版」；所有作品的下一轮提问开始使用。",
+    "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+  ],
+  "deviations": [
+    "版本下拉以 evaluate 设值＋dispatch change（原生下拉无法合成鼠标驱动）",
+    "原生确认对话框经 devtools 覆写 confirm 采集文案并返回 true（C4 先例）"
+  ],
+  "elapsedMs": 16949
+}

@@ -1,0 +1,47 @@
+{
+  "at": "2026-10-07T15:23:53.132Z",
+  "retryReason": "仪器缺陷：首跑 aiRoundDone 在追问思考阶段误判完成并关窗停止在途轮（档案：空 assistant 轮＋chain_rounds 仅 turn0）；本次为技术性失败重跑，非模型行为失败取样替换",
+  "scenarios": {
+    "S7retry": {
+      "archive": "muy97qx8-eed00a53062d4a5f84a1654017eee275.json",
+      "turns": [
+        {
+          "role": "assistant",
+          "len": 854
+        },
+        {
+          "role": "user",
+          "len": 20
+        },
+        {
+          "role": "assistant",
+          "len": 741
+        }
+      ],
+      "chainTurns": [
+        {
+          "t": 0,
+          "name": "傲娇试金石链",
+          "v": 1
+        },
+        {
+          "t": 1,
+          "name": "傲娇试金石链",
+          "v": 1
+        }
+      ],
+      "liveMarkers": [
+        "哼",
+        "笨蛋"
+      ],
+      "archiveMarkers": [
+        "哼",
+        "笨蛋"
+      ],
+      "verdict": "换皮保持"
+    }
+  },
+  "readingRequested": false,
+  "elapsedMs": 51028,
+  "consoleErrors": []
+}

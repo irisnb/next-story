@@ -1,0 +1,29 @@
+{
+  "step": "open-work",
+  "at": "2026-10-06T17:28:45.921Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S0-欢迎页.png"
+    },
+    {
+      "ev": "screenshot",
+      "file": "S0-打开作品.png"
+    },
+    {
+      "t": 2415,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "workName": "8b 验证作品",
+    "firstName": "8b 验证作品",
+    "currentDoc": "主角篇"
+  },
+  "name": "S0-打开作品",
+  "elapsedMs": 2415,
+  "consoleErrors": []
+}

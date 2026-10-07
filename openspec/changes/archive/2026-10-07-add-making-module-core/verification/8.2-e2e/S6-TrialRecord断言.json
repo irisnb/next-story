@@ -1,0 +1,46 @@
+{
+  "step": "check-trials",
+  "at": "2026-10-06T17:44:23.894Z",
+  "events": [
+    {
+      "t": 1,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "trials": [
+      {
+        "file": "trial-muwywwcp-74056e80.json",
+        "id": "trial-muwywwcp-74056e80",
+        "chain_name": "装配验证链",
+        "version_index": 1,
+        "with_card": false,
+        "question": "雾岭这条线往下走，有什么可能的方向？",
+        "reply_len": 820,
+        "status": "success",
+        "work_title": "8b 验证作品",
+        "focus_document_title": "主角篇"
+      },
+      {
+        "file": "trial-muwywd13-638e0edf.json",
+        "id": "trial-muwywd13-638e0edf",
+        "chain_name": "装配验证链",
+        "version_index": 1,
+        "with_card": true,
+        "question": "雾岭这条线往下走，有什么可能的方向？",
+        "reply_len": 838,
+        "status": "success",
+        "work_title": "8b 验证作品",
+        "focus_document_title": "主角篇"
+      }
+    ],
+    "withCard": "trial-muwywd13-638e0edf.json",
+    "withoutCard": "trial-muwywwcp-74056e80.json"
+  },
+  "name": "S6-TrialRecord断言",
+  "elapsedMs": 2,
+  "consoleErrors": []
+}

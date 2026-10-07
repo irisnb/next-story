@@ -1,0 +1,28 @@
+{
+  "step": "s5-deactivate",
+  "at": "2026-10-06T17:41:22.820Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S5-停用.png"
+    },
+    {
+      "t": 1447,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "before": "当前链路：装配验证链·第1版",
+    "confirmLog": [
+      "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+    ],
+    "statusText": "当前未启用链路，使用日常陪想",
+    "confirmText": "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+  },
+  "name": "S5-停用",
+  "elapsedMs": 1447,
+  "consoleErrors": []
+}

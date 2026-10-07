@@ -1,0 +1,79 @@
+{
+  "step": "check-archive-nochain",
+  "at": "2026-10-06T17:42:20.789Z",
+  "events": [
+    {
+      "t": 4,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "archives": [
+      {
+        "file": "muwytugc-49c3e73821a04a0d886af17f2ebe1b93.json",
+        "mtime": "2026-10-06T17:41:49.911Z",
+        "conversation_id": "muwytugc-49c3e73821a04a0d886af17f2ebe1b93",
+        "focus_document_title": "主角篇",
+        "turns": [
+          "assistant"
+        ],
+        "firstUserText": "",
+        "chain_rounds": null
+      },
+      {
+        "file": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2.json",
+        "mtime": "2026-10-06T17:41:06.602Z",
+        "conversation_id": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2",
+        "focus_document_title": "主角篇",
+        "turns": [
+          "assistant",
+          "user",
+          "assistant",
+          "user",
+          "assistant",
+          "user",
+          "assistant"
+        ],
+        "firstUserText": "林晚把第七封信放在最上面这个动作，情绪上怎么处理？",
+        "chain_rounds": [
+          {
+            "turn_index": 0,
+            "chain_id": "chain-1791307765609458800-1",
+            "chain_name": "装配验证链",
+            "version_index": 1
+          },
+          {
+            "turn_index": 1,
+            "chain_id": "chain-1791307765609458800-1",
+            "chain_name": "装配验证链",
+            "version_index": 1
+          },
+          {
+            "turn_index": 2,
+            "chain_id": "chain-1791307765609458800-1",
+            "chain_name": "装配验证链",
+            "version_index": 1
+          },
+          {
+            "turn_index": 3,
+            "chain_id": "chain-1791307765609458800-1",
+            "chain_name": "装配验证链",
+            "version_index": 1
+          }
+        ]
+      }
+    ],
+    "asserted": {
+      "file": "muwytugc-49c3e73821a04a0d886af17f2ebe1b93.json",
+      "chain_rounds": null
+    },
+    "file": "muwytugc-49c3e73821a04a0d886af17f2ebe1b93.json",
+    "firstUserText": ""
+  },
+  "name": "S5-档案断言",
+  "elapsedMs": 4,
+  "consoleErrors": []
+}

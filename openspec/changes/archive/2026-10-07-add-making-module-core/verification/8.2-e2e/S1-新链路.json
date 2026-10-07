@@ -1,0 +1,35 @@
+{
+  "step": "s1-new-chain",
+  "at": "2026-10-06T17:29:23.483Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S1-新链路.png"
+    },
+    {
+      "t": 2711,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "initialStatus": {
+      "active": false,
+      "text": "",
+      "idleText": "当前未启用链路，使用日常陪想"
+    },
+    "chainRows": [
+      {
+        "name": "装配验证链",
+        "status": "未启用",
+        "selected": true
+      }
+    ],
+    "inspectorTitle": ""
+  },
+  "name": "S1-新链路",
+  "elapsedMs": 2711,
+  "consoleErrors": []
+}

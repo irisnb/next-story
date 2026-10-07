@@ -1,0 +1,58 @@
+{
+  "step": "s8-defect-evidence",
+  "at": "2026-10-07T03:44:22.238Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S8-重开缺陷现场.png"
+    },
+    {
+      "t": 63,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "defectConfirmed": true,
+    "passed": true
+  },
+  "captured": {
+    "ui": {
+      "convActive": true,
+      "convEmpty": false,
+      "sessionTitle": "（尚未打开会话）",
+      "notice": "打开制作会话失败：invalid args `conversationId` for command `making_conversation_load`: command making_conversation_load missing required key conversationId",
+      "inputDisabled": true,
+      "inspectorTitle": "正在查看：装配验证链·第1版",
+      "statusIdleText": "当前未启用链路，使用日常陪想",
+      "chainRows": [
+        {
+          "name": "装配验证链",
+          "status": "未启用",
+          "selected": true
+        }
+      ]
+    },
+    "chainsBefore": {
+      "sha256": "b529d4381027460585bf0edb0b9918bb4eabb218ed0b5823ae11187084a25b91",
+      "versions": [
+        {
+          "index": 1,
+          "cards": 1,
+          "trials": 2
+        }
+      ],
+      "active": null
+    },
+    "notice": "打开制作会话失败：invalid args `conversationId` for command `making_conversation_load`: command making_conversation_load missing required key conversationId",
+    "versionsBefore": [
+      {
+        "index": 1,
+        "cards": 1,
+        "trials": 2
+      }
+    ]
+  },
+  "name": "S8-重开缺陷现场",
+  "elapsedMs": 63,
+  "consoleErrors": []
+}

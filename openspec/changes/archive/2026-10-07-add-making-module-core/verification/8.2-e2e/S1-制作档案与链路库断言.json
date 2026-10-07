@@ -1,0 +1,44 @@
+{
+  "step": "check-making-archives",
+  "at": "2026-10-06T17:44:39.391Z",
+  "events": [
+    {
+      "t": 3,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "makingConversations": [
+      {
+        "file": "mc-muwyepd8-890cd854.json",
+        "chain_id": "chain-1791307765609458800-1",
+        "title": "希望情节讨论多探索反差与反转，但别把台词…",
+        "turns": [
+          "user:success",
+          "assistant:success",
+          "user:success",
+          "assistant:success"
+        ],
+        "lastAssistantHasMarkers": true
+      }
+    ],
+    "chain": {
+      "id": "chain-1791307765609458800-1",
+      "versions": [
+        {
+          "index": 1,
+          "cards": 1,
+          "trials": 2
+        }
+      ],
+      "active": null
+    },
+    "conversationFile": "mc-muwyepd8-890cd854.json"
+  },
+  "name": "S1-制作档案与链路库断言",
+  "elapsedMs": 3,
+  "consoleErrors": []
+}

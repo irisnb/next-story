@@ -1,0 +1,25 @@
+{
+  "step": "probe",
+  "at": "2026-10-06T17:30:48.395Z",
+  "events": [
+    {
+      "t": 3,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "welcome": false,
+    "editor": true,
+    "writing": false,
+    "making": true,
+    "project": "8b 验证作品",
+    "currentDoc": "主角篇",
+    "dockWindows": 0,
+    "dockCount": "0 个讨论"
+  },
+  "elapsedMs": 3,
+  "consoleErrors": []
+}

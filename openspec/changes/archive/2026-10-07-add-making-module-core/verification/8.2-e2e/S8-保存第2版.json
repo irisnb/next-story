@@ -1,0 +1,76 @@
+{
+  "step": "s8-save",
+  "at": "2026-10-07T03:57:11.632Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S8-保存第2版.png"
+    },
+    {
+      "t": 3434,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "chainsUnchangedDuringRound": false,
+    "versionsAppended": true,
+    "v2Index": 2,
+    "v1DeepEqual": true,
+    "passed": true
+  },
+  "captured": {
+    "confirmLog": [
+      "把下面卡草稿保存为「装配验证链」的新版本？\n\n· 卡名「情节讨论的反差与反转探索」\n  何时用：进行情节讨论时\n  何时不用：不涉及情节讨论的场合（如纯台词、情绪问题）\n  正文：情节讨论多探索反差与反转；台词情绪问题就台词本身讨论，不往反转方向处理。\n\n保存后会作为新版本进入链路库，不会自动启用；启用需要在结构检视里显式操作。"
+    ],
+    "notice": "已保存为「装配验证链·第2版」草稿；尚未启用，启用请在结构检视里显式操作。",
+    "chainsAfter": {
+      "sha256": "55e253297283afce1bf919021f0f07d5d721c90efd12099c3641182671952cb4",
+      "versions": [
+        {
+          "index": 1,
+          "cards": 1,
+          "trials": 2,
+          "change_note": "制作会话保存"
+        },
+        {
+          "index": 2,
+          "cards": 1,
+          "trials": 0,
+          "change_note": "制作会话保存"
+        }
+      ],
+      "active": null,
+      "v1Card": {
+        "title": "情节讨论的反差与反转探索",
+        "whenToUse": "进行情节讨论时",
+        "whenNotToUse": "不涉及情节讨论的场合（如纯台词、情绪问题）",
+        "body": "情节讨论中，多从反差与反转的角度进行探索。但台词的情绪问题不往反转方向处理，应就台词本身讨论，不用反转来解决。"
+      },
+      "v2Card": {
+        "title": "情节讨论的反差与反转探索",
+        "whenToUse": "进行情节讨论时",
+        "whenNotToUse": "不涉及情节讨论的场合（如纯台词、情绪问题）",
+        "body": "情节讨论多探索反差与反转；台词情绪问题就台词本身讨论，不往反转方向处理。"
+      }
+    },
+    "confirmText": "把下面卡草稿保存为「装配验证链」的新版本？\n\n· 卡名「情节讨论的反差与反转探索」\n  何时用：进行情节讨论时\n  何时不用：不涉及情节讨论的场合（如纯台词、情绪问题）\n  正文：情节讨论多探索反差与反转；台词情绪问题就台词本身讨论，不往反转方向处理。\n\n保存后会作为新版本进入链路库，不会自动启用；启用需要在结构检视里显式操作。",
+    "versions": [
+      {
+        "index": 1,
+        "cards": 1,
+        "trials": 2,
+        "change_note": "制作会话保存"
+      },
+      {
+        "index": 2,
+        "cards": 1,
+        "trials": 0,
+        "change_note": "制作会话保存"
+      }
+    ],
+    "v1DeepEqual": true
+  },
+  "name": "S8-保存第2版",
+  "elapsedMs": 3434,
+  "consoleErrors": []
+}

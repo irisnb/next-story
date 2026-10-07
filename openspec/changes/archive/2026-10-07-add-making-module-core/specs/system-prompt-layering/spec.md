@@ -1,9 +1,5 @@
-# system-prompt-layering Specification
+## MODIFIED Requirements
 
-## Purpose
-定义会话提示词的「信封」（system 层）分层制度：信封内容与次序不变式（红线永居链路卡挂载位之上）、制度性提示每轮在场且禁止双份投递、崩溃重放的逐字一致性、信纸（user 层）职责划分。由 change `wire-system-prompt-channel`（2026-10-06 归档）建立；挂载位承载链路卡与轮级更新由 change `add-making-module-core`（2026-10-07 归档）接入。
-
-## Requirements
 ### Requirement: 信封内容与次序固定
 系统 SHALL 在会话的 system 层（信封）组装制度性提示，内容与次序 SHALL 固定为：陪想身份（中文）→ 宪法红线（含诚实材料边界与追问语义条款）→ 链路卡挂载位。宪法红线 SHALL 永居链路卡挂载位之上（次序不变式）；陪想身份 SHALL 顶替 DSH 默认部署 persona，英文默认 persona 文案 MUST NOT 出现在最终 system 层；DSH harness 标识段位于最顶且不可移除。链路卡挂载位 SHALL 承载当轮冻结的链路卡文本（change `add-making-module-core` 起接入；无启用链路或该轮未携带卡时为空）；卡文本 SHALL 由系统统一包装（含「可替换的讨论方法、非强制规则」声明），任何卡片内容 MUST NOT 置于红线之上。
 
@@ -23,22 +19,6 @@
 #### Scenario: 无卡轮次挂载位为空
 - **WHEN** 未启用链路的轮次发起
 - **THEN** 挂载位为空段，信封仅含陪想身份与宪法红线
-
-### Requirement: 制度性提示每轮在场且不依赖首轮前缀
-system 层提示 SHALL 对会话内每一轮请求在场（含追问轮与框架压缩后的轮次），MUST NOT 依赖首条 user 消息前缀承载制度性内容；宪法红线与身份文本 MUST NOT 出现在任何 user 消息文本中（禁止双份投递）。
-
-#### Scenario: 追问轮信封完整
-- **WHEN** 用户在多轮讨论中提交追问
-- **THEN** 该轮请求的 system 层完整包含身份与红线
-- **AND** user 文本只包含增量问题与当轮材料
-
-#### Scenario: 压缩后红线仍在场
-- **WHEN** 长对话触发框架压缩后继续追问
-- **THEN** 压缩后请求的 system 层仍完整包含宪法红线（红线不随对话历史被摘要丢弃）
-
-#### Scenario: user 层无双份投递
-- **WHEN** 审查任一轮的 user 消息文本
-- **THEN** 不含身份句与宪法红线条款文本
 
 ### Requirement: 崩溃重放携带相同信封
 宿主在崩溃恢复重建会话时 SHALL 重发与原会话逐字相同的 system_prompt（身份＋红线常量部分）；链路卡文本不经 start_session 携带，且 MUST NOT 以在重放 user 文本中拼接提示词前缀的方式补投制度性内容。重放完成与下一轮请求之间 SHALL 无模型调用；恢复后的首个轮次 SHALL 按当轮冻结的链路版本携带卡文本（冻结规则见 chain-assembly）。

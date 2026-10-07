@@ -1,0 +1,37 @@
+{
+  "step": "s7-kill",
+  "at": "2026-10-06T17:37:49.817Z",
+  "events": [
+    {
+      "t": 446,
+      "ev": "driver killed",
+      "pid": 29628
+    },
+    {
+      "ev": "screenshot",
+      "file": "S7-强杀后.png"
+    },
+    {
+      "t": 5515,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "killedProcess": {
+      "pid": 29628
+    },
+    "afterKill": {
+      "error": true,
+      "errorText": "生成失败，请稍后重试",
+      "textLen": 1776,
+      "followUp": true
+    },
+    "killed": 29628
+  },
+  "name": "S7-强杀驱动",
+  "elapsedMs": 5515,
+  "consoleErrors": []
+}

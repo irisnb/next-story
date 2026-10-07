@@ -1,0 +1,31 @@
+{
+  "step": "s2-enable",
+  "at": "2026-10-06T17:32:49.782Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S2-启用.png"
+    },
+    {
+      "t": 1505,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "enableText": "启用「装配验证链·第1版」",
+    "inspectorTitle": "正在查看：装配验证链·第1版",
+    "confirmLog": [
+      "启用「装配验证链·第1版」；所有作品的下一轮提问开始使用。"
+    ],
+    "statusText": "当前链路：装配验证链·第1版",
+    "deactivateVisible": true,
+    "inspectorState": "当前启用版本",
+    "confirmText": "启用「装配验证链·第1版」；所有作品的下一轮提问开始使用。"
+  },
+  "name": "S2-启用",
+  "elapsedMs": 1505,
+  "consoleErrors": []
+}

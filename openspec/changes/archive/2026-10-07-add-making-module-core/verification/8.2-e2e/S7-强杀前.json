@@ -1,0 +1,35 @@
+{
+  "step": "s7-send",
+  "at": "2026-10-06T17:36:48.490Z",
+  "events": [
+    {
+      "t": 388,
+      "ev": "s7 question sent",
+      "question": "第七封信之外，其他几封信各自承担什么功能？"
+    },
+    {
+      "ev": "screenshot",
+      "file": "S7-强杀前.png"
+    },
+    {
+      "t": 6492,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "inFlight": {
+      "loading": false,
+      "stop": true,
+      "textLen": 1782
+    },
+    "loading": false,
+    "stop": true,
+    "textLen": 1782
+  },
+  "name": "S7-强杀前",
+  "elapsedMs": 6492,
+  "consoleErrors": []
+}

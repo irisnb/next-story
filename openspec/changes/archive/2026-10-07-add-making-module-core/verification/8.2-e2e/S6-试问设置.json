@@ -1,0 +1,30 @@
+{
+  "step": "s6-trial-open",
+  "at": "2026-10-06T17:43:16.931Z",
+  "events": [
+    {
+      "ev": "select via keyboard",
+      "what": "试问关注文档",
+      "label": "主角篇"
+    },
+    {
+      "ev": "screenshot",
+      "file": "S6-试问设置.png"
+    },
+    {
+      "t": 2371,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "trialMeta": "所试版本：「装配验证链」·第1版（带卡试问）｜试用作品：8b 验证作品",
+    "focusDocument": "主角篇",
+    "question": "雾岭这条线往下走，有什么可能的方向？"
+  },
+  "name": "S6-试问设置",
+  "elapsedMs": 2371,
+  "consoleErrors": []
+}

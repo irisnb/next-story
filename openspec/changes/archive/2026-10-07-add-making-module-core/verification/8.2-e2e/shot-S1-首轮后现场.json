@@ -1,0 +1,23 @@
+{
+  "step": "shot",
+  "at": "2026-10-06T17:30:48.750Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S1-首轮后现场.png"
+    },
+    {
+      "t": 97,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "name": "S1-首轮后现场"
+  },
+  "name": "shot-S1-首轮后现场",
+  "elapsedMs": 97,
+  "consoleErrors": []
+}

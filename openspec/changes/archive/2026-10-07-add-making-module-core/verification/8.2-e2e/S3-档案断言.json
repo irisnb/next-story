@@ -1,0 +1,63 @@
+{
+  "step": "check-archive-chain",
+  "at": "2026-10-06T17:36:12.212Z",
+  "events": [
+    {
+      "t": 5,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "archives": [
+      {
+        "file": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2.meta.json",
+        "mtime": "2026-10-06T17:36:01.516Z",
+        "conversation_id": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2",
+        "focus_document_title": "主角篇",
+        "turns": [],
+        "firstUserText": "",
+        "chain_rounds": null
+      },
+      {
+        "file": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2.json",
+        "mtime": "2026-10-06T17:36:01.511Z",
+        "conversation_id": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2",
+        "focus_document_title": "主角篇",
+        "turns": [
+          "assistant"
+        ],
+        "firstUserText": "",
+        "chain_rounds": [
+          {
+            "turn_index": 0,
+            "chain_id": "chain-1791307765609458800-1",
+            "chain_name": "装配验证链",
+            "version_index": 1
+          }
+        ]
+      }
+    ],
+    "asserted": {
+      "file": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2.json",
+      "entry": {
+        "turn_index": 0,
+        "chain_id": "chain-1791307765609458800-1",
+        "chain_name": "装配验证链",
+        "version_index": 1
+      }
+    },
+    "file": "muwyisxk-b0f3d11c77fd47a3a2b8df15fc2728d2.json",
+    "entry": {
+      "turn_index": 0,
+      "chain_id": "chain-1791307765609458800-1",
+      "chain_name": "装配验证链",
+      "version_index": 1
+    }
+  },
+  "name": "S3-档案断言",
+  "elapsedMs": 5,
+  "consoleErrors": []
+}

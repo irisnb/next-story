@@ -1,0 +1,30 @@
+{
+  "step": "s6-inspector-records",
+  "at": "2026-10-06T17:44:24.101Z",
+  "events": [
+    {
+      "ev": "screenshot",
+      "file": "S6-试问记录.png"
+    },
+    {
+      "t": 2189,
+      "ev": "complete"
+    }
+  ],
+  "assertions": {
+    "passed": true
+  },
+  "captured": {
+    "trialRecordsSummary": "本版共有 2 次试问记录（带卡 1 次、对照 1 次）。",
+    "trialRecordTexts": [
+      "【对照】雾岭这条线往下走，有什么可能的方向？ · 2026-10-06 17:43 · 未记录反馈",
+      "【带卡】雾岭这条线往下走，有什么可能的方向？ · 2026-10-06 17:43 · 未记录反馈"
+    ],
+    "inspectorTitle": "正在查看：装配验证链·第1版",
+    "rows": 2,
+    "summary": "本版共有 2 次试问记录（带卡 1 次、对照 1 次）。"
+  },
+  "name": "S6-试问记录",
+  "elapsedMs": 2189,
+  "consoleErrors": []
+}

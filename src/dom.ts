@@ -108,11 +108,11 @@ export interface AiDockDom {
 }
 
 /**
- * 制作模块页面的显式 DOM 依赖契约（add-making-module-core 任务组 7）。
+ * 制作模块页面的显式 DOM 依赖契约（add-chain-mindmap-v0 导图重构）。
  * 全部按全局 id 从 `index.html` 解析；缺失抛出包含 id 的明确错误。
  */
 export interface MakingDom {
-  /** 制作模块页面根节点（窄窗视图切换的 data-making-view 落点）。 */
+  /** 制作模块页面根节点（内容区标签切换的 data-making-view 落点）。 */
   readonly moduleRoot: HTMLElement;
   /** 顶部当前链路状态条（常驻；只反映全局 active 指针，不随浏览变化）。 */
   readonly statusBar: HTMLElement;
@@ -124,9 +124,9 @@ export interface MakingDom {
   /** 中等宽度收拢：链路库入口按钮与其外层条。 */
   readonly collapsedBar: HTMLElement;
   readonly libraryToggle: HTMLButtonElement;
-  /** 更窄窗口：页内「结构检视／制作对话」切换。 */
+  /** 内容区双标签「导图｜制作对话」（宽窄常驻；切换只改属性，不重建 DOM）。 */
   readonly viewSwitch: HTMLElement;
-  readonly viewInspectBtn: HTMLButtonElement;
+  readonly viewMapBtn: HTMLButtonElement;
   readonly viewChatBtn: HTMLButtonElement;
   /** 左：链路库。 */
   readonly chainLibrary: HTMLElement;
@@ -138,7 +138,7 @@ export interface MakingDom {
   readonly newChainCancel: HTMLButtonElement;
   readonly chainList: HTMLElement;
   readonly chainEmpty: HTMLElement;
-  /** 中：结构检视。 */
+  /** 「导图」标签内容区（正在看什么）。 */
   readonly inspector: HTMLElement;
   readonly inspectorEmpty: HTMLElement;
   readonly inspectorContent: HTMLElement;
@@ -148,11 +148,35 @@ export interface MakingDom {
   readonly versionSelect: HTMLSelectElement;
   readonly enableBtn: HTMLButtonElement;
   readonly deleteChainBtn: HTMLButtonElement;
+  /** 图区容器（组装流＋输出块以图区为基准垂直居中；快捷小窗挂在图区内）。 */
+  readonly graph: HTMLElement;
+  /** 连线 SVG（唯一箭头载体：marker 定义＋流线组）。 */
+  readonly wires: SVGSVGElement;
+  readonly wirePaths: SVGGElement;
+  /** 三区之一：自定义要求（定高＋区内滚动；卡行＋ghost 在滚动内容内）。 */
+  readonly zoneCustom: HTMLElement;
+  readonly zoneCustomTrigger: HTMLButtonElement;
+  readonly zoneScroll: HTMLElement;
+  readonly cardCount: HTMLElement;
   readonly cardList: HTMLElement;
   readonly noCards: HTMLElement;
-  /** 卡片检视面板（点卡后在检视区下方展开）。 */
+  readonly addCardBtn: HTMLButtonElement;
+  /** 三区之二／之三：固定底座（共用·只读）与每轮动态（自动）。 */
+  readonly baseNode: HTMLButtonElement;
+  readonly dynamicNode: HTMLButtonElement;
+  /** 统一详情：快捷小窗唯一挂载位（三类来源同位同尺寸）。 */
+  readonly quickPanel: HTMLElement;
+  /** 全页详情（占满导图视图；有返回入口）。 */
+  readonly fullDetail: HTMLElement;
+  readonly fullEyebrow: HTMLElement;
+  readonly fullBackBtn: HTMLButtonElement;
+  /** 卡片五项详情挂载（怎么做＝完整正文；试问记录在其中）。 */
   readonly cardPanel: HTMLElement;
-  /** 右：制作对话（真实会话接线属后续车道；容器即挂点）。 */
+  /** 底座／每轮动态的只读详情挂载（无任何操作控件）。 */
+  readonly fullReadonly: HTMLElement;
+  /** 阅读说明条（图区容器之外贴底；静态三句，控制器不改内容）。 */
+  readonly readingNotes: HTMLElement;
+  /** 「制作对话」标签内容区（会话控制器承载；行为不变）。 */
   readonly conversationPane: HTMLElement;
   readonly conversationObject: HTMLElement;
   readonly conversationBody: HTMLElement;
@@ -346,14 +370,15 @@ export interface AppDom {
   btnCancelLeave: HTMLButtonElement;
 }
 
-function requireElement<T extends HTMLElement>(id: string): T {
+/** 解析全局 id；缺省返回 HTMLElement，SVG 节点用显式类型参数解析。 */
+function requireElement<T extends Element = HTMLElement>(id: string): T {
   const element = document.getElementById(id);
 
   if (!element) {
     throw new Error(`Missing required element: #${id}`);
   }
 
-  return element as T;
+  return element as unknown as T;
 }
 
 /** 在窗口根节点内按 `data-role` 解析必需节点；缺失抛出包含角色标识的明确错误。 */
@@ -477,8 +502,8 @@ export function getAppDom(): AppDom {
       collapsedBar: requireElement("making-collapsed-bar"),
       libraryToggle: requireElement("making-library-toggle"),
       viewSwitch: requireElement("making-view-switch"),
-      viewInspectBtn: requireElement("making-view-inspect-btn"),
-      viewChatBtn: requireElement("making-view-chat-btn"),
+      viewMapBtn: requireElement<HTMLButtonElement>("making-view-map-btn"),
+      viewChatBtn: requireElement<HTMLButtonElement>("making-view-chat-btn"),
       chainLibrary: requireElement("making-chain-library"),
       libraryCloseBtn: requireElement("making-library-close-btn"),
       newChainBtn: requireElement("making-new-chain-btn"),
@@ -493,12 +518,28 @@ export function getAppDom(): AppDom {
       inspectorContent: requireElement("making-inspector-content"),
       inspectorTitle: requireElement("making-inspector-title"),
       inspectorState: requireElement("making-inspector-state"),
-      versionSelect: requireElement("making-version-select"),
-      enableBtn: requireElement("making-enable-btn"),
-      deleteChainBtn: requireElement("making-delete-chain-btn"),
+      versionSelect: requireElement<HTMLSelectElement>("making-version-select"),
+      enableBtn: requireElement<HTMLButtonElement>("making-enable-btn"),
+      deleteChainBtn: requireElement<HTMLButtonElement>("making-delete-chain-btn"),
+      graph: requireElement("making-graph"),
+      wires: requireElement<SVGSVGElement>("making-wires"),
+      wirePaths: requireElement<SVGGElement>("making-wire-paths"),
+      zoneCustom: requireElement("making-zone-custom"),
+      zoneCustomTrigger: requireElement<HTMLButtonElement>("making-custom-trigger"),
+      zoneScroll: requireElement("making-zone-scroll"),
+      cardCount: requireElement("making-card-count"),
       cardList: requireElement("making-card-list"),
       noCards: requireElement("making-no-cards"),
+      addCardBtn: requireElement<HTMLButtonElement>("making-add-card-btn"),
+      baseNode: requireElement<HTMLButtonElement>("making-base-node"),
+      dynamicNode: requireElement<HTMLButtonElement>("making-dynamic-node"),
+      quickPanel: requireElement("making-quick-panel"),
+      fullDetail: requireElement("making-full-detail"),
+      fullEyebrow: requireElement("making-full-eyebrow"),
+      fullBackBtn: requireElement<HTMLButtonElement>("making-full-back"),
       cardPanel: requireElement("making-card-panel"),
+      fullReadonly: requireElement("making-full-readonly"),
+      readingNotes: requireElement("making-reading-notes"),
       conversationPane: requireElement("making-conversation-pane"),
       conversationObject: requireElement("making-conversation-object"),
       conversationBody: requireElement("making-conversation-body"),

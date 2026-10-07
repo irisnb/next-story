@@ -6,18 +6,20 @@ import type {
 } from "../project-api.ts";
 
 /**
- * 制作模块的纯显示决策边界（add-making-module-core 任务组 7）。
+ * 制作模块的纯显示决策边界（add-chain-mindmap-v0 导图重构）。
  *
- * 只把链路库数据映射成结构化的显示决策（状态条文字、库列表行、检视标题、
- * 启用/回退的具体承接文字、卡片检视五项、本版变化说明）。不接触 DOM、
- * 命令与网络；「三态分离」的措辞红线在此集中落地：
+ * 只把链路库数据映射成结构化的显示决策（状态条文字、库列表行、导图三区、
+ 三态标题、启用/回退的具体承接文字、统一详情 DetailModel、本版变化说明）。
+ * 不接触 DOM、命令与网络；语义红线在此集中落地：
  * - 状态条＝下一轮用什么；
- * - 检视标题＝正在看什么（未启用版本必须明示「尚未启用」，禁用
+ * - 导图标题＝正在看什么（未启用版本必须明示「尚未启用」，禁用
  *   「生效／成功／正在执行」类视觉与措辞）；
- * - 制作对话标题＝正在制作什么（由控制器单独承载）。
+ * - 制作对话标题＝正在制作什么（由控制器单独承载）；
+ * - 箭头只表达「分区→组装」「组装→输出」，卡片之间永不生成连线；
+ * - 用户可见命名一律「自定义要求」（原内部名「链路可变区」退役）。
  */
 
-/** 结构检视的免责说明句（design D7；不暗示 AI 内部思考过程）。 */
+/** 导图免责说明句（不暗示 AI 内部思考过程；呈现于阅读说明条）。 */
 export const MAKING_DISCLAIMER =
   "展示链路的组装结构与适用条件，不代表 AI 内部思考过程。";
 
@@ -35,6 +37,17 @@ export const MAKING_STATE_NOT_ACTIVE = "尚未启用";
 export const MAKING_STATE_ACTIVE = "当前启用版本";
 
 /**
+ * 阅读说明条三句（图区容器之外贴底固定呈现；不参与图区垂直居中计算）。
+ * 免责句不暗示 AI 内部思考过程；箭头句与启用句防止「排列＝执行顺序」「卡片级启用」
+ * 两类误读。
+ */
+export const MAKING_READING_NOTES: readonly string[] = [
+  "箭头只表示流向组装，不表示卡片执行顺序",
+  "启用对象是整个链路版本",
+  "展示链路的组装结构与适用条件，不代表 AI 内部思考过程。",
+];
+
+/**
  * 固定底座四项只读说明（所有链路共用、不可修改；措辞朴实自拟，各一句）。
  * 只读呈现，无修改或开关控件。
  */
@@ -47,6 +60,33 @@ export const MAKING_BASE_ITEMS: readonly {
   { key: "stance", title: "骨（底线立场）", description: "AI 只提观察、问题与可能性，不替你判断创意高低，不把假设当成事实。" },
   { key: "tools", title: "工具", description: "阅读、检索等公共能力对所有链路一样可用，不按链路分档。" },
   { key: "materials", title: "材料规则", description: "AI 只按你授权的范围读取作品材料；链路不改变任何读取授权。" },
+];
+
+/**
+ * 每轮动态的只读说明项（自动加入；不是可配置的链路要求）。
+ * 只读呈现，无任何配置控件。
+ */
+export const MAKING_DYNAMIC_ITEMS: readonly {
+  readonly key: string;
+  readonly title: string;
+  readonly description: string;
+}[] = [
+  { key: "question", title: "你的问题", description: "来自本轮提问。" },
+  { key: "materials", title: "当轮材料", description: "按既有取材、可见性与授权规则准备，自动加入不等于任意读取作品。" },
+  { key: "entry", title: "入口", description: "说明本轮从直接提问还是选区召唤发起。" },
+];
+
+/** 每轮动态详情的尾注（明示「自动」语义，不给配置暗示）。 */
+export const MAKING_DYNAMIC_NOTE = "这些随每轮现场变化，由系统自动加入，不是可配置的链路要求。";
+
+/** 卡片详情底部「修改／删除／添加」三操作的按钮文字（统一转制作对话执行）。 */
+export const MAKING_DETAIL_ACTION_LABELS: readonly {
+  readonly action: "modify" | "delete" | "add";
+  readonly label: string;
+}[] = [
+  { action: "modify", label: "请制作助手修改" },
+  { action: "delete", label: "请制作助手删除" },
+  { action: "add", label: "请制作助手添加要求卡" },
 ];
 
 /** 顶部状态条的显示决策（数据源＝链路库 active 指针，非当前检视对象）。 */
@@ -145,20 +185,37 @@ export function cardSummary(triggerDesc: string, maxLength = 40): string {
   return `${firstLine.slice(0, maxLength)}…`;
 }
 
-/** 结构检视单张卡的列表行（卡名／版本／适用摘要；版本即所属链路版本）。 */
-export interface MakingCardItemView {
+/** 导图卡片行（紧凑卡行：卡名＋「详情」提示；不出现摘要与版本号）。 */
+export interface MakingMapCardRow {
   readonly cardId: string;
   readonly title: string;
-  readonly summary: string;
 }
 
-/** 结构检视（正在看什么）的显示决策。 */
-export interface MakingInspectorView {
+/** 导图连线（仅「分区→组装」「组装→输出」两类流线；卡片之间永不生成连线）。 */
+export interface MakingWireView {
+  /** SVG 路径（viewBox 840×440，几何与三区/组装/输出的定位一一对应）。 */
+  readonly d: string;
+}
+
+/**
+ * 导图连线数据（v10 定稿几何）：三区右缘（x=370）汇入组装左缘（x=490，中心 y=220），
+ * 组装右缘（x=588）指向输出左缘（x=673）。箭头语义由这份固定数据保证——
+ * 只有这四条流线带 marker-end，任何卡片节点都不产出连线。
+ */
+const MAP_WIRE_PATHS: readonly string[] = [
+  "M370 128 H376 Q382 128 382 142 V206 Q382 220 398 220 H490", // 自定义要求 → 组装
+  "M370 298 C410 298 435 220 490 220", // 固定底座 → 组装
+  "M370 388 C430 388 420 220 490 220", // 每轮动态 → 组装
+  "M588 220 H673", // 组装 → 提示词（输出）
+];
+
+/** 导图视图（正在看什么）的显示决策：三区同构＋组装流＋输出象征块。 */
+export interface MakingMapView {
   readonly chainId: string;
   readonly chainName: string;
   readonly versionId: string;
   readonly versionIndex: number;
-  /** 检视标题：正在查看「名·第N版」。 */
+  /** 导图标题：正在查看「名·第N版」（草稿／历史版本加后缀）。 */
   readonly title: string;
   /** 版本状态标注：「当前启用版本」或「尚未启用」。 */
   readonly stateLabel: string;
@@ -174,9 +231,32 @@ export interface MakingInspectorView {
   readonly rollbackConfirm: string | null;
   /** 版本记录下拉项（全部版本，倒序＝最新在前）。 */
   readonly versionOptions: readonly { readonly versionId: string; readonly label: string }[];
-  readonly cards: readonly MakingCardItemView[];
-  readonly changeNote: string;
-  readonly disclaimer: string;
+  /** 自定义要求区（用户可改的零件分区；原内部名「链路可变区」退役）。 */
+  readonly customZone: {
+    readonly heading: "自定义要求";
+    readonly affordanceLabel: "可改 · 可加";
+    readonly slotTitle: "要求类插槽";
+    readonly cardCountLabel: string;
+    readonly cards: readonly MakingMapCardRow[];
+    readonly emptyNote: string;
+  };
+  /** 固定底座区（所有链路共用·只读；任何链路、任何版本、任何状态完全一致）。 */
+  readonly baseZone: {
+    readonly heading: "固定底座";
+    readonly suffix: "共用 · 只读";
+    readonly items: readonly string[];
+  };
+  /** 每轮动态区（自动；无 hover 可点态）。 */
+  readonly dynamicZone: {
+    readonly heading: "每轮动态";
+    readonly suffix: "自动";
+    readonly items: readonly string[];
+  };
+  readonly assemblyLabel: "组装";
+  readonly outputLabel: "提示词";
+  readonly outputSublabel: "组装输出";
+  /** 连线数据（固定四条流线；见 MAP_WIRE_PATHS）。 */
+  readonly wires: readonly MakingWireView[];
 }
 
 /** 查看版本相对启用版本的差集（启用同一链路更早版本＝回退场景）。 */
@@ -192,14 +272,14 @@ function rollbackContext(
 }
 
 /**
- * 结构检视的显示决策。措辞红线：查看未启用版本时明示「尚未启用」，
+ * 导图视图的显示决策。措辞红线：查看未启用版本时明示「尚未启用」，
  * 启用文字落在链路版本层级（卡片上无启用开关），并写明作用对象与生效范围。
  */
-export function buildMakingInspectorView(
+export function buildMakingMapView(
   library: ChainLibrary,
   chainId: string,
   versionId: string,
-): MakingInspectorView | null {
+): MakingMapView | null {
   const chain = library.chains.find((candidate) => candidate.id === chainId);
   if (!chain) return null;
   const version = chain.versions.find((candidate) => candidate.id === versionId);
@@ -212,7 +292,7 @@ export function buildMakingInspectorView(
     resolvedActive.version.id === versionId;
   const rollback = rollbackContext(library, chainId, version.index);
   // 标题的版本标注：活跃链路内更新于启用版本的＝草稿、更早的＝历史版本；
-  // 三态分离（状态条／标题／制作对话标题）各在各位。
+  // 三态分离（状态条／导图标题／制作对话标题）各在各位。
   const titleSuffix =
     resolvedActive !== null && resolvedActive.chain.id === chainId && !isActiveVersion
       ? version.index > resolvedActive.version.index ? "（草稿）" : "（历史版本）"
@@ -252,14 +332,220 @@ export function buildMakingInspectorView(
           ? `第${candidate.index}版（最新）`
           : `第${candidate.index}版`,
       })),
-    cards: version.cards.map((card) => ({
-      cardId: card.id,
-      title: card.title,
-      summary: cardSummary(card.trigger_desc),
-    })),
-    changeNote: version.change_note,
-    disclaimer: MAKING_DISCLAIMER,
+    customZone: {
+      heading: "自定义要求",
+      affordanceLabel: "可改 · 可加",
+      slotTitle: "要求类插槽",
+      cardCountLabel: `· ${version.cards.length} 张卡`,
+      cards: version.cards.map((card) => ({ cardId: card.id, title: card.title })),
+      emptyNote: "这个版本还没有卡片。可以在制作对话里口述要求，让助手起草。",
+    },
+    baseZone: {
+      heading: "固定底座",
+      suffix: "共用 · 只读",
+      items: MAKING_BASE_ITEMS.map((item) => item.title),
+    },
+    dynamicZone: {
+      heading: "每轮动态",
+      suffix: "自动",
+      items: MAKING_DYNAMIC_ITEMS.map((item) => item.title),
+    },
+    assemblyLabel: "组装",
+    outputLabel: "提示词",
+    outputSublabel: "组装输出",
+    wires: MAP_WIRE_PATHS.map((d) => ({ d })),
   };
+}
+
+// ========== 统一详情（DetailModel：三类可点对象＋区级入口共用同一模型） ==========
+
+/** 详情来源：卡片／自定义要求区／固定底座／每轮动态／添加说明（ghost）。 */
+export type MakingDetailSource =
+  | { readonly kind: "card"; readonly cardId: string }
+  | { readonly kind: "custom-zone" }
+  | { readonly kind: "base" }
+  | { readonly kind: "dynamic" }
+  | { readonly kind: "add-card" };
+
+/** 详情底部的「修改／删除／添加」操作（统一转制作对话执行；导图不直接编辑）。 */
+export interface MakingDetailActionView {
+  readonly action: "modify" | "delete" | "add";
+  readonly label: string;
+  /** 操作目标卡名（「添加」落在插槽层，为 null）。 */
+  readonly cardTitle: string | null;
+}
+
+/** 统一详情模型：快捷小窗与全页详情是同一模型的两种呈现，仅内容与可操作性不同。 */
+export interface MakingDetailModel {
+  readonly kind: MakingDetailSource["kind"];
+  /** 快捷小窗标题（全页详情的 eyebrow 由 kindLabel＋对象名组成）。 */
+  readonly title: string;
+  /** 快捷小窗 meta 行（卡片：插槽·链路·版本·启用状态）。 */
+  readonly quickMeta: string | null;
+  /** 快捷小窗摘要段。 */
+  readonly quickSummary: string | null;
+  /** 快捷小窗辅助说明行（小号弱化）。 */
+  readonly quickHelp: string | null;
+  /** 快捷小窗尾段指引（自定义要求／添加说明用）。 */
+  readonly quickNote: string | null;
+  /** 是否有「打开完整详情」入口（输出块无详情；区级添加说明无全页形态）。 */
+  readonly hasFullDetail: boolean;
+  /** 全页详情 eyebrow（如「要求类 / 反差与反转」；无全页形态时为 null）。 */
+  readonly eyebrow: string | null;
+  /** 卡片五项（身份／何时用／怎么做完整正文／本版变化／试问记录）。 */
+  readonly card: CardPanelView | null;
+  /** 只读说明项（固定底座／每轮动态）。 */
+  readonly readonlyItems: readonly { readonly title: string; readonly description: string }[] | null;
+  /** 只读尾注（每轮动态：「自动」语义说明）。 */
+  readonly readonlyNote: string | null;
+  /** 底部操作（卡片＝修改／删除／添加；自定义要求与添加说明＝仅添加；只读来源为 null）。 */
+  readonly actions: readonly MakingDetailActionView[] | null;
+}
+
+function cardActions(cardTitle: string): readonly MakingDetailActionView[] {
+  return MAKING_DETAIL_ACTION_LABELS.map(({ action, label }) => ({
+    action,
+    label,
+    cardTitle: action === "add" ? null : cardTitle,
+  }));
+}
+
+const ADD_CARD_ACTION: readonly MakingDetailActionView[] = [
+  { action: "add", label: MAKING_DETAIL_ACTION_LABELS[2].label, cardTitle: null },
+];
+
+/** 触发描述按行拆解：首行＝摘要，剩余行＝辅助说明（无则 null）。 */
+function splitTriggerLines(triggerDesc: string): { summary: string; help: string | null } {
+  const lines = triggerDesc.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  return {
+    summary: lines[0] ?? "",
+    help: lines.length > 1 ? lines.slice(1).join("；") : null,
+  };
+}
+
+/**
+ * 统一详情的显示决策。三类可点对象（卡／底座／每轮动态）与区级入口
+ * （自定义要求、添加说明）产出同一模型；位置与尺寸统一由挂载结构保证，
+ * 不随所点对象及其位置变化。固定底座与每轮动态只读、无任何操作控件。
+ */
+export function buildMakingDetail(
+  library: ChainLibrary,
+  chainId: string,
+  versionId: string,
+  source: MakingDetailSource,
+): MakingDetailModel | null {
+  const chain = library.chains.find((candidate) => candidate.id === chainId);
+  if (!chain) return null;
+  const version = chain.versions.find((candidate) => candidate.id === versionId);
+  if (!version) return null;
+  const resolvedActive = resolveActive(library);
+  const isActiveVersion =
+    resolvedActive !== null &&
+    resolvedActive.chain.id === chainId &&
+    resolvedActive.version.id === versionId;
+  const versionMeta = isActiveVersion
+    ? `${chain.name}·第${version.index}版`
+    : `${chain.name}·第${version.index}版 · 尚未启用`;
+
+  if (source.kind === "card") {
+    const card = version.cards.find((candidate) => candidate.id === source.cardId);
+    if (!card) return null;
+    const panel = buildCardPanelView(library, chainId, versionId, card);
+    if (panel === null) return null;
+    const { summary, help } = splitTriggerLines(card.trigger_desc);
+    return {
+      kind: "card",
+      title: card.title,
+      quickMeta: `要求类 · ${versionMeta}`,
+      quickSummary: summary.length > 0 ? summary : null,
+      quickHelp: help,
+      quickNote: null,
+      hasFullDetail: true,
+      eyebrow: `要求类 / ${card.title}`,
+      card: panel,
+      readonlyItems: null,
+      readonlyNote: null,
+      actions: cardActions(card.title),
+    };
+  }
+
+  if (source.kind === "custom-zone") {
+    return {
+      kind: "custom-zone",
+      title: "自定义要求 · 可改 · 可加",
+      quickMeta: `要求类插槽 · ${version.cards.length} 张卡`,
+      quickSummary: version.cards.length > 0
+        ? `${version.cards.map((card) => card.title).join("、")}。`
+        : "这个版本还没有卡片。",
+      quickHelp: null,
+      quickNote: "通过制作对话调整卡片或添加要求。选择具体卡片后查看它的完整详情。",
+      hasFullDetail: false,
+      eyebrow: null,
+      card: null,
+      readonlyItems: null,
+      readonlyNote: null,
+      actions: ADD_CARD_ACTION,
+    };
+  }
+
+  if (source.kind === "base") {
+    return {
+      kind: "base",
+      title: "固定底座 · 共用 · 只读",
+      quickMeta: null,
+      quickSummary: null,
+      quickHelp: null,
+      quickNote: null,
+      hasFullDetail: true,
+      eyebrow: "共用 · 只读 / 固定底座",
+      card: null,
+      readonlyItems: MAKING_BASE_ITEMS.map(({ title, description }) => ({ title, description })),
+      readonlyNote: null,
+      actions: null,
+    };
+  }
+
+  if (source.kind === "dynamic") {
+    return {
+      kind: "dynamic",
+      title: "每轮动态 · 自动",
+      quickMeta: null,
+      quickSummary: null,
+      quickHelp: null,
+      quickNote: null,
+      hasFullDetail: true,
+      eyebrow: "自动 / 每轮动态",
+      card: null,
+      readonlyItems: MAKING_DYNAMIC_ITEMS.map(({ title, description }) => ({ title, description })),
+      readonlyNote: MAKING_DYNAMIC_NOTE,
+      actions: null,
+    };
+  }
+
+  return {
+    kind: "add-card",
+    title: "要求类 · 添加要求卡",
+    quickMeta: null,
+    quickSummary: "在要求类插槽中加入一张卡。",
+    quickHelp: "通过制作对话说明你希望增加什么要求；导图不直接编辑。",
+    quickNote: null,
+    hasFullDetail: false,
+    eyebrow: null,
+    card: null,
+    readonlyItems: null,
+    readonlyNote: null,
+    actions: ADD_CARD_ACTION,
+  };
+}
+
+/** 详情操作转入制作对话时的输入预填文字（带入操作与目标，等待用户说明要求）。 */
+export function makingTransferPrefill(action: MakingDetailActionView): string {
+  if (action.cardTitle !== null) {
+    return action.action === "modify"
+      ? `请制作助手修改「${action.cardTitle}」：`
+      : `请制作助手删除「${action.cardTitle}」：`;
+  }
+  return `${action.label}：`;
 }
 
 /** 本版变化说明：相对上一版的卡片增删标题＋变更说明（首版明示）。 */

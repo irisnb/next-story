@@ -104,22 +104,39 @@ test("making module exposes a fourth tab and a status bar bound to the global ac
   assert.match(html, /从下一轮开始使用；正在生成的回复沿用发起时的版本/);
 });
 
-test("making module exposes the three regions with inspect-only interactions", () => {
-  // 三区并列：链路库（找成品）｜结构检视（看成品与确定使用）｜制作对话（做零件）。
+test("making module exposes dual tabs, graph zones, and unified detail mounts", () => {
+  // 内容区双标签「导图｜制作对话」：链路库左栏保留，状态条常驻在标签之上。
   assert.match(html, /<aside\b[^>]*\bid="making-chain-library"[^>]*aria-label="链路库"/);
-  assert.match(html, /<section\b[^>]*\bid="making-inspector"[^>]*aria-label="结构检视"/);
+  assert.match(html, /<section\b[^>]*\bid="making-inspector"[^>]*aria-label="导图"/);
   assert.match(html, /<aside\b[^>]*\bid="making-conversation-pane"[^>]*aria-label="制作对话"/);
+  assert.match(html, /\bid="making-view-switch"/);
+  assert.match(html, /<button\b[^>]*\bid="making-view-map-btn"[^>]*role="tab"[^>]*>导图<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="making-view-chat-btn"[^>]*role="tab"[^>]*>制作对话<\/button>/);
   // 链路库：新建（简单命名）＋列表＋空库口述引导。
   assert.match(html, /\bid="making-new-chain-btn"/);
   assert.match(html, /\bid="making-new-chain-form"/);
   assert.match(html, /\bid="making-chain-list"/);
   assert.match(html, /\bid="making-chain-empty"/);
   assert.match(html, /说说你希望 AI 多做什么、少做什么/);
-  // 结构检视：版本记录浏览、启用入口（链路版本层级）、卡片列表、卡片检视面板。
-  assert.match(html, /\bid="making-version-select"/);
-  assert.match(html, /\bid="making-enable-btn"/);
+  // 导图视图：三区同构——自定义要求（定高滚动＋要求类插槽＋ghost）／固定底座／每轮动态。
+  assert.match(html, /\bid="making-graph"/);
+  assert.match(html, /\bid="making-zone-custom"[^>]*aria-label="自定义要求"/);
+  assert.match(html, /\bid="making-zone-scroll"/);
+  assert.match(html, /要求类插槽/);
   assert.match(html, /\bid="making-card-list"/);
+  assert.match(html, /\bid="making-add-card-btn"[^>]*>＋ 添加要求卡<\/button>/);
+  assert.match(html, /\bid="making-base-node"/);
+  assert.match(html, /<strong>固定底座<\/strong><span>共用 · 只读<\/span>/);
+  assert.match(html, /<span>红线<\/span><span>骨<\/span><span>工具<\/span><span>材料规则<\/span>/);
+  assert.match(html, /\bid="making-dynamic-node"/);
+  assert.match(html, /<strong>每轮动态<\/strong><span>自动<\/span>/);
+  // 命名统一：用户可见一律「自定义要求」，不出现「链路可变区」。
+  assert.doesNotMatch(html, /链路可变区/);
+  // 统一详情挂载位：唯一快捷小窗＋全页详情（卡片五项面板在其中）＋返回入口。
+  assert.match(html, /\bid="making-quick-panel"/);
+  assert.match(html, /\bid="making-full-detail"/);
   assert.match(html, /\bid="making-card-panel"/);
+  assert.match(html, /\bid="making-full-back"[^>]*>返回导图/);
   // 制作对话：标题「正在制作」＋空态引导＋「开始新制作」＋真实会话接线挂点
   // （车道 F2a：会话主区／历史列表／提示行／停止入口；占位文案已随接线移除）。
   assert.match(html, /正在制作：<span id="making-conversation-object">未选择<\/span>/);
@@ -133,26 +150,42 @@ test("making module exposes the three regions with inspect-only interactions", (
   assert.match(html, /\bid="making-session-messages"/);
   assert.match(html, /\bid="making-conversation-stop"[^>]*>停止/);
   assert.doesNotMatch(html, /会话功能随后接入/);
-  // 窄窗收拢：链路库入口按钮＋页内「结构检视／制作对话」切换。
+  // 中等宽度收拢：链路库入口按钮。
   assert.match(html, /\bid="making-library-toggle"/);
-  assert.match(html, /\bid="making-view-switch"/);
-  assert.match(html, /\bid="making-view-inspect-btn"[^>]*>结构检视/);
-  assert.match(html, /\bid="making-view-chat-btn"[^>]*>制作对话/);
 });
 
-test("making module renders a text-list inspector with a read-only fixed base", () => {
-  // 免责句（不暗示 AI 内部思考过程）。
-  assert.match(html, /展示链路的组装结构与适用条件，不代表 AI 内部思考过程/);
-  // 固定底座四项只读说明（details/summary 只读，无修改或开关控件）。
-  assert.match(html, /<summary>红线<\/summary>/);
-  assert.match(html, /<summary>骨（底线立场）<\/summary>/);
-  assert.match(html, /<summary>工具<\/summary>/);
-  assert.match(html, /<summary>材料规则<\/summary>/);
-  // 可变区只有要求类插槽说明；姿态／背景／方式不出现占位或「解锁」入口。
-  assert.match(html, /要求类插槽：想让 AI 多做什么、别做什么/);
-  assert.doesNotMatch(html, /姿态类插槽|背景卡|方式卡|解锁/);
-  // 无拖拽、步骤编号、执行箭头等编排形态暗示。
+test("making graph keeps arrows in the wire svg only and the output block purely symbolic", () => {
   const makingSection = html.slice(html.indexOf('id="module-making"'));
+  // 连线 SVG 是唯一箭头载体：整个制作页只有一个 svg＋一个 marker；静态连线不得带
+  // 箭头属性（marker-end=…）——流线路径由控制器按视图模型的连线数据渲染时挂载，
+  // 且只挂「分区→组装」「组装→输出」两类流线（散文注释提及不算属性用法）。
+  const svgCount = (makingSection.match(/<svg\b/g) ?? []).length;
+  assert.equal(svgCount, 1, "制作页只允许连线一个 svg");
+  assert.match(makingSection, /<svg\b[^>]*\bid="making-wires"[^>]*viewBox="0 0 840 440"/);
+  const markerCount = (makingSection.match(/<marker\b/g) ?? []).length;
+  assert.equal(markerCount, 1, "唯一箭头 marker");
+  assert.match(makingSection, /<marker\b[^>]*\bid="making-arrow"/);
+  assert.doesNotMatch(makingSection, /marker-end\s*=/);
+  // 卡片之间零连线：除 marker 内的箭头形状外，制作页不含任何 path 元素。
+  const pathCount = (makingSection.match(/<path\b/g) ?? []).length;
+  assert.equal(pathCount, 1, "唯一 path 是 marker 的箭头形状；流线由渲染时生成");
+  // 输出象征块是纯 div：不可点（非 button）、无详情入口、无 hover 可点态。
+  assert.match(html, /<div\b[^>]*\bid="making-output-node"/);
+  assert.doesNotMatch(html, /<button\b[^>]*making-output-node/);
+  assert.doesNotMatch(html, /\bid="making-output-node"[^>]*\bdraggable/);
+  // 无占位／解锁／拖拽／步骤编号（「执行顺序」字样只允许出现在阅读说明条的否定句里）。
+  assert.doesNotMatch(makingSection, /姿态类插槽|背景卡|方式卡|解锁/);
   assert.doesNotMatch(makingSection, /draggable="true"/);
-  assert.doesNotMatch(makingSection, /data-step|步骤\s*[1-9一二三四五]|执行顺序/);
+  assert.doesNotMatch(makingSection, /data-step|步骤\s*[1-9一二三四五]/);
+  const orderMentions = makingSection.match(/执行顺序/g) ?? [];
+  assert.equal(orderMentions.length, 1, "「执行顺序」仅出现于阅读说明条的否定句");
+  assert.match(makingSection, /箭头只表示流向组装，不表示卡片执行顺序/);
+});
+
+test("making module keeps the reading notes bar with three exact sentences", () => {
+  // 阅读说明条在图区容器之外贴底（不参与图区垂直居中计算），三句逐字固定。
+  assert.match(html, /\bid="making-reading-notes"/);
+  assert.match(html, /箭头只表示流向组装，不表示卡片执行顺序/);
+  assert.match(html, /启用对象是整个链路版本/);
+  assert.match(html, /展示链路的组装结构与适用条件，不代表 AI 内部思考过程。/);
 });

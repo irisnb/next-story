@@ -2643,7 +2643,7 @@ body.ai-window-dragging { user-select: none; }
 }
 
 .making-view-switch {
-  display: none;
+  display: flex;
   flex: none;
   gap: 0.25rem;
   padding: 0.4rem 1rem;
@@ -2664,6 +2664,16 @@ body.ai-window-dragging { user-select: none; }
 .making-view-switch-btn.active {
   background-color: var(--color-primary);
   color: var(--color-on-primary);
+}
+
+/* 内容区双标签「导图｜制作对话」：宽窄常驻，任一宽度下只显示当前标签
+   （默认无 data-making-view 属性＝导图；切换不重建 DOM） */
+#module-making[data-making-view="chat"] #making-inspector {
+  display: none;
+}
+
+#module-making:not([data-making-view="chat"]) #making-conversation-pane {
+  display: none;
 }
 
 /* �������У���·��Լ 220px���ṹ��������Ӧ�������Ի�Լ 400px */
@@ -2918,157 +2928,505 @@ body.ai-window-dragging { user-select: none; }
   display: none;
 }
 
-.making-disclaimer {
-  font-size: 0.8rem;
+/* ========== 导图视图（v10 定稿）：图区 840×440，三区同构堆叠在左，
+   箭头汇入组装、组装指向输出；组装／输出以图区为基准垂直居中 ========== */
+
+.making-inspector {
+  overflow-x: auto;
+}
+
+.making-graph {
+  position: relative;
+  flex: none;
+  width: 840px;
+  height: 440px;
+  margin: 0 auto;
+}
+
+.making-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.making-wires path {
+  fill: none;
+  stroke: var(--making-wire);
+  stroke-width: 1.2;
+}
+
+#making-arrow path {
+  fill: none;
+  stroke: var(--making-arrow);
+  stroke-width: 1.4;
+}
+
+/* 三区之一：自定义要求（可改·可加；hover 可点态） */
+.making-zone-custom {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 370px;
+  height: 236px;
+  padding: 11px;
+  border: 1px solid var(--making-zone-border);
+  border-radius: 8px;
+  background: var(--making-zone-bg);
+  cursor: pointer;
+}
+
+.making-zone-custom:hover {
+  background: var(--making-zone-hover-bg);
+  border-color: var(--making-zone-hover-border);
+}
+
+.making-zone-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.making-zone-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.making-zone-trigger {
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  color: inherit;
+}
+
+.making-zone-suffix {
+  font-size: 13px;
   color: var(--color-muted);
 }
 
-.making-region {
+/* 定高＋区内滚动；卡片与 ghost 都在滚动内容内（左侧不被撑破、图区不被挤动） */
+.making-zone-scroll {
+  height: 176px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  padding-right: 5px;
+}
+
+.making-card-group {
+  padding: 10px;
+  border: 1px solid var(--making-group-border);
+  border-radius: 7px;
+  background: var(--making-group-bg);
+}
+
+.making-group-title {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: var(--border-hairline);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 7px;
 }
 
-.making-region-title {
-  font-size: 0.95rem;
+.making-group-title h4 {
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--color-ink);
 }
 
-.making-base-suffix {
-  margin-left: 0.5rem;
-  font-size: 0.78rem;
+.making-group-title h4 span,
+.making-card-count {
+  font-size: 13px;
   font-weight: 400;
   color: var(--color-muted);
 }
 
-.making-region-note {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+.making-slot-list {
+  padding-bottom: 5px;
 }
 
-.making-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
+/* 紧凑卡行：仅卡名＋「详情」提示；hover 可点态（可改外观） */
 .making-card-row {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  margin-bottom: 7px;
+  padding: 7px 11px;
   text-align: left;
-  border: var(--border-hairline);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  font-size: 15px;
+  font-weight: 600;
+  color: inherit;
+  border: 1px solid var(--making-card-border);
+  border-radius: 6px;
+  background: var(--making-group-bg);
   cursor: pointer;
 }
 
 .making-card-row:hover {
-  background: var(--color-surface-hover);
+  background: var(--making-card-hover-bg);
+  border-color: var(--making-card-hover-border);
 }
 
 .making-card-row[aria-expanded="true"] {
-  box-shadow: inset 0 0 0 2px var(--color-primary);
+  padding: 6px 10px;
+  border-width: 2px;
+  border-color: var(--making-card-active-border);
 }
 
 .making-card-row-title {
-  flex: none;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.making-card-row-version {
-  flex: none;
-  font-size: 0.75rem;
-  color: var(--color-muted);
-}
-
-.making-card-row-summary {
-  flex: 1;
   min-width: 0;
-  font-size: 0.8rem;
-  color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.making-no-cards {
-  font-size: 0.85rem;
+.making-card-row-hint {
+  flex: none;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--color-muted);
 }
 
-.making-base-item summary {
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--color-ink);
-  padding: 0.3rem 0;
-}
-
-.making-base-item p {
-  margin: 0.15rem 0 0.4rem;
-  font-size: 0.85rem;
+.making-no-cards {
+  margin: 0 0 7px;
+  font-size: 13px;
   line-height: 1.6;
-  color: var(--color-text-body);
+  color: var(--color-muted);
 }
 
-/* ��Ƭ������壨�㿨��չ������� */
-.making-card-panel {
+/* ghost「＋ 添加要求卡」：滚动内容尾部的加卡入口（经制作对话，不直接编辑） */
+.making-ghost {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 7px 16px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px dashed var(--making-ghost-border);
+  cursor: pointer;
+}
+
+.making-ghost:hover {
+  background: var(--making-ghost-hover-bg);
+}
+
+/* 三区之二／之三：固定底座（平面弱样式、无 hover 可点态）与每轮动态（自动） */
+.making-source-node {
+  position: absolute;
+  left: 0;
+  width: 370px;
+  height: 76px;
+  padding: 11px;
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  color: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.making-base-node {
+  top: 260px;
+  background: var(--making-base-bg);
+  border: 1px solid var(--making-base-border);
+}
+
+.making-auto-node {
+  top: 350px;
+  background: var(--making-auto-bg);
+  border: 1px solid var(--making-auto-border);
+}
+
+.making-source-node .making-zone-heading {
+  margin-bottom: 6px;
+}
+
+.making-source-node .making-zone-heading strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.making-source-node .making-zone-heading span {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.making-zone-items {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* 组装（三区箭头汇入处；非交互） */
+.making-assembly-node {
+  position: absolute;
+  left: 492px;
+  top: 195px;
+  width: 96px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--making-assembly-border);
+  border-radius: 6px;
+  background: var(--making-assembly-bg);
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* 输出象征块：纯象征——不可点、无详情、无 hover 可点态 */
+.making-output-node {
+  position: absolute;
+  left: 675px;
+  top: 185px;
+  width: 165px;
+  min-height: 70px;
+  padding: 11px 15px;
+  text-align: left;
+  border: 1px solid var(--making-output-border);
+  border-radius: 5px;
+  background: var(--making-output-bg);
+  cursor: default;
+  box-shadow: none;
+}
+
+.making-output-node strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.making-output-node span {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* ========== 统一详情：快捷小窗（唯一挂载位：卡区右侧邻接、垂直以图区为基准居中） ========== */
+
+.making-quick-panel {
+  position: absolute;
+  left: 390px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 450px;
+  height: 330px;
+  z-index: 5;
+}
+
+.making-quick-window {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: var(--border-structural);
-  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--making-quick-border);
+  border-radius: 7px;
   background: var(--color-surface);
+  box-shadow: 0 12px 35px rgba(48, 57, 50, 0.16);
 }
 
-.making-card-panel.hidden {
-  display: none;
+.making-quick-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px 16px;
+  background: var(--making-note-bg);
+  border-bottom: var(--border-hairline);
+}
+
+.making-quick-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.making-quick-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.making-quick-body p {
+  margin: 0;
+}
+
+.making-quick-meta,
+.making-quick-help {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.making-quick-meta {
+  margin-bottom: 12px;
+}
+
+.making-quick-help {
+  margin: 12px 0;
+}
+
+.making-quick-open {
+  margin-top: 16px;
+}
+
+.making-quick-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px 14px;
+  border-top: var(--border-hairline);
+}
+
+/* 只读说明组（底座四项／每轮动态三项；无任何操作或配置控件） */
+.making-readonly-copy p {
+  margin: 0 0 12px;
+}
+
+.making-readonly-copy strong {
+  font-weight: 500;
+}
+
+.making-readonly-note {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* ========== 全页详情（占满导图视图；明确返回入口） ========== */
+
+.making-full-detail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 540px;
+  margin: 17px 0;
+}
+
+.making-full-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: var(--border-hairline);
+}
+
+.making-full-eyebrow {
+  margin: 0 0 3px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.making-full-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* 卡片五项（怎么做＝完整正文）；最大宽度居中阅读 */
+.making-card-panel {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .making-card-panel-section {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 8px;
+  padding: 21px 0;
+  border-bottom: var(--border-hairline);
+  min-width: 0;
+}
+
+.making-card-panel-section:first-child {
+  padding-top: 0;
 }
 
 .making-card-panel-heading {
-  font-size: 0.82rem;
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-muted);
 }
 
 .making-card-panel-body {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.75;
   color: var(--color-text-body);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* �����Ի������У���ʵ�Ự�����������������������ҵ㣩 */
-.making-conversation-pane {
+/* 卡片详情底部「修改／删除／添加」：统一转制作对话 */
+.making-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* 底座／每轮动态的只读全页详情 */
+.making-full-readonly {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 21px 0;
+  font-size: 15px;
+}
+
+/* ========== 阅读说明条（图区容器之外贴底；不参与图区垂直居中计算） ========== */
+
+.making-reading-notes {
   flex: none;
-  width: 400px;
-  min-width: 320px;
-  max-width: 420px;
+  margin-top: auto;
+  padding: 10px 12px;
+  background: var(--making-note-bg);
+  border-top: var(--border-hairline);
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.making-reading-notes strong {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.making-reading-notes p {
+  margin: 3px 0 0;
+}
+
+/* ��Ƭ������壨�㿨��չ������� */
+/* 制作对话区（「制作对话」标签内容区；真实会话接线挂点） */
+.making-conversation-pane {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--color-surface);
-  border-left: var(--border-hairline);
+  border-left: var(--border-structural);
 }
 
+/* �����Ի������У���ʵ�Ự�����������������������ҵ㣩 */
 .making-conversation-head {
   flex: none;
   padding: 0.6rem 1rem;
@@ -3702,9 +4060,36 @@ body.ai-window-dragging { user-select: none; }
 /* ���̿ɴ����ɼ� */
 /* 制作页视觉细化：局部令牌避免影响写作区；状态文字保持可读对比度。
    蓝色限于操作、选中边线与焦点，不作为检视内容的生效底色。 */
+/* 制作页视觉细化：局部令牌避免影响写作区；状态文字保持可读对比度。
+   蓝色限于操作、选中边线与焦点，不作为导图内容的生效底色。
+   导图专属色板（--making-*）取自 v10 定稿：浅色为定稿值，深色只做令牌跟随。 */
 #module-making {
   --color-muted: #595959;
   --color-warning: #805000;
+  --making-zone-bg: #f6f8f0;
+  --making-zone-border: #bac9ae;
+  --making-zone-hover-bg: #f0f5e9;
+  --making-zone-hover-border: #9eb68c;
+  --making-group-bg: #fffefa;
+  --making-group-border: #d5dfcc;
+  --making-card-border: #9db18e;
+  --making-card-hover-bg: #edf3e6;
+  --making-card-hover-border: #7d986b;
+  --making-card-active-border: #6b815c;
+  --making-wire: #bac3b3;
+  --making-arrow: #8a9a7e;
+  --making-assembly-bg: #f5f6f0;
+  --making-assembly-border: #d5dccf;
+  --making-output-bg: #f3f5ee;
+  --making-output-border: #d2dbca;
+  --making-ghost-border: #b7c5aa;
+  --making-ghost-hover-bg: #f2f6ec;
+  --making-base-bg: #f2f3ee;
+  --making-base-border: #dde1d7;
+  --making-auto-bg: #f1f3f5;
+  --making-auto-border: #dce1e5;
+  --making-quick-border: #9cad90;
+  --making-note-bg: #f5f6f1;
   font-size: 15px;
   overflow-wrap: anywhere;
 }
@@ -3739,8 +4124,6 @@ body.ai-window-dragging { user-select: none; }
 }
 
 .making-conversation-pane {
-  width: clamp(380px, 30vw, 420px);
-  min-width: 380px;
   border-left: var(--border-structural);
 }
 
@@ -3754,7 +4137,6 @@ body.ai-window-dragging { user-select: none; }
 
 .making-library-title,
 .making-conversation-title,
-.making-region-title,
 .making-trial-title {
   margin: 0;
   font-size: 15px;
@@ -3856,86 +4238,12 @@ body.ai-window-dragging { user-select: none; }
   line-height: 1.7;
 }
 
-.making-chain-empty p,
-.making-disclaimer,
-.making-region-note {
+.making-chain-empty p {
   margin: 0;
-}
-
-.making-region,
-.making-card-panel {
-  padding: 16px;
-  gap: 16px;
-  border-radius: var(--radius-sm);
-}
-
-.making-base-region {
-  background: var(--color-surface-subtle);
-  gap: 8px;
-}
-
-.making-base-suffix {
-  display: block;
-  margin-left: 0;
-}
-
-.making-card-list {
-  gap: 8px;
-}
-
-.making-card-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 16px;
-}
-
-.making-card-row[aria-expanded="true"] {
-  border-color: var(--color-ink);
-  box-shadow: none;
-  background: var(--color-surface-subtle);
-}
-
-.making-card-row-summary {
-  grid-column: 1 / -1;
-  white-space: normal;
-  line-height: 1.6;
-}
-
-.making-base-item + .making-base-item {
-  border-top: var(--hairline);
-}
-
-.making-base-item summary {
-  padding: 8px 0;
-}
-
-.making-base-item p {
-  margin: 0 0 8px;
-}
-
-.making-card-panel-section {
-  gap: 8px;
-  min-width: 0;
-}
-
-.making-card-panel-section + .making-card-panel-section {
-  padding-top: 16px;
-  border-top: var(--hairline);
-}
-
-.making-card-panel-heading {
-  margin: 0;
-  color: var(--color-ink);
 }
 
 .making-field-label,
 .making-chain-row-status,
-.making-card-row-version,
-.making-card-row-summary,
-.making-base-suffix,
-.making-region-note,
-.making-disclaimer,
 .making-conversation-notice,
 .making-recent-title,
 .making-recent-note,
@@ -4088,6 +4396,31 @@ body.ai-window-dragging { user-select: none; }
     --border-control: 2px solid #a3a3a3;
     --border-hairline: 1px solid #686868;
     --hairline: 1px solid #484848;
+    /* 导图专属色板的深色跟随（不专项设计，只令牌降档） */
+    --making-zone-bg: #262b24;
+    --making-zone-border: #4c5744;
+    --making-zone-hover-bg: #2f382b;
+    --making-zone-hover-border: #6c8060;
+    --making-group-bg: #2b2f28;
+    --making-group-border: #4c5744;
+    --making-card-border: #586850;
+    --making-card-hover-bg: #333d2f;
+    --making-card-hover-border: #7d986b;
+    --making-card-active-border: #8fa77e;
+    --making-wire: #586150;
+    --making-arrow: #71835f;
+    --making-assembly-bg: #2b2e29;
+    --making-assembly-border: #4c5344;
+    --making-output-bg: #2b2f2a;
+    --making-output-border: #4c5744;
+    --making-ghost-border: #586850;
+    --making-ghost-hover-bg: #2f382b;
+    --making-base-bg: #2a2c28;
+    --making-base-border: #4c4f46;
+    --making-auto-bg: #282b2f;
+    --making-auto-border: #464f57;
+    --making-quick-border: #586850;
+    --making-note-bg: #2a2c28;
   }
 }
 
@@ -4132,9 +4465,10 @@ body.ai-window-dragging { user-select: none; }
 }
 
 /* ���� խ����£�ڶ�����ҳ���л����ṹ���ӣ������Ի�����״̬����פ ���� */
+/* 更窄窗口：双标签已是唯一切换方式（互斥显隐在基础规则），此处只做紧凑化；
+   状态条常驻在标签之上，切换保留输入与浏览位置由切换逻辑保证 */
 @media (max-width: 880px) {
   .making-view-switch {
-    display: flex;
     padding: 8px 16px;
     gap: 8px;
   }
@@ -4155,13 +4489,5 @@ body.ai-window-dragging { user-select: none; }
     flex: 1;
     border-left: none;
     border-top: var(--border-hairline);
-  }
-
-  #module-making[data-making-view="chat"] .making-inspector {
-    display: none;
-  }
-
-  #module-making:not([data-making-view="chat"]) .making-conversation-pane {
-    display: none;
   }
 }

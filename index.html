@@ -576,9 +576,10 @@
         </div>
       </section>
 
-      <!-- 制作模块（add-making-module-core 任务组 7）：状态条常驻＋三区并列
-           （链路库找成品｜结构检视看成品与确定使用｜制作对话做零件）。
-           姿态／背景／方式插槽不出现占位；无拖拽／步骤编号／执行箭头。 -->
+      <!-- 制作模块（add-chain-mindmap-v0）：状态条常驻＋内容区双标签「导图｜制作对话」＋
+           链路库左栏。导图按 v10 定稿：三区同构（自定义要求／固定底座／每轮动态）＋
+           箭头汇入组装＋输出象征块；姿态／背景／方式插槽不出现占位；无拖拽／步骤编号／
+           卡片间执行箭头；一切加／改／删经制作对话。 -->
       <section id="module-making" class="module-view hidden" aria-label="制作模块">
         <!-- 顶部当前链路状态条：只反映全局当前链路（链路库 active），不随浏览变化 -->
         <div id="making-status-bar" class="making-status-bar" role="status" aria-live="polite">
@@ -600,10 +601,10 @@
           <button id="making-library-toggle" class="making-library-toggle" type="button" aria-expanded="false" aria-controls="making-chain-library">链路库</button>
         </div>
 
-        <!-- 更窄窗口：页内切换「结构检视／制作对话」（状态条常驻；切换不重建 DOM，
-             保留未发送输入与浏览位置） -->
+        <!-- 内容区双标签「导图｜制作对话」：宽窄常驻；切换只改 data-making-view 属性，
+             不重建 DOM（保留未发送输入与浏览位置）；状态条常驻在标签之上 -->
         <div id="making-view-switch" class="making-view-switch" role="tablist" aria-label="制作页视图切换">
-          <button id="making-view-inspect-btn" class="making-view-switch-btn active" type="button" role="tab" aria-selected="true" aria-controls="making-inspector">结构检视</button>
+          <button id="making-view-map-btn" class="making-view-switch-btn active" type="button" role="tab" aria-selected="true" aria-controls="making-inspector">导图</button>
           <button id="making-view-chat-btn" class="making-view-switch-btn" type="button" role="tab" aria-selected="false" aria-controls="making-conversation-pane">制作对话</button>
         </div>
 
@@ -631,8 +632,10 @@
             </div>
           </aside>
 
-          <!-- 中：结构检视（看成品与确定使用；点卡在下方展开检视面板） -->
-          <section id="making-inspector" class="making-inspector" aria-label="结构检视">
+          <!-- 中：导图标签内容区（正在看什么）。图区容器独立：组装流＋输出块以图区为
+               基准垂直居中；快捷小窗唯一挂载位在图区内；阅读说明条在图区容器之外贴底，
+               不参与居中计算 -->
+          <section id="making-inspector" class="making-inspector" aria-label="导图">
             <div id="making-inspector-empty" class="making-inspector-empty">
               <p>从左侧选择一条链路，查看它的组装结构。</p>
             </div>
@@ -646,41 +649,92 @@
                 <button id="making-enable-btn" class="making-action-btn primary" type="button" hidden></button>
                 <button id="making-delete-chain-btn" class="making-action-btn" type="button">删除链路</button>
               </header>
-              <p class="making-disclaimer">展示链路的组装结构与适用条件，不代表 AI 内部思考过程。</p>
 
-              <div class="making-region">
-                <h3 class="making-region-title">链路可变区</h3>
-                <p class="making-region-note">要求类插槽：想让 AI 多做什么、别做什么</p>
-                <div id="making-card-list" class="making-card-list" role="list"></div>
-                <p id="making-no-cards" class="making-no-cards hidden">这个版本还没有卡片。可以在制作对话里口述要求，让助手起草。</p>
+              <!-- 图区（零件、组装、输出的组成关系）。连线 SVG 只承载「分区→组装」
+                   「组装→输出」两类流线，箭头由控制器渲染时挂载；卡片节点不生成
+                   任何连线，路径由控制器按视图模型的连线数据渲染 -->
+              <div id="making-graph" class="making-graph" aria-label="零件、组装、输出的组成关系">
+                <svg id="making-wires" class="making-wires" viewBox="0 0 840 440" aria-hidden="true">
+                  <defs>
+                    <marker id="making-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                      <path d="M1 1 L7 4 L1 7"></path>
+                    </marker>
+                  </defs>
+                  <g id="making-wire-paths"></g>
+                </svg>
+
+                <!-- 三区之一：自定义要求（可改·可加；定高＋区内滚动，ghost 在滚动内容尾部） -->
+                <section id="making-zone-custom" class="making-zone making-zone-custom" aria-label="自定义要求">
+                  <header class="making-zone-heading">
+                    <h4 class="making-zone-title">
+                      <button id="making-custom-trigger" class="making-zone-trigger" type="button" aria-expanded="false" aria-controls="making-quick-panel">自定义要求</button>
+                    </h4>
+                    <span class="making-zone-suffix">可改 · 可加</span>
+                  </header>
+                  <div id="making-zone-scroll" class="making-zone-scroll" tabindex="0" aria-label="自定义要求内容，可滚动">
+                    <section class="making-card-group" aria-label="要求类插槽">
+                      <div class="making-group-title">
+                        <h4>要求类插槽 <span id="making-card-count" class="making-card-count">· 0 张卡</span></h4>
+                      </div>
+                      <div id="making-card-list" class="making-slot-list" role="list"></div>
+                      <p id="making-no-cards" class="making-no-cards hidden">这个版本还没有卡片。可以在制作对话里口述要求，让助手起草。</p>
+                      <button id="making-add-card-btn" class="making-ghost" type="button" aria-expanded="false" aria-controls="making-quick-panel">＋ 添加要求卡</button>
+                    </section>
+                  </div>
+                </section>
+
+                <!-- 三区之二：固定底座（所有链路共用·只读；内容与样式在任何链路、任何版本完全一致） -->
+                <button id="making-base-node" class="making-zone making-source-node making-base-node" type="button" aria-expanded="false" aria-controls="making-quick-panel">
+                  <span class="making-zone-heading"><strong>固定底座</strong><span>共用 · 只读</span></span>
+                  <span class="making-zone-items"><span>红线</span><span>骨</span><span>工具</span><span>材料规则</span></span>
+                </button>
+
+                <!-- 三区之三：每轮动态（自动；无 hover 可点态） -->
+                <button id="making-dynamic-node" class="making-zone making-source-node making-auto-node" type="button" aria-expanded="false" aria-controls="making-quick-panel">
+                  <span class="making-zone-heading"><strong>每轮动态</strong><span>自动</span></span>
+                  <span class="making-zone-items"><span>问题</span><span>材料</span><span>入口</span></span>
+                </button>
+
+                <!-- 组装（三区箭头汇入处；非交互） -->
+                <div class="making-assembly-node">组装</div>
+
+                <!-- 输出象征块：纯象征、不可点、无任何详情入口、无 hover 可点态 -->
+                <div id="making-output-node" class="making-output-node" aria-label="提示词，组装输出示意">
+                  <strong>提示词</strong>
+                  <span>组装输出</span>
+                </div>
+
+                <!-- 统一详情快捷小窗：唯一挂载位（卡区右侧邻接、垂直以图区为基准居中；
+                     卡片／自定义要求／固定底座／每轮动态／添加说明共用同位同尺寸） -->
+                <div id="making-quick-panel" class="making-quick-panel hidden"></div>
               </div>
 
-              <div class="making-region making-base-region">
-                <h3 class="making-region-title">固定底座<span class="making-base-suffix">所有链路共用 · 不可修改</span></h3>
-                <details class="making-base-item">
-                  <summary>红线</summary>
-                  <p>AI 不改写你的文档；回复只是临时材料，判断权始终在你手里。</p>
-                </details>
-                <details class="making-base-item">
-                  <summary>骨（底线立场）</summary>
-                  <p>AI 只提观察、问题与可能性，不替你判断创意高低，不把假设当成事实。</p>
-                </details>
-                <details class="making-base-item">
-                  <summary>工具</summary>
-                  <p>阅读、检索等公共能力对所有链路一样可用，不按链路分档。</p>
-                </details>
-                <details class="making-base-item">
-                  <summary>材料规则</summary>
-                  <p>AI 只按你授权的范围读取作品材料；链路不改变任何读取授权。</p>
-                </details>
-              </div>
+              <!-- 全页详情（占满导图视图；明确返回入口）。卡片＝五项＋底部操作转制作对话；
+                   固定底座／每轮动态＝只读说明，无任何操作或配置控件 -->
+              <section id="making-full-detail" class="making-full-detail hidden" aria-label="完整详情">
+                <header class="making-full-top">
+                  <div>
+                    <p id="making-full-eyebrow" class="making-full-eyebrow"></p>
+                    <h3 class="making-full-title">完整详情</h3>
+                  </div>
+                  <button id="making-full-back" class="making-action-btn" type="button">返回导图 · 快捷详情</button>
+                </header>
+                <section id="making-card-panel" class="making-card-panel hidden" aria-label="卡片检视"></section>
+                <div id="making-full-readonly" class="making-full-readonly hidden"></div>
+              </section>
 
-              <!-- 卡片检视面板（点卡后展开；五项：身份／何时用／怎么做／本版变化／试问记录） -->
-              <section id="making-card-panel" class="making-card-panel hidden" aria-label="卡片检视"></section>
+              <!-- 阅读说明条：图区容器之外贴底，固定三句（不参与图区垂直居中计算） -->
+              <aside id="making-reading-notes" class="making-reading-notes" aria-label="阅读说明">
+                <strong>阅读说明</strong>
+                <p>箭头只表示流向组装，不表示卡片执行顺序</p>
+                <p>启用对象是整个链路版本</p>
+                <p>展示链路的组装结构与适用条件，不代表 AI 内部思考过程。</p>
+              </aside>
             </div>
           </section>
 
-          <!-- 右：制作对话（做零件；会话按链路组织：空态引导＋最近会话／历史列表） -->
+          <!-- 「制作对话」标签内容区（做零件；add-chain-mindmap-v0 起为内容区双标签之一，
+               DOM 与行为原样保留）：会话按链路组织：空态引导＋最近会话／历史列表 -->
           <aside id="making-conversation-pane" class="making-conversation-pane" aria-label="制作对话">
             <header class="making-conversation-head">
               <h2 class="making-conversation-title">正在制作：<span id="making-conversation-object">未选择</span></h2>

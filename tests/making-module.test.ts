@@ -24,22 +24,28 @@ import { setupMaking, type MakingController } from "../src/making/making-module.
 import {
   buildCardPanelView,
   buildChainLibraryRows,
-  buildMakingInspectorView,
+  buildMakingDetail,
+  buildMakingMapView,
   buildMakingStatusView,
   cardSummary,
   describeChainDeletion,
   describeVersionChange,
   describeVersionTrials,
-  MAKING_DISCLAIMER,
+  makingTransferPrefill,
+  MAKING_BASE_ITEMS,
+  MAKING_DYNAMIC_ITEMS,
+  MAKING_DYNAMIC_NOTE,
 } from "../src/making/making-view-model.ts";
 import type { Chain, ChainLibrary, ChainVersion, InvokeFn, MakingConversationRecord } from "../src/project-api.ts";
 
 /**
- * 制作模块第四页面的分层测试（add-making-module-core 任务组 7）：
- * - 纯显示决策（view-model）：三态分离措辞、启用/回退承接文字、本版变化、试问记录；
+ * 制作模块第四页面的分层测试（add-chain-mindmap-v0 导图重构）：
+ * - 纯显示决策（view-model）：导图三区数据、统一详情 DetailModel、三态分离措辞、
+ *   启用/回退承接文字、本版变化、试问记录；
  * - DOM 契约：真实 index.html 解析后 `getAppDom().making` 全量解析、缺失 id 明确报错；
  * - 控制器行为（happy-dom + 假 invoke/确认）：浏览不改变状态条、启用/回退/停用/删除
- *   全部经确认后调用后端命令、窄窗切换保留未发送输入。
+ *   全部经确认后调用后端命令、三类对象同位同尺寸快捷小窗、全页详情打开与返回、
+ *   操作转制作对话、标签切换保留未发送输入、底座各版本渲染完全一致。
  */
 
 // ========== 数据夹具 ==========
@@ -123,7 +129,44 @@ test("library rows mark newer drafts only for the active chain", () => {
   assert.equal(rows[1].hasNewerDraft, false, "未启用链路的新版本不算「新草稿」提示");
 });
 
-test("inspector view separates draft viewing from the active version with concrete wording", () => {
+test("map view carries the three isomorphic zones with unified naming", () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "反差与反转", trigger: "适用：探索情节可能性时" }]),
+    version(3, [
+      { title: "反差与反转", trigger: "适用：探索情节可能性时\n不适用：只讨论台词情绪时" },
+      { title: "保留不同可能", trigger: "适用：y" },
+    ]),
+    version(4, [{ title: "反差与反转", trigger: "适用：探索情节可能性时" }]),
+  ]);
+  const data = library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id });
+
+  const view = buildMakingMapView(data, chainA.id, chainA.versions[1].id)!;
+  // 三区命名逐字：「自定义要求」「固定底座」「每轮动态」；不出现「链路可变区」。
+  assert.equal(view.customZone.heading, "自定义要求");
+  assert.equal(view.customZone.affordanceLabel, "可改 · 可加");
+  assert.equal(view.customZone.slotTitle, "要求类插槽");
+  assert.equal(view.customZone.cardCountLabel, "· 2 张卡");
+  assert.deepEqual(
+    view.customZone.cards.map((card) => card.title),
+    ["反差与反转", "保留不同可能"],
+  );
+  assert.equal(view.baseZone.heading, "固定底座");
+  assert.equal(view.baseZone.suffix, "共用 · 只读");
+  assert.deepEqual(view.baseZone.items, MAKING_BASE_ITEMS.map((item) => item.title));
+  assert.equal(view.dynamicZone.heading, "每轮动态");
+  assert.equal(view.dynamicZone.suffix, "自动");
+  assert.deepEqual(view.dynamicZone.items, MAKING_DYNAMIC_ITEMS.map((item) => item.title));
+  assert.equal(view.assemblyLabel, "组装");
+  assert.equal(view.outputLabel, "提示词");
+  assert.equal(view.outputSublabel, "组装输出");
+  assert.doesNotMatch(JSON.stringify(view), /链路可变区/, "用户可见命名统一「自定义要求」");
+
+  // 连线数据：仅四条流线（三区→组装、组装→输出），无卡片间连线。
+  assert.equal(view.wires.length, 4);
+  assert.ok(view.wires.every((wire) => wire.d.startsWith("M370 ") || wire.d.startsWith("M588 ")));
+});
+
+test("map view separates draft viewing from the active version with concrete wording", () => {
   const chainA = chain("情节探索", [
     version(1, [{ title: "反差与反转", trigger: "适用：探索情节可能性时\n不适用：只讨论台词情绪时" }]),
     version(3, [{ title: "反差与反转", trigger: "适用：探索情节可能性时" }]),
@@ -132,14 +175,14 @@ test("inspector view separates draft viewing from the active version with concre
   const data = library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id });
 
   // 查看启用版本：无启用入口，状态标注「当前启用版本」，标题无版本后缀。
-  const activeView = buildMakingInspectorView(data, chainA.id, chainA.versions[1].id)!;
+  const activeView = buildMakingMapView(data, chainA.id, chainA.versions[1].id)!;
   assert.equal(activeView.title, "正在查看：情节探索·第3版");
   assert.equal(activeView.stateLabel, "当前启用版本");
   assert.equal(activeView.enableLabel, null);
   assert.equal(activeView.isActiveVersion, true);
 
   // 查看更新的草稿（第4版）：标题标注草稿，明示「尚未启用」，启用文字写明替换对象与生效范围。
-  const draftView = buildMakingInspectorView(data, chainA.id, chainA.versions[2].id)!;
+  const draftView = buildMakingMapView(data, chainA.id, chainA.versions[2].id)!;
   assert.equal(draftView.title, "正在查看：情节探索·第4版（草稿）");
   assert.equal(draftView.stateLabel, "尚未启用");
   assert.equal(draftView.enableLabel, "启用「情节探索·第4版」");
@@ -150,25 +193,23 @@ test("inspector view separates draft viewing from the active version with concre
   assert.equal(draftView.isRollback, false);
 
   // 查看更早版本（第1版，启用第3版）：标题标注历史版本；回退场景，确认文字呈现保留承诺。
-  const rollbackView = buildMakingInspectorView(data, chainA.id, chainA.versions[0].id)!;
+  const rollbackView = buildMakingMapView(data, chainA.id, chainA.versions[0].id)!;
   assert.equal(rollbackView.title, "正在查看：情节探索·第1版（历史版本）");
   assert.equal(rollbackView.isRollback, true);
   assert.equal(rollbackView.enableLabel, "回退到「情节探索·第1版」");
   assert.match(rollbackView.rollbackConfirm!, /较新版本及试问证据保留/);
   assert.match(rollbackView.rollbackConfirm!, /回退到「情节探索·第1版」，替换当前第3版/);
 
-  // 版本记录倒序（最新在前），卡片摘要来自触发描述首行。
+  // 版本记录倒序（最新在前）。
   assert.deepEqual(
     activeView.versionOptions.map((option) => option.label),
     ["第4版（最新）", "第3版", "第1版"],
   );
-  assert.equal(activeView.cards[0].summary, "适用：探索情节可能性时");
-  assert.equal(activeView.disclaimer, MAKING_DISCLAIMER);
 });
 
 test("enable wording states first-time activation without a replacement target", () => {
   const chainB = chain("对话打磨", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
-  const view = buildMakingInspectorView(library([chainB]), chainB.id, chainB.versions[0].id)!;
+  const view = buildMakingMapView(library([chainB]), chainB.id, chainB.versions[0].id)!;
   assert.equal(view.enableLabel, "启用「对话打磨·第1版」");
   assert.equal(
     view.enableConfirm,
@@ -226,6 +267,89 @@ test("card panel carries the full body and the five required items", () => {
   const chainB = chain("乙", [empty]);
   const emptyPanel = buildCardPanelView(library([chainB]), chainB.id, empty.id, empty.cards[0])!;
   assert.equal(emptyPanel.howTo, "（无正文）");
+});
+
+test("detail model unifies the three clickable sources with per-source operability", () => {
+  const v3 = version(3, [
+    { title: "反差与反转", trigger: "适用：探索情节可能性时\n不适用：只讨论台词情绪时", body: "正文" },
+    { title: "保留不同可能", trigger: "适用：y" },
+  ]);
+  const chainA = chain("情节探索", [version(1, [{ title: "旧卡", trigger: "适用：x" }]), v3, version(4, [{ title: "反差与反转", trigger: "适用：x" }])]);
+  const data = library([chainA], { chainId: chainA.id, versionId: v3.id });
+
+  // 卡片：快捷摘要＋五项全页详情＋底部三操作（修改／删除／添加，转制作对话）。
+  const card = buildMakingDetail(data, chainA.id, v3.id, { kind: "card", cardId: v3.cards[0].id })!;
+  assert.equal(card.kind, "card");
+  assert.equal(card.title, "反差与反转");
+  assert.equal(card.quickMeta, "要求类 · 情节探索·第3版");
+  assert.equal(card.quickSummary, "适用：探索情节可能性时");
+  assert.equal(card.quickHelp, "不适用：只讨论台词情绪时");
+  assert.equal(card.hasFullDetail, true);
+  assert.equal(card.eyebrow, "要求类 / 反差与反转");
+  assert.equal(card.card!.howTo, "正文", "怎么做＝完整正文");
+  assert.deepEqual(
+    card.actions!.map((action) => action.label),
+    ["请制作助手修改", "请制作助手删除", "请制作助手添加要求卡"],
+  );
+  assert.equal(card.actions![0].cardTitle, "反差与反转");
+  assert.equal(card.actions![2].cardTitle, null, "添加落在插槽层");
+
+  // 草稿版本的卡片 meta 明示「尚未启用」。
+  const draft = buildMakingDetail(data, chainA.id, chainA.versions[2].id, {
+    kind: "card",
+    cardId: chainA.versions[2].cards[0].id,
+  })!;
+  assert.equal(draft.quickMeta, "要求类 · 情节探索·第4版 · 尚未启用");
+
+  // 固定底座／每轮动态：只读、无任何操作或配置控件，但有完整详情入口。
+  const base = buildMakingDetail(data, chainA.id, v3.id, { kind: "base" })!;
+  assert.equal(base.title, "固定底座 · 共用 · 只读");
+  assert.equal(base.actions, null);
+  assert.equal(base.hasFullDetail, true);
+  assert.deepEqual(
+    base.readonlyItems!.map((item) => item.title),
+    MAKING_BASE_ITEMS.map((item) => item.title),
+  );
+
+  const dynamic = buildMakingDetail(data, chainA.id, v3.id, { kind: "dynamic" })!;
+  assert.equal(dynamic.title, "每轮动态 · 自动");
+  assert.equal(dynamic.actions, null);
+  assert.equal(dynamic.hasFullDetail, true);
+  assert.deepEqual(
+    dynamic.readonlyItems!.map((item) => item.title),
+    MAKING_DYNAMIC_ITEMS.map((item) => item.title),
+  );
+  assert.equal(dynamic.readonlyNote, MAKING_DYNAMIC_NOTE);
+
+  // 自定义要求区／添加说明：快捷小窗说明＋仅「添加」操作；无全页形态。
+  const zone = buildMakingDetail(data, chainA.id, v3.id, { kind: "custom-zone" })!;
+  assert.equal(zone.title, "自定义要求 · 可改 · 可加");
+  assert.equal(zone.quickMeta, "要求类插槽 · 2 张卡");
+  assert.equal(zone.hasFullDetail, false);
+  assert.deepEqual(zone.actions!.map((action) => action.action), ["add"]);
+
+  const add = buildMakingDetail(data, chainA.id, v3.id, { kind: "add-card" })!;
+  assert.equal(add.title, "要求类 · 添加要求卡");
+  assert.equal(add.hasFullDetail, false);
+  assert.deepEqual(add.actions!.map((action) => action.action), ["add"]);
+
+  // 来源失效（卡片不存在）：诚实返回 null。
+  assert.equal(buildMakingDetail(data, chainA.id, v3.id, { kind: "card", cardId: "card-none" }), null);
+});
+
+test("detail transfer prefill names the action and the target card", () => {
+  assert.equal(
+    makingTransferPrefill({ action: "modify", label: "请制作助手修改", cardTitle: "反差与反转" }),
+    "请制作助手修改「反差与反转」：",
+  );
+  assert.equal(
+    makingTransferPrefill({ action: "delete", label: "请制作助手删除", cardTitle: "反差与反转" }),
+    "请制作助手删除「反差与反转」：",
+  );
+  assert.equal(
+    makingTransferPrefill({ action: "add", label: "请制作助手添加要求卡", cardTitle: null }),
+    "请制作助手添加要求卡：",
+  );
 });
 
 test("chain deletion wording states scope and irreversibility", () => {
@@ -345,12 +469,27 @@ test("real index.html resolves the complete making DOM contract", () => {
     assert.ok(making.inspectorTitle);
     assert.ok(making.versionSelect);
     assert.ok(making.enableBtn);
+    // 导图契约：图区容器、连线 SVG、三区、统一详情两挂载位。
+    assert.ok(making.graph);
+    assert.ok(making.wires);
+    assert.ok(making.wirePaths);
+    assert.ok(making.zoneCustom);
+    assert.ok(making.zoneCustomTrigger);
+    assert.ok(making.zoneScroll);
     assert.ok(making.cardList);
+    assert.ok(making.addCardBtn);
+    assert.ok(making.baseNode);
+    assert.ok(making.dynamicNode);
+    assert.ok(making.quickPanel);
+    assert.ok(making.fullDetail);
+    assert.ok(making.fullBackBtn);
     assert.ok(making.cardPanel);
+    assert.ok(making.fullReadonly);
+    assert.ok(making.readingNotes);
     assert.ok(making.conversationBody);
     assert.ok(making.conversationStartBtn);
     assert.ok(making.conversationInput);
-    assert.ok(making.viewInspectBtn);
+    assert.ok(making.viewMapBtn);
     assert.ok(making.viewChatBtn);
     assert.ok(making.libraryToggle);
   } finally {
@@ -428,7 +567,7 @@ class FakeChainStore {
           this.data.active = null;
           return undefined as T;
         case "trial_list_for_version":
-          // 车道 F2b 起检视面板的「试问记录」栏按版本读证据列表；本夹具无证据。
+          // 详情面板的「试问记录」栏按版本读证据列表；本夹具无证据。
           return { trials: [] } as T;
         case "chain_delete": {
           this.data.chains = this.data.chains.filter((chain) => chain.id !== args?.chainId);
@@ -492,6 +631,13 @@ function click(fixture: MakingFixture, id: string): void {
   void flushPromises();
 }
 
+async function browseChain(fixture: MakingFixture, chainId: string): Promise<void> {
+  const row = fixture.document.querySelector<HTMLButtonElement>(`[data-chain-id="${chainId}"]`);
+  assert.ok(row, "链路行已渲染");
+  row.click();
+  await flushPromises();
+}
+
 test("status bar tracks the global active chain and ignores browsing", async () => {
   const chainA = chain("情节探索", [
     version(1, [{ title: "反差与反转", trigger: "适用：探索情节可能性时\n不适用：只讨论台词情绪时" }]),
@@ -506,11 +652,8 @@ test("status bar tracks the global active chain and ignores browsing", async () 
     assert.equal(idle.classList.contains("hidden"), true);
     assert.match(makingElement(fixture, "making-status-text").textContent ?? "", /当前链路：情节探索·第3版/);
 
-    // 浏览另一条链路：检视标题变化，状态条不变（三态分离）。
-    const rowB = fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainB.id + '"]');
-    assert.ok(rowB, "链路 B 行已渲染");
-    rowB.click();
-    await flushPromises();
+    // 浏览另一条链路：导图标题变化，状态条不变（三态分离）。
+    await browseChain(fixture, chainB.id);
     assert.match(makingElement(fixture, "making-inspector-title").textContent ?? "", /正在查看：对话打磨·第1版/);
     assert.equal(makingElement(fixture, "making-inspector-state").textContent, "尚未启用");
     assert.match(makingElement(fixture, "making-status-text").textContent ?? "", /当前链路：情节探索·第3版/);
@@ -553,34 +696,280 @@ test("load failure surfaces an explicit error instead of a fake state", async ()
   }
 });
 
-test("clicking a card expands the five-item inspection panel below", async () => {
+test("the map renders zones, wires, and the reading notes with exact semantics", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "反差与反转", trigger: "适用：探索情节可能性时" }]),
+  ]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    // 三区命名与插槽组。
+    const zone = makingElement(fixture, "making-zone-custom");
+    assert.equal(zone.getAttribute("aria-label"), "自定义要求");
+    assert.match(zone.textContent ?? "", /自定义要求/);
+    assert.match(zone.textContent ?? "", /要求类插槽/);
+    assert.match(makingElement(fixture, "making-card-count").textContent ?? "", /· 1 张卡/);
+    assert.match(makingElement(fixture, "making-base-node").textContent ?? "", /固定底座/);
+    assert.match(makingElement(fixture, "making-dynamic-node").textContent ?? "", /每轮动态/);
+    // 自定义要求区定高滚动：卡行与 ghost 都在滚动容器内。
+    const scroll = makingElement(fixture, "making-zone-scroll");
+    assert.ok(scroll.contains(makingElement(fixture, "making-card-list")), "卡行在滚动内容内");
+    assert.ok(scroll.contains(makingElement(fixture, "making-add-card-btn")), "ghost 在滚动内容尾部");
+    // 箭头只在连线 SVG：四条流线全部带 marker-end，卡行之间无任何 svg/path。
+    const paths = [...fixture.document.querySelectorAll("#making-wire-paths path")];
+    assert.equal(paths.length, 4, "三区→组装 ×3＋组装→输出 ×1");
+    assert.ok(paths.every((path) => path.getAttribute("marker-end") === "url(#making-arrow)"));
+    assert.equal(fixture.document.querySelectorAll("#making-card-list svg, #making-card-list path").length, 0);
+    // 阅读说明条三句逐字，位于图区容器之外。
+    const notes = makingElement(fixture, "making-reading-notes");
+    assert.equal(makingElement(fixture, "making-graph").contains(notes), false, "阅读说明条在图区容器外");
+    assert.match(notes.textContent ?? "", /箭头只表示流向组装，不表示卡片执行顺序/);
+    assert.match(notes.textContent ?? "", /启用对象是整个链路版本/);
+    assert.match(notes.textContent ?? "", /展示链路的组装结构与适用条件，不代表 AI 内部思考过程。/);
+    // 输出块不可点形态：非按钮元素。
+    assert.equal(makingElement(fixture, "making-output-node").tagName, "DIV");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("the fixed base renders identically across chains, versions, and states", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "卡", trigger: "适用：x" }]),
+    version(2, [{ title: "卡", trigger: "适用：x" }]),
+  ]);
+  const chainB = chain("对话打磨", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
+  const fixture = await makingFixture(library([chainA, chainB], { chainId: chainA.id, versionId: chainA.versions[0].id }));
+  try {
+    await browseChain(fixture, chainA.id);
+    const baseline = makingElement(fixture, "making-base-node").outerHTML;
+    // 切版本（草稿）与切链路后逐字节一致。
+    const select = makingElement(fixture, "making-version-select") as HTMLSelectElement;
+    select.value = chainA.versions[1].id;
+    dispatchEvent(fixture.page, select, "change");
+    await flushPromises();
+    assert.equal(makingElement(fixture, "making-base-node").outerHTML, baseline);
+    await browseChain(fixture, chainB.id);
+    assert.equal(makingElement(fixture, "making-base-node").outerHTML, baseline);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("three detail sources open the same quick window host in turn", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "反差与反转", trigger: "适用：探索情节可能性时", body: "正文" }]),
+  ]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    const host = makingElement(fixture, "making-quick-panel");
+    // 卡片 → 底座 → 每轮动态：同一个挂载元素轮流承载，位置与尺寸由结构统一。
+    const cardRow = fixture.document.querySelector<HTMLButtonElement>(".making-card-row");
+    assert.ok(cardRow, "卡片行已渲染");
+    cardRow.click();
+    await flushPromises();
+    assert.equal(host.classList.contains("hidden"), false);
+    assert.equal(host.dataset.source, "card");
+    assert.match(host.textContent ?? "", /反差与反转/);
+    assert.match(host.textContent ?? "", /打开完整详情/);
+    assert.equal(cardRow.getAttribute("aria-expanded"), "true");
+
+    click(fixture, "making-base-node");
+    assert.equal(host.dataset.source, "base");
+    assert.match(host.textContent ?? "", /固定底座 · 共用 · 只读/);
+    assert.match(host.textContent ?? "", /红线/);
+    assert.equal(cardRow.getAttribute("aria-expanded"), "false", "上一个来源的展开态复位");
+
+    click(fixture, "making-dynamic-node");
+    assert.equal(host.dataset.source, "dynamic");
+    assert.match(host.textContent ?? "", /每轮动态 · 自动/);
+    // 只读来源的小窗没有任何操作按钮（仅「关闭详情」与「打开完整详情」）。
+    const buttons = [...host.querySelectorAll("button")].map((button) => button.textContent);
+    assert.deepEqual([...buttons].sort(), ["关闭详情", "打开完整详情"]);
+
+    // 关闭即回：小窗收起、展开态复位；再次点开仍走同一挂载位。
+    const close = [...host.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "关闭详情");
+    assert.ok(close, "关闭入口已渲染");
+    close.click();
+    await flushPromises();
+    assert.equal(host.classList.contains("hidden"), true);
+    assert.equal(makingElement(fixture, "making-dynamic-node").getAttribute("aria-expanded"), "false");
+    click(fixture, "making-base-node");
+    assert.equal(host.classList.contains("hidden"), false);
+    assert.equal(host.dataset.source, "base");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("quick window stays in place for upper and lower cards", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [
+      { title: "上卡", trigger: "适用：上" },
+      { title: "下卡", trigger: "适用：下" },
+    ]),
+  ]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    const rows = [...fixture.document.querySelectorAll<HTMLButtonElement>(".making-card-row")];
+    assert.equal(rows.length, 2);
+    rows[0].click();
+    await flushPromises();
+    const host = makingElement(fixture, "making-quick-panel");
+    const firstWindow = host.querySelector(".making-quick-window");
+    assert.ok(firstWindow);
+    assert.match(host.textContent ?? "", /上卡/);
+    // 点下方卡：同一挂载元素、同一窗口形态，仅内容变化（不随来源位移）。
+    rows[1].click();
+    await flushPromises();
+    assert.equal(makingElement(fixture, "making-quick-panel"), host);
+    assert.equal(host.querySelector(".making-quick-window")?.classList.contains("making-quick-window"), true);
+    assert.match(host.textContent ?? "", /下卡/);
+    assert.doesNotMatch(host.textContent ?? "", /上卡/);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("full detail occupies the map view and returns to the quick window", async () => {
   const body = "先指出人物动机，再给两种走向，由用户决定。";
   const chainA = chain("情节探索", [
     version(2, [{ title: "反差与反转", trigger: "适用：探索情节可能性时", body }], { trials: 1 }),
   ]);
   const fixture = await makingFixture(library([chainA]));
   try {
-    const row = fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]');
-    row!.click();
-    await flushPromises();
-
+    await browseChain(fixture, chainA.id);
     const cardRow = fixture.document.querySelector<HTMLButtonElement>(".making-card-row");
-    assert.ok(cardRow, "卡片行已渲染");
-    cardRow.click();
+    cardRow!.click();
     await flushPromises();
 
+    // 打开完整详情：图区整体让位，卡片五项完整可达（怎么做＝完整正文）。
+    const openFull = fixture.document.querySelector<HTMLButtonElement>(".making-quick-open");
+    assert.ok(openFull, "「打开完整详情」入口已渲染");
+    openFull.click();
+    await flushPromises();
+    const full = makingElement(fixture, "making-full-detail");
+    assert.equal(full.classList.contains("hidden"), false);
+    assert.equal(makingElement(fixture, "making-graph").classList.contains("hidden"), true, "图区整体隐藏");
     const panel = makingElement(fixture, "making-card-panel");
-    assert.equal(panel.classList.contains("hidden"), false);
     const headings = [...panel.querySelectorAll(".making-card-panel-heading")].map((node) => node.textContent);
     assert.deepEqual(headings, ["身份", "何时用", "怎么做", "本版变化", "试问记录"]);
     const bodies = [...panel.querySelectorAll(".making-card-panel-body")].map((node) => node.textContent);
     assert.match(bodies[0]!, /卡名「反差与反转」/);
-    assert.equal(bodies[1], "适用：探索情节可能性时");
     assert.equal(bodies[2], body, "完整正文");
-    assert.match(bodies[3]!, /本版是第 1 个版本/);
     assert.match(bodies[4]!, /1 次试问记录/);
-    // 卡片上没有独立启用开关：启用入口只出现在检视头部（链路版本层级）。
-    assert.equal(panel.querySelector("button"), null, "卡片检视面板内无任何按钮");
+    assert.match(makingElement(fixture, "making-full-eyebrow").textContent ?? "", /要求类 \/ 反差与反转/);
+
+    // 返回导图：恢复图区与原来源（卡片）的快捷小窗，不跳回别的来源。
+    // 返回会重渲染卡片五项并再排一轮试问记录的异步读取（trial_list_for_version
+    // 的续段要建 DOM）——等完该异步再结束用例，避免续段在夹具销毁、全局 document
+    // 复位后才执行。
+    click(fixture, "making-full-back");
+    await flushPromises();
+    assert.equal(makingElement(fixture, "making-full-detail").classList.contains("hidden"), true);
+    assert.equal(makingElement(fixture, "making-graph").classList.contains("hidden"), false);
+    const host = makingElement(fixture, "making-quick-panel");
+    assert.equal(host.classList.contains("hidden"), false);
+    assert.equal(host.dataset.source, "card", "返回后恢复原来源的快捷窗");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("readonly full details carry no operation controls", async () => {
+  const chainA = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    // 固定底座：只读详情无任何修改／删除／添加控件。
+    click(fixture, "making-base-node");
+    const openBase = fixture.document.querySelector<HTMLButtonElement>(".making-quick-open");
+    assert.ok(openBase);
+    openBase.click();
+    await flushPromises();
+    const readonlyMount = makingElement(fixture, "making-full-readonly");
+    assert.equal(readonlyMount.classList.contains("hidden"), false);
+    assert.equal(readonlyMount.querySelectorAll("button, input, select, textarea").length, 0, "只读详情零控件");
+    assert.match(readonlyMount.textContent ?? "", /AI 不改写你的文档/);
+    assert.equal(makingElement(fixture, "making-card-panel").classList.contains("hidden"), true, "卡片挂载位不出现");
+
+    // 每轮动态：同一形式，含「自动」尾注。
+    click(fixture, "making-full-back");
+    click(fixture, "making-dynamic-node");
+    const openDynamic = fixture.document.querySelector<HTMLButtonElement>(".making-quick-open");
+    assert.ok(openDynamic);
+    openDynamic.click();
+    await flushPromises();
+    assert.match(readonlyMount.textContent ?? "", /不是可配置的链路要求/);
+    assert.equal(readonlyMount.querySelectorAll("button, input, select, textarea").length, 0);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("card detail actions transfer to the making conversation", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "反差与反转", trigger: "适用：x", body: "正文" }]),
+  ]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    const cardRow = fixture.document.querySelector<HTMLButtonElement>(".making-card-row");
+    cardRow!.click();
+    await flushPromises();
+    // 快捷小窗内「请制作助手修改」：转入制作对话（复用既有通道）。
+    const modify = [...fixture.document.querySelectorAll<HTMLButtonElement>("#making-quick-panel button")]
+      .find((button) => button.textContent === "请制作助手修改");
+    assert.ok(modify, "修改操作已渲染");
+    modify.click();
+    await flushPromises();
+    assert.equal(makingElement(fixture, "module-making").dataset.makingView, "chat", "切到「制作对话」标签");
+    assert.equal(fixture.controller.makingChainId, chainA.id, "转接是显式的制作对象切换");
+    assert.ok(fixture.controller.conversation.currentConversationId, "无会话时开启新制作会话");
+    const input = makingElement(fixture, "making-conversation-input") as HTMLTextAreaElement;
+    assert.match(input.value, /^请制作助手修改「反差与反转」：$/);
+    assert.equal(makingElement(fixture, "making-quick-panel").classList.contains("hidden"), true, "小窗已收起");
+    assert.match(makingElement(fixture, "making-conversation-object").textContent ?? "", /情节探索/);
+
+    // 回到导图后，「添加」经 ghost 说明面板走同一通道。
+    fixture.controller.setActiveView("map");
+    await flushPromises();
+    click(fixture, "making-add-card-btn");
+    assert.match(makingElement(fixture, "making-quick-panel").textContent ?? "", /导图不直接编辑/);
+    const add = [...fixture.document.querySelectorAll<HTMLButtonElement>("#making-quick-panel button")]
+      .find((button) => button.textContent === "请制作助手添加要求卡");
+    assert.ok(add);
+    add.click();
+    await flushPromises();
+    assert.equal(makingElement(fixture, "module-making").dataset.makingView, "chat");
+    assert.match(
+      (makingElement(fixture, "making-conversation-input") as HTMLTextAreaElement).value,
+      /^请制作助手添加要求卡：$/,
+    );
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("cards carry no enable switch; enabling stays at the version level", async () => {
+  const chainA = chain("情节探索", [
+    version(3, [{ title: "反差与反转", trigger: "适用：x" }]),
+  ]);
+  const fixture = await makingFixture(library([chainA], { chainId: chainA.id, versionId: chainA.versions[0].id }));
+  try {
+    await browseChain(fixture, chainA.id);
+    const cardRow = fixture.document.querySelector<HTMLButtonElement>(".making-card-row");
+    cardRow!.click();
+    await flushPromises();
+    const host = makingElement(fixture, "making-quick-panel");
+    const labels = [...host.querySelectorAll("button")].map((button) => button.textContent);
+    assert.ok(labels.every((label) => !/启用|停用|回退/.test(label ?? "")), "卡片上无启用开关");
+    // 启用入口只在导图头部（链路版本层级），且沿用既有确认措辞。
+    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
+    assert.equal(enable.hidden, true, "查看版本即启用版本时无入口");
   } finally {
     fixture.restore();
   }
@@ -594,8 +983,7 @@ test("enabling a draft version requires confirmation with concrete wording", asy
   const fixture = await makingFixture(library([chainA], { chainId: chainA.id, versionId: chainA.versions[0].id }));
   try {
     // 先查看该链路，再通过版本下拉切到第 4 版草稿。
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
     const select = makingElement(fixture, "making-version-select") as HTMLSelectElement;
     select.value = chainA.versions[1].id;
     dispatchEvent(fixture.page, select, "change");
@@ -636,8 +1024,7 @@ test("rolling back to an older version calls chain_rollback after confirmation",
   ]);
   const fixture = await makingFixture(library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id }));
   try {
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
     const select = makingElement(fixture, "making-version-select") as HTMLSelectElement;
     select.value = chainA.versions[0].id;
     dispatchEvent(fixture.page, select, "change");
@@ -678,8 +1065,7 @@ test("deleting a chain requires confirmation and clears dangling references", as
   const fixture = await makingFixture(library([chainA, chainB], { chainId: chainA.id, versionId: chainA.versions[0].id }));
   try {
     // 浏览 A 并把 A 设为制作对象，再删除 A。
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
     click(fixture, "making-conversation-start-btn");
     assert.match(makingElement(fixture, "making-conversation-object").textContent ?? "", /情节探索/);
 
@@ -708,10 +1094,8 @@ test("starting a new making session switches the object only by explicit action"
   const fixture = await makingFixture(library([chainA, chainB]));
   try {
     // 浏览 A 后再浏览 B：制作对象保持「未选择」（浏览不切换制作对象）。
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainB.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
+    await browseChain(fixture, chainB.id);
     assert.equal(fixture.controller.makingChainId, null);
     assert.match(makingElement(fixture, "making-conversation-object").textContent ?? "", /未选择/);
 
@@ -744,22 +1128,22 @@ test("creating a chain calls the backend with the trimmed name and views it", as
   }
 });
 
-test("narrow view switch keeps unsent input and browsing position", async () => {
+test("tab switch keeps unsent input and browsing position", async () => {
   const chainA = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
   const fixture = await makingFixture(library([chainA]));
   try {
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
     const inspector = makingElement(fixture, "making-inspector");
     inspector.scrollTop = 42;
     const input = makingElement(fixture, "making-conversation-input") as HTMLTextAreaElement;
     input.value = "未发送的草稿";
 
-    fixture.controller.setNarrowView("chat");
+    fixture.controller.setActiveView("chat");
     assert.equal(makingElement(fixture, "module-making").dataset.makingView, "chat");
     assert.equal(input.value, "未发送的草稿", "未发送输入保留");
 
-    fixture.controller.setNarrowView("inspect");
+    fixture.controller.setActiveView("map");
+    assert.equal(makingElement(fixture, "module-making").dataset.makingView, "map");
     assert.equal(inspector.scrollTop, 42, "浏览位置保留");
     assert.equal(input.value, "未发送的草稿");
   } finally {
@@ -772,8 +1156,7 @@ test("command failures surface as honest errors without success states", async (
   const fixture = await makingFixture(library([chainA]));
   fixture.store.failures.set("chain_delete", "链路库写入失败: 磁盘满");
   try {
-    fixture.document.querySelector<HTMLButtonElement>('[data-chain-id="' + chainA.id + '"]')!.click();
-    await flushPromises();
+    await browseChain(fixture, chainA.id);
     click(fixture, "making-delete-chain-btn");
     await flushPromises();
     const error = makingElement(fixture, "making-status-error");

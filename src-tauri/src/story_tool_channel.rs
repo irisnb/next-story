@@ -50,7 +50,8 @@ use crate::story_tool_authorization::PendingAuthorization;
 use crate::story_tool_round_state::{ReadPreparation, RoundReadingState};
 use crate::story_tools::{
     execute_story_tool, resolve_conversation_authorization, AuthorizationResolution,
-    DiskStoryReader, ReadingRequestOutcome, StoryToolCall, StoryToolDenialReason, StoryToolOutcome,
+    DiskStoryReader, OnDemandReadingAuthorization, ReadingRequestOutcome, StoryToolCall,
+    StoryToolDenialReason, StoryToolOutcome, StrictStoryReader,
 };
 
 pub use crate::story_tool_authorization::{ReadingRequestEvent, ReadingRequestSink};
@@ -83,6 +84,11 @@ pub struct StoryToolChannel {
     reading_request_sink: Mutex<Option<ReadingRequestSink>>,
     /// 各讨论的当前轮监管状态（讨论 → 轮状态；register_round 重置）。
     rounds: Mutex<HashMap<String, RoundReadingState>>,
+    /// 试问身份的内存授权表（add-making-module-core 任务 6.5，design D5 方案二）：
+    /// trial id → 是否已允许补读。试问轮的补读授权照旧呈现与执行，但决定只
+    /// 存内存（试问会话生命周期，clear_session 作废），**绝不写入任何讨论档案**
+    /// ——试问轮本身不产生讨论档案（方案二单一真相源）。
+    trial_grants: Mutex<HashMap<String, bool>>,
     fuse_config: ReadingFuseConfig,
 }
 
@@ -109,6 +115,7 @@ impl StoryToolChannel {
             pending: Mutex::new(HashMap::new()),
             reading_request_sink: Mutex::new(None),
             rounds: Mutex::new(HashMap::new()),
+            trial_grants: Mutex::new(HashMap::new()),
             fuse_config,
         }
     }
@@ -158,6 +165,8 @@ impl StoryToolChannel {
     }
 
     /// 会话结束（end_session / 讨论关闭）：清路由、轮状态与待决授权，迟到调用失败关闭。
+    /// 试问身份（任务 6.5）：内存授权随会话结束一并作废（授权只活在试问会话
+    /// 生命周期内，绝不持久化）。
     pub fn clear_session(&self, session_id: &str) {
         let conversation = lock(&self.routing)
             .get(session_id)
@@ -165,6 +174,7 @@ impl StoryToolChannel {
         lock(&self.routing).remove(session_id);
         if let Some(conversation) = conversation {
             lock(&self.rounds).remove(&conversation);
+            lock(&self.trial_grants).remove(&conversation);
         }
         let mut pending = lock(&self.pending);
         pending.retain(|_, request| request.session_id != session_id);
@@ -315,12 +325,25 @@ impl StoryToolChannel {
             };
 
             // 阶段二：授权解析（逐次读档案，D3）+ 无状态执行。
-            let authorization = match resolve_conversation_authorization(
-                &reader,
-                &context.project_root,
-                &context.conversation_id,
-                resolution,
-            ) {
+            // 试问身份旁路（add-making-module-core 任务 6.5，design D5 方案二）：
+            // 试问轮无讨论档案，授权状态取内存 grant 源（试问会话生命周期），
+            // 绝不读写讨论档案；作品一致性校验与日常同一口径。
+            let authorization =
+                if crate::trial_session::is_trial_conversation(&context.conversation_id) {
+                    let granted = lock(&this.trial_grants)
+                        .get(&context.conversation_id)
+                        .copied()
+                        .unwrap_or(false);
+                    resolve_trial_authorization(&reader, &context.project_root, granted)
+                } else {
+                    resolve_conversation_authorization(
+                        &reader,
+                        &context.project_root,
+                        &context.conversation_id,
+                        resolution,
+                    )
+                };
+            let authorization = match authorization {
                 Ok(authorization) => authorization,
                 Err(denial) => {
                     // 授权解析失败：未授权系拒绝（含硬门禁 ForceUnauthorized 与
@@ -448,7 +471,13 @@ impl StoryToolChannel {
                     _ => {}
                 }
                 state.note_reading_arrival_completed(elapsed, &this.fuse_config);
-                if state.provenance_dirty && outcome.is_ok() {
+                // 试问身份不落讨论档案出处（任务 6.5，design D5 方案二）：补读
+                // 照旧执行、轮内监管在内存照常运转，只是出处不写入任何作品
+                // 讨论档案——试问轮的问答全文只存全局侧试问证据。
+                if state.provenance_dirty
+                    && outcome.is_ok()
+                    && !crate::trial_session::is_trial_conversation(&context.conversation_id)
+                {
                     let updates = state.cumulative_updates();
                     state.provenance_dirty = false;
                     // 累计视图的计算与落档都在 rounds 锁内完成（再经
@@ -549,12 +578,104 @@ impl StoryToolChannel {
             granted,
         )
     }
+
+    /// 取出当前授权请求事件回调（试问事件桥包装的前置步骤，任务 6.5）：取出后
+    /// 槽位置空，调用方须立即安装包装回调（试问身份拦截、其余委托旧回调）。
+    pub fn take_reading_request_sink(&self) -> Option<ReadingRequestSink> {
+        lock(&self.reading_request_sink).take()
+    }
+
+    /// 试问授权应答（add-making-module-core 任务 6.5，design D5 方案二；前端命令
+    /// `trial_authorization_respond`）：按试问身份在待决表中找该试问的挂起授权
+    /// （试问单轮串行，同时至多一个），把决定写入**内存 grant 源**（试问会话
+    /// 生命周期，clear_session 作废）——绝不写讨论档案；随后按日常同一语义回填
+    /// 工具结果（granted / denied＋恢复提示），原轮继续。无待决授权（迟到 /
+    /// 重复应答）或身份不符：明确报错，不动 grant 源。
+    pub fn resolve_trial_reading_request(
+        &self,
+        trial_id: &str,
+        granted: bool,
+    ) -> Result<(), String> {
+        let driver = lock(&self.driver).clone();
+        let Some(driver) = driver else {
+            return Err("工具通道未接线".to_string());
+        };
+        let request = {
+            let mut pending = lock(&self.pending);
+            // 待决表按 call_id 键控（试问身份不在条目内）；试问单轮串行，
+            // 同时至多一个待决条目。
+            let found = pending
+                .iter()
+                .find(|(_, request)| request.conversation_id == trial_id)
+                .map(|(call_id, request)| (call_id.clone(), request.clone()));
+            let Some((call_id, request)) = found else {
+                return Err("该试问当前没有等待中的补读授权请求".to_string());
+            };
+            // 身份双查：待决条目的会话必须是该试问的驱动会话（trial-<id>- 前缀）。
+            let expected_prefix = format!("{}{trial_id}-", crate::trial_session::TRIAL_ID_PREFIX);
+            if !request.session_id.starts_with(&expected_prefix) {
+                return Err("授权请求身份不符".to_string());
+            }
+            pending.remove(&call_id);
+            (call_id, request)
+        };
+        let (call_id, request) = request;
+        lock(&self.trial_grants).insert(trial_id.to_string(), granted);
+        // 回填与日常同一构造：granted → {granted:true}；denied → {granted:false,
+        // recovery}（拒绝是合法结果，模型转有限回答，轮次不悬挂）。
+        let result = if granted {
+            serde_json::json!({ "granted": true })
+        } else {
+            serde_json::json!({
+                "granted": false,
+                "recovery": RECOVERY_READING_UNAUTHORIZED,
+            })
+        };
+        driver
+            .send_tool_result(
+                &request.session_id,
+                &request.message_id,
+                &call_id,
+                true,
+                Some(result),
+                None,
+                None,
+            )
+            .map_err(|e| e.message.clone())
+    }
 }
 
 impl Default for StoryToolChannel {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 试问身份的授权解析（任务 6.5，design D5 方案二）：作品一致性校验与
+/// [`resolve_conversation_authorization`] 同一口径（档案根须与执行器绑定的作品
+/// 一致，防跨作品接线错误）；授权状态取内存 grant 源而非讨论档案——试问轮
+/// 无讨论档案，授权决定不持久化到任何档案。
+fn resolve_trial_authorization(
+    reader: &DiskStoryReader,
+    project_root: &Path,
+    granted: bool,
+) -> Result<OnDemandReadingAuthorization, crate::story_tools::StoryToolDenial> {
+    let canonical_root =
+        project_root
+            .canonicalize()
+            .map_err(|_| crate::story_tools::StoryToolDenial {
+                reason: StoryToolDenialReason::WorkMismatch,
+            })?;
+    if canonical_root.to_string_lossy() != reader.work_id() {
+        return Err(crate::story_tools::StoryToolDenial {
+            reason: StoryToolDenialReason::WorkMismatch,
+        });
+    }
+    Ok(if granted {
+        OnDemandReadingAuthorization::Authorized
+    } else {
+        OnDemandReadingAuthorization::Unauthorized
+    })
 }
 
 /// 解析协议帧 `{tool, args}` 为执行器调用（tag 合并；参数形状不符 → 结构化拒绝）。
@@ -672,6 +793,8 @@ pub(crate) mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: grant,
             on_demand_reading_provenance: None,
+            // add-making-module-core 任务 4.1 新增可选字段：测试夹具按缺省 None 补齐。
+            chain_rounds: None,
             restriction: None,
         }
     }
@@ -840,7 +963,8 @@ rl.on('line', (line) => {
 
     /// panic 兜底守卫：测试任何路径退出（含断言失败 unwind）都优雅关停驱动，
     /// 杜绝 `.tmp*\driver` 进程泄漏；正常路径与测试末尾的显式关停幂等叠加。
-    pub(crate) struct DriverGuard(DshDriverManager);
+    /// （字段 pub(crate)：试问车道测试（trial_session）以既有 manager 构造同款守卫。）
+    pub(crate) struct DriverGuard(pub(crate) DshDriverManager);
     impl Drop for DriverGuard {
         fn drop(&mut self) {
             self.0.shutdown_best_effort();

@@ -13,7 +13,8 @@
       "status": "active",
       "fields": {
         "session_id": "必填，string。会话身份（宿主侧使用讨论身份）。",
-        "system_prompt": "宿主必发，string。制度性系统提示词（信封，Rust 侧纯常量组装）：首行＝陪想身份句，首个换行后＝宪法红线。驱动在 Agent 私有作用域注册为 system 层段落——首行遮蔽 deployment:persona（order 0），其余入 nextstory:constitution（order 10），链路卡挂载位 nextstory:chain-cards（order 20）本版本空置；默认英文 persona 被顶替不残留。崩溃恢复重放时宿主以相同常量重发，与原会话逐字一致。空字符串＝旧宿主兼容（不注册任何段，默认 persona 维持现状）。"
+        "system_prompt": "宿主必发，string。制度性系统提示词（信封，Rust 侧纯常量组装）：首行＝陪想身份句，首个换行后＝宪法红线。驱动在 Agent 私有作用域注册为 system 层段落——首行遮蔽 deployment:persona（order 0），其余入 nextstory:constitution（order 10），链路卡挂载位 nextstory:chain-cards（order 20）建会话时注册为空段占位、由 send_message.chain_cards 轮级更新；默认英文 persona 被顶替不残留。崩溃恢复重放时宿主以相同常量重发，与原会话逐字一致。空字符串＝旧宿主兼容（不注册任何段，默认 persona 维持现状）。",
+        "session_kind": "可选，string，\"story\" | \"making\"，缺省 \"story\"。会话种类：story＝日常陪想会话，Agent 工具面注册 story 四件套（现状不变）；making＝制作助手会话——驱动不注册 story 四件套（模型工具面不出现这些工具），信封段落注册两类会话照常。旧宿主不发该字段时自动落 story（缺省兼容）。"
       },
       "description": "登记会话（不建 Agent）；replay 或首次 send 时才创建。"
     },
@@ -24,7 +25,8 @@
       "fields": {
         "session_id": "必填，string。",
         "message_id": "必填，string。消息身份（宿主生成）。",
-        "text": "必填，string。用户问题文本（增量追问，历史由常驻会话维护）。"
+        "text": "必填，string。用户问题文本（增量追问，历史由常驻会话维护）。",
+        "chain_cards": "可选，string 或 null，缺省 null。当轮冻结的链路卡文本（Rust 宿主在轮次发起时组装并冻结，add-making-module-core 设计 D1）；null／缺省＝无卡。驱动在转发给 agent 前与该会话当前 nextstory:chain-cards 段注册文本比较：不同则释放旧段并按本字段重注册（轮级更新，次序不变式不变）；相同则不动（幂等，避免无谓缓存失效）。卡文本是协议字段，绝不拼入 user 文本——「追问按增量发送」语义不变。"
       },
       "description": "发送一轮用户消息，驱动流式回应。"
     },

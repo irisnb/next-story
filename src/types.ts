@@ -259,9 +259,32 @@ export interface RoundProvenanceEntry {
 }
 
 /**
+ * 一轮链路轮次引用（add-making-module-core 任务 7.7，字段名按锁定契约不可变）：
+ * 后端在轮次发起时冻结、随成功结果返回给前端，供讨论对象活显示「本轮链路」行；
+ * 讨论档案的记录级 `chain_rounds` 条目与该形状同构（由后端窄更新写入档案）。
+ */
+export interface ChainRoundRef {
+  /** 所属轮次（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）。 */
+  turn_index: number;
+  chain_id: string;
+  /** 链路名称快照（链路日后删除，历史记录仍可读）。 */
+  chain_name: string;
+  /** 版本序号（「第 N 版」显示用）。 */
+  version_index: number;
+}
+
+/**
  * AI 生成命令的窄返回。命令始终成功返回该枚举，
  * 便于前端在不依赖 Tauri 错误序列化细节的情况下区分成功与失败。
+ * `chain_round`（可选，单条同形记录）：本轮发起时冻结的启用链路引用；
+ * 缺席表示本轮未启用链路（或旧后端），显示层降级为不显示。
  */
 export type GenerateAiResult =
-  | { ok: true; content: string; provenance?: RoundProvenanceEntry[]; sent_confirmed?: boolean }
+  | {
+      ok: true;
+      content: string;
+      provenance?: RoundProvenanceEntry[];
+      sent_confirmed?: boolean;
+      chain_round?: ChainRoundRef;
+    }
   | { ok: false; error: GenerateAiError };

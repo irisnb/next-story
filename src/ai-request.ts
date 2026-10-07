@@ -1,4 +1,5 @@
 import type {
+  ChainRoundRef,
   GenerateAiError,
   GenerateAiRequest,
   GenerateAiResult,
@@ -9,9 +10,9 @@ import type {
 export interface AiRequestCallbacks {
   onSuccess?(snapshot: SelectionSnapshot, content: string, conversationId: string): void;
   onError?(snapshot: SelectionSnapshot, error: GenerateAiError, conversationId: string): void;
-  onStructuredSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, identity: RequestIdentity): void;
+  onStructuredSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, identity: RequestIdentity, chainRound: ChainRoundRef | undefined): void;
   onStructuredError?(error: GenerateAiError, identity: RequestIdentity): void;
-  onDirectQuestionSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, conversationId: string): void;
+  onDirectQuestionSuccess?(content: string, provenance: RoundProvenanceEntry[] | undefined, sentConfirmed: boolean, conversationId: string, chainRound: ChainRoundRef | undefined): void;
   onDirectQuestionError?(error: GenerateAiError, conversationId: string): void;
 }
 
@@ -180,7 +181,7 @@ export class AiRequestCoordinator {
     if (this.isStale(token, epoch)) return;
     if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
-      this.callbacks.onDirectQuestionSuccess?.(result.content, result.provenance, result.sent_confirmed === true, conversationId);
+      this.callbacks.onDirectQuestionSuccess?.(result.content, result.provenance, result.sent_confirmed === true, conversationId, result.chain_round);
     } else {
       this.callbacks.onDirectQuestionError?.(result.error, conversationId);
     }
@@ -219,7 +220,7 @@ export class AiRequestCoordinator {
     if (this.cancelStamps.get(conversationId) !== cancelStamp) return;
     if (result.ok) {
       if (identity && this.callbacks.onStructuredSuccess) {
-        this.callbacks.onStructuredSuccess(result.content, result.provenance, result.sent_confirmed === true, identity);
+        this.callbacks.onStructuredSuccess(result.content, result.provenance, result.sent_confirmed === true, identity, result.chain_round);
       } else if (snapshot) {
         this.callbacks.onSuccess?.(snapshot, result.content, conversationId);
       }

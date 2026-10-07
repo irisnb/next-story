@@ -52,6 +52,27 @@ const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 // ========== 协议类型（与 sidecar/driver/driver.mjs 的协议 v1 对应） ==========
 
+/// 会话种类（add-making-module-core 任务 2.3，design D4）：
+/// - `Story`：日常陪想会话（现状）——驱动侧注册 story 工具四件套；
+/// - `Making`：制作助手会话——驱动侧跳过 story 工具注册（模型工具面不出现
+///   四件套），宿主侧同时不为制作会话 `register_round`（失败关闭双保险）。
+///
+/// 序列化 snake_case（"story" / "making"）；`Story` 为缺省值——序列化时缺省
+/// 省略字段（story 会话命令帧与现状逐字节一致），旧驱动不发该字段自动落
+/// story（协议缺省兼容，见 protocol.json start_session.session_kind）。
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionKind {
+    #[default]
+    Story,
+    Making,
+}
+
+/// `session_kind` 字段的省略条件：缺省值 Story 不序列化（既有路径逐字节不变）。
+fn is_story_kind(kind: &SessionKind) -> bool {
+    matches!(kind, SessionKind::Story)
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DriverCommand {
@@ -61,11 +82,21 @@ pub enum DriverCommand {
         /// 宿主必发的制度性 system 提示词，由 [`crate::llm_config::session_system_prompt`]
         /// 纯常量组装——正常建会话与崩溃恢复重放由同一函数重算重发，逐字一致。
         system_prompt: String,
+        /// 会话种类（add-making-module-core 任务 2.3，design D4）：缺省 Story
+        /// 时省略字段（story 会话帧与现状逐字节一致）。
+        #[serde(skip_serializing_if = "is_story_kind")]
+        session_kind: SessionKind,
     },
     SendMessage {
         session_id: String,
         message_id: String,
         text: String,
+        /// 当轮冻结的链路卡文本（add-making-module-core 任务 2.3，design D1）：
+        /// 驱动在转发给 agent 前与当前 `nextstory:chain-cards` 段注册文本比较，
+        /// 不同则释放旧段并重注册（轮级更新）。`None` 时省略字段——不带卡，
+        /// 与既有路径逐字节一致。卡文本是协议字段，绝不拼入 user 文本。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        chain_cards: Option<String>,
     },
     ReplayHistory {
         session_id: String,
@@ -1189,15 +1220,32 @@ impl DshDriverManager {
     // ---- 会话操作（控制确认严格匹配：start / replay_done / end 共用会话控制键） ----
 
     pub fn start_session(&self, session_id: &str) -> Result<(), GenerateAiError> {
+        // 信封逐字一致（design D3）：story 路径维持既有单一来源常量，
+        // 命令帧与本变更之前逐字节一致（session_kind 缺省省略）。
+        self.start_session_with_kind(
+            session_id,
+            &crate::llm_config::session_system_prompt(),
+            SessionKind::Story,
+        )
+    }
+
+    /// 以显式信封与会话种类建会话（add-making-module-core 任务 2.3，design D4）：
+    /// 制作助手车道（任务组 5）经此以 `SessionKind::Making`＋制作信封建会话；
+    /// 日常陪想路径继续走 [`Self::start_session`]（常量信封＋story，逐字节不变）。
+    /// 信封文本由调用方（编排层常量）提供——驱动层不区分信封来源。
+    pub fn start_session_with_kind(
+        &self,
+        session_id: &str,
+        system_prompt: &str,
+        session_kind: SessionKind,
+    ) -> Result<(), GenerateAiError> {
         let runtime = self.current_runtime()?;
         let (_registration, rx) =
             runtime.register(PendingKey::SessionControl(session_id.to_string()))?;
-        // 信封逐字一致（design D3）：system_prompt 来自纯常量组装函数，崩溃
-        // 恢复重放路径（replay 前的 start_session）同样经此重算重发——不存在
-        // 第二副本需要同步。
         self.write_command(&DriverCommand::StartSession {
             session_id: session_id.to_string(),
-            system_prompt: crate::llm_config::session_system_prompt(),
+            system_prompt: system_prompt.to_string(),
+            session_kind,
         })?;
         match rx.recv_timeout(SESSION_ACK_TIMEOUT) {
             Ok(DriverEvent::SessionStarted { .. }) => Ok(()),
@@ -1211,11 +1259,31 @@ impl DshDriverManager {
     /// 发送消息并等待终态。流式增量经 sink 转发；返回最终全文与发送回执。
     /// `message_sent` 回执在等待中被记录（`sent_confirmed`），但不满足等待条件——
     /// 等待只在 MessageDone / MessageFailed / Error / 超时时结束。
+    ///
+    /// 不带链路卡的既有入口（add-making-module-core 任务 2.3）：命令帧省略
+    /// `chain_cards` 字段，与既有路径逐字节一致；带卡轮次走
+    /// [`Self::send_message_with_cards_and_wait`]。
     pub fn send_message_and_wait(
         &self,
         session_id: &str,
         message_id: &str,
         text: &str,
+        timeout: Duration,
+    ) -> Result<MessageOutcome, GenerateAiError> {
+        self.send_message_with_cards_and_wait(session_id, message_id, text, None, timeout)
+    }
+
+    /// 带链路卡的发送变体（add-making-module-core 任务 2.3，design D1）：
+    /// `chain_cards` 为 `Some` 时随命令下发当轮冻结的卡文本（驱动侧在转发
+    /// 给 agent 前轮级更新 `nextstory:chain-cards` 段）；`None` 时省略字段。
+    /// 供后续装配车道（任务组 3）使用；与 [`Self::send_message_and_wait`]
+    /// 共用同一条等待与看护路径。
+    pub fn send_message_with_cards_and_wait(
+        &self,
+        session_id: &str,
+        message_id: &str,
+        text: &str,
+        chain_cards: Option<&str>,
         timeout: Duration,
     ) -> Result<MessageOutcome, GenerateAiError> {
         // 准入护栏最前：同讨论重复生成与全局超限都在写入协议之前拒绝；
@@ -1232,6 +1300,7 @@ impl DshDriverManager {
             session_id: session_id.to_string(),
             message_id: message_id.to_string(),
             text: text.to_string(),
+            chain_cards: chain_cards.map(str::to_string),
         };
         self.write_command(&cmd)?;
         let mut sent_confirmed = false;
@@ -1482,6 +1551,7 @@ mod tests {
         let start = serde_json::to_value(DriverCommand::StartSession {
             session_id: "s1".into(),
             system_prompt: crate::llm_config::session_system_prompt(),
+            session_kind: SessionKind::default(),
         })
         .unwrap();
         assert_eq!(start["type"], "start_session");
@@ -1491,15 +1561,47 @@ mod tests {
             crate::llm_config::session_system_prompt(),
             "start_session 必须携带信封（宿主必发）"
         );
+        assert!(
+            start.get("session_kind").is_none(),
+            "缺省 story 会话必须省略 session_kind 字段（既有命令帧逐字节不变）"
+        );
+
+        let start_making = serde_json::to_value(DriverCommand::StartSession {
+            session_id: "s1".into(),
+            system_prompt: "制作信封".into(),
+            session_kind: SessionKind::Making,
+        })
+        .unwrap();
+        assert_eq!(
+            start_making["session_kind"], "making",
+            "制作会话的 session_kind 必须序列化为 \"making\"（protocol.json 契约值）"
+        );
 
         let send = serde_json::to_value(DriverCommand::SendMessage {
             session_id: "s1".into(),
             message_id: "m1".into(),
             text: "问题".into(),
+            chain_cards: None,
         })
         .unwrap();
         assert_eq!(send["type"], "send_message");
         assert_eq!(send["text"], "问题");
+        assert!(
+            send.get("chain_cards").is_none(),
+            "不带卡的 send_message 必须省略 chain_cards 字段（既有命令帧逐字节不变）"
+        );
+
+        let send_cards = serde_json::to_value(DriverCommand::SendMessage {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+            text: "问题".into(),
+            chain_cards: Some("卡文本".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            send_cards["chain_cards"], "卡文本",
+            "带卡轮次的 chain_cards 必须逐字携带当轮冻结的卡文本"
+        );
 
         let shutdown = serde_json::to_value(DriverCommand::Shutdown).unwrap();
         assert_eq!(shutdown["type"], "shutdown");
@@ -1566,6 +1668,102 @@ mod tests {
         manager.shutdown_best_effort();
     }
 
+    /// 线缆契约（add-making-module-core 任务 2.3，设计 D1/D4，端到端假驱动）：
+    /// - `send_message` 不带卡时线缆上无 `chain_cards` 字段（既有路径逐字节不变）；
+    /// - 带卡变体下发的 `chain_cards` 逐字到达驱动，且不混入 user `text`；
+    /// - `start_session` 缺省不带 `session_kind`；`SessionKind::Making` 时线缆
+    ///   携带 `"making"`（与 protocol.json 契约值一致）。
+    #[test]
+    fn chain_cards_and_session_kind_reach_driver_wire() {
+        // 假驱动记录每个会话的 session_kind 线缆值（缺省＝"(absent)"），并在
+        // send_message 时把观测到的 kind / chain_cards / 原文 text 回显，端到端
+        // 断言宿主发送侧的线缆形状。
+        let script = "import readline from 'node:readline';\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             const kinds = new Map();\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'start_session') {\n\
+                 kinds.set(cmd.session_id, Object.hasOwn(cmd, 'session_kind') ? cmd.session_kind : '(absent)');\n\
+                 console.log(JSON.stringify({ type: 'session_started', session_id: cmd.session_id }));\n\
+               } else if (cmd.type === 'send_message') {\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: JSON.stringify({ kind: kinds.get(cmd.session_id) ?? null, chain_cards: Object.hasOwn(cmd, 'chain_cards') ? cmd.chain_cards : null, text: cmd.text }) }));\n\
+               } else if (cmd.type === 'shutdown') {\n\
+                 process.exit(0);\n\
+               }\n\
+             });\n\
+             rl.on('close', () => process.exit(0));\n\
+             setInterval(() => {}, 1000);\n";
+        let (_temp, paths, params) = fake_driver_paths(script);
+        let manager = DshDriverManager::new();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+
+        // 既有入口：缺省 story 会话＋不带卡——两者都必须在线缆上省略字段。
+        manager.start_session("s-story").expect("story 会话");
+        let legacy = manager
+            .send_message_and_wait("s-story", "m1", "问题", Duration::from_secs(15))
+            .expect("不带卡的轮次完成");
+        let legacy_observed: serde_json::Value =
+            serde_json::from_str(&legacy.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(legacy_observed["kind"], "(absent)");
+        assert_eq!(
+            legacy_observed["chain_cards"],
+            serde_json::Value::Null,
+            "不带卡时线缆上不得出现 chain_cards 字段（回显的 null＝字段缺省）"
+        );
+        assert_eq!(legacy_observed["text"], "问题");
+
+        // 带卡变体：chain_cards 逐字到达，user text 不被卡文本污染（增量语义）。
+        let cards = manager
+            .send_message_with_cards_and_wait(
+                "s-story",
+                "m2",
+                "追问",
+                Some("包装头＋卡A"),
+                Duration::from_secs(15),
+            )
+            .expect("带卡的轮次完成");
+        let cards_observed: serde_json::Value =
+            serde_json::from_str(&cards.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(cards_observed["chain_cards"], "包装头＋卡A");
+        assert_eq!(
+            cards_observed["text"], "追问",
+            "卡文本是协议字段，绝不拼入 user 文本"
+        );
+
+        // 制作会话：线缆携带 session_kind="making"。
+        manager
+            .start_session_with_kind("s-making", "制作信封", SessionKind::Making)
+            .expect("making 会话");
+        let making = manager
+            .send_message_and_wait("s-making", "m3", "制作问题", Duration::from_secs(15))
+            .expect("制作轮次完成");
+        let making_observed: serde_json::Value =
+            serde_json::from_str(&making.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(
+            making_observed["kind"], "making",
+            "SessionKind::Making 必须在线缆上序列化为 \"making\""
+        );
+
+        // 显式 Story 也省略字段（缺省序列化与显式缺省值不可区分）。
+        manager
+            .start_session_with_kind(
+                "s-story2",
+                &crate::llm_config::session_system_prompt(),
+                SessionKind::Story,
+            )
+            .expect("显式 story 会话");
+        let explicit_story = manager
+            .send_message_and_wait("s-story2", "m4", "问题", Duration::from_secs(15))
+            .expect("显式 story 轮次完成");
+        let story_observed: serde_json::Value =
+            serde_json::from_str(&explicit_story.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(story_observed["kind"], "(absent)");
+
+        manager.shutdown_best_effort();
+    }
+
     /// 铁律 1 锚点：协议命令面不存在任何向用户文档写入的通道。
     /// 全部命令变体序列化后不得出现作品文档写入语义的字段。
     #[test]
@@ -1574,12 +1772,14 @@ mod tests {
             serde_json::to_value(DriverCommand::StartSession {
                 session_id: "s".into(),
                 system_prompt: crate::llm_config::session_system_prompt(),
+                session_kind: SessionKind::default(),
             })
             .unwrap(),
             serde_json::to_value(DriverCommand::SendMessage {
                 session_id: "s".into(),
                 message_id: "m".into(),
                 text: "t".into(),
+                chain_cards: None,
             })
             .unwrap(),
             serde_json::to_value(DriverCommand::ReplayHistory {
@@ -1784,11 +1984,13 @@ mod tests {
             tag_of(DriverCommand::StartSession {
                 session_id: "s".into(),
                 system_prompt: crate::llm_config::session_system_prompt(),
+                session_kind: SessionKind::default(),
             }),
             tag_of(DriverCommand::SendMessage {
                 session_id: "s".into(),
                 message_id: "m".into(),
                 text: "t".into(),
+                chain_cards: None,
             }),
             tag_of(DriverCommand::ReplayHistory {
                 session_id: "s".into(),
@@ -1831,6 +2033,46 @@ mod tests {
         assert!(
             planned.is_empty(),
             "工具桥接已投产，planned 条目应为空（当前实际：{planned:?}）"
+        );
+
+        // 字段级契约（add-making-module-core 任务 2.3，设计 D1/D4）：两个新可选
+        // 字段必须在真相源有记录，措辞与 Rust 侧序列化行为（缺省省略）一致。
+        let find_command = |name: &str| {
+            value["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap_or_else(|| panic!("protocol.json 必须记录 {name} 命令"))
+                .clone()
+        };
+        let start_session = find_command("start_session");
+        let kind_doc = start_session["fields"]["session_kind"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            kind_doc.contains("\"story\" | \"making\"") && kind_doc.contains("缺省 \"story\""),
+            "session_kind 字段说明必须记录取值与缺省（\"story\" | \"making\"，缺省 \"story\"）：{kind_doc}"
+        );
+        assert!(
+            kind_doc.contains("不注册"),
+            "session_kind 字段说明必须记录 making 会话不注册 story 工具的语义：{kind_doc}"
+        );
+        let send_message = find_command("send_message");
+        let cards_doc = send_message["fields"]["chain_cards"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            cards_doc.contains("缺省 null"),
+            "chain_cards 字段说明必须记录缺省 null：{cards_doc}"
+        );
+        assert!(
+            cards_doc.contains("幂等"),
+            "chain_cards 字段说明必须记录驱动侧幂等处理语义：{cards_doc}"
+        );
+        assert!(
+            cards_doc.contains("绝不拼入 user 文本"),
+            "chain_cards 字段说明必须记录「追问按增量发送」不受影响的边界：{cards_doc}"
         );
     }
 

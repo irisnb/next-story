@@ -107,6 +107,81 @@ export interface AiDockDom {
   readonly railDot: HTMLElement;
 }
 
+/**
+ * 制作模块页面的显式 DOM 依赖契约（add-making-module-core 任务组 7）。
+ * 全部按全局 id 从 `index.html` 解析；缺失抛出包含 id 的明确错误。
+ */
+export interface MakingDom {
+  /** 制作模块页面根节点（窄窗视图切换的 data-making-view 落点）。 */
+  readonly moduleRoot: HTMLElement;
+  /** 顶部当前链路状态条（常驻；只反映全局 active 指针，不随浏览变化）。 */
+  readonly statusBar: HTMLElement;
+  readonly statusActive: HTMLElement;
+  readonly statusText: HTMLElement;
+  readonly statusIdle: HTMLElement;
+  readonly statusError: HTMLElement;
+  readonly deactivateBtn: HTMLButtonElement;
+  /** 中等宽度收拢：链路库入口按钮与其外层条。 */
+  readonly collapsedBar: HTMLElement;
+  readonly libraryToggle: HTMLButtonElement;
+  /** 更窄窗口：页内「结构检视／制作对话」切换。 */
+  readonly viewSwitch: HTMLElement;
+  readonly viewInspectBtn: HTMLButtonElement;
+  readonly viewChatBtn: HTMLButtonElement;
+  /** 左：链路库。 */
+  readonly chainLibrary: HTMLElement;
+  readonly libraryCloseBtn: HTMLButtonElement;
+  readonly newChainBtn: HTMLButtonElement;
+  readonly newChainForm: HTMLFormElement;
+  readonly newChainName: HTMLInputElement;
+  readonly newChainConfirm: HTMLButtonElement;
+  readonly newChainCancel: HTMLButtonElement;
+  readonly chainList: HTMLElement;
+  readonly chainEmpty: HTMLElement;
+  /** 中：结构检视。 */
+  readonly inspector: HTMLElement;
+  readonly inspectorEmpty: HTMLElement;
+  readonly inspectorContent: HTMLElement;
+  readonly inspectorTitle: HTMLElement;
+  /** 版本状态标注（「当前启用版本」／「尚未启用」）。 */
+  readonly inspectorState: HTMLElement;
+  readonly versionSelect: HTMLSelectElement;
+  readonly enableBtn: HTMLButtonElement;
+  readonly deleteChainBtn: HTMLButtonElement;
+  readonly cardList: HTMLElement;
+  readonly noCards: HTMLElement;
+  /** 卡片检视面板（点卡后在检视区下方展开）。 */
+  readonly cardPanel: HTMLElement;
+  /** 右：制作对话（真实会话接线属后续车道；容器即挂点）。 */
+  readonly conversationPane: HTMLElement;
+  readonly conversationObject: HTMLElement;
+  readonly conversationBody: HTMLElement;
+  /** 空态引导（无制作对象时显示；含所浏览链路的最近会话入口）。 */
+  readonly conversationEmpty: HTMLElement;
+  /** 空态内「该链路的最近制作会话」容器（继续上次制作＋历史列表）。 */
+  readonly conversationRecent: HTMLElement;
+  /** 会话打开后的制作对话主区（会话工具条＋历史列表＋提示＋转录）。 */
+  readonly conversationActive: HTMLElement;
+  /** 当前会话标题（空标题显示「制作会话」）。 */
+  readonly sessionTitle: HTMLElement;
+  /** 「新会话」入口（同链路开新会话）。 */
+  readonly sessionNewBtn: HTMLButtonElement;
+  /** 「历史会话」展开/收起入口。 */
+  readonly sessionHistoryBtn: HTMLButtonElement;
+  /** 历史会话列表容器（展开时显示）。 */
+  readonly sessionHistoryList: HTMLElement;
+  /** 会话级提示行（连接恢复、草稿保存结果、保存失败）。 */
+  readonly sessionNotice: HTMLElement;
+  /** 会话转录容器（轮次消息＋卡草稿面板）。 */
+  readonly sessionMessages: HTMLElement;
+  readonly conversationStartBtn: HTMLButtonElement;
+  readonly conversationInput: HTMLTextAreaElement;
+  readonly conversationSend: HTMLButtonElement;
+  /** 「停止」生成入口（仅生成中显示）。 */
+  readonly conversationStop: HTMLButtonElement;
+  readonly conversationForm: HTMLFormElement;
+}
+
 export interface AppDom {
   welcomePage: HTMLElement;
   newProjectPage: HTMLElement;
@@ -131,9 +206,15 @@ export interface AppDom {
   tabWriting: HTMLButtonElement;
   tabFiles: HTMLButtonElement;
   tabSettings: HTMLButtonElement;
+  /** 第四页面「制作模块」导航项（add-making-module-core 任务 7.1）。 */
+  tabMaking: HTMLButtonElement;
   moduleWriting: HTMLElement;
   moduleFiles: HTMLElement;
   moduleSettings: HTMLElement;
+  /** 制作模块页面根节点。 */
+  moduleMaking: HTMLElement;
+  /** 制作模块页面内部的显式 DOM 依赖契约（按 id 解析）。 */
+  making: MakingDom;
   editorTextarea: HTMLElement;
   currentDocToggle: HTMLButtonElement;
   currentDocumentName: HTMLElement;
@@ -380,9 +461,62 @@ export function getAppDom(): AppDom {
     tabWriting: requireElement("tab-writing"),
     tabFiles: requireElement("tab-files"),
     tabSettings: requireElement("tab-settings"),
+    tabMaking: requireElement("tab-making"),
     moduleWriting: requireElement("module-writing"),
     moduleFiles: requireElement("module-files"),
     moduleSettings: requireElement("module-settings"),
+    moduleMaking: requireElement("module-making"),
+    making: {
+      moduleRoot: requireElement("module-making"),
+      statusBar: requireElement("making-status-bar"),
+      statusActive: requireElement("making-status-active"),
+      statusText: requireElement("making-status-text"),
+      statusIdle: requireElement("making-status-idle"),
+      statusError: requireElement("making-status-error"),
+      deactivateBtn: requireElement("making-deactivate-btn"),
+      collapsedBar: requireElement("making-collapsed-bar"),
+      libraryToggle: requireElement("making-library-toggle"),
+      viewSwitch: requireElement("making-view-switch"),
+      viewInspectBtn: requireElement("making-view-inspect-btn"),
+      viewChatBtn: requireElement("making-view-chat-btn"),
+      chainLibrary: requireElement("making-chain-library"),
+      libraryCloseBtn: requireElement("making-library-close-btn"),
+      newChainBtn: requireElement("making-new-chain-btn"),
+      newChainForm: requireElement("making-new-chain-form"),
+      newChainName: requireElement("making-new-chain-name"),
+      newChainConfirm: requireElement("making-new-chain-confirm"),
+      newChainCancel: requireElement("making-new-chain-cancel"),
+      chainList: requireElement("making-chain-list"),
+      chainEmpty: requireElement("making-chain-empty"),
+      inspector: requireElement("making-inspector"),
+      inspectorEmpty: requireElement("making-inspector-empty"),
+      inspectorContent: requireElement("making-inspector-content"),
+      inspectorTitle: requireElement("making-inspector-title"),
+      inspectorState: requireElement("making-inspector-state"),
+      versionSelect: requireElement("making-version-select"),
+      enableBtn: requireElement("making-enable-btn"),
+      deleteChainBtn: requireElement("making-delete-chain-btn"),
+      cardList: requireElement("making-card-list"),
+      noCards: requireElement("making-no-cards"),
+      cardPanel: requireElement("making-card-panel"),
+      conversationPane: requireElement("making-conversation-pane"),
+      conversationObject: requireElement("making-conversation-object"),
+      conversationBody: requireElement("making-conversation-body"),
+      conversationEmpty: requireElement("making-conversation-empty"),
+      conversationRecent: requireElement("making-conversation-recent"),
+      conversationActive: requireElement("making-conversation-active"),
+      sessionTitle: requireElement("making-session-title"),
+      sessionNewBtn: requireElement<HTMLButtonElement>("making-session-new-btn"),
+      sessionHistoryBtn: requireElement<HTMLButtonElement>("making-session-history-btn"),
+      sessionHistoryList: requireElement("making-session-history-list"),
+      sessionNotice: requireElement("making-session-notice"),
+      sessionMessages: requireElement("making-session-messages"),
+      conversationStartBtn: requireElement("making-conversation-start-btn"),
+      conversationInput: requireElement("making-conversation-input"),
+      conversationSend: requireElement("making-conversation-send"),
+      conversationStop: requireElement<HTMLButtonElement>("making-conversation-stop"),
+      conversationForm: requireElement("making-conversation-form"),
+    },
     editorTextarea: requireElement("editor-textarea"),
     currentDocToggle: requireElement("current-doc-toggle"),
     currentDocumentName: requireElement("current-document-name"),

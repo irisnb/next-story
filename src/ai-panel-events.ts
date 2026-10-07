@@ -8,7 +8,7 @@ import type {
   OnDemandReadingGrant,
   OnDemandReadingProvenance,
 } from "./conversation-archive.ts";
-import type { GenerateAiError, SelectionSnapshot } from "./types.ts";
+import type { ChainRoundRef, GenerateAiError, SelectionSnapshot } from "./types.ts";
 
 /**
  * AI 面板事件类型的单一事实源（change: extract-ai-logic-seams 任务 2.1）。
@@ -172,6 +172,12 @@ export type AiPanelEvent =
       readonly type: "record_round_provenance";
       readonly conversationId: string;
       readonly entries: MaterialProvenance[];
+    }
+  | {
+      /** 并入一轮链路轮次引用（add-making-module-core 任务 7.7，活显示数据源）。 */
+      readonly type: "record_round_chain";
+      readonly conversationId: string;
+      readonly entry: ChainRoundRef;
     }
   | {
       readonly type: "set_focus_document";

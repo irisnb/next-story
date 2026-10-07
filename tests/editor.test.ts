@@ -245,7 +245,8 @@ function projectState(
 const EDITOR_DOM_IDS = [
   "welcome-page", "new-project-page", "editor-page", "current-project-name",
   "save-status", "btn-save", "btn-back-welcome", "tab-writing", "tab-files",
-  "tab-settings", "module-writing", "module-files", "module-settings",
+  "tab-settings", "tab-making", "module-writing", "module-files", "module-settings",
+  "module-making",
   "editor-textarea", "current-doc-toggle", "current-document-name",
   "document-list", "writing-empty-state", "paragraph-style", "btn-bold",
   "btn-italic", "btn-bullet-list", "btn-ordered-list", "btn-toolbar-underline",
@@ -305,6 +306,8 @@ function fakeDom(): {
       saveStatus: elements.get("save-status") as unknown as HTMLElement,
       btnSave: elements.get("btn-save") as unknown as HTMLButtonElement,
       btnBackWelcome: elements.get("btn-back-welcome") as unknown as HTMLButtonElement,
+      tabMaking: elements.get("tab-making") as unknown as HTMLButtonElement,
+      moduleMaking: elements.get("module-making") as unknown as HTMLElement,
       editorTextarea: elements.get("editor-textarea") as unknown as HTMLElement,
       currentDocToggle: elements.get("current-doc-toggle") as unknown as HTMLButtonElement,
       currentDocumentName: elements.get("current-document-name") as unknown as HTMLElement,

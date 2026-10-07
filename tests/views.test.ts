@@ -28,6 +28,7 @@ function makeViews(): ModuleViews {
     writing: new FakeElement() as unknown as HTMLElement,
     files: new FakeElement(["hidden"]) as unknown as HTMLElement,
     settings: new FakeElement(["hidden"]) as unknown as HTMLElement,
+    making: new FakeElement(["hidden"]) as unknown as HTMLElement,
   };
 }
 
@@ -38,14 +39,23 @@ test("showModule activates exactly one module at a time", () => {
   assert.equal(views.writing.classList.contains("hidden"), true);
   assert.equal(views.files.classList.contains("hidden"), false);
   assert.equal(views.settings.classList.contains("hidden"), true);
+  assert.equal(views.making.classList.contains("hidden"), true);
 
   showModule(views, "settings");
   assert.equal(views.writing.classList.contains("hidden"), true);
   assert.equal(views.files.classList.contains("hidden"), true);
   assert.equal(views.settings.classList.contains("hidden"), false);
+  assert.equal(views.making.classList.contains("hidden"), true);
 
   showModule(views, "writing");
   assert.equal(views.writing.classList.contains("hidden"), false);
   assert.equal(views.files.classList.contains("hidden"), true);
   assert.equal(views.settings.classList.contains("hidden"), true);
+  assert.equal(views.making.classList.contains("hidden"), true);
+
+  showModule(views, "making");
+  assert.equal(views.writing.classList.contains("hidden"), true);
+  assert.equal(views.files.classList.contains("hidden"), true);
+  assert.equal(views.settings.classList.contains("hidden"), true);
+  assert.equal(views.making.classList.contains("hidden"), false);
 });

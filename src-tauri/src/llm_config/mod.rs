@@ -310,6 +310,13 @@ pub struct GenerateAiResult {
     /// `None` = 失败轮次或未涉及。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_confirmed: Option<bool>,
+    /// 本轮成功且启用链路时的链路轮次记录（add-making-module-core 任务 A）：
+    /// 与讨论档案 `chain_rounds` 同源的 `{turn_index, chain_id, chain_name,
+    /// version_index}` 快照，供前端「本轮用了哪条链路」活显示。日常无链路
+    /// 轮次缺省（序列化省略，既有载荷零变化）；失败 / 取消轮不携带。类型复用
+    /// [`crate::conversation_store::ChainRoundRecord`]（侵入最小的同形方案）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_round: Option<crate::conversation_store::ChainRoundRecord>,
 }
 
 impl GenerateAiResult {
@@ -320,6 +327,7 @@ impl GenerateAiResult {
             error: None,
             provenance: None,
             sent_confirmed: None,
+            chain_round: None,
         }
     }
 
@@ -330,6 +338,7 @@ impl GenerateAiResult {
             error: Some(error),
             provenance: None,
             sent_confirmed: None,
+            chain_round: None,
         }
     }
 }
@@ -788,4 +797,57 @@ fn write_file_atomically(path: &Path, content: &str) -> Result<(), LlmConfigErro
         .map_err(|e| LlmConfigError::WriteError(e.error.to_string()))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 任务 A（add-making-module-core）：`chain_round` 可选字段——日常无链路
+    /// 轮次缺省且序列化省略（既有载荷零变化）；在场时字段名与锁定契约一致
+    /// （turn_index / chain_id / chain_name / version_index）；旧载荷（无该
+    /// 字段）反序列化兼容、缺省 `None`。
+    #[test]
+    fn generate_ai_result_chain_round_is_optional_and_contract_shaped() {
+        let plain = GenerateAiResult::success("回复全文".to_string());
+        let json = serde_json::to_value(&plain).expect("serialize");
+        assert!(
+            json.get("chain_round").is_none(),
+            "无链路轮次必须省略 chain_round 字段（既有行为零变化）"
+        );
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["content"], "回复全文");
+
+        let failure =
+            GenerateAiResult::failure(GenerateAiError::new(GenerateAiErrorCode::Service, "失败"));
+        let failure_json = serde_json::to_value(&failure).expect("serialize");
+        assert!(
+            failure_json.get("chain_round").is_none(),
+            "失败轮次同样省略该字段"
+        );
+
+        let mut with_chain = GenerateAiResult::success("回复全文".to_string());
+        with_chain.chain_round = Some(crate::conversation_store::ChainRoundRecord {
+            turn_index: 0,
+            chain_id: "chain-1".to_string(),
+            chain_name: "链路甲".to_string(),
+            version_index: 2,
+        });
+        let json = serde_json::to_value(&with_chain).expect("serialize");
+        let round = json.get("chain_round").expect("成功且有链路时字段在场");
+        for field in ["turn_index", "chain_id", "chain_name", "version_index"] {
+            assert!(round.get(field).is_some(), "chain_round 缺少字段 {field}");
+        }
+        assert_eq!(round["turn_index"], 0);
+        assert_eq!(round["chain_id"], "chain-1");
+        assert_eq!(round["chain_name"], "链路甲");
+        assert_eq!(round["version_index"], 2);
+
+        // 旧载荷兼容：无该字段的 JSON 反序列化不报错，字段缺省 None。
+        let legacy = serde_json::json!({ "ok": true, "content": "旧载荷回复" });
+        let parsed: GenerateAiResult =
+            serde_json::from_value(legacy).expect("旧载荷必须兼容（serde default）");
+        assert!(parsed.chain_round.is_none());
+        assert_eq!(parsed.content.as_deref(), Some("旧载荷回复"));
+    }
 }

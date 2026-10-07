@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
-import type { RoundProvenanceEntry } from "./types.ts";
+import type { ChainRoundRef, RoundProvenanceEntry } from "./types.ts";
 
 /**
  * 讨论档案层（change: add-conversation-persistence-and-isolation）。
@@ -138,6 +138,13 @@ export interface ConversationRecord {
    * （后端保存时保全档案已有出处）；此处仅供读取档案 / 摘要时携带。
    */
   on_demand_reading_provenance?: OnDemandReadingProvenance[] | null;
+  /**
+   * 链路轮次引用（add-making-module-core 任务 7.7，记录级后端字段）：后端在
+   * 轮次发起时经窄更新写入，与 `on_demand_reading_provenance` 完全同构。前端
+   * 普通整档保存**不携带**该字段（后端保全档案已有记录）；此处仅供读取档案 /
+   * 重开讨论时携带。缺失（旧档案／未启用链路轮次）显示层降级为不显示。
+   */
+  chain_rounds?: readonly ChainRoundRef[] | null;
 }
 
 /**

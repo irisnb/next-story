@@ -113,13 +113,16 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
         persistDiscussion(conversationId);
         refreshOnDemandState(conversationId);
       },
-      onStructuredSuccess: (content, provenance, sentConfirmed, identity) => {
+      onStructuredSuccess: (content, provenance, sentConfirmed, identity, chainRound) => {
         waitTiming.complete(identity.conversationId);
         context.state.succeedFollowUp(identity.turnId ?? -1, content, identity.conversationId);
         context.state.recordRoundProvenance(
           identity.conversationId,
           roundProvenanceToMaterialProvenance(provenance, identity.turnId ?? 0, sentConfirmed),
         );
+        if (chainRound !== undefined) {
+          context.state.recordRoundChain(identity.conversationId, chainRound);
+        }
         persistDiscussion(identity.conversationId);
         refreshOnDemandState(identity.conversationId);
       },
@@ -133,13 +136,16 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
         persistDiscussion(identity.conversationId);
         refreshOnDemandState(identity.conversationId);
       },
-      onDirectQuestionSuccess: (content, provenance, sentConfirmed, conversationId) => {
+      onDirectQuestionSuccess: (content, provenance, sentConfirmed, conversationId, chainRound) => {
         waitTiming.complete(conversationId);
         context.state.succeedDirectQuestion(content, conversationId);
         context.state.recordRoundProvenance(
           conversationId,
           roundProvenanceToMaterialProvenance(provenance, 0, sentConfirmed),
         );
+        if (chainRound !== undefined) {
+          context.state.recordRoundChain(conversationId, chainRound);
+        }
         persistDiscussion(conversationId);
         refreshOnDemandState(conversationId);
       },

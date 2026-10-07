@@ -31,7 +31,10 @@ const IDENTITY_SENTENCE: &str = "你是陪伴剧本创作者思考与探索的�
 
 /// 宪法红线文本：原文迁移自旧 `constitution_prompt()` 身份句之后的全部条款
 /// （永久边界、诚实材料边界、追问语义、纯文本输出要求），一字不改。
-const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
+/// `pub(crate)`（add-making-module-core 任务 4.5）：制作助手车道（任务组 5）
+/// 复用本红线同文组装制作信封——红线条款对制作会话同样成立（design D4），
+/// 经同一常量引用，杜绝第二副本漂移。
+pub(crate) const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
 只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围。未提供、未读取或未取得的内容，不得声称已经读过；目录不等于正文，检索片段不等于全文。不得声称具有跨讨论长期记忆。\
 追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考。当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实。\
 不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
@@ -46,6 +49,37 @@ const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正�
 /// （驱动侧 dsh-system-prompt 严格变量插值，未知引用会 fail loud）。
 pub fn session_system_prompt() -> String {
     format!("{IDENTITY_SENTENCE}\n{CONSTITUTION_CLAUSES}")
+}
+
+// ========== 链路卡文本组装（add-making-module-core 任务 3.1，design D2） ==========
+
+/// 链路卡注入文本的统一包装头（逐字常量，design D2 审查修订措辞）：
+/// 「可替换的讨论方法、非强制规则」声明由系统统一生成，不依赖单张卡自带
+/// （保证全链路措辞一致，共识 §5.3）。措辞用「提供」而非「启用」——
+/// 试问未启用版本时同一包装不失实（启用与试用场景共用同一文案）。
+const CHAIN_CARDS_WRAPPER_HEADER: &str = "以下是用户提供的陪想要求。这是一套可替换的讨论方法，不是必须遵守的规则；觉得不合适可以直接说。所有候选与判断最终由用户决定。";
+
+/// 组装当轮冻结链路卡的注入文本（`send_message.chain_cards` → 信封
+/// `nextstory:chain-cards` 挂载位，design D1/D2）：统一包装头＋各卡渲染，
+/// 多卡以空行分隔。单卡渲染为 `【标题】＋何时用（触发描述）＋正文`——
+/// 触发描述本身已含适用与不适用情形（由制作助手写清），组装层不再拆分。
+///
+/// 空卡列表返回空串（防御路径：链路库校验保证启用版本至少一卡；无卡轮次
+/// 由调用方以 `None` 省略协议字段，不渲染空包装）。文本不含 `{{`/`}}`
+/// （驱动侧 dsh-system-prompt 严格变量插值，未知引用会 fail loud）。
+pub fn assemble_chain_cards(cards: &[crate::chain_library::RequirementCard]) -> String {
+    if cards.is_empty() {
+        return String::new();
+    }
+    let mut text = String::from(CHAIN_CARDS_WRAPPER_HEADER);
+    for card in cards {
+        text.push_str("\n\n");
+        text.push_str(&format!(
+            "【{}】\n何时用：{}\n{}",
+            card.title, card.trigger_desc, card.body
+        ));
+    }
+    text
 }
 
 /// 入口层：按入口给出本轮请求的立场句（含本轮可见材料的静态描述）。
@@ -306,6 +340,11 @@ pub async fn ai_start_session_in_dir(
 /// `material` 是命令层经 `authorize_selection` 授权通过的选区材料内容，
 /// 生成层只使用该授权内容，绝不回读前端请求中的原始 `selected_text` 字段；
 /// 无选区（直接提问 / 追问）时为 `None`。
+///
+/// `chain_cards` 是当轮冻结的链路卡注入文本（add-making-module-core 任务 3.2，
+/// design D1）：`Some` 时随 `send_message` 协议字段下发（驱动侧轮级更新
+/// `nextstory:chain-cards` 信封段）；`None` 时省略字段，与既有路径逐字节
+/// 一致。卡文本走协议字段，绝不拼入 user 文本（「追问按增量发送」不变）。
 // 参数超限定点豁免：命令层入参直传，结构性收拢归审计 P2-1/P2-2（lib.rs 拆缝）处理。
 #[allow(clippy::too_many_arguments)]
 pub async fn ai_send_message_in_dir(
@@ -317,6 +356,7 @@ pub async fn ai_send_message_in_dir(
     question: String,
     material: Option<String>,
     context: Option<String>,
+    chain_cards: Option<&str>,
 ) -> GenerateAiResult {
     let text = match compose_message_text(kind, &question, material.as_deref(), context.as_deref())
     {
@@ -330,11 +370,13 @@ pub async fn ai_send_message_in_dir(
     if let Err(error) = ensure_driver_started(&config, base_dir, resource_dir).await {
         return GenerateAiResult::failure(error);
     }
+    let chain_cards = chain_cards.map(str::to_string);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::dsh_driver::global_driver_manager().send_message_and_wait(
+        crate::dsh_driver::global_driver_manager().send_message_with_cards_and_wait(
             &session_id,
             &message_id,
             &text,
+            chain_cards.as_deref(),
             crate::dsh_driver::REQUEST_TIMEOUT,
         )
     })
@@ -1134,5 +1176,87 @@ mod tests {
             !summon.contains("关注文档《设定》正文"),
             "及时召唤不得注入常规取材语境"
         );
+    }
+
+    // ========== 链路卡文本组装（add-making-module-core 任务 3.1，design D2） ==========
+
+    use crate::chain_library::RequirementCard;
+
+    fn card(title: &str, trigger: &str, body: &str) -> RequirementCard {
+        RequirementCard {
+            id: format!("card-{title}"),
+            title: title.to_string(),
+            trigger_desc: trigger.to_string(),
+            body: body.to_string(),
+        }
+    }
+
+    /// 统一包装头逐字在场（design D2 审查修订措辞：用「提供」而非「启用」，
+    /// 试问未启用版本时同一包装不失实），单卡按标题／何时用／正文渲染。
+    #[test]
+    fn assemble_chain_cards_renders_verbatim_wrapper_and_single_card() {
+        let cards = vec![card(
+            "节奏紧张时先问人物动机",
+            "适用：情节推进快的段落。\n不适用：日常舒缓的过渡段落。",
+            "先指出当前场景的人物动机，再给出两种可能走向。",
+        )];
+        let text = assemble_chain_cards(&cards);
+        assert_eq!(
+            text,
+            "以下是用户提供的陪想要求。这是一套可替换的讨论方法，不是必须遵守的规则；觉得不合适可以直接说。所有候选与判断最终由用户决定。\n\n\
+             【节奏紧张时先问人物动机】\n\
+             何时用：适用：情节推进快的段落。\n不适用：日常舒缓的过渡段落。\n\
+             先指出当前场景的人物动机，再给出两种可能走向。",
+            "包装头与单卡渲染必须逐字一致"
+        );
+        // 插值安全：dsh-system-prompt 严格变量插值，未知 {{…}} 引用会 fail loud。
+        assert!(!text.contains("{{"), "卡文本不得包含插值变量引用");
+    }
+
+    /// 多卡次序稳定（按版本内既定顺序逐卡拼接），卡与卡以空行分隔。
+    #[test]
+    fn assemble_chain_cards_keeps_stable_order_with_blank_line_separators() {
+        let cards = vec![
+            card("第一张", "适用：甲。", "第一张正文。"),
+            card("第二张", "适用：乙。", "第二张正文。"),
+            card("第三张", "适用：丙。", "第三张正文。"),
+        ];
+        let text = assemble_chain_cards(&cards);
+        let p1 = text.find("【第一张】").expect("第一张在场");
+        let p2 = text.find("【第二张】").expect("第二张在场");
+        let p3 = text.find("【第三张】").expect("第三张在场");
+        assert!(p1 < p2 && p2 < p3, "多卡按既定次序渲染");
+        // 卡间恰以一个空行分隔（\n\n），包装头与首卡之间同样如此。
+        let second_block = &text[p2..];
+        assert!(
+            second_block.starts_with("【第二张】"),
+            "卡块之间以空行分隔，不引入其他前缀"
+        );
+        assert_eq!(text.matches("何时用：").count(), 3, "每张卡渲染一次何时用");
+    }
+
+    /// 空卡列表返回空串：无卡轮次由调用方以 None 省略协议字段，
+    /// 不渲染只含包装头的空壳文本。
+    #[test]
+    fn assemble_chain_cards_returns_empty_string_for_empty_cards() {
+        assert_eq!(assemble_chain_cards(&[]), String::new());
+    }
+
+    /// 任务 3.4（崩溃重放）回归锚点：链路卡只经 `send_message.chain_cards`
+    /// 逐轮携带，信封（`start_session.system_prompt`，重放以纯常量重算重发）
+    /// 与链路装配互不触碰——组装产物不含身份句，信封保持纯常量。
+    /// 协议级逐字断言见 dsh_driver.rs 的
+    /// `start_session_carries_verbatim_constant_system_prompt`。
+    #[test]
+    fn chain_cards_assembly_leaves_session_envelope_constant_untouched() {
+        let cards = vec![card("卡名", "适用：甲。", "正文。")];
+        let assembled = assemble_chain_cards(&cards);
+        let envelope = session_system_prompt();
+        assert_eq!(envelope, session_system_prompt(), "信封保持纯常量");
+        assert!(
+            !assembled.contains(IDENTITY_SENTENCE),
+            "卡文本不得内嵌身份句（信封专属）"
+        );
+        assert_ne!(assembled, envelope);
     }
 }

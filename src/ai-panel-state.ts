@@ -24,7 +24,7 @@ import {
 import type { PanelStateView } from "./ai-panel-request-state.ts";
 import { idleRequest } from "./ai-panel-request-state.ts";
 import type { ConversationSummary, MaterialProvenance, OnDemandReadingGrant, OnDemandReadingProvenance } from "./conversation-archive.ts";
-import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
+import type { ChainRoundRef, GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 import type { FirstRoundMaterial } from "./ai-panel-conversation.ts";
 import type { PendingReadingRequest, ReadingProgress } from "./ai-panel-reducer.ts";
 
@@ -625,6 +625,14 @@ export class AiPanelState {
   recordRoundProvenance(conversationId: string, entries: MaterialProvenance[]): boolean {
     if (entries.length === 0) return false;
     return this.dispatch({ type: "record_round_provenance", conversationId, entries });
+  }
+
+  /**
+   * 并入一轮链路轮次引用（add-making-module-core 任务 7.7）：日常发送成功结果
+   * 携带 `chain_round` 时调用，供「本次参考了什么」的「本轮链路」行活显示。
+   */
+  recordRoundChain(conversationId: string, entry: ChainRoundRef): boolean {
+    return this.dispatch({ type: "record_round_chain", conversationId, entry });
   }
 
   /** 直接提问首轮「已停止」后重试：以原问题与选区重新进入生成。 */

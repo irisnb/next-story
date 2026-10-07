@@ -83,6 +83,7 @@ fn archive_record(conversation_id: &str) -> ConversationRecord {
         on_demand_reading_grant: None,
         on_demand_reading_provenance: None,
         restriction: None,
+        chain_rounds: None,
     }
 }
 

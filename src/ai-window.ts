@@ -333,6 +333,14 @@ export function setupAiWindow(
       label.classList.add("ai-material-round-label");
       label.textContent = round.roundLabel;
       section.append(label);
+      // 本轮链路只读行（add-making-module-core 任务 7.7）：缺失降级不显示；
+      // 无任何切换按钮。
+      if (round.chainLabel !== null) {
+        const chainLine = document.createElement("div");
+        chainLine.classList.add("ai-material-chain");
+        chainLine.textContent = round.chainLabel;
+        section.append(chainLine);
+      }
       for (const source of round.sources) section.append(materialSourceLine(source));
       // 发送状态：区分「已组装」与「已确认送达」，无回执时如实显示未确认。
       const sendState = document.createElement("div");

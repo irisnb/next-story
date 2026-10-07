@@ -12,6 +12,8 @@ import { setupExport } from "./export";
 import { setupFileManagement } from "./file-management";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
+import { setupMaking } from "./making/making-module";
+import { createDefaultTrialWorkSource } from "./making/making-trial-controller";
 import { setupWorkspaceProjectFlow } from "./workspace-project-flow";
 import { createWorkspaceTreeReceiver } from "./workspace-tree-flow";
 import { setupAiFeature } from "./ai-feature";
@@ -41,10 +43,37 @@ window.addEventListener("DOMContentLoaded", () => {
     writing: dom.moduleWriting,
     files: dom.moduleFiles,
     settings: dom.moduleSettings,
+    making: dom.moduleMaking,
   };
   const leaveDialog = setupLeaveDialog(dom);
 
   let activeModule: ModuleId = "writing";
+
+  // 制作模块第四页面（add-making-module-core 任务 7.1）：页面控制器自持状态，
+  // 进入页面时重读链路库（状态条只反映全局当前链路）。
+  // 试问的试用环境直连编辑器（替换默认源的「DOM＋最近作品」自证）：resolve 读
+  // editor.getProjectPath()——闭包延迟求值，调用发生在用户交互时，编辑器已创建；
+  // 文档列举与默认关注文档沿用默认实现。
+  const defaultTrialWork = createDefaultTrialWorkSource();
+  const making = setupMaking(dom.making, {
+    trialWork: {
+      ...defaultTrialWork,
+      async resolve() {
+        const workPath = editor.getProjectPath();
+        if (workPath === null) {
+          return {
+            status: "unavailable" as const,
+            reason: "还没有打开的作品。试问要以一个真实作品为试用环境，请先打开或新建一个作品。",
+          };
+        }
+        return {
+          status: "ok" as const,
+          workPath,
+          workTitle: (dom.currentProjectName.textContent ?? "").trim(),
+        };
+      },
+    },
+  });
 
   function setModule(moduleId: ModuleId): void {
     activeModule = moduleId;
@@ -52,6 +81,12 @@ window.addEventListener("DOMContentLoaded", () => {
     dom.tabWriting.classList.toggle("active", moduleId === "writing");
     dom.tabFiles.classList.toggle("active", moduleId === "files");
     dom.tabSettings.classList.toggle("active", moduleId === "settings");
+    dom.tabMaking.classList.toggle("active", moduleId === "making");
+    // 制作页隐藏作品保存与 AI 面板入口：链路对所有作品共用，
+    // 避免误解为单作品设置（制作页内 AI 浮窗也随写作模块一并隐藏）。
+    dom.btnSave.classList.toggle("hidden", moduleId === "making");
+    dom.btnToggleAi.classList.toggle("hidden", moduleId === "making");
+    if (moduleId === "making") void making.refresh();
   }
 
   const editor = setupEditor(dom, leaveDialog);
@@ -109,6 +144,7 @@ window.addEventListener("DOMContentLoaded", () => {
   dom.tabWriting.addEventListener("click", () => { void requestModule("writing"); });
   dom.tabFiles.addEventListener("click", () => { void requestModule("files"); });
   dom.tabSettings.addEventListener("click", () => { if (!projectFlow.isBusy()) llmConfig.open(); });
+  dom.tabMaking.addEventListener("click", () => { void requestModule("making"); });
 
   const projectFlow = setupWorkspaceProjectFlow(dom, {
     editor, files: fileManagement,

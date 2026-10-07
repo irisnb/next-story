@@ -7,10 +7,15 @@ import {
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import type {
+  ChainRoundRef,
+} from "./types.ts";
+import type {
   MaterialProvenance,
   OnDemandReadingProvenance,
   ReadingDepth,
 } from "./conversation-archive.ts";
+
+export type { ChainRoundRef };
 
 /**
  * AI 面板的纯显示决策边界（OpenSpec change: ai-panel-rendering-boundaries）。
@@ -64,6 +69,24 @@ export interface MaterialRoundView {
   readonly sentConfirmed: boolean;
   /** 发送状态说明：区分「已确认送达」与「已组装、送达未确认」，无回执不伪造。 */
   readonly sendStateLabel: string;
+  /**
+   * 本轮链路只读行（add-making-module-core 任务 7.7）：「本轮链路：名·第N版」。
+   * 讨论档案缺失记录级 `chain_rounds` 字段（旧档案／未启用链路）时为 null，
+   * 降级不显示；无任何切换按钮。
+   */
+  readonly chainLabel: string | null;
+}
+
+/**
+ * 从讨论对象上结构化读取链路轮次引用（`ChainRoundRef` 形状已在
+ * `./types.ts` 单一定义并与后端锁定契约对齐）。字段名按锁定契约
+ * `chain_rounds` 读取，缺失（旧档案／未启用链路）降级为空数组。
+ */
+function chainRoundsOf(
+  conversation: ReadonlyTemporaryConversation | null,
+): readonly ChainRoundRef[] {
+  if (!conversation) return [];
+  return conversation.chain_rounds ?? [];
 }
 
 /** 「本次参考了什么」轻量说明的显示数据。 */
@@ -203,7 +226,17 @@ export function buildMaterialView(
     list.push(entry);
     onDemandByTurn.set(entry.turn_index, list);
   }
-  const allTurns = [...new Set([...byTurn.keys(), ...onDemandByTurn.keys()])].sort((a, b) => a - b);
+  // 链路轮次引用（任务 7.7）：按 turn_index 映射到对应轮分组（同构分轮模式）；
+  // 同轮多条时以后写入的为准（后端每轮窄更新一条）。
+  const chainByTurn = new Map<number, ChainRoundRef>();
+  for (const entry of chainRoundsOf(conversation)) {
+    chainByTurn.set(entry.turn_index, entry);
+  }
+  const allTurns = [...new Set([
+    ...byTurn.keys(),
+    ...onDemandByTurn.keys(),
+    ...chainByTurn.keys(),
+  ])].sort((a, b) => a - b);
 
   let hiddenSourceCount = 0;
   const rounds: MaterialRoundView[] = [];
@@ -242,6 +275,7 @@ export function buildMaterialView(
     }
     const limited = focusEntry?.search_limited === true;
     const sentConfirmed = entries.some((entry) => entry.sent_confirmed === true);
+    const chainEntry = chainByTurn.get(turnIndex);
     rounds.push({
       roundLabel: turnIndex === 0 ? "首轮" : `第 ${turnIndex} 轮`,
       sources,
@@ -253,6 +287,9 @@ export function buildMaterialView(
       sendStateLabel: sentConfirmed
         ? "发送状态：已确认送达模型服务（已观测到模型回应）"
         : "发送状态：已组装进请求，送达未确认（未观测到模型回应）",
+      chainLabel: chainEntry
+        ? `本轮链路：${chainEntry.chain_name}·第${chainEntry.version_index}版`
+        : null,
     });
   }
 

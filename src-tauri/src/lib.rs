@@ -1,11 +1,13 @@
 pub mod ai_host;
 pub mod ai_orchestration;
 pub mod capability_gateway;
+pub mod chain_library;
 pub mod conversation_store;
 pub mod dsh_driver;
 pub mod dsh_sidecar;
 pub mod dsh_version;
 pub mod llm_config;
+pub mod making_session;
 pub mod pdf_print;
 pub mod project;
 pub mod recent_works;
@@ -17,6 +19,7 @@ mod story_tool_authorization;
 pub mod story_tool_channel;
 mod story_tool_round_state;
 pub mod story_tools;
+pub mod trial_session;
 
 use std::path::PathBuf;
 
@@ -910,6 +913,31 @@ pub fn run() {
             // resident-ai-session 任务 3.4 / 4.4）。
             ai_host::install_driver_event_bridge(app.handle());
 
+            // 制作助手会话通道（add-making-module-core 任务组 5）：制作会话
+            // 注册表（进程内 制作会话 id → 驱动会话 id）＋制作增量事件分发
+            // （making- 前缀会话 → making-message-event；日常会话保持 ai-delta
+            // 事件名与载荷不变）。必须在 install_driver_event_bridge 之后安装
+            // （分发 sink 替换直通 sink，安装次序即契约）。
+            app.manage(making_session::MakingSessionRegistry::default());
+            making_session::install_making_event_bridge(app.handle());
+
+            // 试问机制（add-making-module-core 任务组 6，design D5 方案二）：
+            // 试问会话注册表（进程内 试问 id → 驱动会话 id，兼作同试问不可
+            // 重复轮次的在场守卫）＋试问事件分发（trial- 前缀会话 →
+            // trial-message-event；试问身份的授权请求 → trial-authorization-
+            // request，其余授权请求委托既有 ai-reading-request 转发）。必须在
+            // install_making_event_bridge 之后安装（分发 sink 替换制作分发，
+            // 安装次序即契约）。
+            app.manage(trial_session::TrialSessionRegistry::default());
+            trial_session::install_trial_event_bridge(app.handle());
+
+            // 链路库单例（add-making-module-core 任务组 1）：数据在应用本地
+            // 数据目录全局侧 making-module/，与作品数据完全隔离；目录不可得时
+            // 仍注册单例（命令返回明确中文错误，不 panic）。
+            app.manage(chain_library::ChainLibraryStore::new(
+                app.path().app_local_data_dir().ok(),
+            ));
+
             // 主窗口销毁时同步销毁常驻隐藏打印窗口：Tauri 在全部窗口关闭后才退出，
             // 不清理会把应用生命周期拖在不可见的 print-window 上。
             if let Some(main_window) = app.get_webview_window("main") {
@@ -996,7 +1024,29 @@ pub fn run() {
             conversation_restore,
             conversation_set_on_demand_reading,
             conversations_using_document,
-            conversation_on_demand_reading
+            conversation_on_demand_reading,
+            chain_library::chain_library_load,
+            chain_library::chain_create,
+            chain_library::chain_save_version,
+            chain_library::chain_set_active,
+            chain_library::chain_rollback,
+            chain_library::chain_deactivate,
+            chain_library::chain_delete,
+            chain_library::chain_rename,
+            making_session::making_start_session,
+            making_session::making_send_message,
+            making_session::making_cancel_message,
+            making_session::making_end_session,
+            making_session::making_conversation_list,
+            making_session::making_conversation_load,
+            making_session::making_conversation_save,
+            making_session::making_conversation_delete,
+            trial_session::trial_send_message,
+            trial_session::trial_cancel_message,
+            trial_session::trial_authorization_respond,
+            trial_session::trial_get,
+            trial_session::trial_list_for_version,
+            trial_session::trial_set_feedback
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

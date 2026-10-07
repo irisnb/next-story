@@ -19,7 +19,11 @@ import readline from "node:readline";
 
 import { createSessionQueues } from "./session-queue.mjs";
 import { loadProtocol } from "./protocol.mjs";
-import { registerSystemPromptSections } from "./system-prompt-sections.mjs";
+import {
+  CHAIN_CARDS_ORDER,
+  CHAIN_CARDS_SECTION,
+  registerSystemPromptSections,
+} from "./system-prompt-sections.mjs";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -247,9 +251,34 @@ async function createAgentFor(session, seed) {
       // 段落注入，遮蔽默认英文 persona。createAgentFor 是首条 send_message 建
       // 会话与 replay_done 重建两路共同的必经点，setup 内一处注册两路一致
       // （先例：installModelSelection）。
-      registerSystemPromptSections(agentCtx, session.systemPrompt);
+      const disposers = registerSystemPromptSections(agentCtx, session.systemPrompt);
+      // 链路卡轮级更新入口（add-making-module-core 任务 2.2，design D1）：
+      // setup 在 agent 创建时执行一次，闭包捕获的 agentCtx 即该 agent 的
+      // scope——把 applyChainCards(text) 挂到 session 上，send_message 处理器
+      // 在转发给 agent 前调用（比较当前注册文本，不同则 dispose 旧段＋重注册
+      // nextstory:chain-cards，相同不动＝幂等）。disposer 与当前文本存 session。
+      session.chainCardsText = "";
+      session.chainCardsDisposer = disposers.chainCards;
+      session.applyChainCards = (text) => {
+        const target = typeof text === "string" ? text : "";
+        if (session.chainCardsText === target) return false;
+        if (session.chainCardsDisposer) {
+          try { session.chainCardsDisposer(); } catch (error) { diag(`chain-cards dispose error: ${String(error?.message ?? error)}`); }
+          session.chainCardsDisposer = null;
+        }
+        const systemPromptService = agentCtx.get("systemPrompt");
+        session.chainCardsDisposer = systemPromptService.section({
+          name: CHAIN_CARDS_SECTION, order: CHAIN_CARDS_ORDER, text: target,
+        });
+        session.chainCardsText = target;
+        return true;
+      };
       // 工具面四件套注册在 Agent 私有作用域（任务 5.1）；实现只桥接宿主。
-      registerStoryTools(agentCtx, session);
+      // 制作助手会话（design D4）：跳过注册——模型工具面根本不出现 story
+      // 四件套（「看得到但调用失败」不如干净不见）；宿主侧另有失败关闭兜底。
+      if (session.sessionKind !== "making") {
+        registerStoryTools(agentCtx, session);
+      }
     },
   });
   session.handle = handle;
@@ -407,9 +436,15 @@ async function handleCommand(cmd) {
       if (sessions.has(sid)) return emit({ type: "error", session_id: sid, code: "session_exists", message: "会话已存在" });
       sessions.set(sid, {
         id: sid, systemPrompt: typeof cmd.system_prompt === "string" ? cmd.system_prompt : "",
+        // 会话种类（add-making-module-core 任务 2.2，design D4）：缺省 "story"
+        // （旧宿主兼容）；"making" 时 createAgentFor 跳过 story 工具注册。
+        sessionKind: cmd.session_kind === "making" ? "making" : "story",
         agent: null, handle: null, busy: false, cancelRequested: false, seedTurns: [],
         // 工具桥接状态：当前轮消息身份 + 挂起的工具调用（call_id → 落定器）。
         currentMessageId: null, pendingToolCalls: new Map(),
+        // 链路卡轮级更新状态（design D1）：Agent 建立后由 setup 回调挂上
+        // applyChainCards；chainCardsText/chainCardsDisposer 记录当前注册态。
+        chainCardsText: "", chainCardsDisposer: null, applyChainCards: null,
       });
       emit({ type: "session_started", session_id: sid });
       return;
@@ -442,6 +477,10 @@ async function handleCommand(cmd) {
       if (session.busy) return emit({ type: "error", session_id: sid, message_id: cmd.message_id, code: "busy", message: "当前会话已有生成中的请求" });
       if (typeof cmd.text !== "string" || cmd.text.trim() === "") return emit({ type: "error", session_id: sid, message_id: cmd.message_id, code: "bad_request", message: "消息不能为空" });
       if (!session.agent) await createAgentFor(session, undefined);
+      // 链路卡轮级更新（add-making-module-core 任务 2.2，design D1）：转发给
+      // agent 前对齐当轮冻结的卡文本；null/undefined 视为空文本（无卡）。
+      // 卡文本是协议字段，绝不进入 runTurn 的 user 文本（追问仍纯增量）。
+      session.applyChainCards(typeof cmd.chain_cards === "string" ? cmd.chain_cards : "");
       runTurn(session, String(cmd.message_id ?? randomUUID()), cmd.text);
       return;
     }

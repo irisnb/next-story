@@ -1161,6 +1161,8 @@ mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: grant,
             on_demand_reading_provenance: None,
+            // add-making-module-core 任务 4.1 新增可选字段：测试夹具按缺省 None 补齐。
+            chain_rounds: None,
             restriction: None,
         }
     }

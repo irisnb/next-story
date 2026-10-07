@@ -137,6 +137,22 @@ pub struct ConversationRestriction {
     pub at: String,
 }
 
+/// 一轮成功轮次冻结的链路与版本记录（add-making-module-core 任务 4.1，
+/// design D6 记录级后端字段）：只存轮次序号、链路标识、名称快照与版本序号；
+/// 名称快照保证链路日后删除，历史轮次仍可读。与当轮下发的卡文本同源
+/// （同一次冻结读取）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChainRoundRecord {
+    /// 所属轮次（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）。
+    pub turn_index: u32,
+    /// 链路标识。
+    pub chain_id: String,
+    /// 链路名称快照（逐轮记录显示用，链路删除后仍可读）。
+    pub chain_name: String,
+    /// 版本序号（「第 N 版」显示用）。
+    pub version_index: u32,
+}
+
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
 /// 多窗口快车道（任务 9.1）新增两个可选字段：自定义标题 `title` 与置顶标记 `pinned`，
 /// 均带 `#[serde(default)]`，缺失时按「未重命名、未置顶」处理，不视为损坏、不提升版本号。
@@ -171,6 +187,13 @@ pub struct ConversationRecord {
     /// 模型上下文，MUST NOT 保存正文副本。不提升档案版本号。
     #[serde(default)]
     pub on_demand_reading_provenance: Option<Vec<OnDemandReadingProvenance>>,
+    /// 逐轮链路记录（add-making-module-core 任务 4.1，design D6）：`None` 表示
+    /// 旧档案缺字段（视为无链路记录），`Some(vec)` 可为空。由后端在成功轮次
+    /// 以发起时冻结值经窄更新写入（与 `on_demand_reading_provenance` 同构：
+    /// 后端读改写、与前端保存互斥）；普通整档保存只取档案现值，不信任调用方
+    /// 提供的内容。不提升档案版本号。
+    #[serde(default)]
+    pub chain_rounds: Option<Vec<ChainRoundRecord>>,
     #[serde(default)]
     pub restriction: Option<ConversationRestriction>,
 }
@@ -457,6 +480,11 @@ pub fn save_conversation(
     merged.on_demand_reading_provenance = existing
         .as_ref()
         .and_then(|record| record.on_demand_reading_provenance.clone());
+    // 逐轮链路记录同为后端自有字段（add-making-module-core 任务 4.2）：前端
+    // 保存链天然不携带该字段，整档保存不得抹掉后端已落档的记录。
+    merged.chain_rounds = existing
+        .as_ref()
+        .and_then(|record| record.chain_rounds.clone());
     merged.restriction = existing.and_then(|record| record.restriction);
     save_conversation_locked(root, &merged, &deleted)
 }
@@ -739,6 +767,74 @@ pub fn upsert_on_demand_provenance(
         }
     }
     save_conversation_locked(root, &record, &deleted)
+}
+
+/// 追加一轮链路记录（add-making-module-core 任务 4.1 窄更新，design D6）：
+/// 与 [`upsert_on_demand_provenance`] 完全同构——读、写入、落盘全程持存储锁，
+/// 与前端整档保存互斥。同一轮次已有记录时以本次值替换（同轮幂等，成功轮
+/// 只落一次，防御性处理迟到重复）。讨论不存在或已删除时报错，不静默丢弃。
+pub fn upsert_chain_round(
+    root: &Path,
+    conversation_id: &str,
+    round: ChainRoundRecord,
+) -> Result<(), ConversationStoreError> {
+    let deleted = CONVERSATION_STORE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let mut record = read_conversation_locked(root, conversation_id)?;
+    let entries = record.chain_rounds.get_or_insert_with(Vec::new);
+    entries.retain(|entry| entry.turn_index != round.turn_index);
+    entries.push(round);
+    save_conversation_locked(root, &record, &deleted)
+}
+
+/// 计算追问轮的轮次序号（add-making-module-core 任务 4.4）：复用
+/// `MaterialProvenance::turn_index` 的同一约定（首轮为 0），追问序号＝档案中
+/// 已完成的追问轮数＋1——与前端重开讨论时从档案派生 `nextTurnId` 的语义
+/// 逐条对应（`conversationFromRecord`），跨重启对齐。档案缺失或不可读时按 0
+/// 返回（防御路径：该轮落档仍会经窄更新如实报错，这里只做序号推导）。
+pub fn next_follow_up_turn_index(root: &Path, conversation_id: &str) -> u32 {
+    match read_conversation(root, conversation_id) {
+        Ok(record) => completed_follow_up_rounds(&record) + 1,
+        Err(_) => 0,
+    }
+}
+
+/// 统计档案中已完成的追问轮数：从首轮 assistant 回应之后起，逐对检查 user 轮
+/// （终态须为完成）与其后 assistant 轮的终态。完成态＝`done`（前端写入）或
+/// `success`（历史测试夹具），两者等价；未完成（pending / cancelled / failed）
+/// 的轮不计数——重试沿用同一序号，与前端把未完成轮重建为可替换待答轮的行为
+/// 一致。孤立的 user 轮（无配对 assistant）同样不计数。
+fn completed_follow_up_rounds(record: &ConversationRecord) -> u32 {
+    let turns = &record.turns;
+    // 首轮 assistant 轮：召唤档案在 turns[0]；直接提问档案在 turns[1]。
+    let first_assistant_index: usize = match turns.first() {
+        Some(turn) if turn.role == "user" => 1,
+        _ => 0,
+    };
+    let mut completed = 0u32;
+    let mut index = first_assistant_index.saturating_add(1);
+    while index < turns.len() {
+        let user = &turns[index];
+        if user.role != "user" || !is_completed_turn_status(&user.status) {
+            index += 1;
+            continue;
+        }
+        match turns.get(index + 1) {
+            Some(assistant) if assistant.role == "assistant" => {
+                if is_completed_turn_status(&assistant.status) {
+                    completed += 1;
+                }
+                index += 2;
+            }
+            _ => index += 1,
+        }
+    }
+    completed
+}
+
+fn is_completed_turn_status(status: &str) -> bool {
+    matches!(status, "done" | "success")
 }
 
 /// 窄更新：不依赖前端缓存全文，None 不改，空白标题清除自定义标题。
@@ -1067,6 +1163,7 @@ mod tests {
             provenance: Some(vec![]),
             on_demand_reading_grant: None,
             on_demand_reading_provenance: None,
+            chain_rounds: None,
             restriction: None,
         }
     }
@@ -3096,5 +3193,327 @@ mod tests {
             !conversation_file(temp.path(), "conv-x").exists(),
             "迟到保存不得复活已删除的档案文件"
         );
+    }
+
+    // ========== 逐轮链路记录（add-making-module-core 任务 4.1–4.4，design D6） ==========
+
+    fn chain_round(turn: u32, chain_id: &str, name: &str, version: u32) -> ChainRoundRecord {
+        ChainRoundRecord {
+            turn_index: turn,
+            chain_id: chain_id.to_string(),
+            chain_name: name.to_string(),
+            version_index: version,
+        }
+    }
+
+    /// 序列化契约（前端车道并行开发依据）：条目恰为四个字段，名称不可再变。
+    #[test]
+    fn chain_round_entry_serializes_to_exact_contract_shape() {
+        let value =
+            serde_json::to_value(chain_round(2, "chain-x", "链路甲", 3)).expect("serialize");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "turn_index": 2,
+                "chain_id": "chain-x",
+                "chain_name": "链路甲",
+                "version_index": 3,
+            }),
+            "chain_rounds 条目形状必须逐字稳定"
+        );
+    }
+
+    /// 旧档案缺失 chain_rounds 字段：读取为 None，不视为损坏、不跳过（显示降级）。
+    #[test]
+    fn old_archive_without_chain_rounds_reads_as_none_and_is_not_corrupt() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-old",
+            Some("旧档案问题"),
+            None,
+            vec![turn("assistant", "旧回答", "success")],
+        );
+        let mut value = serde_json::to_value(&rec).expect("to value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("chain_rounds");
+        let dir = conversations_dir(temp.path());
+        fs::create_dir_all(&dir).expect("create dir");
+        fs::write(
+            dir.join("conv-old.json"),
+            serde_json::to_string_pretty(&value).expect("serialize"),
+        )
+        .expect("write old archive");
+
+        let result = list_conversations(temp.path()).expect("list");
+        assert!(
+            result.skipped.is_empty(),
+            "缺链路字段的旧档案不得视为损坏或跳过"
+        );
+        assert_eq!(result.conversations.len(), 1);
+        let loaded = read_conversation(temp.path(), "conv-old").expect("read old");
+        assert_eq!(loaded.chain_rounds, None, "缺字段按 None 处理");
+    }
+
+    /// 任务 4.4：后端写入的链路记录经多次「前端式整档保存」
+    /// （前端保存链不携带该字段：经 JSON 往返剥离后改 turns 再保存）后幸存。
+    #[test]
+    fn chain_rounds_survive_repeated_frontend_style_saves() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-chain",
+            Some("问题"),
+            None,
+            vec![turn("assistant", "首轮回应", "done")],
+        );
+        save_conversation(temp.path(), &rec).expect("create");
+
+        // 宿主通道经窄更新按成功轮落档两条链路记录。
+        upsert_chain_round(
+            temp.path(),
+            "conv-chain",
+            chain_round(0, "chain-a", "链路甲", 1),
+        )
+        .expect("round 0");
+        upsert_chain_round(
+            temp.path(),
+            "conv-chain",
+            chain_round(1, "chain-a", "链路甲", 2),
+        )
+        .expect("round 1");
+        let expected = read_conversation(temp.path(), "conv-chain")
+            .expect("read")
+            .chain_rounds;
+
+        // 前端式整档保存循环：读取档案 → 剥离后端自有字段（前端契约不含它）→
+        // 追加新轮次 → 保存；重复三次。
+        for round in 1..=3 {
+            let loaded = read_conversation(temp.path(), "conv-chain").expect("read");
+            let mut value = serde_json::to_value(&loaded).expect("json");
+            value
+                .as_object_mut()
+                .expect("object")
+                .remove("chain_rounds");
+            let mut frontend: ConversationRecord =
+                serde_json::from_value(value).expect("parse without chain_rounds");
+            frontend
+                .turns
+                .push(turn("user", &format!("追问{round}"), "done"));
+            frontend
+                .turns
+                .push(turn("assistant", &format!("回答{round}"), "done"));
+            save_conversation(temp.path(), &frontend).expect("frontend save");
+        }
+
+        let loaded = read_conversation(temp.path(), "conv-chain").expect("read");
+        assert_eq!(
+            loaded.chain_rounds, expected,
+            "多次前端式整档保存后链路记录必须幸存"
+        );
+        assert_eq!(loaded.turns.len(), 7, "前端保存的轮次内容正常落盘");
+
+        // 显式携带冲突值同样无权改写（普通保存不是该字段的所有者）。
+        let mut conflicting = read_conversation(temp.path(), "conv-chain").expect("read");
+        conflicting.chain_rounds = Some(vec![chain_round(9, "forged", "伪造", 9)]);
+        save_conversation(temp.path(), &conflicting).expect("conflicting save");
+        let reloaded = read_conversation(temp.path(), "conv-chain").expect("read");
+        assert_eq!(reloaded.chain_rounds, expected, "整档保存不得改写链路记录");
+    }
+
+    /// 普通保存无视调用方提供的链路记录：新档案落 None；只有后端窄更新能写入。
+    #[test]
+    fn ordinary_save_ignores_caller_provided_chain_rounds() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let mut caller = record("conv-owned", None, None, vec![]);
+        caller.chain_rounds = Some(vec![chain_round(0, "caller-chain", "调用方链路", 1)]);
+        save_conversation(temp.path(), &caller).expect("ordinary save");
+        let loaded = read_conversation(temp.path(), "conv-owned").expect("read");
+        assert_eq!(
+            loaded.chain_rounds, None,
+            "调用方提供的链路记录不得经普通保存落档"
+        );
+
+        // 后端写入后，迟到的普通保存即使显式提供空值也不清除。
+        upsert_chain_round(
+            temp.path(),
+            "conv-owned",
+            chain_round(0, "backend", "后端链路", 2),
+        )
+        .expect("backend round");
+        let mut late = read_conversation(temp.path(), "conv-owned").expect("read");
+        late.chain_rounds = Some(vec![]);
+        save_conversation(temp.path(), &late).expect("late save");
+        let reloaded = read_conversation(temp.path(), "conv-owned").expect("read");
+        assert_eq!(
+            reloaded.chain_rounds,
+            Some(vec![chain_round(0, "backend", "后端链路", 2)]),
+            "显式空值无权清除后端写入的记录"
+        );
+    }
+
+    /// 同轮幂等：同一轮次重复写入以本次值替换；其他轮次与其他字段不受影响。
+    /// 讨论不存在时报错（不静默丢）；已删除的讨论拒绝写入。
+    #[test]
+    fn upsert_chain_round_replaces_same_turn_and_reports_missing() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-upsert",
+            None,
+            None,
+            vec![turn("assistant", "保留回答", "success")],
+        );
+        save_conversation(temp.path(), &rec).expect("create");
+        conversation_update_meta(
+            temp.path(),
+            "conv-upsert",
+            Some("保留标题".into()),
+            Some(true),
+        )
+        .expect("meta");
+
+        upsert_chain_round(
+            temp.path(),
+            "conv-upsert",
+            chain_round(0, "chain-a", "链路甲", 1),
+        )
+        .expect("round 0");
+        upsert_chain_round(
+            temp.path(),
+            "conv-upsert",
+            chain_round(1, "chain-a", "链路甲", 2),
+        )
+        .expect("round 1");
+        upsert_chain_round(
+            temp.path(),
+            "conv-upsert",
+            chain_round(0, "chain-b", "链路乙", 1),
+        )
+        .expect("round 0 retry replaces");
+
+        let after = read_conversation(temp.path(), "conv-upsert").expect("read");
+        assert_eq!(
+            after.chain_rounds,
+            Some(vec![
+                chain_round(1, "chain-a", "链路甲", 2),
+                chain_round(0, "chain-b", "链路乙", 1),
+            ]),
+            "同轮替换、异轮并存"
+        );
+        assert_eq!(after.title.as_deref(), Some("保留标题"), "标题不受影响");
+        assert!(after.pinned, "置顶不受影响");
+        assert_eq!(after.turns, rec.turns, "轮次正文不受影响");
+
+        assert!(matches!(
+            upsert_chain_round(temp.path(), "missing", chain_round(0, "x", "x", 1)),
+            Err(ConversationStoreError::NotFound(_))
+        ));
+        delete_conversation(temp.path(), "conv-upsert").expect("delete");
+        assert!(
+            upsert_chain_round(temp.path(), "conv-upsert", chain_round(2, "x", "x", 1)).is_err(),
+            "已删除讨论拒绝写入"
+        );
+        assert!(!conversation_file(temp.path(), "conv-upsert").exists());
+    }
+
+    /// 任务 4.3：链路删除不清理讨论档案——历史轮次凭名称快照仍可读，
+    /// 档案不因引用失效而损坏。
+    #[test]
+    fn chain_round_name_snapshot_remains_readable_after_chain_deletion() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-snap",
+            Some("问题"),
+            None,
+            vec![turn("assistant", "回应", "done")],
+        );
+        save_conversation(temp.path(), &rec).expect("create");
+        // 引用一条此后被删除的链路（链路库侧删除不动讨论档案，这里直接落一条
+        // 悬空引用等价验证：档案读取不做链路存在性校验）。
+        upsert_chain_round(
+            temp.path(),
+            "conv-snap",
+            chain_round(0, "chain-gone", "已删链路", 4),
+        )
+        .expect("round");
+
+        let loaded = read_conversation(temp.path(), "conv-snap").expect("read");
+        assert_eq!(
+            loaded.chain_rounds,
+            Some(vec![chain_round(0, "chain-gone", "已删链路", 4)]),
+            "名称快照与版本序号仍可读"
+        );
+        let listed = list_conversations(temp.path()).expect("list");
+        assert!(listed.skipped.is_empty(), "悬空引用不损坏档案");
+        assert_eq!(listed.conversations.len(), 1);
+    }
+
+    /// 轮次序号推导（任务 4.4）：复用 MaterialProvenance 的「首轮为 0」约定，
+    /// 追问序号＝已完成追问对数＋1，与前端重开派生 nextTurnId 同一语义。
+    #[test]
+    fn next_follow_up_turn_index_counts_completed_pairs_like_frontend() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+
+        // 档案缺失（防御路径）：按 0。
+        assert_eq!(next_follow_up_turn_index(temp.path(), "missing"), 0);
+
+        // 召唤档案：[assistant(done)] → 首个追问序号 1。
+        let summon = record(
+            "conv-summon",
+            None,
+            Some("选区"),
+            vec![turn("assistant", "首轮", "done")],
+        );
+        save_conversation(temp.path(), &summon).expect("save summon");
+        assert_eq!(next_follow_up_turn_index(temp.path(), "conv-summon"), 1);
+
+        // 直接提问档案：[user(done), assistant(done)] → 1。
+        let direct = record(
+            "conv-direct",
+            Some("问题"),
+            None,
+            vec![
+                turn("user", "问题", "done"),
+                turn("assistant", "首轮", "done"),
+            ],
+        );
+        save_conversation(temp.path(), &direct).expect("save direct");
+        assert_eq!(next_follow_up_turn_index(temp.path(), "conv-direct"), 1);
+
+        // 一对已完成追问（user done + assistant done）→ 2；未完成轮（cancelled）
+        // 不计数（重试沿用同一序号）；孤立 user 轮不计数；failed 轮不计数。
+        let mut mixed = record(
+            "conv-mixed",
+            Some("问题"),
+            None,
+            vec![
+                turn("user", "问题", "done"),
+                turn("assistant", "首轮", "done"),
+                turn("user", "追问一", "done"),
+                turn("assistant", "回答一", "done"),
+                turn("user", "追问二", "done"),
+                turn("assistant", "半截回答", "cancelled"),
+                turn("user", "孤立追问", "done"),
+                turn("user", "失败追问", "failed"),
+                turn("assistant", "失败回答", "failed"),
+            ],
+        );
+        save_conversation(temp.path(), &mixed).expect("save mixed");
+        assert_eq!(
+            next_follow_up_turn_index(temp.path(), "conv-mixed"),
+            2,
+            "只有完成对计数：cancelled / 孤立 / failed 轮都不推进序号"
+        );
+
+        // 历史夹具用 success 终态：与 done 等价计数。
+        mixed.turns[3].status = "success".to_string();
+        let value = serde_json::to_value(&mixed).expect("json");
+        // 直接改写档案（绕过合并保护只为本测试断言序号推导）。
+        fs::write(
+            conversation_file(temp.path(), "conv-mixed"),
+            serde_json::to_vec_pretty(&value).expect("serialize"),
+        )
+        .expect("rewrite");
+        assert_eq!(next_follow_up_turn_index(temp.path(), "conv-mixed"), 2);
     }
 }

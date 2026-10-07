@@ -98,6 +98,7 @@
         <button id="tab-writing" class="tab-btn active" type="button">写作</button>
         <button id="tab-files" class="tab-btn" type="button">文件管理</button>
         <button id="tab-settings" class="tab-btn" type="button">设置</button>
+        <button id="tab-making" class="tab-btn" type="button">制作模块</button>
       </nav>
 
       <!-- 写作模块 -->
@@ -572,6 +573,176 @@
             <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
             <button id="btn-save-config" class="btn-primary" disabled>保存</button>
           </div>
+        </div>
+      </section>
+
+      <!-- 制作模块（add-making-module-core 任务组 7）：状态条常驻＋三区并列
+           （链路库找成品｜结构检视看成品与确定使用｜制作对话做零件）。
+           姿态／背景／方式插槽不出现占位；无拖拽／步骤编号／执行箭头。 -->
+      <section id="module-making" class="module-view hidden" aria-label="制作模块">
+        <!-- 顶部当前链路状态条：只反映全局当前链路（链路库 active），不随浏览变化 -->
+        <div id="making-status-bar" class="making-status-bar" role="status" aria-live="polite">
+          <div id="making-status-active" class="making-status-active hidden">
+            <span class="making-status-main">
+              <span id="making-status-text" class="making-status-text"></span>
+              <span class="making-status-sep" aria-hidden="true">｜</span>
+              <span class="making-status-shared">所有作品共用</span>
+              <button id="making-deactivate-btn" class="making-status-btn" type="button">停用</button>
+            </span>
+            <span class="making-status-timing">从下一轮开始使用；正在生成的回复沿用发起时的版本</span>
+          </div>
+          <div id="making-status-idle" class="making-status-idle hidden">当前未启用链路，使用日常陪想</div>
+          <div id="making-status-error" class="making-status-error hidden" role="alert"></div>
+        </div>
+
+        <!-- 中等宽度：链路库收拢为按钮入口（默认与宽窗口下不显示，显隐由 CSS 控制） -->
+        <div id="making-collapsed-bar" class="making-collapsed-bar">
+          <button id="making-library-toggle" class="making-library-toggle" type="button" aria-expanded="false" aria-controls="making-chain-library">链路库</button>
+        </div>
+
+        <!-- 更窄窗口：页内切换「结构检视／制作对话」（状态条常驻；切换不重建 DOM，
+             保留未发送输入与浏览位置） -->
+        <div id="making-view-switch" class="making-view-switch" role="tablist" aria-label="制作页视图切换">
+          <button id="making-view-inspect-btn" class="making-view-switch-btn active" type="button" role="tab" aria-selected="true" aria-controls="making-inspector">结构检视</button>
+          <button id="making-view-chat-btn" class="making-view-switch-btn" type="button" role="tab" aria-selected="false" aria-controls="making-conversation-pane">制作对话</button>
+        </div>
+
+        <div class="making-main">
+          <!-- 左：链路库（找成品：名称／当前启用版本／有无新草稿；点击只查看） -->
+          <aside id="making-chain-library" class="making-chain-library" aria-label="链路库">
+            <div class="making-library-head">
+              <span class="making-library-title">链路库</span>
+              <span class="spacer"></span>
+              <button id="making-library-close-btn" class="making-mini-btn making-library-close" type="button" aria-label="收起链路库">收起</button>
+              <button id="making-new-chain-btn" class="making-mini-btn" type="button">新建</button>
+            </div>
+            <form id="making-new-chain-form" class="making-new-chain-form hidden">
+              <label class="making-field-label" for="making-new-chain-name">链路名称</label>
+              <input type="text" id="making-new-chain-name" class="making-new-chain-input" placeholder="给这套想法起个名字" />
+              <span class="making-new-chain-actions">
+                <button id="making-new-chain-confirm" class="making-mini-btn primary" type="submit">创建</button>
+                <button id="making-new-chain-cancel" class="making-mini-btn" type="button">取消</button>
+              </span>
+            </form>
+            <div id="making-chain-list" class="making-chain-list" role="list"></div>
+            <div id="making-chain-empty" class="making-chain-empty hidden">
+              <p class="making-chain-empty-title">还没有链路。</p>
+              <p>说说你希望 AI 多做什么、少做什么，从一句话开始就行。</p>
+            </div>
+          </aside>
+
+          <!-- 中：结构检视（看成品与确定使用；点卡在下方展开检视面板） -->
+          <section id="making-inspector" class="making-inspector" aria-label="结构检视">
+            <div id="making-inspector-empty" class="making-inspector-empty">
+              <p>从左侧选择一条链路，查看它的组装结构。</p>
+            </div>
+            <div id="making-inspector-content" class="making-inspector-content hidden">
+              <header class="making-inspector-head">
+                <h2 id="making-inspector-title" class="making-inspector-title"></h2>
+                <span id="making-inspector-state" class="making-inspector-state"></span>
+                <span class="spacer"></span>
+                <label class="making-field-label" for="making-version-select">版本</label>
+                <select id="making-version-select" class="making-version-select" aria-label="版本记录"></select>
+                <button id="making-enable-btn" class="making-action-btn primary" type="button" hidden></button>
+                <button id="making-delete-chain-btn" class="making-action-btn" type="button">删除链路</button>
+              </header>
+              <p class="making-disclaimer">展示链路的组装结构与适用条件，不代表 AI 内部思考过程。</p>
+
+              <div class="making-region">
+                <h3 class="making-region-title">链路可变区</h3>
+                <p class="making-region-note">要求类插槽：想让 AI 多做什么、别做什么</p>
+                <div id="making-card-list" class="making-card-list" role="list"></div>
+                <p id="making-no-cards" class="making-no-cards hidden">这个版本还没有卡片。可以在制作对话里口述要求，让助手起草。</p>
+              </div>
+
+              <div class="making-region making-base-region">
+                <h3 class="making-region-title">固定底座<span class="making-base-suffix">所有链路共用 · 不可修改</span></h3>
+                <details class="making-base-item">
+                  <summary>红线</summary>
+                  <p>AI 不改写你的文档；回复只是临时材料，判断权始终在你手里。</p>
+                </details>
+                <details class="making-base-item">
+                  <summary>骨（底线立场）</summary>
+                  <p>AI 只提观察、问题与可能性，不替你判断创意高低，不把假设当成事实。</p>
+                </details>
+                <details class="making-base-item">
+                  <summary>工具</summary>
+                  <p>阅读、检索等公共能力对所有链路一样可用，不按链路分档。</p>
+                </details>
+                <details class="making-base-item">
+                  <summary>材料规则</summary>
+                  <p>AI 只按你授权的范围读取作品材料；链路不改变任何读取授权。</p>
+                </details>
+              </div>
+
+              <!-- 卡片检视面板（点卡后展开；五项：身份／何时用／怎么做／本版变化／试问记录） -->
+              <section id="making-card-panel" class="making-card-panel hidden" aria-label="卡片检视"></section>
+            </div>
+          </section>
+
+          <!-- 右：制作对话（做零件；会话按链路组织：空态引导＋最近会话／历史列表） -->
+          <aside id="making-conversation-pane" class="making-conversation-pane" aria-label="制作对话">
+            <header class="making-conversation-head">
+              <h2 class="making-conversation-title">正在制作：<span id="making-conversation-object">未选择</span></h2>
+            </header>
+            <div id="making-conversation-body" class="making-conversation-body">
+              <!-- 空态：无制作对象时的引导＋所浏览链路的最近会话入口 -->
+              <div id="making-conversation-empty" class="making-conversation-empty">
+                <p class="making-conversation-hint">说说你希望 AI 多做什么、少做什么，从一句话开始就行。</p>
+                <button id="making-conversation-start-btn" class="making-action-btn primary" type="button">开始新制作</button>
+                <div id="making-conversation-recent" class="making-recent hidden"></div>
+              </div>
+              <!-- 会话打开后的主区：工具条＋历史列表＋提示＋转录 -->
+              <div id="making-conversation-active" class="making-conversation-active hidden">
+                <div class="making-session-bar">
+                  <span id="making-session-title" class="making-session-title"></span>
+                  <span class="spacer"></span>
+                  <button id="making-session-new-btn" class="making-mini-btn" type="button">新会话</button>
+                  <button id="making-session-history-btn" class="making-mini-btn" type="button" aria-expanded="false" aria-controls="making-session-history-list">历史会话</button>
+                </div>
+                <div id="making-session-history-list" class="making-session-history hidden"></div>
+                <p id="making-session-notice" class="making-session-notice hidden" role="status" aria-live="polite"></p>
+                <div id="making-session-messages" class="making-session-messages" role="log" aria-live="polite"></div>
+              </div>
+              <!-- 试问区（add-making-module-core 任务 6.2/6.3/6.5，车道 F2b）：从卡草稿
+                   面板「开始试问」展开。问题先过目再运行；运行状态与补读授权如实呈现；
+                   对照为显式动作；试问不切全局链路、不产生讨论档案。 -->
+              <section id="making-trial-panel" class="making-trial-panel hidden" aria-label="试问">
+                <header class="making-trial-head">
+                  <h3 class="making-trial-title">试问</h3>
+                  <span class="spacer"></span>
+                  <button id="making-trial-close" class="making-mini-btn" type="button">收起</button>
+                </header>
+                <!-- 设置（试问问题先过目）：所试链路·版本／试用作品／关注文档／必填问题 -->
+                <form id="making-trial-form" class="making-trial-form hidden">
+                  <p id="making-trial-meta" class="making-trial-meta"></p>
+                  <label class="making-field-label" for="making-trial-focus">关注文档</label>
+                  <select id="making-trial-focus" class="making-trial-focus" aria-label="试问的关注文档"></select>
+                  <label class="making-field-label" for="making-trial-question">试问问题（先过目，可修改）</label>
+                  <textarea id="making-trial-question" class="making-trial-question" rows="3" placeholder="写下这次试问要问的问题，过目后再开始"></textarea>
+                  <p class="making-trial-note">试问走真实日常陪想链路：材料自动附带、按需补读照旧请求授权；默认只跑带卡一版，不带卡对照需显式发起。试问不会启用这版卡片，也不产生讨论档案。</p>
+                  <p id="making-trial-guard" class="making-trial-guard hidden" role="alert"></p>
+                  <div class="making-trial-actions">
+                    <button id="making-trial-cancel" class="making-mini-btn" type="button">取消</button>
+                    <button id="making-trial-start" class="making-mini-btn primary" type="submit" disabled>开始试用</button>
+                  </div>
+                </form>
+                <!-- 运行区：环境行＋证据块（带卡/对照并列，流式渲染与授权呈现） -->
+                <div id="making-trial-run" class="making-trial-run hidden">
+                  <p id="making-trial-run-meta" class="making-trial-meta"></p>
+                  <div id="making-trial-runs" class="making-trial-runs" role="log" aria-live="polite"></div>
+                </div>
+              </section>
+            </div>
+            <form id="making-conversation-form" class="making-conversation-form" aria-label="制作对话输入">
+              <label class="making-field-label" for="making-conversation-input">制作对话输入</label>
+              <textarea id="making-conversation-input" class="making-conversation-input" rows="3" placeholder="先开始或继续一个制作会话"></textarea>
+              <span class="making-form-actions">
+                <button id="making-conversation-stop" class="making-mini-btn" type="button" hidden>停止</button>
+                <button id="making-conversation-send" class="making-mini-btn" type="submit" disabled>发送</button>
+              </span>
+            </form>
+          </aside>
         </div>
       </section>
     </main>

@@ -306,8 +306,8 @@ export async function openProject(projectPath: string): Promise<ProjectOpenResul
 // ========== 内容树命令（前端文件管理） ==========
 
 /** 读取整棵内容树结构（含回收站）。 */
-export async function openContentTree(projectPath: string): Promise<ContentTree> {
-  return tauriInvoke<ContentTree>("open_content_tree", { projectPath });
+export async function openContentTree(projectPath: string, call: InvokeFn = defaultInvoke): Promise<ContentTree> {
+  return call<ContentTree>("open_content_tree", { projectPath });
 }
 
 /** 按文档 ID 读取单篇文档正文。 */
@@ -642,4 +642,404 @@ export function listenAiDriverLost(
   listen: ListenFn = defaultListen,
 ): Promise<UnlistenFn> {
   return listen<null>("ai-driver-lost", () => handler());
+}
+
+// ========== 制作模块·链路库命令（change: add-making-module-core 任务组 1 命令面） ==========
+
+/** 当前链路引用（全局一条，所有作品共用）；`null`＝未启用（日常陪想）。 */
+export interface ActiveRef {
+  chain_id: string;
+  version_id: string;
+}
+
+/** 试问证据引用（全文在全局侧 `trials/<id>.json`，跟链路走、不进作品文件夹）。 */
+export interface TrialRef {
+  trial_id: string;
+  created_at: string;
+  /** 是否带卡试跑（对照试跑为 false）。 */
+  with_card: boolean;
+}
+
+/** 要求卡：触发描述（含负例）＋正文两段构成。 */
+export interface RequirementCard {
+  id: string;
+  title: string;
+  trigger_desc: string;
+  body: string;
+}
+
+/** 链路的一个不可变版本（旧版本只读保留；改卡＝追加新版本）。 */
+export interface ChainVersion {
+  id: string;
+  /** 链内递增序号（第 1 版起）。 */
+  index: number;
+  created_at: string;
+  cards: RequirementCard[];
+  change_note: string;
+  trials: TrialRef[];
+}
+
+/** 一条思维链路：名称＋只增不减的版本序列。 */
+export interface Chain {
+  id: string;
+  name: string;
+  created_at: string;
+  versions: ChainVersion[];
+}
+
+/** 链路库主文件数据（`making-module/chains.json` 的 serde 契约，snake_case 对齐）。 */
+export interface ChainLibrary {
+  format_version?: number;
+  chains: Chain[];
+  active: ActiveRef | null;
+}
+
+/** 保存新版本的入参卡（id 由后端生成，不接受外部指定）。 */
+export interface CardInput {
+  title: string;
+  trigger_desc: string;
+  body: string;
+}
+
+/** 读取链路库（链路列表＋版本＋启用指针；缺主文件时后端返回空库）。 */
+export async function chainLibraryLoad(call: InvokeFn = defaultInvoke): Promise<ChainLibrary> {
+  return call<ChainLibrary>("chain_library_load");
+}
+
+/** 新建链路（只有名称，尚无版本；不改变当前启用状态）。 */
+export async function chainCreate(
+  name: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<Chain> {
+  return call<Chain>("chain_create", { name });
+}
+
+/**
+ * 保存新版本（用户确认保存的入口）：追加不可变新版本，不改 `active` 指针
+ * （存草稿不等于生效）。校验失败（超限/缺触发描述）后端明确报错。
+ */
+export async function chainSaveVersion(
+  chainId: string,
+  cards: CardInput[],
+  changeNote: string | null,
+  call: InvokeFn = defaultInvoke,
+): Promise<ChainVersion> {
+  return call<ChainVersion>("chain_save_version", {
+    chainId,
+    cards,
+    changeNote,
+  });
+}
+
+/** 显式启用/切换当前链路（全局一条，所有作品共用；从下一轮开始生效）。 */
+export async function chainSetActive(
+  chainId: string,
+  versionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call<void>("chain_set_active", { chainId, versionId });
+}
+
+/** 回退：启用指针指向旧版本；较新版本及其试问证据保留。 */
+export async function chainRollback(
+  chainId: string,
+  versionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call<void>("chain_rollback", { chainId, versionId });
+}
+
+/** 停用当前链路：下一轮起回到日常陪想；链路、版本与试问档案全部保留。 */
+export async function chainDeactivate(call: InvokeFn = defaultInvoke): Promise<void> {
+  await call<void>("chain_deactivate");
+}
+
+/** 删除链路（独立动作，调用方负责确认）：删除该链路全部数据；不触碰作品与讨论档案。 */
+export async function chainDelete(chainId: string, call: InvokeFn = defaultInvoke): Promise<void> {
+  await call<void>("chain_delete", { chainId });
+}
+
+/** 重命名链路：只改名称，不动版本与启用指针。 */
+export async function chainRename(
+  chainId: string,
+  name: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call<void>("chain_rename", { chainId, name });
+}
+
+// ========== 制作模块·制作对话命令与事件（change: add-making-module-core 任务 5 命令面） ==========
+
+/** 制作对话一轮的生成终态（与后端锁定契约一致；注意成功态是 `success`，非日常的 `done`）。 */
+export type MakingTurnStatus = "pending" | "success" | "failed" | "cancelled";
+
+/** 制作对话轮次（后端 `MakingTurn` 的 serde 契约）。 */
+export interface MakingConversationTurn {
+  role: "user" | "assistant";
+  text: string;
+  status: MakingTurnStatus;
+}
+
+/**
+ * 制作会话档案（后端 `MakingConversationRecord`；全局侧
+ * `making-module/conversations/<id>.json`，绝不写入作品文件夹）。
+ * `id` 由前端生成（`mc-` 前缀）；`updated_at` 由前端维护，列表按其倒序。
+ */
+export interface MakingConversationRecord {
+  id: string;
+  chain_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  turns: MakingConversationTurn[];
+}
+
+/** 制作会话列表摘要（不含 turns 全文）。 */
+export interface MakingConversationSummary {
+  id: string;
+  chain_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  turn_count: number;
+}
+
+/** `making_conversation_list` 的稳定返回：正常条目＋被跳过（损坏/超限）档案的如实提示。 */
+export interface MakingConversationListResult {
+  conversations: MakingConversationSummary[];
+  skipped: string[];
+}
+
+/** `"making-message-event"` 事件载荷（与 `ai-delta` 同构；`session_id` 为制作会话 id）。 */
+export interface MakingMessageEventPayload {
+  session_id: string;
+  message_id: string;
+  seq: number;
+  text: string;
+}
+
+/**
+ * 启动制作会话（幂等；懒建：会话已存在时复用，档案有历史则自动重放 seed——
+ * 重开会话的恢复入口）。收到 `ai-driver-lost` 后应先 `makingEndSession` 复位。
+ */
+export async function makingStartSession(
+  conversationId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("making_start_session", { conversationId });
+}
+
+/**
+ * 向制作会话发送一条消息并等待终态。命令阻塞到终态才 resolve；流式增量经
+ * `"making-message-event"` 事件先行转发，命令返回的 `content` 是最终事实。
+ * 后端自动确保会话存在（含从档案重放），无需先显式 start。
+ */
+export async function makingSendMessage(
+  conversationId: string,
+  messageId: string,
+  text: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("making_send_message", { conversationId, messageId, text });
+}
+
+/** 取消一条在途的制作消息生成（幂等）。 */
+export async function makingCancelMessage(
+  conversationId: string,
+  messageId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("making_cancel_message", { conversationId, messageId });
+}
+
+/**
+ * 结束制作会话（幂等）：清除后端注册表条目，随后的 start / send 自动走恢复
+ * 路径。收到 `ai-driver-lost` 后对打开的制作会话调用以复位。
+ */
+export async function makingEndSession(
+  conversationId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("making_end_session", { conversationId });
+}
+
+/** 按链路列出制作会话（`updated_at` 倒序）；损坏/超限档案跳过并如实提示。 */
+export async function makingConversationList(
+  chainId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<MakingConversationListResult> {
+  return call<MakingConversationListResult>("making_conversation_list", { chainId });
+}
+
+/** 读取一份完整制作会话档案（重开会话用）；缺失/损坏/超限明确报错。 */
+export async function makingConversationLoad(
+  id: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<MakingConversationRecord> {
+  return call<MakingConversationRecord>("making_conversation_load", { conversationId: id });
+}
+
+/**
+ * 保存一份制作会话档案（前端驱动的整档保存，原子写入）。失败明确报错，
+ * 调用方据此呈现「保存失败」，不显示已保存状态。
+ */
+export async function makingConversationSave(
+  record: MakingConversationRecord,
+  call: InvokeFn = defaultInvoke,
+): Promise<null> {
+  return call<null>("making_conversation_save", { record });
+}
+
+/** 删除一份制作会话档案（幂等：不存在视为成功；独立动作，调用方负责确认）。 */
+export async function makingConversationDelete(
+  id: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<null> {
+  return call<null>("making_conversation_delete", { conversationId: id });
+}
+
+/** 订阅 `"making-message-event"` 流式增量事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenMakingMessage(
+  handler: (payload: MakingMessageEventPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<MakingMessageEventPayload>("making-message-event", (event) => handler(event.payload));
+}
+
+// ========== 制作模块·试问命令与事件（change: add-making-module-core 任务 6，车道 F2b） ==========
+
+/** 试问证据终态（后端 `TrialStatus` 的 serde snake_case；与制作对话轮次同口径）。 */
+export type TrialStatus = "pending" | "success" | "failed" | "cancelled";
+
+/**
+ * 一份试问证据（后端 `TrialRecord` 的 serde 契约；全局侧
+ * `making-module/trials/<id>.json`，跟链路走、不进任何作品文件夹）。
+ * 问答全文只存本文件——试问轮不产生讨论档案，这里是唯一真相源。
+ */
+export interface TrialRecord {
+  id: string;
+  chain_id: string;
+  chain_name: string;
+  version_id: string;
+  /** 版本序号（「第 N 版」显示用）。 */
+  version_index: number;
+  /** 是否带卡试跑（对照试跑为 `false`）。 */
+  with_card: boolean;
+  question: string;
+  /** 回复全文；未收束（pending）或失败 / 取消轮为空串。 */
+  reply_text: string;
+  status: TrialStatus;
+  created_at: string;
+  /** 试用作品名称快照（换作品、删作品不影响证据完整）。 */
+  work_title: string;
+  focus_document_id: string | null;
+  focus_document_title: string | null;
+  /** 用户反馈（可后补；缺失＝未填写）。 */
+  feedback?: string | null;
+}
+
+/** `trial_list_for_version` 的返回形状（`created_at` 倒序的完整证据列表）。 */
+export interface TrialListResult {
+  trials: TrialRecord[];
+}
+
+/** `"trial-message-event"` 载荷（与 `ai-delta` 同构；`trial_id` 为前端生成的试问编号）。 */
+export interface TrialMessageEventPayload {
+  trial_id: string;
+  message_id: string;
+  seq: number;
+  text: string;
+}
+
+/** `"trial-authorization-request"` 载荷（试问的按需补读授权请求，不携带任何作品数据）。 */
+export interface TrialAuthorizationEventPayload {
+  trial_id: string;
+  reason: string;
+}
+
+/**
+ * 发起一轮试问（阻塞至轮次终态；`content`＝回复全文）。卡文本用所试版本（不走
+ * active 指针、不切全局链路）；`withCard=false` 为对照轮。`trialId` 由前端生成且
+ * **必须带 `trial-` 前缀**（后端校验拒绝无前缀 id）；`workPath` 为当前打开作品路径
+ * （必填）；`focusDocumentId` 为 null 表示本次不指定关注文档。
+ */
+export async function trialSendMessage(
+  trialId: string,
+  chainId: string,
+  versionId: string,
+  withCard: boolean,
+  question: string,
+  focusDocumentId: string | null,
+  workPath: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("trial_send_message", {
+    trialId,
+    chainId,
+    versionId,
+    withCard,
+    question,
+    focusDocumentId,
+    workPath,
+  });
+}
+
+/** 取消进行中的试问轮（幂等；取消终态如实记入证据；按 trialId 路由）。 */
+export async function trialCancelMessage(
+  trialId: string,
+  messageId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<GenerateAiResult> {
+  return call<GenerateAiResult>("trial_cancel_message", { trialId, messageId });
+}
+
+/** 应答试问的按需补读授权请求（`trial-authorization-request` 事件的回执）；决定只存内存。 */
+export async function trialAuthorizationRespond(
+  trialId: string,
+  grant: boolean,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call<void>("trial_authorization_respond", { trialId, grant });
+}
+
+/** 读取一份试问证据（只读查看；试问单轮，不可继续追问）。 */
+export async function trialGet(
+  trialId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<TrialRecord> {
+  return call<TrialRecord>("trial_get", { trialId });
+}
+
+/** 按版本列出试问证据（`created_at` 倒序；完整记录，供检视面板只读查看）。 */
+export async function trialListForVersion(
+  chainId: string,
+  versionId: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<TrialListResult> {
+  return call<TrialListResult>("trial_list_for_version", { chainId, versionId });
+}
+
+/** 补写 / 清除试问反馈（可后补；空白提交＝清除）。 */
+export async function trialSetFeedback(
+  trialId: string,
+  feedback: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<void> {
+  await call<void>("trial_set_feedback", { trialId, feedback });
+}
+
+/** 订阅 `"trial-message-event"` 流式增量事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenTrialMessage(
+  handler: (payload: TrialMessageEventPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<TrialMessageEventPayload>("trial-message-event", (event) => handler(event.payload));
+}
+
+/** 订阅 `"trial-authorization-request"` 授权请求事件，返回退订函数。接受注入的 `listen` 便于测试。 */
+export function listenTrialAuthorization(
+  handler: (payload: TrialAuthorizationEventPayload) => void,
+  listen: ListenFn = defaultListen,
+): Promise<UnlistenFn> {
+  return listen<TrialAuthorizationEventPayload>("trial-authorization-request", (event) => handler(event.payload));
 }

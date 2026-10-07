@@ -1023,6 +1023,29 @@ export function reduceAiPanelState(
         conversation: { ...conversation, provenance: [...base, ...event.entries] },
       });
     }
+    case "record_round_chain": {
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion || !discussion.conversation) return state;
+      const conversation = discussion.conversation;
+      const existing = conversation.chain_rounds ?? [];
+      // 与后端窄更新同一语义：同轮（turn_index）覆盖、其余保留、按轮排序；
+      // 完全相同的记录不产生新状态（引用不变）。
+      const entry = event.entry;
+      const sameRecord = (candidate: typeof entry): boolean =>
+        candidate.turn_index === entry.turn_index &&
+        candidate.chain_id === entry.chain_id &&
+        candidate.chain_name === entry.chain_name &&
+        candidate.version_index === entry.version_index;
+      if (existing.some(sameRecord)) return state;
+      const merged = [
+        ...existing.filter((candidate) => candidate.turn_index !== entry.turn_index),
+        entry,
+      ].sort((a, b) => a.turn_index - b.turn_index);
+      return setDiscussion(state, {
+        ...discussion,
+        conversation: { ...conversation, chain_rounds: merged },
+      });
+    }
     case "set_focus_document": {
       const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;

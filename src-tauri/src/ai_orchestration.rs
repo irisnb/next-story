@@ -487,6 +487,38 @@ pub(crate) async fn ai_send_message(
             Err(error) => return Ok(GenerateAiResult::failure(error)),
         };
 
+    // 链路卡冻结（add-making-module-core 任务 3.2，design D6）：在 kind 分流
+    // 之前执行，三入口（常规首轮 / 召唤首轮 / 追问）共覆盖；轮内只读一次
+    // 快照，在途轮不受打扰（冻结后不再读指针）。未启用为 None——发送路径
+    // 省略 chain_cards 字段，与无链路现状逐字节一致；读取失败明确报错，
+    // 不静默无卡发起。
+    let chain_store = app
+        .state::<crate::chain_library::ChainLibraryStore>()
+        .inner()
+        .clone();
+    let freeze_conversation_id = conversation_id.clone();
+    let freeze_project_path = conversation_project_path.clone();
+    let frozen_chain = match tauri::async_runtime::spawn_blocking(move || {
+        freeze_chain_round_blocking(
+            &chain_store,
+            kind,
+            freeze_conversation_id.as_deref(),
+            freeze_project_path.as_deref(),
+        )
+    })
+    .await
+    {
+        Ok(Ok(frozen)) => frozen,
+        Ok(Err(error)) => {
+            eprintln!("轮次发起冻结链路失败，本轮未发送: {error}");
+            return Ok(GenerateAiResult::failure(chain_library_unavailable_error()));
+        }
+        Err(join_error) => {
+            eprintln!("轮次发起冻结链路任务执行失败，本轮未发送: {join_error}");
+            return Ok(GenerateAiResult::failure(chain_library_unavailable_error()));
+        }
+    };
+
     // 阶段五 A：常规首轮 / 追问按关注文档组装取材语境；及时召唤不经过常规取材。
     // 关注文档读取失败（不可见 / 快照非法 / 版本不可用）时失败关闭，不静默回退。
     let (context, provenance): (Option<String>, Option<Vec<project::ContextProvenance>>) =
@@ -551,11 +583,34 @@ pub(crate) async fn ai_send_message(
         question,
         authorized_selection,
         context,
+        // 当轮冻结的链路卡文本经协议字段下发（任务 3.2/3.3）：卡不进 text
+        // （追问仍纯增量），无冻结值时省略字段（与现状逐字节一致）。
+        frozen_chain.as_ref().map(|chain| chain.cards_text.as_str()),
     )
     .await;
     // 只有成功轮次才携带自动取材出处；失败轮次不附出处（无实际发送证据）。
     if result.ok {
         result.provenance = provenance;
+        // 链路轮次记录（任务 4.1＋任务 A）：成功轮以发起时冻结值落档（失败 /
+        // 取消轮不记，与出处行为一致），并把同一记录放入返回结果（前端「本轮
+        // 用了哪条链路」活显示）——与当轮下发的卡文本同源（同一次冻结）。
+        // 无讨论身份（turn_index 缺省）不落档也不进结果，既有行为零变化。
+        if let (Some(chain), Some(conversation_id), Some(project_path)) = (
+            frozen_chain.as_ref(),
+            conversation_id.as_deref(),
+            conversation_project_path.as_deref(),
+        ) {
+            if let Some(turn_index) = chain.turn_index {
+                let round = crate::conversation_store::ChainRoundRecord {
+                    turn_index,
+                    chain_id: chain.chain_id.clone(),
+                    chain_name: chain.chain_name.clone(),
+                    version_index: chain.version_index,
+                };
+                result.chain_round = Some(round.clone());
+                record_chain_round(project_path, conversation_id, round).await;
+            }
+        }
     }
     Ok(result)
 }
@@ -611,6 +666,98 @@ fn invalid_story_context_error() -> llm_config::GenerateAiError {
         llm_config::GenerateAiErrorCode::InvalidResponse,
         "关注文档不可用，本次请求未发送。",
     )
+}
+
+// ========== 链路卡冻结与逐轮记录（add-making-module-core 任务组 3/4，design D1/D2/D6） ==========
+
+/// 轮次发起时冻结的启用链路：一次快照读取的产物同时供下发（`chain_cards`
+/// 协议字段）与落档（记录级 `chain_rounds`）使用——同源保证下发的卡文本与
+/// 档案记录的链路版本永不漂移（design D6「冻结与档案同源」）。
+#[derive(Debug)]
+struct FrozenChainRound {
+    chain_id: String,
+    /// 链路名称快照（链路日后删除，历史记录仍可读）。
+    chain_name: String,
+    /// 版本序号（「第 N 版」显示用）。
+    version_index: u32,
+    /// 组装完成的注入文本（design D2：统一包装头＋各卡渲染）。
+    cards_text: String,
+    /// 本轮序号（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）；
+    /// `None` 表示无讨论身份（该轮不落档，卡仍照常下发）。
+    turn_index: Option<u32>,
+}
+
+/// 轮次发起时的链路冻结（任务 3.2）：读 `active` 指针快照（链路库单例锁内），
+/// 未启用返回 `None`——发送路径省略 `chain_cards` 字段，与无链路现状逐字节
+/// 一致。读取失败（链路库损坏等）明确报错失败关闭：用户启用的链路不得被
+/// 静默跳过。轮内只读这一次快照，冻结后不再读指针（在途轮不受打扰）。
+fn freeze_chain_round_blocking(
+    store: &crate::chain_library::ChainLibraryStore,
+    kind: llm_config::AiMessageKind,
+    conversation_id: Option<&str>,
+    conversation_project_path: Option<&str>,
+) -> Result<Option<FrozenChainRound>, crate::chain_library::ChainLibraryError> {
+    let Some(active) = store.snapshot_active()? else {
+        return Ok(None);
+    };
+    // 轮次序号与卡文本同源冻结：首轮（常规 / 召唤）恒为 0；追问按档案已完成
+    // 轮数推导（与前端重开派生 nextTurnId 同一语义）；无讨论身份时不落档。
+    let turn_index = match kind {
+        llm_config::AiMessageKind::FollowUp => match (conversation_id, conversation_project_path) {
+            (Some(conversation_id), Some(project_path)) => {
+                Some(crate::conversation_store::next_follow_up_turn_index(
+                    std::path::Path::new(project_path),
+                    conversation_id,
+                ))
+            }
+            _ => None,
+        },
+        _ => Some(0),
+    };
+    Ok(Some(FrozenChainRound {
+        cards_text: llm_config::generate::assemble_chain_cards(&active.cards),
+        chain_id: active.chain_id,
+        chain_name: active.chain_name,
+        version_index: active.version_index,
+        turn_index,
+    }))
+}
+
+/// 链路库读取失败时的安全错误：失败关闭，本轮请求未发送；固定文案，不泄露
+/// 路径或库内容（具体错误经 stderr 记录诊断）。
+fn chain_library_unavailable_error() -> llm_config::GenerateAiError {
+    llm_config::GenerateAiError::new(
+        llm_config::GenerateAiErrorCode::Service,
+        "链路库暂时不可用，本次请求未发送；请到制作模块检查链路后重试。",
+    )
+}
+
+/// 成功轮的链路记录落档（任务 4.1）：以窄更新追加记录级 `chain_rounds` 条目，
+/// 用发起时冻结值（失败 / 取消轮不记，与自动取材出处行为一致；调用方已完成
+/// turn_index 在场检查）。落档失败不失败轮次（轮次已成功；与按需补读出处
+/// 落档的容错一致），如实记录 stderr。
+/// await 落档完成再返回，保证先于前端终态整档保存（合并保护天然保全）。
+async fn record_chain_round(
+    project_path: &str,
+    conversation_id: &str,
+    round: crate::conversation_store::ChainRoundRecord,
+) {
+    let turn_index = round.turn_index;
+    let root = PathBuf::from(project_path);
+    let target_conversation_id = conversation_id.to_string();
+    let write = tauri::async_runtime::spawn_blocking(move || {
+        crate::conversation_store::upsert_chain_round(&root, &target_conversation_id, round)
+    })
+    .await;
+    match write {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            eprintln!("讨论 {conversation_id} 第 {turn_index} 轮链路记录落档失败: {error}")
+        }
+        Err(join_error) => eprintln!(
+            "讨论 {conversation_id} 第 {turn_index} 轮链路记录落档任务执行失败: {join_error}"
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -1095,6 +1242,268 @@ mod tests {
         assert!(
             super::apply_authorized_selection(forged, Some(&material)).is_err(),
             "伪造选区必须失败关闭，不得进入提示词"
+        );
+    }
+
+    // ========== 链路冻结编排回归（add-making-module-core 任务 3.5，design D6） ==========
+
+    use crate::chain_library::{CardInput, ChainLibraryStore};
+    use crate::llm_config::AiMessageKind;
+
+    /// 以临时目录充当应用本地数据目录建链路库单例。
+    fn chain_store_in(base: &tempfile::TempDir) -> ChainLibraryStore {
+        ChainLibraryStore::new(Some(base.path().to_path_buf()))
+    }
+
+    fn chain_cards_input(marker: &str) -> Vec<CardInput> {
+        vec![CardInput {
+            title: format!("测试卡{marker}"),
+            trigger_desc: format!("适用：{marker} 场景。\n不适用：其他场景。"),
+            body: format!("按{marker}的正文行事。"),
+        }]
+    }
+
+    /// 无启用链路（含从未启用与停用后）：冻结为 None——发送路径省略
+    /// `chain_cards` 协议字段，与无链路现状逐字节一致（字段省略行为由
+    /// dsh_driver 协议形状测试钉住）。
+    #[test]
+    fn chain_freeze_returns_none_without_active_chain() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+
+        assert!(
+            super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+                .expect("freeze")
+                .is_none(),
+            "从未启用链路时冻结为 None"
+        );
+
+        // 建链路、存版本但不启用：存了不等于生效。
+        let chain = store.create_chain("链路甲").expect("create");
+        let version = store
+            .save_version(&chain.id, &chain_cards_input("甲"), "初稿")
+            .expect("save version");
+        assert!(
+            super::freeze_chain_round_blocking(&store, AiMessageKind::FollowUp, None, None)
+                .expect("freeze")
+                .is_none(),
+            "保存版本不等于启用，冻结仍为 None"
+        );
+
+        // 启用后停用：下一轮起回到 None（停用下一轮生效）。
+        store.set_active(&chain.id, &version.id).expect("activate");
+        store.deactivate().expect("deactivate");
+        assert!(
+            super::freeze_chain_round_blocking(&store, AiMessageKind::SummonFirst, None, None)
+                .expect("freeze")
+                .is_none(),
+            "停用后冻结为 None"
+        );
+    }
+
+    /// 有启用链路：冻结携带组装文本（与 `assemble_chain_cards` 同一渲染源）与
+    /// 链路标识快照；下发文本与落档字段来自同一次冻结（同源）。轮次序号：
+    /// 首轮恒为 0；追问按档案已完成轮数推导；无讨论身份的追问不落档。
+    #[test]
+    fn chain_freeze_assembles_cards_and_derives_turn_index() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        let chain = store.create_chain("链路甲").expect("create");
+        let version = store
+            .save_version(&chain.id, &chain_cards_input("甲"), "初稿")
+            .expect("save version");
+        store.set_active(&chain.id, &version.id).expect("activate");
+        let snapshot = store.snapshot_active().expect("snapshot").expect("active");
+
+        // 首轮（常规 / 召唤）：序号 0，组装文本与冻结卡同一渲染源。
+        for kind in [AiMessageKind::First, AiMessageKind::SummonFirst] {
+            let frozen = super::freeze_chain_round_blocking(&store, kind, None, None)
+                .expect("freeze")
+                .expect("frozen");
+            assert_eq!(frozen.turn_index, Some(0), "首轮序号为 0");
+            assert_eq!(frozen.chain_id, chain.id);
+            assert_eq!(frozen.chain_name, "链路甲", "名称快照随冻结携带");
+            assert_eq!(frozen.version_index, version.index);
+            assert_eq!(
+                frozen.cards_text,
+                crate::llm_config::generate::assemble_chain_cards(&snapshot.cards),
+                "下发文本与冻结卡同源（同一组装函数）"
+            );
+            assert!(frozen.cards_text.contains("【测试卡甲】"));
+            assert!(frozen.cards_text.contains("以下是用户提供的陪想要求"));
+        }
+
+        // 无讨论身份的追问：卡照常冻结，但不落档（序号 None）。
+        let follow_up =
+            super::freeze_chain_round_blocking(&store, AiMessageKind::FollowUp, None, None)
+                .expect("freeze")
+                .expect("frozen");
+        assert_eq!(follow_up.turn_index, None, "无讨论身份不落档");
+        assert!(
+            follow_up.cards_text.contains("【测试卡甲】"),
+            "卡仍照常下发"
+        );
+
+        // 有讨论身份的追问：序号按档案已完成轮数推导（首轮为 0 的同一约定）。
+        let work = tempfile::tempdir().expect("work dir");
+        let record = crate::conversation_store::ConversationRecord {
+            version: crate::conversation_store::CONVERSATION_VERSION,
+            conversation_id: "conv-1".to_string(),
+            created_at: "2026-10-06T10:00:00+00:00".to_string(),
+            updated_at: "2026-10-06T10:30:00+00:00".to_string(),
+            focus_document_id: None,
+            focus_document_title: None,
+            first_round_material: crate::conversation_store::FirstRoundMaterial {
+                kind: "direct_question".to_string(),
+                question: "问题".to_string(),
+                selection_text: None,
+            },
+            turns: vec![
+                crate::conversation_store::ConversationTurn {
+                    role: "user".to_string(),
+                    text: "问题".to_string(),
+                    status: "done".to_string(),
+                },
+                crate::conversation_store::ConversationTurn {
+                    role: "assistant".to_string(),
+                    text: "首轮".to_string(),
+                    status: "done".to_string(),
+                },
+                crate::conversation_store::ConversationTurn {
+                    role: "user".to_string(),
+                    text: "追问一".to_string(),
+                    status: "done".to_string(),
+                },
+                crate::conversation_store::ConversationTurn {
+                    role: "assistant".to_string(),
+                    text: "回答一".to_string(),
+                    status: "done".to_string(),
+                },
+            ],
+            title: None,
+            pinned: false,
+            provenance: None,
+            on_demand_reading_grant: None,
+            on_demand_reading_provenance: None,
+            chain_rounds: None,
+            restriction: None,
+        };
+        crate::conversation_store::seed_conversation(work.path(), &record).expect("seed");
+
+        let frozen = super::freeze_chain_round_blocking(
+            &store,
+            AiMessageKind::FollowUp,
+            Some("conv-1"),
+            Some(work.path().to_str().expect("utf8 path")),
+        )
+        .expect("freeze")
+        .expect("frozen");
+        assert_eq!(
+            frozen.turn_index,
+            Some(2),
+            "追问序号＝档案已完成追问对数（1）＋1"
+        );
+        assert_eq!(
+            frozen.cards_text,
+            crate::llm_config::generate::assemble_chain_cards(&snapshot.cards),
+            "同源：下发的文本与可落档的冻结值来自同一次读取"
+        );
+    }
+
+    /// 切换下一轮生效：每次发起重新读指针冻结；已冻结的值不再受后续切换
+    /// 影响（在途轮不受打扰）。同轮冻结值既定下发文本又定落档字段。
+    #[test]
+    fn chain_switch_takes_effect_next_round_and_frozen_value_is_stable() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        let chain = store.create_chain("链路甲").expect("create");
+        let v1 = store
+            .save_version(&chain.id, &chain_cards_input("一"), "v1")
+            .expect("v1");
+        let v2 = store
+            .save_version(&chain.id, &chain_cards_input("二"), "v2")
+            .expect("v2");
+        store.set_active(&chain.id, &v1.id).expect("activate v1");
+
+        // 第一轮按 v1 冻结。
+        let round_one =
+            super::freeze_chain_round_blocking(&store, AiMessageKind::First, Some("conv-x"), None)
+                .expect("freeze")
+                .expect("frozen");
+        assert_eq!(round_one.version_index, 1);
+        assert!(round_one.cards_text.contains("按一的正文行事。"));
+
+        // 生成中切换到 v2：在途轮（round_one 已冻结）不受打扰；下一轮按 v2。
+        store.set_active(&chain.id, &v2.id).expect("switch to v2");
+        assert_eq!(
+            round_one.version_index, 1,
+            "已冻结的值不因切换改变（在途轮沿用发起时版本）"
+        );
+        assert!(round_one.cards_text.contains("按一的正文行事。"));
+
+        let round_two = super::freeze_chain_round_blocking(
+            &store,
+            AiMessageKind::FollowUp,
+            Some("conv-x"),
+            None,
+        )
+        .expect("freeze")
+        .expect("frozen");
+        assert_eq!(round_two.version_index, 2, "切换下一轮生效");
+        assert!(round_two.cards_text.contains("按二的正文行事。"));
+        assert!(
+            !round_two.cards_text.contains("按一的正文行事。"),
+            "新轮冻结不再携带旧版本卡"
+        );
+        assert_eq!(round_two.turn_index, None, "无作品路径不落档（卡仍下发）");
+
+        // 停用：下一轮起回到 None。
+        store.deactivate().expect("deactivate");
+        assert!(
+            super::freeze_chain_round_blocking(
+                &store,
+                AiMessageKind::FollowUp,
+                Some("conv-x"),
+                None
+            )
+            .expect("freeze")
+            .is_none(),
+            "停用下一轮生效：新发起轮次不带卡"
+        );
+    }
+
+    /// 链路库读取失败（损坏）：冻结失败关闭，本轮未发送——用户启用的链路
+    /// 不得被静默跳过；错误为固定安全文案。
+    #[test]
+    fn chain_freeze_fails_closed_on_corrupt_library() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        let chain = store.create_chain("链路甲").expect("create");
+        let version = store
+            .save_version(&chain.id, &chain_cards_input("甲"), "初稿")
+            .expect("save version");
+        store.set_active(&chain.id, &version.id).expect("activate");
+
+        // 直接破坏主文件（模拟手工编辑损坏）。
+        std::fs::write(
+            crate::chain_library::making_module_dir_in(base.path()).join("chains.json"),
+            "{ not json",
+        )
+        .expect("corrupt chains file");
+
+        let error = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect_err("链路库损坏必须报错，不能静默无卡发起");
+        assert!(
+            error.to_string().contains("损坏"),
+            "底层错误如实分类: {error}"
+        );
+
+        // 编排层映射为固定安全错误：失败关闭、本轮未发送。
+        let mapped = super::chain_library_unavailable_error();
+        assert_eq!(mapped.code, GenerateAiErrorCode::Service);
+        assert_eq!(
+            mapped.message,
+            "链路库暂时不可用，本次请求未发送；请到制作模块检查链路后重试。"
         );
     }
 }

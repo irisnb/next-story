@@ -41,12 +41,24 @@ export function splitSystemPrompt(systemPrompt) {
  *
  * `agentCtx.get("systemPrompt")` 返回绑定到调用方上下文的 traceable 服务，
  * section 注册因此落在该 Agent 的 scope 层（同名遮蔽全局段，只对本会话生效）。
+ *
+ * 返回各段 disposer（add-making-module-core 任务 2.2，design D1）：`section()`
+ * 返回 Cordis effect disposer，注销→重注册是官方支持的用法。chain-cards 的
+ * disposer 由调用方持存——`send_message.chain_cards` 轮级更新时先释放旧段再
+ * 重注册（见 driver.mjs 的 applyChainCards）；persona 与 constitution 段随
+ * Agent 生命周期存续，调用方无需手动释放。信封为空（旧宿主兼容）时不注册
+ * 任何段，返回全 null。
+ *
+ * @returns {{persona: null|Function, constitution: null|Function, chainCards: null|Function}}
  */
 export function registerSystemPromptSections(agentCtx, systemPrompt) {
   const { identity, constitution } = splitSystemPrompt(systemPrompt);
-  if (identity === "" && constitution === "") return;
+  if (identity === "" && constitution === "") {
+    return { persona: null, constitution: null, chainCards: null };
+  }
   const systemPromptService = agentCtx.get("systemPrompt");
-  systemPromptService.section({ name: PERSONA_SECTION, order: PERSONA_ORDER, text: identity });
-  systemPromptService.section({ name: CONSTITUTION_SECTION, order: CONSTITUTION_ORDER, text: constitution });
-  systemPromptService.section({ name: CHAIN_CARDS_SECTION, order: CHAIN_CARDS_ORDER, text: "" });
+  const persona = systemPromptService.section({ name: PERSONA_SECTION, order: PERSONA_ORDER, text: identity });
+  const constitutionDisposer = systemPromptService.section({ name: CONSTITUTION_SECTION, order: CONSTITUTION_ORDER, text: constitution });
+  const chainCards = systemPromptService.section({ name: CHAIN_CARDS_SECTION, order: CHAIN_CARDS_ORDER, text: "" });
+  return { persona, constitution: constitutionDisposer, chainCards };
 }

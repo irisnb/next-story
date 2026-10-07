@@ -371,7 +371,7 @@ export function setupEditor(
     };
     // Compare actual nodes/containers, not UI classes or global focus prohibitions.
     const navigation = [dom.btnBackWelcome, dom.tabWriting, dom.tabFiles, dom.tabSettings,
-      dom.currentDocToggle, dom.documentList];
+      dom.tabMaking, dom.currentDocToggle, dom.documentList];
     function onFocus(event: FocusEvent): void {
       const node = event.target as Node | null;
       if (!node || node === document.body || node === document.documentElement) return;

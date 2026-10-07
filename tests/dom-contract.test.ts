@@ -90,3 +90,69 @@ test("AI dock header exposes new-conversation and collapse entries", () => {
   assert.match(html, /<template\b[^>]*\bid="ai-window-template"/);
   assert.match(html, /<aside\b[^>]*\bid="ai-dock"/);
 });
+
+test("making module exposes a fourth tab and a status bar bound to the global active chain", () => {
+  // 第四页面：主导航末位新增「制作模块」，独立占用主内容区。
+  assert.match(html, /<button\b[^>]*\bid="tab-making"[^>]*>制作模块<\/button>/);
+  assert.match(html, /<section\b[^>]*\bid="module-making"[^>]*aria-label="制作模块"/);
+  // 状态条（常驻）：启用态（名·第N版｜所有作品共用｜停用＋生效时机说明）与未启用态。
+  assert.match(html, /\bid="making-status-bar"/);
+  assert.match(html, /\bid="making-status-active"/);
+  assert.match(html, /\bid="making-status-text"/);
+  assert.match(html, /\bid="making-status-idle"[^>]*>当前未启用链路，使用日常陪想/);
+  assert.match(html, /\bid="making-deactivate-btn"[^>]*>停用<\/button>/);
+  assert.match(html, /从下一轮开始使用；正在生成的回复沿用发起时的版本/);
+});
+
+test("making module exposes the three regions with inspect-only interactions", () => {
+  // 三区并列：链路库（找成品）｜结构检视（看成品与确定使用）｜制作对话（做零件）。
+  assert.match(html, /<aside\b[^>]*\bid="making-chain-library"[^>]*aria-label="链路库"/);
+  assert.match(html, /<section\b[^>]*\bid="making-inspector"[^>]*aria-label="结构检视"/);
+  assert.match(html, /<aside\b[^>]*\bid="making-conversation-pane"[^>]*aria-label="制作对话"/);
+  // 链路库：新建（简单命名）＋列表＋空库口述引导。
+  assert.match(html, /\bid="making-new-chain-btn"/);
+  assert.match(html, /\bid="making-new-chain-form"/);
+  assert.match(html, /\bid="making-chain-list"/);
+  assert.match(html, /\bid="making-chain-empty"/);
+  assert.match(html, /说说你希望 AI 多做什么、少做什么/);
+  // 结构检视：版本记录浏览、启用入口（链路版本层级）、卡片列表、卡片检视面板。
+  assert.match(html, /\bid="making-version-select"/);
+  assert.match(html, /\bid="making-enable-btn"/);
+  assert.match(html, /\bid="making-card-list"/);
+  assert.match(html, /\bid="making-card-panel"/);
+  // 制作对话：标题「正在制作」＋空态引导＋「开始新制作」＋真实会话接线挂点
+  // （车道 F2a：会话主区／历史列表／提示行／停止入口；占位文案已随接线移除）。
+  assert.match(html, /正在制作：<span id="making-conversation-object">未选择<\/span>/);
+  assert.match(html, /\bid="making-conversation-body"/);
+  assert.match(html, /\bid="making-conversation-start-btn"[^>]*>开始新制作/);
+  assert.match(html, /\bid="making-conversation-empty"/);
+  assert.match(html, /\bid="making-conversation-recent"/);
+  assert.match(html, /\bid="making-conversation-active"/);
+  assert.match(html, /\bid="making-session-new-btn"[^>]*>新会话/);
+  assert.match(html, /\bid="making-session-history-btn"[^>]*>历史会话/);
+  assert.match(html, /\bid="making-session-messages"/);
+  assert.match(html, /\bid="making-conversation-stop"[^>]*>停止/);
+  assert.doesNotMatch(html, /会话功能随后接入/);
+  // 窄窗收拢：链路库入口按钮＋页内「结构检视／制作对话」切换。
+  assert.match(html, /\bid="making-library-toggle"/);
+  assert.match(html, /\bid="making-view-switch"/);
+  assert.match(html, /\bid="making-view-inspect-btn"[^>]*>结构检视/);
+  assert.match(html, /\bid="making-view-chat-btn"[^>]*>制作对话/);
+});
+
+test("making module renders a text-list inspector with a read-only fixed base", () => {
+  // 免责句（不暗示 AI 内部思考过程）。
+  assert.match(html, /展示链路的组装结构与适用条件，不代表 AI 内部思考过程/);
+  // 固定底座四项只读说明（details/summary 只读，无修改或开关控件）。
+  assert.match(html, /<summary>红线<\/summary>/);
+  assert.match(html, /<summary>骨（底线立场）<\/summary>/);
+  assert.match(html, /<summary>工具<\/summary>/);
+  assert.match(html, /<summary>材料规则<\/summary>/);
+  // 可变区只有要求类插槽说明；姿态／背景／方式不出现占位或「解锁」入口。
+  assert.match(html, /要求类插槽：想让 AI 多做什么、别做什么/);
+  assert.doesNotMatch(html, /姿态类插槽|背景卡|方式卡|解锁/);
+  // 无拖拽、步骤编号、执行箭头等编排形态暗示。
+  const makingSection = html.slice(html.indexOf('id="module-making"'));
+  assert.doesNotMatch(makingSection, /draggable="true"/);
+  assert.doesNotMatch(makingSection, /data-step|步骤\s*[1-9一二三四五]|执行顺序/);
+});

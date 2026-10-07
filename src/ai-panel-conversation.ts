@@ -1,4 +1,9 @@
-import type { GenerateAiError, GenerateAiRequest, SelectionSnapshot } from "./types.ts";
+import type {
+  ChainRoundRef,
+  GenerateAiError,
+  GenerateAiRequest,
+  SelectionSnapshot,
+} from "./types.ts";
 import type {
   ConversationRecord,
   ConversationSummary,
@@ -79,6 +84,13 @@ export interface TemporaryConversation {
    * 携带，供「本次参考了什么」展示文档与阅读程度。前端保存链不携带（后端保全）。
    */
   onDemandReadingProvenance?: OnDemandReadingProvenance[];
+  /**
+   * 链路轮次引用（add-making-module-core 任务 7.7）：重开档案时保留档案记录、
+   * 日常发送成功时并入当轮结果（活显示「本轮链路」行）。前端保存链不携带——
+   * 档案内的记录由后端窄更新保管，与授权 / 补读出处同构。缺失表示旧档案或
+   * 未启用链路的轮次，显示层降级为不显示。
+   */
+  chain_rounds?: readonly ChainRoundRef[] | null;
 }
 
 export type ReadonlyTemporaryConversation = Readonly<{
@@ -98,6 +110,7 @@ export type ReadonlyTemporaryConversation = Readonly<{
   provenance?: ReadonlyArray<Readonly<MaterialProvenance>>;
   onDemandReadingGrant?: Readonly<OnDemandReadingGrant> | null;
   onDemandReadingProvenance?: ReadonlyArray<Readonly<OnDemandReadingProvenance>>;
+  chain_rounds?: ReadonlyArray<Readonly<ChainRoundRef>> | null;
 }>;
 
 /**
@@ -328,6 +341,8 @@ export function createConversationFromFirstSuccess(
     customTitle: null,
     pinned: false,
     onDemandReadingGrant: null,
+    // 新建讨论尚无链路轮次；后续成功轮经 recordRoundChain 并入。
+    chain_rounds: [],
   };
 }
 
@@ -578,6 +593,11 @@ export function readonlyConversationView(
     onDemandReadingProvenance: conversation.onDemandReadingProvenance
       ? Object.freeze(conversation.onDemandReadingProvenance.map((p) => Object.freeze({ ...p })))
       : undefined,
+    chain_rounds: conversation.chain_rounds
+      ? Object.freeze(conversation.chain_rounds.map((entry) => Object.freeze({ ...entry })))
+      : conversation.chain_rounds === null
+        ? null
+        : undefined,
   });
 }
 
@@ -626,7 +646,8 @@ export function buildConversationRecord(
       const provenance = conversationProvenanceForArchive(conversation);
       return provenance !== undefined ? { provenance } : {};
     })(),
-    // 授权、补读出处与统一锁存由后端窄更新保管，普通保存不携带。
+    // 授权、补读出处、链路轮次记录（chain_rounds）与统一锁存由后端窄更新保管，
+    // 普通保存不携带（后端整档合并时保全档案已有字段）。
   };
 }
 
@@ -701,6 +722,8 @@ export function conversationFromRecord(
     provenance: record.provenance ?? undefined,
     onDemandReadingGrant: record.on_demand_reading_grant ?? null,
     onDemandReadingProvenance: record.on_demand_reading_provenance ?? undefined,
+    // 链路轮次引用（任务 7.7）：旧档案缺失字段 → undefined（显示层降级不显示）。
+    chain_rounds: record.chain_rounds ?? undefined,
   };
 }
 
@@ -737,7 +760,7 @@ export function buildDiscussionRecord(discussion: Discussion): ConversationRecor
     first_round_material: material,
     turns,
     provenance: materialProvenanceFromAnchor(discussion.anchor),
-    // 首轮在途授权也只经后端窄更新写入，不由普通保存携带。
+    // 首轮在途授权与链路轮次记录也只经后端窄更新写入，不由普通保存携带。
   };
 }
 

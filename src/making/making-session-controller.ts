@@ -21,7 +21,9 @@ import {
 } from "../project-api.ts";
 import {
   buildCardDraftPanelView,
+  buildChainStatusMessage,
   deriveMakingTitle,
+  draftSlotTypeLabel,
   draftToCardInput,
   makingListTitle,
   makingListUpdatedAtLabel,
@@ -45,6 +47,10 @@ import {
  * - 卡草稿：解析助手消息中的标记块渲染草稿面板；**只有用户点「保存这版草稿」
  *   并经确认后才 `chain_save_version`**（链路库不因助手输出自动写入）；
  *   「开始试问」留给下一车道（钩子见 `setTrialLauncher`）。
+ * - 新会话链路现状附言（add-posture-slot 任务 7.6）：新会话建立（「开始新制作」
+ *   等 startNewSession 路径）后自动经既有发送通道发出首条「链路现状」附言
+ *   （最新版本全部卡的全文），让制作助手能完整重述既有卡（「并存」草稿）；
+ *   取不到链路时不发（守则的诚实回退覆盖）；「继续上次制作」不重复附言。
  * - 本控制器不触碰任何作品数据（制作助手不读作品；user 文本纯文本直发）。
  */
 
@@ -435,7 +441,12 @@ export function setupMakingConversation(
     for (const draft of drafts) {
       const card = document.createElement("div");
       card.className = "making-draft-card";
+      // 逐卡类型徽标（add-posture-slot 任务 3.2）：草稿面板先看清是要求卡还是姿态卡。
+      const typeBadge = document.createElement("p");
+      typeBadge.className = `making-draft-type${draft.slotType === "posture" ? " is-posture" : ""}`;
+      typeBadge.textContent = draftSlotTypeLabel(draft.slotType);
       card.append(
+        typeBadge,
         draftLine("卡名", draft.title),
         draftLine("何时用", draft.whenToUse.length > 0 ? draft.whenToUse : "（未说明）"),
         draftLine("何时不用", draft.whenNotToUse.length > 0 ? draft.whenNotToUse : "（未说明）"),
@@ -529,15 +540,24 @@ export function setupMakingConversation(
     };
   }
 
-  async function handleSubmit(): Promise<void> {
-    const session = currentSession();
-    const text = dom.conversationInput.value.trim();
-    if (session === null || session.pendingMessageId !== null || text.length === 0) return;
-    dom.conversationInput.value = "";
-    notice = null;
-    session.turnError = null;
+  /**
+   * 发送一轮用户消息（正常轮次机制：本地追加轮次 → 整档保存 → 懒启动会话 →
+   * 发送 → 流式渲染 → 终态原子更新 → 再保存）。手动输入与新会话的「链路现状」
+   * 附言共用此通道；附言不派生标题（标题留给用户首条口述）。附言发送期间同样
+   * 占用「同会话单轮进行中禁发」约束。
+   */
+  async function sendUserTurn(
+    session: MakingSessionRuntime,
+    text: string,
+    options: { readonly deriveTitle: boolean },
+  ): Promise<void> {
+    if (session.pendingMessageId !== null) return;
     const record = session.record;
-    if (record.title.trim().length === 0) record.title = deriveMakingTitle(text);
+    if (options.deriveTitle) {
+      notice = null;
+      session.turnError = null;
+      if (record.title.trim().length === 0) record.title = deriveMakingTitle(text);
+    }
     record.turns.push({ role: "user", text, status: "success" });
     record.turns.push({ role: "assistant", text: "", status: "pending" });
     renderPane();
@@ -576,6 +596,14 @@ export function setupMakingConversation(
       await saveSession(session);
       await refreshList();
     }
+  }
+
+  async function handleSubmit(): Promise<void> {
+    const session = currentSession();
+    const text = dom.conversationInput.value.trim();
+    if (session === null || session.pendingMessageId !== null || text.length === 0) return;
+    dom.conversationInput.value = "";
+    await sendUserTurn(session, text, { deriveTitle: true });
   }
 
   function handleStop(): void {
@@ -656,12 +684,21 @@ export function setupMakingConversation(
       updated_at: nowIso(),
       turns: [],
     };
-    sessions.set(record.id, newRuntime(record));
+    const runtime = newRuntime(record);
+    sessions.set(record.id, runtime);
     currentId = record.id;
     notice = null;
     historyOpen = false;
     renderPane();
     dom.conversationInput.focus();
+    // 新会话链路现状附言（add-posture-slot 任务 7.6）：建立新会话后自动经既有
+    // 发送通道发出首条「链路现状」附言（最新版本全部卡的全文），让制作助手拿到
+    // 既有卡的完整内容（「并存」草稿须完整重述）。取不到链路（getChain null）时
+    // 不发（守则的诚实回退覆盖）、不报错；发送失败走正常失败轮如实呈现，不阻断
+    // 会话。「继续上次制作」（openConversation）不经此路径，不重复附言。
+    const chain = getChain(makingChainId);
+    if (chain === null) return;
+    void sendUserTurn(runtime, buildChainStatusMessage(chain), { deriveTitle: false });
   }
 
   // ========== 事件接线 ==========

@@ -583,9 +583,16 @@ pub(crate) async fn ai_send_message(
         question,
         authorized_selection,
         context,
-        // 当轮冻结的链路卡文本经协议字段下发（任务 3.2/3.3）：卡不进 text
-        // （追问仍纯增量），无冻结值时省略字段（与现状逐字节一致）。
-        frozen_chain.as_ref().map(|chain| chain.cards_text.as_str()),
+        // 当轮冻结的要求卡文本经协议字段下发（任务 3.2/3.3）：卡不进 text
+        // （追问仍纯增量），无冻结值或纯姿态版本时省略字段（与现状逐字节一致）。
+        frozen_chain
+            .as_ref()
+            .and_then(|chain| (!chain.cards_text.is_empty()).then_some(chain.cards_text.as_str())),
+        // 当轮冻结的姿态段文本（add-posture-slot 任务 2.3）：与 cards_text 同一
+        // 次冻结产出（同源）；无姿态卡时省略字段。
+        frozen_chain
+            .as_ref()
+            .and_then(|chain| chain.posture_text.as_deref()),
     )
     .await;
     // 只有成功轮次才携带自动取材出处；失败轮次不附出处（无实际发送证据）。
@@ -670,9 +677,9 @@ fn invalid_story_context_error() -> llm_config::GenerateAiError {
 
 // ========== 链路卡冻结与逐轮记录（add-making-module-core 任务组 3/4，design D1/D2/D6） ==========
 
-/// 轮次发起时冻结的启用链路：一次快照读取的产物同时供下发（`chain_cards`
-/// 协议字段）与落档（记录级 `chain_rounds`）使用——同源保证下发的卡文本与
-/// 档案记录的链路版本永不漂移（design D6「冻结与档案同源」）。
+/// 轮次发起时冻结的启用链路：一次快照读取的产物同时供下发（`chain_cards` /
+/// `posture` 协议字段）与落档（记录级 `chain_rounds`）使用——同源保证下发的
+/// 卡文本与档案记录的链路版本永不漂移（design D6「冻结与档案同源」）。
 #[derive(Debug)]
 struct FrozenChainRound {
     chain_id: String,
@@ -680,8 +687,14 @@ struct FrozenChainRound {
     chain_name: String,
     /// 版本序号（「第 N 版」显示用）。
     version_index: u32,
-    /// 组装完成的注入文本（design D2：统一包装头＋各卡渲染）。
+    /// 组装完成的要求卡注入文本（design D2：统一包装头＋各卡渲染）。纯姿态
+    /// 版本为空串——发送路径省略 `chain_cards` 字段。
     cards_text: String,
+    /// 组装完成的姿态段文本（add-posture-slot design D2/D3；2026-10-07 修订
+    /// 7.2 多卡：承接句一次＋全部姿态卡正文以空行依序拼接，不做冲突调和）；
+    /// `None`＝本版本无姿态卡（发送路径省略 `posture` 字段）。
+    /// 与 `cards_text` 同一次冻结产出（同源）。
+    posture_text: Option<String>,
     /// 本轮序号（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）；
     /// `None` 表示无讨论身份（该轮不落档，卡仍照常下发）。
     turn_index: Option<u32>,
@@ -714,8 +727,27 @@ fn freeze_chain_round_blocking(
         },
         _ => Some(0),
     };
+    // 卡类型分流（add-posture-slot 任务 2.3，design D2；2026-10-07 修订 7.2：
+    // 姿态卡可多张）：全部姿态卡一并经 `assemble_posture` 渲染（承接句一次、
+    // 各卡正文以空行依序拼接，不做冲突调和），要求卡照旧经
+    // `assemble_chain_cards` 渲染——纯要求卡版本的 `cards_text` 与既有渲染
+    // 逐字一致；两类文本同一次快照产出（同源）。
+    let requirement_cards: Vec<crate::chain_library::RequirementCard> = active
+        .cards
+        .iter()
+        .filter(|card| card.slot_type != crate::chain_library::SLOT_TYPE_POSTURE)
+        .cloned()
+        .collect();
+    let posture_cards: Vec<crate::chain_library::RequirementCard> = active
+        .cards
+        .iter()
+        .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+        .cloned()
+        .collect();
     Ok(Some(FrozenChainRound {
-        cards_text: llm_config::generate::assemble_chain_cards(&active.cards),
+        cards_text: llm_config::generate::assemble_chain_cards(&requirement_cards),
+        posture_text: (!posture_cards.is_empty())
+            .then(|| llm_config::generate::assemble_posture(&posture_cards)),
         chain_id: active.chain_id,
         chain_name: active.chain_name,
         version_index: active.version_index,
@@ -1260,7 +1292,18 @@ mod tests {
             title: format!("测试卡{marker}"),
             trigger_desc: format!("适用：{marker} 场景。\n不适用：其他场景。"),
             body: format!("按{marker}的正文行事。"),
+            slot_type: crate::chain_library::SLOT_TYPE_REQUIREMENT.to_string(),
         }]
+    }
+
+    /// 一张姿态卡入参（add-posture-slot 测试用）。
+    fn posture_input(marker: &str) -> CardInput {
+        CardInput {
+            title: format!("姿态{marker}"),
+            trigger_desc: "适用：想要这个姿态时。\n不适用：不适用情形。".to_string(),
+            body: format!("【姿态{marker}】\n你以{marker}的姿态说话。"),
+            slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
+        }
     }
 
     /// 无启用链路（含从未启用与停用后）：冻结为 None——发送路径省略
@@ -1331,6 +1374,7 @@ mod tests {
             );
             assert!(frozen.cards_text.contains("【测试卡甲】"));
             assert!(frozen.cards_text.contains("以下是用户提供的陪想要求"));
+            assert!(frozen.posture_text.is_none(), "纯要求卡版本冻结不带姿态段");
         }
 
         // 无讨论身份的追问：卡照常冻结，但不落档（序号 None）。
@@ -1469,6 +1513,256 @@ mod tests {
             .expect("freeze")
             .is_none(),
             "停用下一轮生效：新发起轮次不带卡"
+        );
+    }
+
+    /// add-posture-slot 任务 2.3/2.6（2026-10-07 修订 7.2）：冻结按 slot_type
+    /// 分流且两字段同源——姿态卡（可多张）只进 posture_text、要求卡只进
+    /// cards_text；纯姿态版本 cards_text 为空（发送路径省略字段）；纯要求卡
+    /// 版本的 cards_text 与「把全部卡当要求卡渲染」的既有算法逐字一致
+    /// （存量链路行为不变锚点）。
+    #[test]
+    fn chain_freeze_splits_posture_and_requirement_from_same_snapshot() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        let chain = store.create_chain("链路甲").expect("create");
+
+        // 混合版本：一张要求卡＋一张姿态卡（次序故意姿态在前，分流不受次序影响）。
+        let mixed_input = {
+            let mut cards = chain_cards_input("甲");
+            cards.push(posture_input("傲娇"));
+            cards
+        };
+        let mixed = store
+            .save_version(&chain.id, &mixed_input, "混合 v1")
+            .expect("save mixed");
+        store.set_active(&chain.id, &mixed.id).expect("activate");
+        let snapshot = store.snapshot_active().expect("snapshot").expect("active");
+
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("frozen");
+        let requirement_only: Vec<crate::chain_library::RequirementCard> = snapshot
+            .cards
+            .iter()
+            .filter(|card| card.slot_type != crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        let posture_only: Vec<crate::chain_library::RequirementCard> = snapshot
+            .cards
+            .iter()
+            .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        // 同源：cards_text 与 posture_text 都可从同一快照重算得出。
+        assert_eq!(
+            frozen.cards_text,
+            crate::llm_config::generate::assemble_chain_cards(&requirement_only),
+            "cards_text 只含要求卡（与同快照要求卡同一渲染源）"
+        );
+        assert_eq!(
+            frozen.posture_text.as_deref(),
+            Some(crate::llm_config::generate::assemble_posture(&posture_only).as_str()),
+            "posture_text 与同快照全部姿态卡同一渲染源"
+        );
+        // 分流互不污染：姿态正文不进要求卡文本，要求卡标记不进姿态段。
+        assert!(
+            !frozen.cards_text.contains("你以傲娇的姿态说话"),
+            "姿态卡正文不得进入 cards_text"
+        );
+        let posture_text = frozen.posture_text.expect("姿态段在场");
+        assert!(
+            !posture_text.contains("【测试卡甲】"),
+            "要求卡标记不得进入 posture_text"
+        );
+        assert!(
+            posture_text.contains("你以傲娇的姿态说话"),
+            "姿态段携带姿态卡正文（标题行已剥去）"
+        );
+
+        // 多姿态卡版本（修订 7.2）：全部姿态卡正文入 posture_text（承接句一次、
+        // 依序拼接），cards_text 不含任何姿态内容——多张不做冲突调和。
+        let multi_posture_input = vec![
+            posture_input("傲娇"),
+            chain_cards_input("甲").remove(0),
+            posture_input("冷静"),
+        ];
+        let multi_posture = store
+            .save_version(&chain.id, &multi_posture_input, "多姿态 v2")
+            .expect("save multi posture");
+        store
+            .set_active(&chain.id, &multi_posture.id)
+            .expect("activate v2");
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("frozen");
+        let posture_text = frozen.posture_text.clone().expect("多姿态段在场");
+        // 同源：两字段都可从库内该版本卡数据重算得出。
+        let stored_multi = snapshot_cards_of(&store, &multi_posture.id);
+        let multi_requirement: Vec<crate::chain_library::RequirementCard> = stored_multi
+            .iter()
+            .filter(|card| card.slot_type != crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        let multi_posture_cards: Vec<crate::chain_library::RequirementCard> = stored_multi
+            .iter()
+            .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        assert_eq!(multi_posture_cards.len(), 2, "多姿态版本确实含两张姿态卡");
+        assert_eq!(
+            frozen.posture_text.as_deref(),
+            Some(crate::llm_config::generate::assemble_posture(&multi_posture_cards).as_str()),
+            "posture_text 与同快照全部姿态卡同一渲染源（承接句一次、依序拼接）"
+        );
+        let tsundere_at = posture_text.find("你以傲娇的姿态说话").expect("傲娇正文");
+        let calm_at = posture_text.find("你以冷静的姿态说话").expect("冷静正文");
+        assert!(tsundere_at < calm_at, "多姿态正文按版本内既定次序拼接");
+        assert_eq!(
+            frozen.cards_text,
+            crate::llm_config::generate::assemble_chain_cards(&multi_requirement),
+            "cards_text 仍只含要求卡（与多姿态无关）"
+        );
+        assert!(
+            !frozen.cards_text.contains("的姿态说话"),
+            "任何姿态卡正文不得进入 cards_text"
+        );
+
+        // 纯姿态版本：cards_text 为空（发送路径据此省略 chain_cards 字段）。
+        let pure_posture = store
+            .save_version(&chain.id, &[posture_input("冷静")], "纯姿态 v3")
+            .expect("save pure posture");
+        store
+            .set_active(&chain.id, &pure_posture.id)
+            .expect("activate v3");
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("frozen");
+        assert!(
+            frozen.cards_text.is_empty(),
+            "纯姿态版本的 cards_text 为空（省略协议字段）"
+        );
+        assert!(frozen.posture_text.is_some());
+        assert!(
+            frozen
+                .posture_text
+                .expect("姿态段")
+                .contains("你以冷静的姿态说话"),
+            "纯姿态版本只带姿态段"
+        );
+
+        // 纯要求卡版本：cards_text 与改前算法（全部卡经 assemble_chain_cards）
+        // 逐字一致——存量链路最终 system 文本不变（chain-assembly 规格）。
+        let pure_requirement = store
+            .save_version(&chain.id, &chain_cards_input("乙"), "纯要求 v4")
+            .expect("save pure requirement");
+        store
+            .set_active(&chain.id, &pure_requirement.id)
+            .expect("activate v4");
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("frozen");
+        assert_eq!(
+            frozen.cards_text,
+            crate::llm_config::generate::assemble_chain_cards(&snapshot_cards_of(
+                &store,
+                &pure_requirement.id
+            )),
+            "纯要求卡版本的组装文本与既有渲染逐字一致"
+        );
+        assert!(frozen.posture_text.is_none());
+    }
+
+    /// 以链路库单例读回指定版本的卡数据（测试辅助：绕开私有中间结构）。
+    fn snapshot_cards_of(
+        store: &ChainLibraryStore,
+        version_id: &str,
+    ) -> Vec<crate::chain_library::RequirementCard> {
+        let library = store.load().expect("读库");
+        library
+            .chains
+            .iter()
+            .flat_map(|chain| chain.versions.iter())
+            .find(|version| version.id == version_id)
+            .expect("版本在场")
+            .cards
+            .clone()
+    }
+
+    /// add-posture-slot 任务 2.6（崩溃重放姿态语义）：start_session 常量不含
+    /// 姿态（generate.rs 侧锚定），重放 turns 结构上只有 role/text——不从历史
+    /// chain_rounds 复原旧姿态；恢复后首轮按当前指针重新冻结（换指针即换姿态，
+    /// 已冻结的旧轮不受打扰）。
+    #[test]
+    fn posture_recovery_re_freezes_by_pointer_not_history() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        let chain = store.create_chain("链路甲").expect("create");
+
+        let v1_input = {
+            let mut cards = chain_cards_input("甲");
+            cards.push(posture_input("傲娇"));
+            cards
+        };
+        let v1 = store.save_version(&chain.id, &v1_input, "v1").expect("v1");
+        let v2_input = {
+            let mut cards = chain_cards_input("甲");
+            cards.push(posture_input("冷静"));
+            cards
+        };
+        let v2 = store.save_version(&chain.id, &v2_input, "v2").expect("v2");
+        store.set_active(&chain.id, &v1.id).expect("activate v1");
+
+        // 第一轮按 v1 冻结（姿态＝傲娇）。
+        let round_one =
+            super::freeze_chain_round_blocking(&store, AiMessageKind::First, Some("conv-x"), None)
+                .expect("freeze")
+                .expect("frozen");
+        assert!(round_one
+            .posture_text
+            .as_deref()
+            .expect("姿态段")
+            .contains("你以傲娇的姿态说话"));
+
+        // 崩溃恢复语义：重放 turns 是显示历史的纯投影——结构上不存在姿态/
+        // 卡片字段（serde 钉死），旧姿态不可能从历史复原。
+        let replay_turn = crate::dsh_driver::DriverReplayTurn {
+            role: "user".to_string(),
+            text: "问题".to_string(),
+        };
+        let replay_json = serde_json::to_value(&replay_turn).expect("序列化");
+        assert_eq!(
+            replay_json,
+            serde_json::json!({"role": "user", "text": "问题"}),
+            "重放 turn 只有 role/text 两个字段（无 posture / chain_cards）"
+        );
+
+        // 恢复后首轮按**当前指针**重新冻结：换到 v2 后新轮带「冷静」，
+        // 已冻结的 round_one 仍持「傲娇」（在途轮不受打扰）。
+        store.set_active(&chain.id, &v2.id).expect("switch to v2");
+        let round_two = super::freeze_chain_round_blocking(
+            &store,
+            AiMessageKind::FollowUp,
+            Some("conv-x"),
+            None,
+        )
+        .expect("freeze")
+        .expect("frozen");
+        assert!(
+            round_two
+                .posture_text
+                .as_deref()
+                .expect("姿态段")
+                .contains("你以冷静的姿态说话"),
+            "恢复后首轮按当前指针重新冻结（新姿态）"
+        );
+        assert!(
+            round_one
+                .posture_text
+                .as_deref()
+                .expect("姿态段")
+                .contains("你以傲娇的姿态说话"),
+            "已冻结轮次的姿态不因指针切换改变"
         );
     }
 

@@ -660,12 +660,21 @@ export interface TrialRef {
   with_card: boolean;
 }
 
-/** 要求卡：触发描述（含负例）＋正文两段构成。 */
+/**
+ * 卡类型（add-posture-slot）：`requirement`＝要求卡（可多张）、`posture`＝姿态卡
+ * （每链路版本可多张，2026-10-07 修订）。JSON 字段名 `slot_type`；缺省＝要求卡
+ * （存量 v1 数据无此字段，读取视为要求卡，行为与本变更前一致）。
+ */
+export type CardSlotType = "requirement" | "posture";
+
+/** 卡：触发描述（含负例）＋正文两段构成；类型区分要求卡与姿态卡。 */
 export interface RequirementCard {
   id: string;
   title: string;
   trigger_desc: string;
   body: string;
+  /** 卡类型；缺省＝要求卡（存量数据兼容）。 */
+  slot_type?: CardSlotType;
 }
 
 /** 链路的一个不可变版本（旧版本只读保留；改卡＝追加新版本）。 */
@@ -694,11 +703,12 @@ export interface ChainLibrary {
   active: ActiveRef | null;
 }
 
-/** 保存新版本的入参卡（id 由后端生成，不接受外部指定）。 */
+/** 保存新版本的入参卡（id 由后端生成，不接受外部指定）；slot_type 缺省＝要求卡。 */
 export interface CardInput {
   title: string;
   trigger_desc: string;
   body: string;
+  slot_type?: CardSlotType;
 }
 
 /** 读取链路库（链路列表＋版本＋启用指针；缺主文件时后端返回空库）。 */

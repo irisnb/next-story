@@ -29,12 +29,18 @@ pub enum PromptEntry {
 /// 「你是陪伴剧本创作者思考与探索的助手」在会话 system 层逐字在场。
 const IDENTITY_SENTENCE: &str = "你是陪伴剧本创作者思考与探索的助手。";
 
-/// 宪法红线文本：原文迁移自旧 `constitution_prompt()` 身份句之后的全部条款
-/// （永久边界、诚实材料边界、追问语义、纯文本输出要求），一字不改。
+/// 宪法红线文本：永久边界、诚实材料边界、追问语义、纯文本输出要求。
 /// `pub(crate)`（add-making-module-core 任务 4.5）：制作助手车道（任务组 5）
 /// 复用本红线同文组装制作信封——红线条款对制作会话同样成立（design D4），
 /// 经同一常量引用，杜绝第二副本漂移。
-pub(crate) const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正文，不润色，不提供替换文本，不判断故事好坏，不判断正确或错误，不判断高级或低级。\
+///
+/// 评价条款为 2026-10-07 用户拍板的灰色地带口径（add-posture-slot 任务 2.5，
+/// dsh-headless-generation delta 定稿文案）：红线本意防的是「垄断裁决＋单一
+/// 标准推着作品变优秀」，不是禁止 AI 开口评价——对故事的评价只给带依据的
+/// 观察与假设，讲清线索与依据，判断权归还用户；取代旧三条「不判断」条款
+/// （不判断故事好坏／不判断正确或错误／不判断高级或低级）。
+pub(crate) const CONSTITUTION_CLAUSES: &str = "不直接修改用户文档，不代写正文，不润色，不提供替换文本。\
+对故事的评价只给带依据的观察与假设，讲清线索与依据；不用单一标准判定故事的好坏、正确或错误、高级或低级；内容、解释、评价与方向的判断权都在用户。\
 只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围。未提供、未读取或未取得的内容，不得声称已经读过；目录不等于正文，检索片段不等于全文。不得声称具有跨讨论长期记忆。\
 追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考。当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实。\
 不要输出 Markdown 或 HTML 格式，使用纯文本回答。";
@@ -80,6 +86,49 @@ pub fn assemble_chain_cards(cards: &[crate::chain_library::RequirementCard]) -> 
         ));
     }
     text
+}
+
+/// 姿态段注入文本的承接句（逐字常量，add-posture-slot design D3／任务 0
+/// 实验 C3 定稿措辞）：肯定式身份性表述——主干说「做什么」（以此声音陪伴
+/// 讨论），否定式限定压到最短（判断与红线仍按后文宪法执行），保留可替换
+/// 声明（共识 §5.3）。措辞漂移由装置测试逐字断言钉住。
+pub(crate) const POSTURE_WRAPPER_HEADER: &str =
+    "你的出场姿态由用户设定如下，以此声音陪伴讨论；判断与红线仍按后文宪法执行。该姿态可随时换掉。";
+
+/// 组装姿态段注入文本（`send_message.posture` → 信封 `nextstory:posture` 姿态
+/// 挂载位，add-posture-slot design D1/D3；2026-10-07 修订 7.2 多卡签名）：
+/// 承接句（仅出现一次）＋空行＋各姿态卡**正文原样**以空行依序拼接——每卡
+/// 正文各自剥去开头【…】单行标题行；不编序号、不加执行顺序暗示（与要求卡
+/// 渲染口径一致）。装配阶段不改写、不增删用户确认过的正文——元数据（触发
+/// 描述／卡名标记／栏目头）不进模型上下文，触发描述根本不参与本组装。
+/// 第二人称与「底线不换皮」条款由起草阶段（制作守则）保证，装配不代写。
+/// 空姿态卡列表返回空串（无姿态卡时由调用方省略协议字段，不渲染只含承接
+/// 句的空壳文本）。多张姿态卡不做冲突调和、不删减，全部依序注入（组合权
+/// 在用户）。文本不含 `{{`/`}}`（驱动侧 dsh-system-prompt 严格变量插值）。
+pub fn assemble_posture(cards: &[crate::chain_library::RequirementCard]) -> String {
+    if cards.is_empty() {
+        return String::new();
+    }
+    let mut text = String::from(POSTURE_WRAPPER_HEADER);
+    for card in cards {
+        text.push_str("\n\n");
+        text.push_str(strip_leading_posture_title(&card.body));
+    }
+    text
+}
+
+/// 剥去正文开头的【…】单行标题行（若有）：首字符为「【」且首个换行前的整行
+/// 以「】」收尾时视为标题行，剥去该行（含其换行）；整份正文只有这一行时
+/// 同样剥去（其余为空）。其余内容逐字不动。
+fn strip_leading_posture_title(body: &str) -> &str {
+    if !body.starts_with('【') {
+        return body;
+    }
+    match body.find('\n') {
+        Some(newline) if body[..newline].ends_with('】') => &body[newline + 1..],
+        None if body.ends_with('】') => "",
+        _ => body,
+    }
 }
 
 /// 入口层：按入口给出本轮请求的立场句（含本轮可见材料的静态描述）。
@@ -341,10 +390,15 @@ pub async fn ai_start_session_in_dir(
 /// 生成层只使用该授权内容，绝不回读前端请求中的原始 `selected_text` 字段；
 /// 无选区（直接提问 / 追问）时为 `None`。
 ///
-/// `chain_cards` 是当轮冻结的链路卡注入文本（add-making-module-core 任务 3.2，
+/// `chain_cards` 是当轮冻结的要求卡注入文本（add-making-module-core 任务 3.2，
 /// design D1）：`Some` 时随 `send_message` 协议字段下发（驱动侧轮级更新
 /// `nextstory:chain-cards` 信封段）；`None` 时省略字段，与既有路径逐字节
 /// 一致。卡文本走协议字段，绝不拼入 user 文本（「追问按增量发送」不变）。
+///
+/// `posture` 是当轮冻结的姿态段注入文本（add-posture-slot 任务 2.3，design
+/// D2/D3）：`Some` 时随 `send_message.posture` 协议字段下发（驱动侧轮级更新
+/// `nextstory:posture` 信封段，与 chain_cards 各自独立幂等）；`None`（无姿态卡）
+/// 时省略字段。与 `chain_cards` 来自同一次冻结读取（同源）。
 // 参数超限定点豁免：命令层入参直传，结构性收拢归审计 P2-1/P2-2（lib.rs 拆缝）处理。
 #[allow(clippy::too_many_arguments)]
 pub async fn ai_send_message_in_dir(
@@ -357,6 +411,7 @@ pub async fn ai_send_message_in_dir(
     material: Option<String>,
     context: Option<String>,
     chain_cards: Option<&str>,
+    posture: Option<&str>,
 ) -> GenerateAiResult {
     let text = match compose_message_text(kind, &question, material.as_deref(), context.as_deref())
     {
@@ -371,12 +426,14 @@ pub async fn ai_send_message_in_dir(
         return GenerateAiResult::failure(error);
     }
     let chain_cards = chain_cards.map(str::to_string);
+    let posture = posture.map(str::to_string);
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::dsh_driver::global_driver_manager().send_message_with_cards_and_wait(
             &session_id,
             &message_id,
             &text,
             chain_cards.as_deref(),
+            posture.as_deref(),
             crate::dsh_driver::REQUEST_TIMEOUT,
         )
     })
@@ -907,7 +964,7 @@ mod tests {
             "不代写正文",
             "不润色",
             "不提供替换文本",
-            "不判断故事好坏",
+            "对故事的评价只给带依据的观察与假设",
             IDENTITY_SENTENCE,
         ] {
             assert!(
@@ -932,15 +989,16 @@ mod tests {
         let rest: Vec<&str> = lines.collect();
         assert_eq!(rest.len(), 1, "信封恰有一个换行（拆段契约）");
         // 全部红线条款逐字在场（dsh-headless-generation 规格：永久边界＋诚实
-        // 材料边界＋追问语义逐字保留于会话 system 层）。
+        // 材料边界＋追问语义逐字保留于会话 system 层；评价条款为灰色地带新版，
+        // add-posture-slot 任务 2.5）。
         for required in [
             "不直接修改用户文档",
             "不代写正文",
             "不润色",
             "不提供替换文本",
-            "不判断故事好坏",
-            "不判断正确或错误",
-            "不判断高级或低级",
+            "对故事的评价只给带依据的观察与假设，讲清线索与依据",
+            "不用单一标准判定故事的好坏、正确或错误、高级或低级",
+            "内容、解释、评价与方向的判断权都在用户",
             "只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围",
             "未提供、未读取或未取得的内容，不得声称已经读过",
             "目录不等于正文，检索片段不等于全文",
@@ -950,6 +1008,14 @@ mod tests {
             "不要输出 Markdown 或 HTML 格式，使用纯文本回答",
         ] {
             assert!(envelope.contains(required), "信封缺少红线条款: {required}");
+        }
+        // 旧评价条款由灰色地带三条款取代，不得复活（2026-10-07 拍板）。
+        for prohibited_old in ["不判断故事好坏", "不判断正确或错误", "不判断高级或低级"]
+        {
+            assert!(
+                !envelope.contains(prohibited_old),
+                "旧评价条款已被灰色地带条款取代，不得出现: {prohibited_old}"
+            );
         }
         // 过时限制不得复活（2026-10-06 修正的负断言随之迁移）。
         for prohibited in [
@@ -966,6 +1032,17 @@ mod tests {
         assert!(
             !envelope.contains("{{"),
             "信封文本不得包含插值变量引用（{{）"
+        );
+        // 红线全文逐字锚定（add-posture-slot 任务 2.5，dsh-headless-generation
+        // delta 定稿）：期望值用独立逐字字面量——常量漂移时此处必须失败。
+        assert_eq!(
+            rest[0],
+            "不直接修改用户文档，不代写正文，不润色，不提供替换文本。\
+             对故事的评价只给带依据的观察与假设，讲清线索与依据；不用单一标准判定故事的好坏、正确或错误、高级或低级；内容、解释、评价与方向的判断权都在用户。\
+             只依据本次实际提供的作品材料及经授权工具实际返回的内容，说明参考范围。未提供、未读取或未取得的内容，不得声称已经读过；目录不等于正文，检索片段不等于全文。不得声称具有跨讨论长期记忆。\
+             追问围绕用户当前问题回应；首次选区仅在与当前问题相关时继续参考。当前讨论中的既有问答可用于承接对话，但 AI 先前提出的猜测和候选不能当作作品事实。\
+             不要输出 Markdown 或 HTML 格式，使用纯文本回答。",
+            "红线全文必须与定稿文案逐字一致"
         );
     }
 
@@ -1188,6 +1265,18 @@ mod tests {
             title: title.to_string(),
             trigger_desc: trigger.to_string(),
             body: body.to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_REQUIREMENT.to_string(),
+        }
+    }
+
+    fn posture_card(body: &str) -> RequirementCard {
+        RequirementCard {
+            id: "card-posture".to_string(),
+            title: "傲娇搭档".to_string(),
+            trigger_desc: "适用：想要嘴硬心软的陪想语气时。\n不适用：需要冷静客观复盘时。"
+                .to_string(),
+            body: body.to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
         }
     }
 
@@ -1256,6 +1345,149 @@ mod tests {
         assert!(
             !assembled.contains(IDENTITY_SENTENCE),
             "卡文本不得内嵌身份句（信封专属）"
+        );
+        assert_ne!(assembled, envelope);
+    }
+
+    // ========== 姿态段组装（add-posture-slot 任务 2.4，design D3） ==========
+
+    /// 承接句逐字常量（装置文本定稿，C3 验证）：任何漂移必须在此失败。
+    #[test]
+    fn posture_wrapper_header_is_verbatim_constant() {
+        assert_eq!(
+            POSTURE_WRAPPER_HEADER,
+            "你的出场姿态由用户设定如下，以此声音陪伴讨论；判断与红线仍按后文宪法执行。该姿态可随时换掉。"
+        );
+    }
+
+    /// 姿态段组装（单卡）：承接句＋空行＋正文原样；剥去正文开头的【…】单行
+    /// 标题行；触发描述与卡名不进注入文本（去元数据，design D3）。
+    #[test]
+    fn assemble_posture_renders_header_plus_verbatim_body_without_metadata() {
+        let card = posture_card("【傲娇搭档】\n你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。");
+        let text = assemble_posture(std::slice::from_ref(&card));
+        assert_eq!(
+            text,
+            "你的出场姿态由用户设定如下，以此声音陪伴讨论；判断与红线仍按后文宪法执行。该姿态可随时换掉。\n\n\
+             你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。",
+            "承接句＋空行＋正文（开头标题行已剥去）必须逐字一致"
+        );
+        // 去元数据：触发描述与卡名标记不进注入文本。
+        assert!(!text.contains("适用："), "触发描述（何时用）不得进注入文本");
+        assert!(
+            !text.contains("不适用："),
+            "触发描述（不适用）不得进注入文本"
+        );
+        assert!(!text.contains("傲娇搭档"), "卡名不得以标题行之外的途径混入");
+        // 插值安全：未知 {{…}} 引用会 fail loud。
+        assert!(!text.contains("{{"), "姿态文本不得包含插值变量引用");
+    }
+
+    /// 多卡拼接（2026-10-07 修订 7.2，design D3／chain-assembly「多卡拼接」）：
+    /// 承接句仅出现一次；各卡正文（各自剥去开头【…】标题行）以空行**依序**
+    /// 拼接；不编序号、不加执行顺序暗示；去元数据对每张卡成立。
+    #[test]
+    fn assemble_posture_concatenates_multiple_cards_with_single_header() {
+        let cards = vec![
+            posture_card("【傲娇搭档】\n你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。"),
+            posture_card("你以冷静读者的姿态看剧本，先找动机再谈感受。"),
+        ];
+        let text = assemble_posture(&cards);
+        assert_eq!(
+            text,
+            "你的出场姿态由用户设定如下，以此声音陪伴讨论；判断与红线仍按后文宪法执行。该姿态可随时换掉。\n\n\
+             你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。\n\n\
+             你以冷静读者的姿态看剧本，先找动机再谈感受。",
+            "承接句一次＋两卡正文以空行依序拼接（无序号、无顺序暗示）"
+        );
+        // 承接句恰好出现一次（多卡不得重复包装）。
+        assert_eq!(
+            text.matches(POSTURE_WRAPPER_HEADER).count(),
+            1,
+            "承接句只出现一次"
+        );
+        // 正文次序＝卡序；卡间恰以一个空行分隔。
+        let first_at = text.find("你嘴硬心软").expect("首卡正文在场");
+        let second_at = text.find("你以冷静读者").expect("次卡正文在场");
+        assert!(first_at < second_at, "正文按版本内既定次序拼接");
+        assert!(
+            text[first_at + "你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。".len()..]
+                .starts_with("\n\n你以冷静读者"),
+            "卡间恰以一个空行分隔，不引入其他分隔符"
+        );
+        // 不编序号／顺序暗示；去元数据对每张卡成立。
+        for hint in [
+            "姿态1",
+            "姿态 1",
+            "姿态一",
+            "第一张",
+            "其次",
+            "然后",
+            "优先",
+        ] {
+            assert!(!text.contains(hint), "不得出现序号或执行顺序暗示: {hint}");
+        }
+        assert!(!text.contains("适用："), "任一卡的触发描述不得进注入文本");
+        assert!(!text.contains("傲娇搭档"), "任一卡的卡名不得混入");
+        // 插值安全。
+        assert!(!text.contains("{{"), "姿态文本不得包含插值变量引用");
+    }
+
+    /// 空姿态卡列表返回空串：调用方以 None 省略协议字段，不渲染只含承接句
+    /// 的空壳文本（行为与修订前一致）。
+    #[test]
+    fn assemble_posture_returns_empty_string_for_empty_cards() {
+        assert_eq!(assemble_posture(&[]), String::new());
+    }
+
+    /// 正文原样传递：无标题行时逐字不动；正文内部的【…】行不剥（只剥开头）；
+    /// 正文非【开头时一字不改。
+    #[test]
+    fn assemble_posture_keeps_body_verbatim_without_leading_title() {
+        // 无标题行：逐字不动。
+        let plain = posture_card("你说话嘴硬心软。");
+        assert!(
+            assemble_posture(std::slice::from_ref(&plain)).ends_with("你说话嘴硬心软。"),
+            "无标题行的正文逐字保留"
+        );
+
+        // 内部【…】行不剥（只剥开头标题行），其余逐字不动。
+        let inner = posture_card("你说话嘴硬心软。\n【内部小节】\n看剧本先找动机。");
+        let text = assemble_posture(std::slice::from_ref(&inner));
+        assert!(
+            text.contains("你说话嘴硬心软。\n【内部小节】\n看剧本先找动机。"),
+            "正文内部内容逐字保留（只剥开头标题行）"
+        );
+
+        // 首行不以「】」收尾（不是标题行）：不剥。
+        let not_title = posture_card("【开头但没有收尾 标题行不成立\n正文第二行。");
+        assert!(
+            assemble_posture(std::slice::from_ref(&not_title))
+                .contains("【开头但没有收尾 标题行不成立\n正文第二行。"),
+            "首行不以】收尾时不视为标题行，正文逐字保留"
+        );
+    }
+
+    /// 任务 2.6（崩溃重放姿态语义，信封侧）：姿态段只经 `send_message.posture`
+    /// 逐轮携带；信封（`start_session.system_prompt`）保持纯常量、不含姿态
+    /// 承接句与姿态正文——重放会话与原会话的 system 层逐字一致（姿态恢复靠
+    /// 恢复后首轮按当前指针重新冻结，不从信封或历史复原）。
+    #[test]
+    fn posture_assembly_leaves_session_envelope_constant_untouched() {
+        let cards = vec![
+            posture_card("【傲娇搭档】\n你嘴硬心软。"),
+            posture_card("你以冷静读者的姿态看剧本。"),
+        ];
+        let assembled = assemble_posture(&cards);
+        let envelope = session_system_prompt();
+        assert_eq!(envelope, session_system_prompt(), "信封保持纯常量");
+        assert!(
+            !assembled.contains(IDENTITY_SENTENCE),
+            "姿态文本不得内嵌身份句（信封专属）"
+        );
+        assert!(
+            !envelope.contains(POSTURE_WRAPPER_HEADER),
+            "信封不得包含姿态承接句（姿态逐轮经协议字段携带）"
         );
         assert_ne!(assembled, envelope);
     }

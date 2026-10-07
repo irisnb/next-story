@@ -45,8 +45,9 @@ use crate::llm_config::{
 /// 制作助手身份句（信封 persona 段，独占首行；design D4 备选 A 草案）。
 const MAKING_IDENTITY_SENTENCE: &str = "你是帮助剧本创作者制作陪想要求的助手。";
 
-/// 制作守则段（信封 constitution 段内、红线之后；design D4＋spec 行为规范）：
-/// 与红线同入 `nextstory:constitution` 段（order 10），制度上次居任何卡内容之上。
+/// 制作守则段（信封 constitution 段内、红线之后；design D4＋spec 行为规范；
+/// add-posture-slot 任务 3.1 增姿态卡把关条款）：与红线同入
+/// `nextstory:constitution` 段（order 10），制度上次居任何卡内容之上。
 /// 文本不含 `{{`/`}}`（驱动侧 dsh-system-prompt 严格变量插值，未知引用 fail loud）。
 const MAKING_GUARD_RULES: &str = "制作守则：\
 你不读取任何作品材料，也不请求读取授权；只依据用户的口述与试问结果工作，材料不足时如实说明，并用提问补足。\
@@ -56,8 +57,19 @@ const MAKING_GUARD_RULES: &str = "制作守则：\
 卡草稿是临时材料，用户显式启用之前不产生任何效果；用户的肯定表述（如「这版不错」）不等于启用，启用必须是用户的明确动作。\
 不替用户判断创意高低；所有候选与判断最终由用户决定。\
 链路配置只能经制作模块的制作对话修改：用户提到想在日常聊天里修改链路时，说明日常聊天不能修改链路，请其前往制作模块的制作对话处理。\n\
+姿态卡把用户的口述变成陪想的出场姿态：范围是用户口述的人设、看剧本的出发点或陪想本身的姿态，不是新的职权。\
+起草姿态卡前先澄清：用户要的是语气上的皮，还是真要陪想当裁判——语气随便换，裁判权换不走。\
+口述中的裁判性诉求（如「替我判断好坏」「毒舌锐评我的水平」）只转化为语气条款，不写入职权条款。\
+姿态卡正文用第二人称书写，并含「底线不换皮」条款；范本口径：嘴硬心软可以毒舌，但毒舌后必须跟实打实的想法；说作品「不行」只能带依据；不代写，稿子一字不许动。\
+每条链路每个版本可以并存多张姿态卡；系统不做冲突调和，怎么组合由用户决定。\
+用户想要第二张姿态卡时，先问「替换现有的，还是并存」，按用户的选择起草（替换＝出一个新版本，并存＝同版本多张）。\
+草稿代表新版本的完整卡清单：并存时把既有卡原样重述、与新卡一起输出；替换时只输出新卡。不知道既有卡内容时，先如实说明，依会话内「链路现状」附言或用户提供的文本重述，不编造。\
+发现新姿态与已有姿态明显相抵（如相反的语气）时，明确提醒用户，但不阻止保存。\
+只含姿态卡、不含要求卡的版本允许保存。\
+姿态卡的触发描述仅供用户选择链路时参考，系统不会据此自动切换姿态。\n\
 产出或修改卡草稿时，用固定标记块输出，便于界面识别：\n\
 【卡草稿开始】\n\
+类型：要求卡 或 类型：姿态卡\n\
 卡名：…\n\
 何时用：…\n\
 何时不用：…\n\
@@ -537,8 +549,9 @@ fn replay_seed_turns(record: &MakingConversationRecord) -> Vec<DriverReplayTurn>
         .collect()
 }
 
-/// 制作轮次发送核心：确保会话存在后**纯文本直发**——`chain_cards` 传 `None`
-/// （制作助手不装配链路卡，模型工具面也无 story 工具），无选区、无取材、无
+/// 制作轮次发送核心：确保会话存在后**纯文本直发**——`chain_cards` 与
+/// `posture` 都传 `None`（制作助手不装配链路卡与姿态段——姿态经真实链路
+/// 试用由试问车道负责，模型工具面也无 story 工具），无选区、无取材、无
 /// provenance。走 [`DshDriverManager::send_message_with_cards_and_wait`] 即复用
 /// 既有等待、停滞看护与全局并发准入（同讨论重复 / 全局超限在写协议前拒绝）。
 fn send_making_message_core(
@@ -555,6 +568,7 @@ fn send_making_message_core(
         &driver_session_id,
         message_id,
         text,
+        None,
         None,
         REQUEST_TIMEOUT,
     )
@@ -964,8 +978,9 @@ mod tests {
         assert_ne!(envelope, crate::llm_config::session_system_prompt());
     }
 
-    /// 守则各要点在场（spec：制作助手信封构成＋行为规范）；且信封不含任何
-    /// story 工具引导（制作会话工具面无四件套，提示词同样不出现）。
+    /// 守则各要点在场（spec：制作助手信封构成＋行为规范；add-posture-slot
+    /// 任务 3.1：姿态卡把关条款）；且信封不含任何 story 工具引导（制作会话
+    /// 工具面无四件套，提示词同样不出现）。
     #[test]
     fn making_envelope_covers_all_guard_rule_points_and_no_story_tools() {
         let envelope = making_session_system_prompt();
@@ -986,10 +1001,70 @@ mod tests {
         ] {
             assert!(envelope.contains(point), "制作守则缺少要点: {point}");
         }
-        // 卡草稿输出格式段（任务 B，逐字）：固定标记块完整在场且次序固定。
+        // 姿态卡把关条款（add-posture-slot 任务 3.1＋2026-10-07 修订 7.2/7.5，
+        // spec making-conversation：范围／骨与衣服分界／裁判性诉求转化／
+        // 第二人称＋底线不换皮／多张并存不调和＋第二张先问替换或并存＋完整
+        // 卡清单（并存＝原样重述＋新卡，替换＝只新卡，不知既有卡时如实说明
+        // 不编造）＋相抵提醒不阻止／纯姿态版本允许／触发描述不自动切换）。
+        for point in [
+            "用户口述的人设、看剧本的出发点或陪想本身的姿态",
+            "语气上的皮",
+            "真要陪想当裁判",
+            "语气随便换，裁判权换不走",
+            "只转化为语气条款，不写入职权条款",
+            "第二人称",
+            "底线不换皮",
+            "毒舌后必须跟实打实的想法",
+            "说作品「不行」只能带依据",
+            "不代写，稿子一字不许动",
+            "可以并存多张姿态卡",
+            "系统不做冲突调和",
+            "怎么组合由用户决定",
+            "替换现有的，还是并存",
+            "替换＝出一个新版本，并存＝同版本多张",
+            "草稿代表新版本的完整卡清单",
+            "把既有卡原样重述、与新卡一起输出",
+            "替换时只输出新卡",
+            "先如实说明",
+            "「链路现状」附言",
+            "用户提供的文本重述",
+            "不编造",
+            "明显相抵（如相反的语气）",
+            "明确提醒用户，但不阻止保存",
+            "只含姿态卡、不含要求卡的版本允许保存",
+            "触发描述仅供用户选择链路时参考，系统不会据此自动切换姿态",
+        ] {
+            assert!(envelope.contains(point), "姿态卡把关条款缺少要点: {point}");
+        }
+        // 新条款次序（修订 7.5）：完整卡清单条紧随「先问替换或并存」之后、
+        // 「相抵提醒」之前——与钉死合同的插入位置一致。
+        let ask_at = envelope
+            .find("替换现有的，还是并存")
+            .expect("先问替换或并存条在场");
+        let list_at = envelope
+            .find("草稿代表新版本的完整卡清单")
+            .expect("完整卡清单条在场");
+        let conflict_at = envelope
+            .find("发现新姿态与已有姿态明显相抵")
+            .expect("相抵提醒条在场");
+        assert!(
+            ask_at < list_at && list_at < conflict_at,
+            "完整卡清单条必须位于「先问替换或并存」之后、「相抵提醒」之前"
+        );
+        // 旧「至多一张」措辞不得残留（2026-10-07 用户拍板否决）。
+        for prohibited_old in ["至多一张姿态卡", "不并存两张", "每版本至多一张"]
+        {
+            assert!(
+                !envelope.contains(prohibited_old),
+                "旧「至多一张」措辞已被多张并存修订取代，不得残留: {prohibited_old}"
+            );
+        }
+        // 卡草稿输出格式段（任务 B，逐字；add-posture-slot 协议项 8：类型行在
+        // 「卡名」之前）：固定标记块完整在场且次序固定。
         for point in [
             "产出或修改卡草稿时，用固定标记块输出，便于界面识别：",
             "【卡草稿开始】",
+            "类型：要求卡 或 类型：姿态卡",
             "卡名：…",
             "何时用：…",
             "何时不用：…",
@@ -1000,8 +1075,16 @@ mod tests {
             assert!(envelope.contains(point), "草稿输出格式段缺少要点: {point}");
         }
         let start_at = envelope.find("【卡草稿开始】").expect("开始标记");
+        let type_at = envelope
+            .find("类型：要求卡 或 类型：姿态卡")
+            .expect("类型行");
+        let name_at = envelope.find("卡名：…").expect("卡名行");
         let end_at = envelope.find("【卡草稿结束】").expect("结束标记");
         assert!(start_at < end_at, "开始标记必须先于结束标记");
+        assert!(
+            start_at < type_at && type_at < name_at,
+            "类型行必须位于「卡名」之前（卡草稿标记块协议）"
+        );
         for tool in [
             "story-list",
             "story-read",
@@ -1284,6 +1367,7 @@ rl.on('line', (line) => {
       prompt: prompts.get(cmd.session_id) ?? null,
       replayTurns: replays.get(cmd.session_id) ?? [],
       chainCards: Object.hasOwn(cmd, 'chain_cards') ? cmd.chain_cards : null,
+      posture: Object.hasOwn(cmd, 'posture') ? cmd.posture : null,
       text: cmd.text,
       sessionId: cmd.session_id,
     }) }));
@@ -1408,6 +1492,11 @@ setInterval(() => {}, 1000);
             observed["chainCards"],
             serde_json::Value::Null,
             "制作轮次线缆上不得出现 chain_cards 字段"
+        );
+        assert_eq!(
+            observed["posture"],
+            serde_json::Value::Null,
+            "制作轮次线缆上不得出现 posture 字段（制作助手不装配姿态段）"
         );
         assert_eq!(observed["text"], "帮我改这张卡", "user 文本纯文本直发");
         assert!(

@@ -156,11 +156,22 @@ export interface MakingDom {
   /** 三区之一：自定义要求（定高＋区内滚动；卡行＋ghost 在滚动内容内）。 */
   readonly zoneCustom: HTMLElement;
   readonly zoneCustomTrigger: HTMLButtonElement;
+  /** 分区说明性副标「包含要求卡与姿态卡」（add-posture-slot；不构成第二名称）。 */
+  readonly zoneSubtitle: HTMLElement;
   readonly zoneScroll: HTMLElement;
   readonly cardCount: HTMLElement;
   readonly cardList: HTMLElement;
   readonly noCards: HTMLElement;
   readonly addCardBtn: HTMLButtonElement;
+  /**
+   * 姿态类插槽组（add-posture-slot）：与要求类组同级、共用分区单一滚动区，
+   * 排布在要求类组下方；静态节点位于 index.html，与要求类组同构
+   * （组标题＋计数＋卡列表＋ghost 添加入口）。
+   */
+  readonly postureGroup: HTMLElement;
+  readonly postureCardCount: HTMLElement;
+  readonly postureCardList: HTMLElement;
+  readonly addPostureCardBtn: HTMLButtonElement;
   /** 三区之二／之三：固定底座（共用·只读）与每轮动态（自动）。 */
   readonly baseNode: HTMLButtonElement;
   readonly dynamicNode: HTMLButtonElement;
@@ -491,21 +502,24 @@ export function getAppDom(): AppDom {
     moduleFiles: requireElement("module-files"),
     moduleSettings: requireElement("module-settings"),
     moduleMaking: requireElement("module-making"),
-    making: {
+    making: (() => {
+      const zoneCustom = requireElement("making-zone-custom");
+      const zoneScroll = requireElement("making-zone-scroll");
+      return {
       moduleRoot: requireElement("module-making"),
       statusBar: requireElement("making-status-bar"),
       statusActive: requireElement("making-status-active"),
       statusText: requireElement("making-status-text"),
       statusIdle: requireElement("making-status-idle"),
       statusError: requireElement("making-status-error"),
-      deactivateBtn: requireElement("making-deactivate-btn"),
+      deactivateBtn: requireElement<HTMLButtonElement>("making-deactivate-btn"),
       collapsedBar: requireElement("making-collapsed-bar"),
-      libraryToggle: requireElement("making-library-toggle"),
+      libraryToggle: requireElement<HTMLButtonElement>("making-library-toggle"),
       viewSwitch: requireElement("making-view-switch"),
       viewMapBtn: requireElement<HTMLButtonElement>("making-view-map-btn"),
       viewChatBtn: requireElement<HTMLButtonElement>("making-view-chat-btn"),
       chainLibrary: requireElement("making-chain-library"),
-      libraryCloseBtn: requireElement("making-library-close-btn"),
+      libraryCloseBtn: requireElement<HTMLButtonElement>("making-library-close-btn"),
       newChainBtn: requireElement("making-new-chain-btn"),
       newChainForm: requireElement("making-new-chain-form"),
       newChainName: requireElement("making-new-chain-name"),
@@ -524,9 +538,14 @@ export function getAppDom(): AppDom {
       graph: requireElement("making-graph"),
       wires: requireElement<SVGSVGElement>("making-wires"),
       wirePaths: requireElement<SVGGElement>("making-wire-paths"),
-      zoneCustom: requireElement("making-zone-custom"),
+      zoneCustom,
       zoneCustomTrigger: requireElement<HTMLButtonElement>("making-custom-trigger"),
-      zoneScroll: requireElement("making-zone-scroll"),
+      zoneSubtitle: requireElement("making-zone-subtitle"),
+      zoneScroll,
+      postureGroup: requireElement("making-posture-group"),
+      postureCardCount: requireElement("making-posture-card-count"),
+      postureCardList: requireElement("making-posture-card-list"),
+      addPostureCardBtn: requireElement<HTMLButtonElement>("making-add-posture-btn"),
       cardCount: requireElement("making-card-count"),
       cardList: requireElement("making-card-list"),
       noCards: requireElement("making-no-cards"),
@@ -557,7 +576,8 @@ export function getAppDom(): AppDom {
       conversationSend: requireElement("making-conversation-send"),
       conversationStop: requireElement<HTMLButtonElement>("making-conversation-stop"),
       conversationForm: requireElement("making-conversation-form"),
-    },
+      };
+    })(),
     editorTextarea: requireElement("editor-textarea"),
     currentDocToggle: requireElement("current-doc-toggle"),
     currentDocumentName: requireElement("current-document-name"),

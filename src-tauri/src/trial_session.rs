@@ -349,6 +349,10 @@ pub(crate) fn compose_trial_user_text(
 /// [`session_system_prompt`] 常量信封显式建立，与日常逐字同源）→ 发送并等待
 /// 终态 → **无论终态如何**都结束会话＋注册表除名＋清工具路由（试问单轮，
 /// 不可追问；迟到授权与轮内监管状态一并作废）。
+///
+/// `cards_text` / `posture`（add-posture-slot 任务 2.3）：带卡轮按卡类型分流的
+/// 要求卡文本与姿态段文本（同一版本快照产出，同源）；对照轮两者皆 `None`
+/// （线缆上省略字段，与无链路现状逐字节一致）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn send_trial_round_blocking(
     manager: &DshDriverManager,
@@ -359,6 +363,7 @@ pub(crate) fn send_trial_round_blocking(
     message_id: &str,
     user_text: &str,
     cards_text: Option<&str>,
+    posture: Option<&str>,
 ) -> Result<MessageOutcome, GenerateAiError> {
     {
         let sessions = registry.locked();
@@ -387,6 +392,7 @@ pub(crate) fn send_trial_round_blocking(
             message_id,
             user_text,
             cards_text,
+            posture,
             REQUEST_TIMEOUT,
         )
     })();
@@ -484,14 +490,32 @@ pub(crate) fn run_trial_round_blocking(
             Err(error) => return GenerateAiResult::failure(error),
         };
 
-    // 卡文本：带卡轮用所试版本卡（同一组装函数）；对照轮恒 None（线缆上省略
-    // chain_cards 字段，与无链路现状逐字节一致）。
-    let cards_text = if input.with_card {
-        Some(crate::llm_config::generate::assemble_chain_cards(
-            &resolved.cards,
-        ))
+    // 卡文本（add-posture-slot 任务 2.3 分流；2026-10-07 修订 7.2 多姿态卡）：
+    // 带卡轮按 slot_type 分流——要求卡经 `assemble_chain_cards`（纯姿态版本无
+    // 要求卡时 `chain_cards` 恒省略字段）、全部姿态卡一并经 `assemble_posture`
+    // 渲染（承接句一次、依序拼接，不调和）；两字段同一版本快照产出（同源）。
+    // 对照轮两字段皆 None（线缆上省略，与无链路现状逐字节一致）。
+    let requirement_cards: Vec<crate::chain_library::RequirementCard> = resolved
+        .cards
+        .iter()
+        .filter(|card| card.slot_type != crate::chain_library::SLOT_TYPE_POSTURE)
+        .cloned()
+        .collect();
+    let posture_cards: Vec<crate::chain_library::RequirementCard> = resolved
+        .cards
+        .iter()
+        .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+        .cloned()
+        .collect();
+    let (cards_text, posture_text) = if input.with_card {
+        (
+            (!requirement_cards.is_empty())
+                .then(|| crate::llm_config::generate::assemble_chain_cards(&requirement_cards)),
+            (!posture_cards.is_empty())
+                .then(|| crate::llm_config::generate::assemble_posture(&posture_cards)),
+        )
     } else {
-        None
+        (None, None)
     };
 
     // 证据落盘（pending）＋版本引用：失败＝本轮未发送（证据是试问的目的，
@@ -539,6 +563,7 @@ pub(crate) fn run_trial_round_blocking(
         &message_id,
         &user_text,
         cards_text.as_deref(),
+        posture_text.as_deref(),
     );
 
     // 终态更新证据（不自动重发）。
@@ -921,6 +946,7 @@ mod tests {
                     title: "节奏紧张时先问动机".to_string(),
                     trigger_desc: "适用：冲突密集的段落。\n不适用：日常过渡。".to_string(),
                     body: "先指出人物动机，再给两种走向。".to_string(),
+                    slot_type: crate::chain_library::SLOT_TYPE_REQUIREMENT.to_string(),
                 }],
                 "初稿",
             )
@@ -967,9 +993,9 @@ mod tests {
     }
 
     /// 观测驱动：记录每个会话的 session_kind 与信封；send_message 回显全部
-    /// 观测（kind / prompt / chainCards / text / sessionId）。
+    /// 观测（kind / prompt / chainCards / posture / text / sessionId）。
     fn observing_driver_script() -> String {
-        r#"
+        let script = r#"
 import readline from 'node:readline';
 console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));
 const kinds = new Map();
@@ -987,6 +1013,7 @@ rl.on('line', (line) => {
       kind: kinds.get(cmd.session_id) ?? null,
       prompt: prompts.get(cmd.session_id) ?? null,
       chainCards: Object.hasOwn(cmd, 'chain_cards') ? cmd.chain_cards : null,
+      posture: Object.hasOwn(cmd, 'posture') ? cmd.posture : null,
       text: cmd.text,
       sessionId: cmd.session_id,
     }) }));
@@ -1000,8 +1027,8 @@ rl.on('line', (line) => {
 });
 rl.on('close', () => process.exit(0));
 setInterval(() => {}, 1000);
-"#
-        .to_string()
+"#;
+        script.to_string()
     }
 
     /// 授权两步驱动：send → story-request-reading（挂起等 tool_result）→
@@ -1188,6 +1215,11 @@ setInterval(() => {}, 1000);
             crate::llm_config::generate::assemble_chain_cards(&version.cards),
             "带卡轮必须注入所试版本的卡文本"
         );
+        assert_eq!(
+            observed["posture"],
+            serde_json::Value::Null,
+            "纯要求卡版本的试问线缆上不得出现 posture 字段"
+        );
 
         // user 文本＝问题＋取材语境（镜像日常 First）。
         let observed_text = observed["text"].as_str().expect("text");
@@ -1286,6 +1318,11 @@ setInterval(() => {}, 1000);
             serde_json::Value::Null,
             "对照轮线缆上不得出现 chain_cards 字段"
         );
+        assert_eq!(
+            observed["posture"],
+            serde_json::Value::Null,
+            "对照轮线缆上不得出现 posture 字段（两字段皆空）"
+        );
         assert!(
             result.chain_round.is_none(),
             "对照轮结果不携带链路快照（无卡可显示）"
@@ -1309,11 +1346,220 @@ setInterval(() => {}, 1000);
         manager.shutdown_best_effort();
     }
 
+    /// add-posture-slot 任务 2.3/2.6（2026-10-07 修订 7.2）：姿态卡试问走真实
+    /// 日常链路并按类型分流——姿态＋要求并存版本两字段都注入（同一次版本快照
+    /// 产出）；多姿态卡版本全部姿态正文经同一渲染路径自然流通；纯姿态版本
+    /// 只带 `posture`（线缆上省略 `chain_cards`）。
+    #[test]
+    fn trial_round_splits_posture_from_requirement_cards() {
+        let (_base, store, chain_id, _v1, trials_dir) = chain_setup("链路甲");
+        // 混合版本：一张要求卡＋一张姿态卡。
+        let mut mixed = sample_cards();
+        mixed.push(CardInput {
+            title: "傲娇搭档".to_string(),
+            trigger_desc: "适用：想要嘴硬心软的语气。\n不适用：需要冷静复盘。".to_string(),
+            body: "【傲娇搭档】\n你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。".to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
+        });
+        let mixed_version = store
+            .save_version(&chain_id, &mixed, "混合")
+            .expect("存混合版本");
+        // 多姿态版本（修订 7.2）：一张要求卡＋两张姿态卡并存（不调和）。
+        let mut multi = sample_cards();
+        multi.push(CardInput {
+            title: "傲娇搭档".to_string(),
+            trigger_desc: "适用：想要嘴硬心软的语气。\n不适用：需要冷静复盘。".to_string(),
+            body: "【傲娇搭档】\n你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。".to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
+        });
+        multi.push(CardInput {
+            title: "冷静读者".to_string(),
+            trigger_desc: "适用：想要冷静读者视角。\n不适用：其他。".to_string(),
+            body: "你看剧本时先找人物动机，再谈感受。".to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
+        });
+        let multi_posture_version = store
+            .save_version(&chain_id, &multi, "多姿态")
+            .expect("存多姿态版本（可多张并存）");
+        // 纯姿态版本。
+        let pure_posture_version = store
+            .save_version(
+                &chain_id,
+                &[CardInput {
+                    title: "冷静读者".to_string(),
+                    trigger_desc: "适用：想要冷静读者姿态。\n不适用：其他。".to_string(),
+                    body: "你以冷静读者的姿态看剧本。".to_string(),
+                    slot_type: crate::chain_library::SLOT_TYPE_POSTURE.to_string(),
+                }],
+                "纯姿态",
+            )
+            .expect("存纯姿态版本");
+
+        let work_temp = tempfile::tempdir().expect("work dir");
+        let (work_root, _doc_id) = setup_work_with_doc(
+            &work_temp,
+            "姿态试问作品",
+            &notebook_with_text("林晓站在天台边。"),
+        );
+
+        let (_driver_temp, paths, params) = fake_driver(&observing_driver_script());
+        let manager = Arc::new(DshDriverManager::new());
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+        let channel = wire_local_channel(&manager);
+        let registry = TrialSessionRegistry::default();
+        let locks = ProjectLocks::default();
+        let _guard = DriverGuard(manager.as_ref().clone());
+
+        // 混合版本带卡轮：chain_cards 只含要求卡、posture 为承接句＋姿态正文
+        // （标题行已剥去），两字段与库内重算逐字一致（同源）。
+        let input = input_for(
+            "trial-posture-1",
+            &chain_id,
+            &mixed_version.id,
+            true,
+            &work_root,
+            None,
+        );
+        let result = run_trial_round_blocking(
+            &manager,
+            &channel,
+            &registry,
+            &store,
+            &locks,
+            &trials_dir,
+            &input,
+        );
+        let observed = parse_observation(&result);
+        let library = store.load().expect("读库");
+        let stored_mixed = library
+            .chains
+            .iter()
+            .flat_map(|chain| chain.versions.iter())
+            .find(|version| version.id == mixed_version.id)
+            .expect("混合版本在场");
+        let requirement_cards: Vec<crate::chain_library::RequirementCard> = stored_mixed
+            .cards
+            .iter()
+            .filter(|card| card.slot_type != crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        let posture_cards: Vec<crate::chain_library::RequirementCard> = stored_mixed
+            .cards
+            .iter()
+            .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        assert_eq!(
+            observed["chainCards"],
+            crate::llm_config::generate::assemble_chain_cards(&requirement_cards),
+            "chain_cards 只含要求卡（同一组装源）"
+        );
+        assert_eq!(
+            observed["posture"],
+            crate::llm_config::generate::assemble_posture(&posture_cards),
+            "posture 与库内全部姿态卡同一渲染源（承接句＋正文，标题行剥去）"
+        );
+        assert!(
+            !observed["chainCards"]
+                .as_str()
+                .expect("chainCards 文本")
+                .contains("你嘴硬心软"),
+            "姿态正文不得混入 chain_cards"
+        );
+
+        // 多姿态版本带卡轮（修订 7.2）：两张姿态卡全部经同一渲染路径注入
+        // （承接句一次、依序拼接），与库内全部姿态卡重算逐字一致。
+        let input = input_for(
+            "trial-posture-multi",
+            &chain_id,
+            &multi_posture_version.id,
+            true,
+            &work_root,
+            None,
+        );
+        let result = run_trial_round_blocking(
+            &manager,
+            &channel,
+            &registry,
+            &store,
+            &locks,
+            &trials_dir,
+            &input,
+        );
+        let observed = parse_observation(&result);
+        let library = store.load().expect("读库");
+        let stored_multi = library
+            .chains
+            .iter()
+            .flat_map(|chain| chain.versions.iter())
+            .find(|version| version.id == multi_posture_version.id)
+            .expect("多姿态版本在场");
+        let multi_posture_cards: Vec<crate::chain_library::RequirementCard> = stored_multi
+            .cards
+            .iter()
+            .filter(|card| card.slot_type == crate::chain_library::SLOT_TYPE_POSTURE)
+            .cloned()
+            .collect();
+        assert_eq!(multi_posture_cards.len(), 2, "多姿态版本确实含两张姿态卡");
+        assert_eq!(
+            observed["posture"],
+            crate::llm_config::generate::assemble_posture(&multi_posture_cards),
+            "多姿态卡试问与库内全部姿态卡同一渲染源（多卡自然流通）"
+        );
+        let posture_text = observed["posture"].as_str().expect("posture 文本");
+        let tsundere_at = posture_text.find("你嘴硬心软").expect("首张姿态正文在场");
+        let motive_at = posture_text.find("先找人物动机").expect("次张姿态正文在场");
+        assert!(tsundere_at < motive_at, "多姿态正文按版本内既定次序注入");
+        assert!(
+            !observed["chainCards"]
+                .as_str()
+                .expect("chainCards 文本")
+                .contains("你嘴硬心软"),
+            "多姿态正文仍不得混入 chain_cards"
+        );
+
+        // 纯姿态版本带卡轮：只带 posture，线缆上无 chain_cards 字段。
+        let input = input_for(
+            "trial-posture-2",
+            &chain_id,
+            &pure_posture_version.id,
+            true,
+            &work_root,
+            None,
+        );
+        let result = run_trial_round_blocking(
+            &manager,
+            &channel,
+            &registry,
+            &store,
+            &locks,
+            &trials_dir,
+            &input,
+        );
+        let observed = parse_observation(&result);
+        assert_eq!(
+            observed["chainCards"],
+            serde_json::Value::Null,
+            "纯姿态版本试问线缆上不得出现 chain_cards 字段"
+        );
+        assert_eq!(
+            observed["posture"],
+            format!(
+                "{}\n\n你以冷静读者的姿态看剧本。",
+                crate::llm_config::generate::POSTURE_WRAPPER_HEADER
+            ),
+            "纯姿态版本注入承接句＋正文"
+        );
+
+        manager.shutdown_best_effort();
+    }
+
     fn sample_cards() -> Vec<CardInput> {
         vec![CardInput {
             title: "示例卡".to_string(),
             trigger_desc: "适用：测试。\n不适用：其他。".to_string(),
             body: "正文。".to_string(),
+            slot_type: crate::chain_library::SLOT_TYPE_REQUIREMENT.to_string(),
         }]
     }
 

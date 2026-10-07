@@ -22,6 +22,8 @@ import { loadProtocol } from "./protocol.mjs";
 import {
   CHAIN_CARDS_ORDER,
   CHAIN_CARDS_SECTION,
+  POSTURE_ORDER,
+  POSTURE_SECTION,
   registerSystemPromptSections,
 } from "./system-prompt-sections.mjs";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -273,6 +275,27 @@ async function createAgentFor(session, seed) {
         session.chainCardsText = target;
         return true;
       };
+      // 姿态段轮级更新入口（add-posture-slot 任务 1.3，design D2）：与
+      // applyChainCards 完全同构、状态并列——两字段各自字符串比较幂等，互不
+      // 牵连（一字段变化不触发另一字段重注册）。姿态文本由 Rust 宿主渲染成
+      // 最终段文本（承接句＋卡正文），驱动侧只挂载（nextstory:posture，
+      // 身份与红线之间）、不渲染不改写。
+      session.postureText = "";
+      session.postureDisposer = disposers.posture;
+      session.applyPosture = (text) => {
+        const target = typeof text === "string" ? text : "";
+        if (session.postureText === target) return false;
+        if (session.postureDisposer) {
+          try { session.postureDisposer(); } catch (error) { diag(`posture dispose error: ${String(error?.message ?? error)}`); }
+          session.postureDisposer = null;
+        }
+        const systemPromptService = agentCtx.get("systemPrompt");
+        session.postureDisposer = systemPromptService.section({
+          name: POSTURE_SECTION, order: POSTURE_ORDER, text: target,
+        });
+        session.postureText = target;
+        return true;
+      };
       // 工具面四件套注册在 Agent 私有作用域（任务 5.1）；实现只桥接宿主。
       // 制作助手会话（design D4）：跳过注册——模型工具面根本不出现 story
       // 四件套（「看得到但调用失败」不如干净不见）；宿主侧另有失败关闭兜底。
@@ -445,6 +468,9 @@ async function handleCommand(cmd) {
         // 链路卡轮级更新状态（design D1）：Agent 建立后由 setup 回调挂上
         // applyChainCards；chainCardsText/chainCardsDisposer 记录当前注册态。
         chainCardsText: "", chainCardsDisposer: null, applyChainCards: null,
+        // 姿态段轮级更新状态（add-posture-slot 任务 1.3，design D2）：与链路卡
+        // 状态并列、各自独立幂等；Agent 建立后由 setup 回调挂上 applyPosture。
+        postureText: "", postureDisposer: null, applyPosture: null,
       });
       emit({ type: "session_started", session_id: sid });
       return;
@@ -481,6 +507,10 @@ async function handleCommand(cmd) {
       // agent 前对齐当轮冻结的卡文本；null/undefined 视为空文本（无卡）。
       // 卡文本是协议字段，绝不进入 runTurn 的 user 文本（追问仍纯增量）。
       session.applyChainCards(typeof cmd.chain_cards === "string" ? cmd.chain_cards : "");
+      // 姿态段轮级更新（add-posture-slot 任务 1.3，design D2）：与链路卡同一处
+      // 对齐、各自独立幂等；null/undefined（旧宿主／旧消息）视为空文本——姿态
+      // 位空段、不报错。姿态文本是协议字段，绝不进入 runTurn 的 user 文本。
+      session.applyPosture(typeof cmd.posture === "string" ? cmd.posture : "");
       runTurn(session, String(cmd.message_id ?? randomUUID()), cmd.text);
       return;
     }

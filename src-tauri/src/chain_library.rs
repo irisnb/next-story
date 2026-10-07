@@ -56,7 +56,22 @@ const MAX_CHAINS_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_TRIAL_RECORD_BYTES: u64 = 1024 * 1024;
 
 /// 链路库主文件的格式版本：不认识的更高版本明确报错，避免误读后覆盖丢数据。
-pub const CHAIN_LIBRARY_FORMAT_VERSION: u32 = 1;
+/// 版本 2（add-posture-slot）：卡结构增 `slot_type` 字段（要求卡／姿态卡）。
+/// v1 文件向前兼容读取（卡按缺省视为全要求卡），读取后规范化为当前版本，
+/// 保存一律写 2；遇更高版本明确拒读（防旧版误读姿态卡为要求卡后整库保存
+/// 造成类型永久丢失）。
+pub const CHAIN_LIBRARY_FORMAT_VERSION: u32 = 2;
+
+/// 卡类型取值（add-posture-slot）：要求卡（可多张）。
+pub const SLOT_TYPE_REQUIREMENT: &str = "requirement";
+/// 卡类型取值（add-posture-slot）：姿态卡（每链路版本可多张并存——2026-10-07
+/// 用户拍板修订；系统不做冲突调和，组合权在用户）。
+pub const SLOT_TYPE_POSTURE: &str = "posture";
+
+/// 卡类型缺省值：要求卡（v1 数据与省缺字段的入参都按要求卡读）。
+fn default_requirement() -> String {
+    SLOT_TYPE_REQUIREMENT.to_string()
+}
 
 /// 卡结构上限（design D2）：触发描述 ≤400 字。
 pub const MAX_TRIGGER_DESC_CHARS: usize = 400;
@@ -119,15 +134,22 @@ pub struct ChainVersion {
     pub trials: Vec<TrialRef>,
 }
 
-/// 要求卡：触发描述（含负例：近似但不该触发的情形）＋正文两段构成。
+/// 卡：触发描述（含负例：近似但不该触发的情形）＋正文两段构成；类型分
+/// 要求卡（可多张）与姿态卡（每链路版本可多张并存，add-posture-slot
+/// 2026-10-07 修订）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequirementCard {
     pub id: String,
     pub title: String,
-    /// 触发描述（含适用与不适用情形），≤400 字。
+    /// 触发描述（含适用与不适用情形），≤400 字；姿态卡的触发描述仅供用户
+    /// 选择链路时参考，不承担自动切换。
     pub trigger_desc: String,
     /// 正文，单卡 ≤2000 字（允许为空：规格只强制触发描述在场）。
     pub body: String,
+    /// 卡类型（add-posture-slot）：`"requirement"`（要求卡）或 `"posture"`
+    /// （姿态卡）。缺省要求卡：v1 数据无该字段，向前兼容视为全要求卡。
+    #[serde(default = "default_requirement")]
+    pub slot_type: String,
 }
 
 /// 试问证据引用（证据全文在 `trials/<id>.json`，跟链路走、不进作品文件夹）。
@@ -184,12 +206,14 @@ pub struct TrialListResult {
 }
 
 /// 保存新版本的入参卡（前端/制作助手提交的草稿形态；id 由后端生成，
-/// 不接受外部指定，杜绝伪造 id）。
+/// 不接受外部指定，杜绝伪造 id）。`slot_type` 缺省要求卡（旧前端入参兼容）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardInput {
     pub title: String,
     pub trigger_desc: String,
     pub body: String,
+    #[serde(default = "default_requirement")]
+    pub slot_type: String,
 }
 
 /// 轮次发起时冻结的启用链路快照（design D6）：在链路库单例锁内完成读取，
@@ -275,7 +299,8 @@ impl std::fmt::Display for ChainLibraryError {
             ),
             ChainLibraryError::UnsupportedFormat(version) => write!(
                 f,
-                "链路库文件由更新版本的应用创建（格式版本 {version}），请先升级应用"
+                // add-posture-slot：文案含规格钉住的「由更新版本创建」逐字短语。
+                "链路库文件由更新版本创建（格式版本 {version}），当前应用无法安全读取，请先升级应用"
             ),
             ChainLibraryError::TooLarge { actual_bytes } => write!(
                 f,
@@ -365,21 +390,30 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}-{now}-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
 }
 
-// ========== 卡校验（design D2 / 任务 1.3） ==========
+// ========== 卡校验（design D2 / 任务 1.3；add-posture-slot 任务 2.2 类型规则） ==========
 
-/// 校验一批入参卡：非空、每卡有标题与触发描述、三类长度上限（触发描述 ≤400、
-/// 单卡正文 ≤2000、版本合计 ≤6000，按 `chars().count()` 计）。超限或缺项返回
-/// 带实际数值的中文错误，不静默截断。
+/// 校验一批入参卡：非空（任一类型即可，纯姿态版本允许）、每卡有标题与触发
+/// 描述、卡类型取值合法、三类长度上限（触发描述 ≤400、单卡正文 ≤2000、版本
+/// 合计 ≤6000——两类卡合计，按 `chars().count()` 计；多张姿态卡自然受此约束，
+/// 2026-10-07 修订：姿态卡每版本可多张，不做数量限制与冲突调和）。
+/// 超限或缺项返回带实际数值的中文错误，不静默截断。
 pub fn validate_cards(cards: &[CardInput]) -> Result<(), ChainLibraryError> {
     let invalid = |reason: String| ChainLibraryError::InvalidCard { reason };
 
     if cards.is_empty() {
-        return Err(invalid("至少需要一张要求卡".to_string()));
+        return Err(invalid(
+            "至少需要一张卡（要求卡或姿态卡，任一类型均可）".to_string(),
+        ));
     }
 
     let mut total_chars = 0usize;
     for (position, card) in cards.iter().enumerate() {
         let ordinal = position + 1;
+        if card.slot_type != SLOT_TYPE_POSTURE && card.slot_type != SLOT_TYPE_REQUIREMENT {
+            return Err(invalid(format!(
+                "第 {ordinal} 张卡的类型无效（须为要求卡或姿态卡），未保存"
+            )));
+        }
         if card.title.trim().is_empty() {
             return Err(invalid(format!("第 {ordinal} 张卡缺少标题")));
         }
@@ -445,6 +479,12 @@ fn load_library_from_dir(module_dir: &Path) -> Result<ChainLibrary, ChainLibrary
     if library.format_version > CHAIN_LIBRARY_FORMAT_VERSION {
         return Err(ChainLibraryError::UnsupportedFormat(library.format_version));
     }
+    // v1（及更早写入的缺省版本值）向前兼容读取：卡无 slot_type 字段时按
+    // serde 缺省视为全要求卡；读取后规范化为当前格式版本——此后任何保存都
+    // 写版本 2（spec「v1 兼容读取：保存时升级写为格式版本 2」），旧版本号
+    // 绝不落回盘。
+    let mut library = library;
+    library.format_version = CHAIN_LIBRARY_FORMAT_VERSION;
     Ok(library)
 }
 
@@ -619,7 +659,8 @@ fn save_version_in_dir(
         id: new_id("chainver"),
         index: next_index,
         created_at: Utc::now(),
-        // 触发描述与正文原样保存（不截断、不去空白）；标题只作显示，顺手去首尾空白。
+        // 触发描述与正文原样保存（不截断、不去空白）；标题只作显示，顺手去首尾空白；
+        // 卡类型（add-posture-slot）原样随卡保存。
         cards: cards
             .iter()
             .map(|card| RequirementCard {
@@ -627,6 +668,7 @@ fn save_version_in_dir(
                 title: card.title.trim().to_string(),
                 trigger_desc: card.trigger_desc.clone(),
                 body: card.body.clone(),
+                slot_type: card.slot_type.clone(),
             })
             .collect(),
         change_note: change_note.trim().to_string(),
@@ -1058,14 +1100,26 @@ mod tests {
         making_module_dir_in(base.path())
     }
 
-    /// 一组合法入参卡。
+    /// 一组合法入参卡（缺省要求卡：不传 slot_type 的旧入参形态）。
     fn sample_cards() -> Vec<CardInput> {
         vec![CardInput {
             title: "节奏紧张时先问人物动机".to_string(),
             trigger_desc: "适用：情节推进快、冲突密集的段落。\n不适用：日常舒缓的过渡段落。"
                 .to_string(),
             body: "先指出当前场景的人物动机，再给出两种可能走向，由用户决定。".to_string(),
+            slot_type: SLOT_TYPE_REQUIREMENT.to_string(),
         }]
+    }
+
+    /// 一张合法姿态卡入参。
+    fn sample_posture_card() -> CardInput {
+        CardInput {
+            title: "傲娇搭档".to_string(),
+            trigger_desc: "适用：想要嘴硬心软的陪想语气时。\n不适用：需要冷静客观复盘时。"
+                .to_string(),
+            body: "你嘴硬心软，可以毒舌，但毒舌后必须跟实打实的想法。".to_string(),
+            slot_type: SLOT_TYPE_POSTURE.to_string(),
+        }
     }
 
     /// 直接向主文件注入一条试问证据引用（完整读写属后续任务组，测试借用内部原语）。
@@ -1296,6 +1350,7 @@ mod tests {
                 title: format!("卡{i}"),
                 trigger_desc: "触".repeat(MAX_TRIGGER_DESC_CHARS),
                 body: "文".repeat(1601),
+                slot_type: SLOT_TYPE_REQUIREMENT.to_string(),
             })
             .collect();
         let error = store
@@ -1334,7 +1389,7 @@ mod tests {
             .save_version(&chain.id, &[], "")
             .expect_err("空卡列表必须拒绝");
         assert!(
-            error.to_string().contains("至少需要一张要求卡"),
+            error.to_string().contains("至少需要一张卡"),
             "{}",
             error.to_string()
         );
@@ -1345,6 +1400,233 @@ mod tests {
             error.to_string().contains("链路名称不能为空"),
             "{}",
             error.to_string()
+        );
+    }
+
+    /// add-posture-slot 任务 2.2/2.6（2026-10-07 修订 7.2）：卡类型规则——
+    /// 姿态卡每版本可多张（受合计上限约束）、纯姿态版本允许、类型取值合法、
+    /// 长度上限两类合计。
+    #[test]
+    fn posture_card_type_rules_are_enforced() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let chain = store.create_chain("链路甲").expect("建链路");
+
+        // 两张姿态卡并存：保存通过（修订 7.2——否决原「至多一张」）。
+        let two_postures = vec![sample_posture_card(), sample_posture_card()];
+        let two = store
+            .save_version(&chain.id, &two_postures, "两姿态")
+            .expect("两张姿态卡并存必须允许保存");
+        assert_eq!(
+            two.cards
+                .iter()
+                .filter(|card| card.slot_type == SLOT_TYPE_POSTURE)
+                .count(),
+            2,
+            "两张姿态卡全部落版本"
+        );
+
+        // 无效类型取值：拒绝（静默当要求卡保存会丢语义）。
+        let mut bad_type = sample_cards();
+        bad_type[0].slot_type = "background".to_string();
+        let error = store
+            .save_version(&chain.id, &bad_type, "")
+            .expect_err("未知卡类型必须拒绝");
+        assert!(
+            error.to_string().contains("类型无效"),
+            "{}",
+            error.to_string()
+        );
+
+        // 纯姿态版本：保存成功（至少一张卡、任一类型即通过）。
+        let pure_posture = vec![sample_posture_card()];
+        store
+            .save_version(&chain.id, &pure_posture, "纯姿态")
+            .expect("纯姿态卡版本允许保存");
+
+        // 姿态＋要求并存：成功，类型随卡往返保留，serde 字段名为 slot_type。
+        let mixed = vec![sample_cards()[0].clone(), sample_posture_card()];
+        let version = store
+            .save_version(&chain.id, &mixed, "混合")
+            .expect("姿态＋要求卡版本允许保存");
+        assert_eq!(version.cards[0].slot_type, SLOT_TYPE_REQUIREMENT);
+        assert_eq!(version.cards[1].slot_type, SLOT_TYPE_POSTURE);
+        let library = store.load().expect("读库");
+        assert_eq!(
+            library.chains[0].versions.last().expect("版本在场").cards,
+            version.cards,
+            "卡类型经落盘往返完整保留"
+        );
+        let json = serde_json::to_value(&version).expect("序列化");
+        assert!(
+            json["cards"][1].get("slot_type").is_some(),
+            "卡类型 JSON 字段名必须为 slot_type"
+        );
+        assert_eq!(json["cards"][1]["slot_type"], SLOT_TYPE_POSTURE);
+
+        // 三张姿态卡（含与要求卡混排）：保存通过，全部随版本保留——多张受
+        // 合计上限自然约束，不做数量限制。
+        let mut three_postures = vec![sample_cards()[0].clone()];
+        three_postures.extend([
+            sample_posture_card(),
+            sample_posture_card(),
+            sample_posture_card(),
+        ]);
+        let three = store
+            .save_version(&chain.id, &three_postures, "三姿态")
+            .expect("三张姿态卡并存必须允许保存");
+        assert_eq!(
+            three
+                .cards
+                .iter()
+                .filter(|card| card.slot_type == SLOT_TYPE_POSTURE)
+                .count(),
+            3,
+            "三张姿态卡全部落版本（不做冲突调和、组合权在用户）"
+        );
+
+        // 版本计数：全部成功保存均落版本（两姿态＝第 1 版、纯姿态＝第 2 版、
+        // 混合＝第 3 版、三姿态＝第 4 版，共四版；唯一被拒的是无效类型）。
+        let library = store.load().expect("读库");
+        assert_eq!(
+            library.chains[0].versions.len(),
+            4,
+            "被拒绝的保存不落版本，成功保存全部落版本"
+        );
+
+        // 长度上限两类合计：1 张姿态卡（400 触发＋1601 正文）＋2 张要求卡
+        // （各 400 触发＋1601 正文）＝6003 > 6000（单卡均未超限）。
+        let oversized: Vec<CardInput> = (0..3)
+            .map(|i| CardInput {
+                title: format!("卡{i}"),
+                trigger_desc: "触".repeat(MAX_TRIGGER_DESC_CHARS),
+                body: "文".repeat(1601),
+                slot_type: if i == 0 {
+                    SLOT_TYPE_POSTURE.to_string()
+                } else {
+                    SLOT_TYPE_REQUIREMENT.to_string()
+                },
+            })
+            .collect();
+        let error = store
+            .save_version(&chain.id, &oversized, "")
+            .expect_err("两类卡合计超限必须拒绝");
+        assert!(error.to_string().contains("6003"), "{}", error.to_string());
+
+        // 多张姿态卡的合计上限同口径：3 张姿态卡各 400 触发＋1601 正文＝6003
+        // > 6000，超限拒绝（多张自然受此约束，不豁免）。
+        let oversized_postures: Vec<CardInput> = (0..3)
+            .map(|i| CardInput {
+                title: format!("姿态{i}"),
+                trigger_desc: "触".repeat(MAX_TRIGGER_DESC_CHARS),
+                body: "文".repeat(1601),
+                slot_type: SLOT_TYPE_POSTURE.to_string(),
+            })
+            .collect();
+        let error = store
+            .save_version(&chain.id, &oversized_postures, "")
+            .expect_err("多张姿态卡合计超限必须拒绝");
+        assert!(error.to_string().contains("合计"), "{}", error.to_string());
+    }
+
+    /// add-posture-slot 任务 2.1/2.6：v1 兼容读取——卡无类型字段视为全要求卡；
+    /// 读取后保存一律升级写 v2（含 slot_type 字段）。
+    #[test]
+    fn v1_library_loads_as_all_requirement_and_next_save_upgrades_to_v2() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let module_dir = module_dir_of(&base);
+        fs::create_dir_all(&module_dir).expect("建目录");
+        // 手写 v1 主文件：卡结构无 slot_type 字段。
+        fs::write(
+            chains_file_in(&module_dir),
+            r#"{
+  "format_version": 1,
+  "chains": [
+    {
+      "id": "chain-1",
+      "name": "旧链路",
+      "created_at": "2026-10-01T00:00:00Z",
+      "versions": [
+        {
+          "id": "chainver-1",
+          "index": 1,
+          "created_at": "2026-10-01T00:00:00Z",
+          "cards": [
+            {"id": "card-1", "title": "旧卡", "trigger_desc": "适用：旧场景。", "body": "旧正文。"}
+          ],
+          "change_note": "",
+          "trials": []
+        }
+      ]
+    }
+  ],
+  "active": null
+}"#,
+        )
+        .expect("写 v1 主文件");
+
+        let store = store_in(&base);
+        let library = store.load().expect("v1 文件必须兼容读取");
+        assert!(
+            library.chains[0].versions[0]
+                .cards
+                .iter()
+                .all(|card| card.slot_type == SLOT_TYPE_REQUIREMENT),
+            "v1 数据全部卡视为要求卡"
+        );
+        // 读取即规范化为当前版本：此后任何保存都写 2。
+        assert_eq!(library.format_version, CHAIN_LIBRARY_FORMAT_VERSION);
+
+        // 触发一次写路径（保存新版本）：主文件升级为 v2，旧版本卡补上 slot_type。
+        store
+            .save_version("chain-1", &[sample_posture_card()], "升级后存姿态")
+            .expect("存版本");
+        let on_disk = fs::read_to_string(chains_file_in(&module_dir)).expect("读主文件");
+        let on_disk: serde_json::Value = serde_json::from_str(&on_disk).expect("主文件 JSON");
+        assert_eq!(
+            on_disk["format_version"],
+            serde_json::json!(CHAIN_LIBRARY_FORMAT_VERSION),
+            "保存一律写格式版本 2"
+        );
+        let old_card = &on_disk["chains"][0]["versions"][0]["cards"][0];
+        assert_eq!(old_card["slot_type"], SLOT_TYPE_REQUIREMENT);
+
+        // 保存后类型不丢：再次打开（新单例模拟重启），姿态卡类型完整保留。
+        let store2 = ChainLibraryStore::new(Some(base.path().to_path_buf()));
+        let reloaded = store2.load().expect("重读");
+        assert_eq!(
+            reloaded.chains[0].versions[1].cards[0].slot_type, SLOT_TYPE_POSTURE,
+            "含姿态卡的版本经保存后再次打开，类型完整保留"
+        );
+    }
+
+    /// add-posture-slot 任务 2.1/2.6：遇高于支持的格式版本明确拒读（「由更新
+    /// 版本创建」），不误读、不重写该文件。
+    #[test]
+    fn newer_format_version_is_rejected_without_rewrite() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let module_dir = module_dir_of(&base);
+        fs::create_dir_all(&module_dir).expect("建目录");
+        let newer = r#"{
+  "format_version": 3,
+  "chains": [],
+  "active": null
+}"#;
+        fs::write(chains_file_in(&module_dir), newer).expect("写更高版本主文件");
+
+        let store = store_in(&base);
+        let error = store.load().expect_err("更高版本必须明确拒读");
+        let message = error.to_string();
+        assert!(
+            message.contains("由更新版本创建"),
+            "拒读文案必须含「由更新版本创建」: {message}"
+        );
+
+        // 不重写：文件内容逐字保持（旧版误存会把类型永久丢掉，此处必须原样）。
+        assert_eq!(
+            fs::read_to_string(chains_file_in(&module_dir)).expect("读主文件"),
+            newer,
+            "拒读路径不得改写主文件"
         );
     }
 

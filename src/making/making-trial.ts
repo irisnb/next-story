@@ -36,14 +36,19 @@ export function isTrialId(value: string): boolean {
 
 /**
  * 草稿组与链路版本的逐字匹配：保存时前端提交的正是 `draftToCardInput` 的映射，
- * 因此内容一致即证明「这版草稿已保存为该版本」（顺序敏感，逐卡比对三字段）。
+ * 因此内容一致即证明「这版草稿已保存为该版本」（顺序敏感，逐卡比对四字段——
+ * 含卡类型：姿态卡草稿不得绑到内容相同的要求卡版本上）。缺省类型＝要求卡
+ * （存量 v1 版本无类型字段，与本变更前行为一致）。
  */
 export function draftsMatchVersion(drafts: readonly MakingCardDraft[], version: ChainVersion): boolean {
   const inputs = drafts.map(draftToCardInput);
   if (version.cards.length !== inputs.length) return false;
   return version.cards.every((card, index) => {
     const input = inputs[index];
-    return card.title === input.title && card.trigger_desc === input.trigger_desc && card.body === input.body;
+    return card.title === input.title
+      && card.trigger_desc === input.trigger_desc
+      && card.body === input.body
+      && (card.slot_type ?? "requirement") === (input.slot_type ?? "requirement");
   });
 }
 

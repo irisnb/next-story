@@ -2963,7 +2963,8 @@ body.ai-window-dragging { user-select: none; }
   stroke-width: 1.4;
 }
 
-/* 三区之一：自定义要求（可改·可加；hover 可点态） */
+/* 三区之一：自定义要求（可改·可加；hover 可点态）。flex 纵向排布：
+   标题＋说明性副标在上，滚动区吃满剩余定高（分区定高 236px 不破坏） */
 .making-zone-custom {
   position: absolute;
   left: 0;
@@ -2975,6 +2976,8 @@ body.ai-window-dragging { user-select: none; }
   border-radius: 8px;
   background: var(--making-zone-bg);
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
 }
 
 .making-zone-custom:hover {
@@ -2987,7 +2990,15 @@ body.ai-window-dragging { user-select: none; }
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+/* 说明性副标（add-posture-slot D7）：只作说明，不构成分区的第二名称 */
+.making-zone-subtitle {
+  margin: 0 0 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-muted);
 }
 
 .making-zone-title {
@@ -3011,13 +3022,21 @@ body.ai-window-dragging { user-select: none; }
   color: var(--color-muted);
 }
 
-/* 定高＋区内滚动；卡片与 ghost 都在滚动内容内（左侧不被撑破、图区不被挤动） */
+/* 定高＋区内单一滚动（add-posture-slot：要求类/姿态类两组共用此滚动区，
+   组内不设独立滚动）；卡片与 ghost 都在滚动内容内（左侧不被撑破、图区不被挤动） */
 .making-zone-scroll {
-  height: 176px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   padding-right: 5px;
+}
+
+/* 键盘可达补强：滚动区内条目聚焦滚动至可见时，焦点标识不被容器边缘裁切 */
+.making-zone-scroll .making-card-row,
+.making-zone-scroll .making-ghost {
+  scroll-margin-block: 6px;
 }
 
 .making-card-group {
@@ -3025,6 +3044,11 @@ body.ai-window-dragging { user-select: none; }
   border: 1px solid var(--making-group-border);
   border-radius: 7px;
   background: var(--making-group-bg);
+}
+
+/* 姿态类插槽组：与要求类组同级，排布在要求组下方（本 change 默认排布决策） */
+.making-posture-group {
+  margin-top: 8px;
 }
 
 .making-group-title {
@@ -3695,6 +3719,24 @@ body.ai-window-dragging { user-select: none; }
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+/* 逐卡类型徽标（add-posture-slot 任务 3.2）：先看清是要求卡还是姿态卡；
+   姿态卡用强调色描边区分，其余共用同一低调样式 */
+.making-draft-type {
+  margin: 0;
+  align-self: flex-start;
+  padding: 0.02rem 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+  border: 1px solid var(--color-muted);
+  border-radius: var(--radius-sm);
+}
+
+.making-draft-type.is-posture {
+  color: var(--color-ink);
+  border-color: var(--color-accent);
 }
 
 .making-draft-line {

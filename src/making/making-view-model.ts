@@ -1,4 +1,5 @@
 import type {
+  CardSlotType,
   Chain,
   ChainLibrary,
   ChainVersion,
@@ -88,6 +89,25 @@ export const MAKING_DETAIL_ACTION_LABELS: readonly {
   { action: "delete", label: "请制作助手删除" },
   { action: "add", label: "请制作助手添加要求卡" },
 ];
+
+/** 「添加」操作的目标类型必须明确（add-posture-slot 任务 4.2）：姿态类专用文案。 */
+export const MAKING_ADD_POSTURE_CARD_LABEL = "请制作助手添加姿态卡";
+
+/**
+ * 姿态卡「何时用」的固定说明（add-posture-slot D3）：触发描述仅供选择参考，
+ * 不承担自动切换——如实写明，防「其他问题会自动关姿态」的误解。
+ */
+export const MAKING_POSTURE_WHEN_TO_USE_NOTE = "供你判断何时选择此姿态，不会据此自动切换";
+
+/** 卡的显示类型（缺省＝要求卡；存量 v1 数据无类型字段，行为与本变更前一致）。 */
+export function slotTypeOf(card: RequirementCard): CardSlotType {
+  return card.slot_type === "posture" ? "posture" : "requirement";
+}
+
+/** 插槽显示名：要求类／姿态类（详情身份行与快捷 meta 共用）。 */
+export function slotTypeLabel(slotType: CardSlotType): string {
+  return slotType === "posture" ? "姿态类" : "要求类";
+}
 
 /** 顶部状态条的显示决策（数据源＝链路库 active 指针，非当前检视对象）。 */
 export type MakingStatusView =
@@ -235,10 +255,22 @@ export interface MakingMapView {
   readonly customZone: {
     readonly heading: "自定义要求";
     readonly affordanceLabel: "可改 · 可加";
-    readonly slotTitle: "要求类插槽";
-    readonly cardCountLabel: string;
-    readonly cards: readonly MakingMapCardRow[];
-    readonly emptyNote: string;
+    /** 说明性副标（add-posture-slot D7）：不构成该分区的第二名称。 */
+    readonly subtitle: "包含要求卡与姿态卡";
+    /** 要求类插槽组（现行；可多张）。 */
+    readonly requirementGroup: {
+      readonly slotTitle: "要求类插槽";
+      readonly cardCountLabel: string;
+      readonly cards: readonly MakingMapCardRow[];
+      readonly emptyNote: string;
+    };
+    /** 姿态类插槽组（add-posture-slot；2026-10-07 修订：每版本可多张，排在要求组下方）。 */
+    readonly postureGroup: {
+      readonly slotTitle: "姿态类插槽";
+      readonly cardCountLabel: string;
+      /** 姿态卡卡行（多张并列呈现；无姿态卡时为空数组）。 */
+      readonly cards: readonly MakingMapCardRow[];
+    };
   };
   /** 固定底座区（所有链路共用·只读；任何链路、任何版本、任何状态完全一致）。 */
   readonly baseZone: {
@@ -312,6 +344,8 @@ export function buildMakingMapView(
       `回退到「${chain.name}·第${version.index}版」，替换当前第${rollback.activeIndex}版；较新版本及试问证据保留，所有作品的下一轮提问开始使用回退后的版本。`;
   }
 
+  const requirementCards = version.cards.filter((card) => slotTypeOf(card) === "requirement");
+  const postureCards = version.cards.filter((card) => slotTypeOf(card) === "posture");
   return {
     chainId,
     chainName: chain.name,
@@ -335,10 +369,19 @@ export function buildMakingMapView(
     customZone: {
       heading: "自定义要求",
       affordanceLabel: "可改 · 可加",
-      slotTitle: "要求类插槽",
-      cardCountLabel: `· ${version.cards.length} 张卡`,
-      cards: version.cards.map((card) => ({ cardId: card.id, title: card.title })),
-      emptyNote: "这个版本还没有卡片。可以在制作对话里口述要求，让助手起草。",
+      subtitle: "包含要求卡与姿态卡",
+      requirementGroup: {
+        slotTitle: "要求类插槽",
+        cardCountLabel: `· ${requirementCards.length} 张卡`,
+        cards: requirementCards.map((card) => ({ cardId: card.id, title: card.title })),
+        // 空态说明限定要求类（纯姿态版本允许：姿态组有卡时这里的「还没有」只指要求卡）。
+        emptyNote: "这个版本还没有要求卡。可以在制作对话里口述要求，让助手起草。",
+      },
+      postureGroup: {
+        slotTitle: "姿态类插槽",
+        cardCountLabel: `· ${postureCards.length} 张卡`,
+        cards: postureCards.map((card) => ({ cardId: card.id, title: card.title })),
+      },
     },
     baseZone: {
       heading: "固定底座",
@@ -359,13 +402,14 @@ export function buildMakingMapView(
 
 // ========== 统一详情（DetailModel：三类可点对象＋区级入口共用同一模型） ==========
 
-/** 详情来源：卡片／自定义要求区／固定底座／每轮动态／添加说明（ghost）。 */
+/** 详情来源：卡片／自定义要求区／固定底座／每轮动态／添加说明（要求类／姿态类）。 */
 export type MakingDetailSource =
   | { readonly kind: "card"; readonly cardId: string }
   | { readonly kind: "custom-zone" }
   | { readonly kind: "base" }
   | { readonly kind: "dynamic" }
-  | { readonly kind: "add-card" };
+  | { readonly kind: "add-card" }
+  | { readonly kind: "add-posture-card" };
 
 /** 详情底部的「修改／删除／添加」操作（统一转制作对话执行；导图不直接编辑）。 */
 export interface MakingDetailActionView {
@@ -402,8 +446,12 @@ export interface MakingDetailModel {
   readonly actions: readonly MakingDetailActionView[] | null;
 }
 
-function cardActions(cardTitle: string): readonly MakingDetailActionView[] {
-  return MAKING_DETAIL_ACTION_LABELS.map(({ action, label }) => ({
+/** 卡片详情底部操作：要求卡＝修改／删除／添加要求卡；姿态卡＝修改／删除（「添加」明确目标类型，在组级详情与组尾入口提供）。 */
+function cardActions(cardTitle: string, slotType: CardSlotType): readonly MakingDetailActionView[] {
+  const labels = slotType === "posture"
+    ? MAKING_DETAIL_ACTION_LABELS.filter(({ action }) => action !== "add")
+    : MAKING_DETAIL_ACTION_LABELS;
+  return labels.map(({ action, label }) => ({
     action,
     label,
     cardTitle: action === "add" ? null : cardTitle,
@@ -412,6 +460,10 @@ function cardActions(cardTitle: string): readonly MakingDetailActionView[] {
 
 const ADD_CARD_ACTION: readonly MakingDetailActionView[] = [
   { action: "add", label: MAKING_DETAIL_ACTION_LABELS[2].label, cardTitle: null },
+];
+
+const ADD_POSTURE_CARD_ACTION: readonly MakingDetailActionView[] = [
+  { action: "add", label: MAKING_ADD_POSTURE_CARD_LABEL, cardTitle: null },
 ];
 
 /** 触发描述按行拆解：首行＝摘要，剩余行＝辅助说明（无则 null）。 */
@@ -452,39 +504,44 @@ export function buildMakingDetail(
     if (!card) return null;
     const panel = buildCardPanelView(library, chainId, versionId, card);
     if (panel === null) return null;
+    const slotLabel = slotTypeLabel(slotTypeOf(card));
     const { summary, help } = splitTriggerLines(card.trigger_desc);
     return {
       kind: "card",
       title: card.title,
-      quickMeta: `要求类 · ${versionMeta}`,
+      quickMeta: `${slotLabel} · ${versionMeta}`,
       quickSummary: summary.length > 0 ? summary : null,
       quickHelp: help,
-      quickNote: null,
+      // 姿态卡：快捷小窗同样如实附「仅供选择参考」的固定说明。
+      quickNote: slotTypeOf(card) === "posture" ? MAKING_POSTURE_WHEN_TO_USE_NOTE : null,
       hasFullDetail: true,
-      eyebrow: `要求类 / ${card.title}`,
+      eyebrow: `${slotLabel} / ${card.title}`,
       card: panel,
       readonlyItems: null,
       readonlyNote: null,
-      actions: cardActions(card.title),
+      actions: cardActions(card.title, slotTypeOf(card)),
     };
   }
 
   if (source.kind === "custom-zone") {
+    const requirementCards = version.cards.filter((card) => slotTypeOf(card) === "requirement");
+    const postureCards = version.cards.filter((card) => slotTypeOf(card) === "posture");
     return {
       kind: "custom-zone",
       title: "自定义要求 · 可改 · 可加",
-      quickMeta: `要求类插槽 · ${version.cards.length} 张卡`,
+      quickMeta: `要求类插槽 · ${requirementCards.length} 张卡；姿态类插槽 · ${postureCards.length} 张卡`,
       quickSummary: version.cards.length > 0
-        ? `${version.cards.map((card) => card.title).join("、")}。`
+        ? `${[...requirementCards, ...postureCards].map((card) => card.title).join("、")}。`
         : "这个版本还没有卡片。",
       quickHelp: null,
-      quickNote: "通过制作对话调整卡片或添加要求。选择具体卡片后查看它的完整详情。",
+      quickNote: "通过制作对话调整卡片或添加要求／姿态。选择具体卡片后查看它的完整详情。",
       hasFullDetail: false,
       eyebrow: null,
       card: null,
       readonlyItems: null,
       readonlyNote: null,
-      actions: ADD_CARD_ACTION,
+      // 「添加」明确目标类型且恒提供两类（2026-10-07 修订：姿态卡每版本可多张，有卡时可继续追加）。
+      actions: [...ADD_CARD_ACTION, ...ADD_POSTURE_CARD_ACTION],
     };
   }
 
@@ -522,6 +579,23 @@ export function buildMakingDetail(
     };
   }
 
+  if (source.kind === "add-posture-card") {
+    return {
+      kind: "add-posture-card",
+      title: "姿态类 · 添加姿态卡",
+      quickMeta: null,
+      quickSummary: "在姿态类插槽加入一张姿态卡（每版本可多张）。",
+      quickHelp: "通过制作对话描述你希望 AI 以什么姿态出场；导图不直接编辑。",
+      quickNote: null,
+      hasFullDetail: false,
+      eyebrow: null,
+      card: null,
+      readonlyItems: null,
+      readonlyNote: null,
+      actions: ADD_POSTURE_CARD_ACTION,
+    };
+  }
+
   return {
     kind: "add-card",
     title: "要求类 · 添加要求卡",
@@ -548,7 +622,7 @@ export function makingTransferPrefill(action: MakingDetailActionView): string {
   return `${action.label}：`;
 }
 
-/** 本版变化说明：相对上一版的卡片增删标题＋变更说明（首版明示）。 */
+/** 本版变化说明：相对上一版的卡片增删标题＋变更说明（首版明示）。增删按「类型＋卡名」判定——同名卡换了类型（如姿态替换）也算增删，不误报「无增删」。 */
 export function describeVersionChange(
   version: ChainVersion,
   previousVersion: ChainVersion | null,
@@ -558,10 +632,11 @@ export function describeVersionChange(
   if (previousVersion === null) {
     return note.length > 0 ? `本版是第 1 个版本；变更说明：${note}。` : "本版是第 1 个版本。";
   }
-  const currentTitles = new Set(version.cards.map((card) => card.title));
-  const previousTitles = new Set(previousVersion.cards.map((card) => card.title));
-  const added = [...currentTitles].filter((title) => !previousTitles.has(title));
-  const removed = [...previousTitles].filter((title) => !currentTitles.has(title));
+  const cardKey = (card: RequirementCard): string => `${slotTypeOf(card)}|${card.title}`;
+  const currentTitles = new Map(version.cards.map((card) => [cardKey(card), card.title]));
+  const previousTitles = new Map(previousVersion.cards.map((card) => [cardKey(card), card.title]));
+  const added = [...currentTitles.entries()].filter(([key]) => !previousTitles.has(key)).map(([, title]) => title);
+  const removed = [...previousTitles.entries()].filter(([key]) => !currentTitles.has(key)).map(([, title]) => title);
   const parts: string[] = [];
   if (added.length > 0) parts.push(`新增「${added.join("」「")}」`);
   if (removed.length > 0) parts.push(`移除「${removed.join("」「")}」`);
@@ -592,7 +667,7 @@ export interface CardPanelView {
   readonly trialsLabel: string;
 }
 
-/** 构建卡片检视面板；插槽在 v0 只有要求类一种。 */
+/** 构建卡片检视面板；插槽按卡类型显示（要求类／姿态类）。 */
 export function buildCardPanelView(
   library: ChainLibrary,
   chainId: string,
@@ -605,10 +680,17 @@ export function buildCardPanelView(
   if (versionIndex < 0) return null;
   const version = chain.versions[versionIndex];
   const previousVersion = versionIndex > 0 ? chain.versions[versionIndex - 1] : null;
+  const slotType = slotTypeOf(card);
+  // 姿态卡的「何时用」＝所存描述＋固定说明（触发描述仅供选择参考，不自动切换）。
+  const whenToUse = slotType === "posture" && card.trigger_desc.trim().length > 0
+    ? `${card.trigger_desc}\n${MAKING_POSTURE_WHEN_TO_USE_NOTE}`
+    : slotType === "posture"
+      ? MAKING_POSTURE_WHEN_TO_USE_NOTE
+      : card.trigger_desc;
   return {
     cardId: card.id,
-    identity: `卡名「${card.title}」 · 插槽：要求类 · 所属：${chain.name}·第${version.index}版`,
-    whenToUse: card.trigger_desc,
+    identity: `卡名「${card.title}」 · 插槽：${slotTypeLabel(slotType)} · 所属：${chain.name}·第${version.index}版`,
+    whenToUse,
     howTo: card.body.trim().length > 0 ? card.body : "（无正文）",
     changeLabel: describeVersionChange(version, previousVersion),
     trialsLabel: describeVersionTrials(version),

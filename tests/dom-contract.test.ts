@@ -174,9 +174,16 @@ test("making graph keeps arrows in the wire svg only and the output block purely
   assert.doesNotMatch(html, /<button\b[^>]*making-output-node/);
   assert.doesNotMatch(html, /\bid="making-output-node"[^>]*\bdraggable/);
   // 无占位／解锁／拖拽／步骤编号（「执行顺序」字样只允许出现在阅读说明条的否定句里）。
-  assert.doesNotMatch(makingSection, /姿态类插槽|背景卡|方式卡|解锁/);
+  // add-posture-slot：姿态类插槽组升为正式静态节点（下方正面锚定）；占位禁令收窄为背景/方式/解锁。
+  assert.doesNotMatch(makingSection, /背景卡|方式卡|解锁/);
   assert.doesNotMatch(makingSection, /draggable="true"/);
   assert.doesNotMatch(makingSection, /data-step|步骤\s*[1-9一二三四五]/);
+  // add-posture-slot：自定义要求分区＝说明性副标＋要求类/姿态类两组同构（静态节点）。
+  assert.match(makingSection, /<p\b[^>]*\bid="making-zone-subtitle"[^>]*>包含要求卡与姿态卡</);
+  assert.match(makingSection, /<section\b[^>]*\bid="making-posture-group"[^>]*aria-label="姿态类插槽"/);
+  assert.match(makingSection, /\bid="making-posture-card-count"/);
+  assert.match(makingSection, /\bid="making-posture-card-list"/);
+  assert.match(makingSection, /<button\b[^>]*\bid="making-add-posture-btn"[^>]*>＋ 添加姿态卡</);
   const orderMentions = makingSection.match(/执行顺序/g) ?? [];
   assert.equal(orderMentions.length, 1, "「执行顺序」仅出现于阅读说明条的否定句");
   assert.match(makingSection, /箭头只表示流向组装，不表示卡片执行顺序/);

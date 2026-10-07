@@ -28,6 +28,8 @@ import {
   CHAIN_CARDS_SECTION,
   CONSTITUTION_ORDER,
   CONSTITUTION_SECTION,
+  POSTURE_ORDER,
+  POSTURE_SECTION,
   registerSystemPromptSections,
   splitSystemPrompt,
 } from "../system-prompt-sections.mjs";
@@ -72,7 +74,13 @@ function agentScopeUnder(consumerCtx) {
   return { ctx: scope.ctx, key: scopeKey, dispose: () => scope.dispose() };
 }
 
-test("真实机制：system_prompt 非空时注册生效且次序正确（身份→红线→挂载位）", async () => {
+test("真实机制：system_prompt 非空时注册生效且次序正确（身份→姿态位→红线→挂载位）", async () => {
+  // 段 order 常量钉死（add-posture-slot D1）：姿态位居 persona（0）与红线（10）
+  // 之间——任何姿态内容不得置于身份之上、任何要求卡不得置于红线之上。
+  assert.ok(
+    POSTURE_ORDER > 0 && POSTURE_ORDER < CONSTITUTION_ORDER && CONSTITUTION_ORDER < CHAIN_CARDS_ORDER,
+    `段 order 必须满足 0（persona）< posture（${POSTURE_ORDER}）< constitution（${CONSTITUTION_ORDER}）< chain-cards（${CHAIN_CARDS_ORDER}）`,
+  );
   const { ctx, consumerCtx } = await bootSystemPromptFixture();
   try {
     const scope = agentScopeUnder(consumerCtx);
@@ -82,8 +90,8 @@ test("真实机制：system_prompt 非空时注册生效且次序正确（身份
     const names = assembly.sections.map((s) => s.name);
     assert.deepEqual(
       names,
-      ["harness:identity", PERSONA_SECTION, CONSTITUTION_SECTION, CHAIN_CARDS_SECTION],
-      "system 层段落与次序固定：harness 标识 → 陪想身份 → 宪法红线 → 链路卡挂载位",
+      ["harness:identity", PERSONA_SECTION, POSTURE_SECTION, CONSTITUTION_SECTION, CHAIN_CARDS_SECTION],
+      "system 层段落与次序固定：harness 标识 → 陪想身份 → 姿态挂载位 → 宪法红线 → 链路卡挂载位",
     );
     const rendered = renderPrompt(assembly);
     // 次序不变式（红线永居卡挂载位之上）：渲染文本中身份先于红线。
@@ -91,7 +99,7 @@ test("真实机制：system_prompt 非空时注册生效且次序正确（身份
       rendered.indexOf(IDENTITY_SENTENCE) < rendered.indexOf("不直接修改用户文档"),
       "渲染次序必须身份先于红线",
     );
-    // 空挂载位不渲染（order 20 只占次序契约，本变更不填内容）。
+    // 空挂载位（姿态位与链路卡位）不渲染（order 5/20 只占次序契约，不填内容）。
     assert.equal(rendered.split("\n\n").length, 3, "空段渲染丢弃：harness＋身份＋红线共三段");
     await scope.dispose();
   } finally {

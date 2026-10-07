@@ -262,30 +262,52 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
   }
 
   /** 自定义要求区的紧凑卡行（点开＝统一详情快捷小窗，不再有下方展开面板）。 */
+  function cardRowElement(card: MakingMapView["customZone"]["requirementGroup"]["cards"][number]): HTMLElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "making-card-row";
+    button.dataset.cardId = card.cardId;
+    button.setAttribute("role", "listitem");
+    button.setAttribute("aria-controls", "making-quick-panel");
+    const title = document.createElement("span");
+    title.className = "making-card-row-title";
+    title.textContent = card.title;
+    const hint = document.createElement("span");
+    hint.className = "making-card-row-hint";
+    hint.setAttribute("aria-hidden", "true");
+    hint.textContent = "详情";
+    button.append(title, hint);
+    button.addEventListener("click", () => {
+      openDetail({ kind: "card", cardId: card.cardId }, button);
+    });
+    return button;
+  }
+
+  /**
+   * 自定义要求区的两组渲染（add-posture-slot 任务 4.1）：要求类组（现行）＋
+   * 姿态类组（排在要求组下方）；两组共用分区单一滚动区，无独立滚动。
+   * 两组添加入口均常驻（2026-10-07 修订：姿态卡每版本可多张，有卡时仍可继续
+   * 追加）；多张姿态卡行自然并列渲染（列表渲染本身不设张数上限）。
+   */
   function renderZoneCards(view: MakingMapView): void {
+    const requirement = view.customZone.requirementGroup;
+    const posture = view.customZone.postureGroup;
+
     dom.cardList.replaceChildren();
-    dom.cardCount.textContent = view.customZone.cardCountLabel;
-    dom.noCards.classList.toggle("hidden", view.customZone.cards.length > 0);
-    for (const card of view.customZone.cards) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "making-card-row";
-      button.dataset.cardId = card.cardId;
-      button.setAttribute("role", "listitem");
-      button.setAttribute("aria-controls", "making-quick-panel");
-      const title = document.createElement("span");
-      title.className = "making-card-row-title";
-      title.textContent = card.title;
-      const hint = document.createElement("span");
-      hint.className = "making-card-row-hint";
-      hint.setAttribute("aria-hidden", "true");
-      hint.textContent = "详情";
-      button.append(title, hint);
-      button.addEventListener("click", () => {
-        openDetail({ kind: "card", cardId: card.cardId }, button);
-      });
-      dom.cardList.append(button);
+    dom.cardCount.textContent = requirement.cardCountLabel;
+    dom.noCards.classList.toggle("hidden", requirement.cards.length > 0);
+    // 空态说明由视图模型给出（限定要求类；纯姿态版本的「还没有」只指要求卡）。
+    dom.noCards.textContent = requirement.emptyNote;
+    for (const card of requirement.cards) {
+      dom.cardList.append(cardRowElement(card));
     }
+
+    dom.postureCardList.replaceChildren();
+    dom.postureCardCount.textContent = posture.cardCountLabel;
+    for (const card of posture.cards) {
+      dom.postureCardList.append(cardRowElement(card));
+    }
+    // 姿态类添加入口常驻（与要求类入口同式）：有卡时可继续追加，不因已有姿态卡隐藏。
   }
 
   // ========== 统一详情（单一详情状态＋两种呈现；挂载结构保证同位同尺寸） ==========
@@ -462,13 +484,18 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
   /** 来源模块的 aria-expanded 同步（快捷小窗唯一，指向它的来源标记展开）。 */
   function syncDetailExpanded(): void {
     const source = detailSource;
-    for (const node of dom.cardList.querySelectorAll("button")) {
-      const button = node as HTMLButtonElement;
-      const expanded = source !== null && source.kind === "card" && source.cardId === button.dataset.cardId;
-      button.setAttribute("aria-expanded", expanded ? "true" : "false");
-    }
+    const syncCardRows = (list: HTMLElement): void => {
+      for (const node of list.querySelectorAll("button")) {
+        const button = node as HTMLButtonElement;
+        const expanded = source !== null && source.kind === "card" && source.cardId === button.dataset.cardId;
+        button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+    };
+    syncCardRows(dom.cardList);
+    syncCardRows(dom.postureCardList);
     dom.zoneCustomTrigger.setAttribute("aria-expanded", source?.kind === "custom-zone" ? "true" : "false");
     dom.addCardBtn.setAttribute("aria-expanded", source?.kind === "add-card" ? "true" : "false");
+    dom.addPostureCardBtn.setAttribute("aria-expanded", source?.kind === "add-posture-card" ? "true" : "false");
     dom.baseNode.setAttribute("aria-expanded", source?.kind === "base" ? "true" : "false");
     dom.dynamicNode.setAttribute("aria-expanded", source?.kind === "dynamic" ? "true" : "false");
   }
@@ -698,6 +725,19 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
   });
   dom.addCardBtn.addEventListener("click", () => {
     openDetail({ kind: "add-card" }, dom.addCardBtn);
+  });
+  // 姿态类添加入口：与要求类入口同式（ghost）——点开统一快捷小窗，「添加」经
+  // 详情底部操作转制作对话（沿用现行「＋添加要求卡」转写机制，不改全局启用指针）。
+  dom.addPostureCardBtn.addEventListener("click", () => {
+    openDetail({ kind: "add-posture-card" }, dom.addPostureCardBtn);
+  });
+  // 键盘可达补强（add-posture-slot 任务 4.3）：滚动区内条目聚焦时滚动至可见，
+  // 配合 CSS scroll-margin 保证焦点标识不被容器边缘裁切。
+  dom.zoneScroll.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   });
   dom.baseNode.addEventListener("click", () => {
     openDetail({ kind: "base" }, dom.baseNode);

@@ -86,6 +86,23 @@ test("drafts match a saved version only when every card field matches", () => {
   };
   assert.equal(draftsMatchVersion(DRAFTS, extraCard), false, "卡数量不同不匹配");
 
+  // 卡类型参与逐字匹配（add-posture-slot 任务 3.4：证据与版本绑定，类型一致才算同版）。
+  const retyped: ChainVersion = {
+    ...version,
+    cards: version.cards.map((card, index) =>
+      index === 0 ? { ...card, slot_type: "posture" } : card,
+    ),
+  };
+  assert.equal(draftsMatchVersion(DRAFTS, retyped), false, "同内容不同类型（要求卡草稿 vs 姿态卡版本）不匹配");
+  // 类型缺省＝要求卡：显式 requirement 与无字段视为同一类型。
+  const explicitType: ChainVersion = {
+    ...version,
+    cards: version.cards.map((card, index) =>
+      index === 0 ? { ...card, slot_type: "requirement" } : card,
+    ),
+  };
+  assert.equal(draftsMatchVersion(DRAFTS, explicitType), true);
+
   const chain: Chain = { id: "ch", name: "情节探索", created_at: "2026-10-06T00:00:00Z", versions: [edited, version] };
   const found = findSavedVersionForDrafts(chain, DRAFTS);
   assert.ok(found);

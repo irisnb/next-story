@@ -97,6 +97,13 @@ pub enum DriverCommand {
         /// 与既有路径逐字节一致。卡文本是协议字段，绝不拼入 user 文本。
         #[serde(skip_serializing_if = "Option::is_none")]
         chain_cards: Option<String>,
+        /// 当轮冻结的姿态段文本（add-posture-slot 任务 2.3，design D2）：驱动在
+        /// 转发给 agent 前与当前 `nextstory:posture` 段注册文本比较，不同则释放
+        /// 旧段并重注册（轮级更新，与 chain_cards 各自独立幂等、互不牵连）。
+        /// `None` 时省略字段——无姿态卡（纯要求卡链路与旧宿主路径），与既有
+        /// 路径逐字节一致。姿态文本是协议字段，绝不拼入 user 文本。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        posture: Option<String>,
     },
     ReplayHistory {
         session_id: String,
@@ -1261,7 +1268,7 @@ impl DshDriverManager {
     /// 等待只在 MessageDone / MessageFailed / Error / 超时时结束。
     ///
     /// 不带链路卡的既有入口（add-making-module-core 任务 2.3）：命令帧省略
-    /// `chain_cards` 字段，与既有路径逐字节一致；带卡轮次走
+    /// `chain_cards` 与 `posture` 字段，与既有路径逐字节一致；带卡轮次走
     /// [`Self::send_message_with_cards_and_wait`]。
     pub fn send_message_and_wait(
         &self,
@@ -1270,13 +1277,15 @@ impl DshDriverManager {
         text: &str,
         timeout: Duration,
     ) -> Result<MessageOutcome, GenerateAiError> {
-        self.send_message_with_cards_and_wait(session_id, message_id, text, None, timeout)
+        self.send_message_with_cards_and_wait(session_id, message_id, text, None, None, timeout)
     }
 
-    /// 带链路卡的发送变体（add-making-module-core 任务 2.3，design D1）：
-    /// `chain_cards` 为 `Some` 时随命令下发当轮冻结的卡文本（驱动侧在转发
-    /// 给 agent 前轮级更新 `nextstory:chain-cards` 段）；`None` 时省略字段。
-    /// 供后续装配车道（任务组 3）使用；与 [`Self::send_message_and_wait`]
+    /// 带链路卡的发送变体（add-making-module-core 任务 2.3，design D1；
+    /// add-posture-slot 任务 2.3 增姿态段）：`chain_cards` / `posture` 为
+    /// `Some` 时随命令下发当轮冻结的文本（驱动侧在转发给 agent 前轮级更新
+    /// `nextstory:chain-cards` / `nextstory:posture` 段，两字段各自独立比较
+    /// 幂等）；`None` 时省略字段。两个字段来自同一次冻结读取（同源）。供
+    /// 装配车道（常驻链、试问）使用；与 [`Self::send_message_and_wait`]
     /// 共用同一条等待与看护路径。
     pub fn send_message_with_cards_and_wait(
         &self,
@@ -1284,6 +1293,7 @@ impl DshDriverManager {
         message_id: &str,
         text: &str,
         chain_cards: Option<&str>,
+        posture: Option<&str>,
         timeout: Duration,
     ) -> Result<MessageOutcome, GenerateAiError> {
         // 准入护栏最前：同讨论重复生成与全局超限都在写入协议之前拒绝；
@@ -1301,6 +1311,7 @@ impl DshDriverManager {
             message_id: message_id.to_string(),
             text: text.to_string(),
             chain_cards: chain_cards.map(str::to_string),
+            posture: posture.map(str::to_string),
         };
         self.write_command(&cmd)?;
         let mut sent_confirmed = false;
@@ -1582,6 +1593,7 @@ mod tests {
             message_id: "m1".into(),
             text: "问题".into(),
             chain_cards: None,
+            posture: None,
         })
         .unwrap();
         assert_eq!(send["type"], "send_message");
@@ -1590,17 +1602,40 @@ mod tests {
             send.get("chain_cards").is_none(),
             "不带卡的 send_message 必须省略 chain_cards 字段（既有命令帧逐字节不变）"
         );
+        assert!(
+            send.get("posture").is_none(),
+            "无姿态卡的 send_message 必须省略 posture 字段（既有命令帧逐字节不变）"
+        );
 
         let send_cards = serde_json::to_value(DriverCommand::SendMessage {
             session_id: "s1".into(),
             message_id: "m1".into(),
             text: "问题".into(),
             chain_cards: Some("卡文本".into()),
+            posture: None,
         })
         .unwrap();
         assert_eq!(
             send_cards["chain_cards"], "卡文本",
             "带卡轮次的 chain_cards 必须逐字携带当轮冻结的卡文本"
+        );
+
+        // add-posture-slot 任务 2.3：posture 线缆形状——字段名逐字、None 省略。
+        let send_posture = serde_json::to_value(DriverCommand::SendMessage {
+            session_id: "s1".into(),
+            message_id: "m1".into(),
+            text: "问题".into(),
+            chain_cards: None,
+            posture: Some("姿态段文本".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            send_posture["posture"], "姿态段文本",
+            "带姿态轮次的 posture 必须逐字携带当轮冻结的姿态段文本"
+        );
+        assert!(
+            send_posture.get("chain_cards").is_none(),
+            "无要求卡时 chain_cards 字段必须省略（两字段独立）"
         );
 
         let shutdown = serde_json::to_value(DriverCommand::Shutdown).unwrap();
@@ -1668,16 +1703,19 @@ mod tests {
         manager.shutdown_best_effort();
     }
 
-    /// 线缆契约（add-making-module-core 任务 2.3，设计 D1/D4，端到端假驱动）：
+    /// 线缆契约（add-making-module-core 任务 2.3，设计 D1/D4，端到端假驱动；
+    /// add-posture-slot 任务 2.3 增姿态线缆）：
     /// - `send_message` 不带卡时线缆上无 `chain_cards` 字段（既有路径逐字节不变）；
     /// - 带卡变体下发的 `chain_cards` 逐字到达驱动，且不混入 user `text`；
+    /// - `posture` 独立成缆：无姿态时省略字段，有姿态时逐字到达且不混入
+    ///   user `text`，与 `chain_cards` 互不牵连；
     /// - `start_session` 缺省不带 `session_kind`；`SessionKind::Making` 时线缆
     ///   携带 `"making"`（与 protocol.json 契约值一致）。
     #[test]
     fn chain_cards_and_session_kind_reach_driver_wire() {
         // 假驱动记录每个会话的 session_kind 线缆值（缺省＝"(absent)"），并在
-        // send_message 时把观测到的 kind / chain_cards / 原文 text 回显，端到端
-        // 断言宿主发送侧的线缆形状。
+        // send_message 时把观测到的 kind / chain_cards / posture / 原文 text 回显，
+        // 端到端断言宿主发送侧的线缆形状。
         let script = "import readline from 'node:readline';\n\
              console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
              const kinds = new Map();\n\
@@ -1688,7 +1726,7 @@ mod tests {
                  kinds.set(cmd.session_id, Object.hasOwn(cmd, 'session_kind') ? cmd.session_kind : '(absent)');\n\
                  console.log(JSON.stringify({ type: 'session_started', session_id: cmd.session_id }));\n\
                } else if (cmd.type === 'send_message') {\n\
-                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: JSON.stringify({ kind: kinds.get(cmd.session_id) ?? null, chain_cards: Object.hasOwn(cmd, 'chain_cards') ? cmd.chain_cards : null, text: cmd.text }) }));\n\
+                 console.log(JSON.stringify({ type: 'message_done', session_id: cmd.session_id, message_id: cmd.message_id, text: JSON.stringify({ kind: kinds.get(cmd.session_id) ?? null, chain_cards: Object.hasOwn(cmd, 'chain_cards') ? cmd.chain_cards : null, posture: Object.hasOwn(cmd, 'posture') ? cmd.posture : null, text: cmd.text }) }));\n\
                } else if (cmd.type === 'shutdown') {\n\
                  process.exit(0);\n\
                }\n\
@@ -1721,6 +1759,7 @@ mod tests {
                 "m2",
                 "追问",
                 Some("包装头＋卡A"),
+                None,
                 Duration::from_secs(15),
             )
             .expect("带卡的轮次完成");
@@ -1728,9 +1767,54 @@ mod tests {
             serde_json::from_str(&cards.text).expect("假驱动回显必须是 JSON");
         assert_eq!(cards_observed["chain_cards"], "包装头＋卡A");
         assert_eq!(
+            cards_observed["posture"],
+            serde_json::Value::Null,
+            "无姿态轮次线缆上不得出现 posture 字段（回显的 null＝字段缺省）"
+        );
+        assert_eq!(
             cards_observed["text"], "追问",
             "卡文本是协议字段，绝不拼入 user 文本"
         );
+
+        // add-posture-slot 任务 2.3：姿态与要求卡同轮并存——两字段各自逐字
+        // 到达、互不混入 user text；纯姿态轮（chain_cards=None）也成立。
+        let both = manager
+            .send_message_with_cards_and_wait(
+                "s-story",
+                "m5",
+                "追问二",
+                Some("包装头＋卡A"),
+                Some("承接句＋姿态正文"),
+                Duration::from_secs(15),
+            )
+            .expect("带卡与姿态的轮次完成");
+        let both_observed: serde_json::Value =
+            serde_json::from_str(&both.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(both_observed["chain_cards"], "包装头＋卡A");
+        assert_eq!(both_observed["posture"], "承接句＋姿态正文");
+        assert_eq!(
+            both_observed["text"], "追问二",
+            "姿态文本是协议字段，绝不拼入 user 文本"
+        );
+
+        let posture_only = manager
+            .send_message_with_cards_and_wait(
+                "s-story",
+                "m6",
+                "追问三",
+                None,
+                Some("纯姿态段"),
+                Duration::from_secs(15),
+            )
+            .expect("纯姿态轮次完成");
+        let posture_observed: serde_json::Value =
+            serde_json::from_str(&posture_only.text).expect("假驱动回显必须是 JSON");
+        assert_eq!(
+            posture_observed["chain_cards"],
+            serde_json::Value::Null,
+            "无要求卡时 chain_cards 字段省略（两字段独立）"
+        );
+        assert_eq!(posture_observed["posture"], "纯姿态段");
 
         // 制作会话：线缆携带 session_kind="making"。
         manager
@@ -1780,6 +1864,7 @@ mod tests {
                 message_id: "m".into(),
                 text: "t".into(),
                 chain_cards: None,
+                posture: None,
             })
             .unwrap(),
             serde_json::to_value(DriverCommand::ReplayHistory {
@@ -1991,6 +2076,7 @@ mod tests {
                 message_id: "m".into(),
                 text: "t".into(),
                 chain_cards: None,
+                posture: None,
             }),
             tag_of(DriverCommand::ReplayHistory {
                 session_id: "s".into(),
@@ -2073,6 +2159,23 @@ mod tests {
         assert!(
             cards_doc.contains("绝不拼入 user 文本"),
             "chain_cards 字段说明必须记录「追问按增量发送」不受影响的边界：{cards_doc}"
+        );
+        // add-posture-slot 任务 2.3：posture 字段说明在真相源在场，措辞与 Rust
+        // 侧序列化行为（缺省省略）及驱动侧独立幂等语义一致。
+        let posture_doc = send_message["fields"]["posture"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            posture_doc.contains("缺省 null"),
+            "posture 字段说明必须记录缺省 null：{posture_doc}"
+        );
+        assert!(
+            posture_doc.contains("幂等"),
+            "posture 字段说明必须记录驱动侧幂等处理语义：{posture_doc}"
+        );
+        assert!(
+            posture_doc.contains("绝不拼入 user 文本"),
+            "posture 字段说明必须记录「追问按增量发送」不受影响的边界：{posture_doc}"
         );
     }
 

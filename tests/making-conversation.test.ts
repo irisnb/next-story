@@ -7,6 +7,7 @@ import { getAppDom } from "../src/dom.ts";
 import { setupMaking, type MakingController } from "../src/making/making-module.ts";
 import type { MakingTrialLauncher } from "../src/making/making-session-controller.ts";
 import {
+  buildChainStatusMessage,
   deriveMakingTitle,
   draftToCardInput,
   draftTriggerDesc,
@@ -89,10 +90,51 @@ test("draft mapping builds trigger description from use and non-use lines", () =
   assert.equal(input.title, "语气克制");
   assert.equal(input.trigger_desc, "适用：打磨对白时\n不适用：讨论故事结构时");
   assert.equal(input.body, drafts[0].body);
+  assert.equal(input.slot_type, "requirement", "无类型行的旧会话标记块＝要求卡");
 
   // 无负例：只保留适用行，不虚构负例。
-  const noNegative = draftTriggerDesc({ title: "t", whenToUse: "只此", whenNotToUse: "", body: "b" });
+  const noNegative = draftTriggerDesc({ title: "t", whenToUse: "只此", whenNotToUse: "", body: "b", slotType: "requirement" });
   assert.equal(noNegative, "适用：只此");
+});
+
+test("parseCardDrafts reads the posture type field and carries it into CardInput", () => {
+  // 姿态草稿：类型行是块内首字段行（与 Rust 模板侧钉死同步）。
+  const postureReply = [
+    "好的，出一版姿态草稿。",
+    "【卡草稿开始】",
+    "类型：姿态卡",
+    "卡名：傲娇搭档",
+    "何时用：日常陪想全程",
+    "何时不用：无",
+    "正文：你的出场姿态：嘴硬心软……底线不换皮。",
+    "【卡草稿结束】",
+  ].join("\n");
+  const drafts = parseCardDrafts(postureReply);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].slotType, "posture");
+  assert.equal(drafts[0].title, "傲娇搭档");
+  const input = draftToCardInput(drafts[0]);
+  assert.equal(input.slot_type, "posture", "draftToCardInput 携带 slot_type");
+
+  // 显式「类型：要求卡」同样识别（半角冒号容忍）。
+  const explicit = parseCardDrafts("【卡草稿开始】\n类型: 要求卡\n卡名：甲\n何时用：a\n正文：x\n【卡草稿结束】");
+  assert.equal(explicit[0]?.slotType, "requirement");
+  assert.equal(draftToCardInput(explicit[0]!).slot_type, "requirement");
+
+  // 无法识别的取值防御性视为要求卡：不因类型行残缺丢弃整张草稿。
+  const unknown = parseCardDrafts("【卡草稿开始】\n类型：别的什么\n卡名：乙\n何时用：a\n正文：x\n【卡草稿结束】");
+  assert.equal(unknown[0]?.slotType, "requirement");
+
+  // 多块并存：类型按块各自解析，不串块。
+  const mixed = parseCardDrafts(
+    "【卡草稿开始】\n类型：姿态卡\n卡名：姿态\n何时用：a\n正文：x\n【卡草稿结束】\n" +
+    "【卡草稿开始】\n卡名：要求\n何时用：b\n正文：y\n【卡草稿结束】",
+  );
+  assert.deepEqual(mixed.map((draft) => draft.slotType), ["posture", "requirement"]);
+
+  // 确认预览与徽标文案共用类型标注。
+  const view = buildCardDraftPanelView(drafts, "情节探索");
+  assert.match(view!.saveConfirm, /卡名「傲娇搭档」（姿态卡）/);
 });
 
 test("title derivation truncates and falls back honestly", () => {
@@ -101,6 +143,49 @@ test("title derivation truncates and falls back honestly", () => {
   assert.equal(long.length, 21);
   assert.ok(long.endsWith("…"));
   assert.equal(deriveMakingTitle("   "), "制作会话");
+});
+
+test("chain status preamble lists the latest version in full and degrades honestly", () => {
+  // 无版本：如实注明，不虚构任何卡。
+  const empty: Chain = { id: "c1", name: "空链路", created_at: "t", versions: [] };
+  assert.equal(buildChainStatusMessage(empty), "【链路现状】当前链路「空链路」还没有版本。");
+
+  // 多版本：只取最新（末位）版本；逐卡列类型、卡名、触发描述与正文全文。
+  const chain: Chain = {
+    id: "c2",
+    name: "情节探索",
+    created_at: "t",
+    versions: [
+      {
+        id: "v1",
+        index: 1,
+        created_at: "t",
+        cards: [{ id: "k1", title: "旧卡", trigger_desc: "适用：旧", body: "旧正文" }],
+        change_note: "",
+        trials: [],
+      },
+      {
+        id: "v2",
+        index: 2,
+        created_at: "t",
+        cards: [
+          { id: "k2", title: "反差", trigger_desc: "适用：a\n不适用：b", body: "正文一" },
+          { id: "k3", title: "傲娇", trigger_desc: "适用：全程", body: "正文二", slot_type: "posture" },
+        ],
+        change_note: "",
+        trials: [],
+      },
+    ],
+  };
+  const text = buildChainStatusMessage(chain);
+  assert.match(text, /^【链路现状】/);
+  assert.match(text, /最新版本是第 2 版，共 2 张卡/);
+  assert.match(text, /要求卡「反差」/);
+  assert.ok(text.includes("适用：a\n不适用：b"), "触发描述全文（含负例行）");
+  assert.ok(text.includes("正文一"), "正文全文");
+  assert.match(text, /姿态卡「傲娇」/, "缺省 slot_type＝要求卡，posture＝姿态卡");
+  assert.ok(!text.includes("旧卡"), "旧版本卡片不进附言");
+  assert.match(text, /用途说明：此清单供起草参考——并存或修改时草稿须完整重述全部卡。/);
 });
 
 test("draft save confirm previews cards and states no auto activation", () => {
@@ -348,6 +433,9 @@ async function browseChain(fixture: ConversationFixture, chainId: string): Promi
 
 async function startMaking(fixture: ConversationFixture): Promise<void> {
   await clickElement(fixture, "making-conversation-start-btn");
+  // 「开始新制作」会自动发出「链路现状」附言轮（保存→启动→发送→终态→再保存），
+  // 多等一轮微任务让附言落地，后续断言面对的是稳定状态（任务 7.6）。
+  await flushPromises(16);
 }
 
 async function typeAndSend(fixture: ConversationFixture, text: string): Promise<void> {
@@ -458,35 +546,38 @@ test("empty state offers continue entry and history for a chain with sessions", 
 test("send flow saves pending round, lazily starts session, streams, and saves terminal state", async () => {
   const chain = chainOf("情节探索");
   const fixture = await conversationFixture(libraryOf([chain]));
-  fixture.backend.nextReply = DRAFT_REPLY;
-  const deferred = new DeferredSend();
-  fixture.backend.sendQueue.push(() => deferred.promise);
   try {
     await browseChain(fixture, chain.id);
+    // 新会话附言轮先落地（默认回复为空串），再布置本用例要控制的发送行为。
     await startMaking(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    const deferred = new DeferredSend();
+    fixture.backend.sendQueue.push(() => deferred.promise);
     await typeAndSend(fixture, "帮我把对话写得更克制");
 
     const id = currentConversationId(fixture);
     assert.match(id, /^mc-/);
 
-    // 首次保存：user 轮已定、assistant 轮 pending，标题已派生。
+    // 用户轮的 pending 档案（附言轮已在此前落地）：user 轮已定、assistant 轮 pending，标题已派生。
     await flushPromises();
     const pendingSave = fixture.backend.calls
       .filter((call) => call.cmd === "making_conversation_save")
-      .map((call) => call.args?.record as MakingConversationRecord)[0];
+      .map((call) => call.args?.record as MakingConversationRecord)
+      .find((record) => record.turns.some((turn) => turn.text === "帮我把对话写得更克制"));
     assert.ok(pendingSave, "发送前先落一版 pending 档案");
     assert.equal(pendingSave.chain_id, chain.id);
     assert.equal(pendingSave.title, "帮我把对话写得更克制");
     assert.deepEqual(
-      pendingSave.turns.map((turn) => `${turn.role}:${turn.status}`),
+      pendingSave.turns.map((turn) => `${turn.role}:${turn.status}`).slice(-2),
       ["user:success", "assistant:pending"],
     );
 
     const start = fixture.backend.calls.find((call) => call.cmd === "making_start_session");
     assert.equal(start?.args?.conversationId, id, "懒启动会话携带制作会话 id");
-    const send = fixture.backend.calls.find((call) => call.cmd === "making_send_message");
+    const send = fixture.backend.calls.find(
+      (call) => call.cmd === "making_send_message" && call.args?.text === "帮我把对话写得更克制",
+    );
     assert.equal(send?.args?.conversationId, id);
-    assert.equal(send?.args?.text, "帮我把对话写得更克制");
     const messageId = String(send?.args?.messageId);
     assert.ok(messageId.length > 0);
 
@@ -529,10 +620,10 @@ test("send flow saves pending round, lazily starts session, streams, and saves t
 test("saving a draft requires confirmation and writes a new version without activation", async () => {
   const chain = chainOf("情节探索");
   const fixture = await conversationFixture(libraryOf([chain]));
-  fixture.backend.nextReply = DRAFT_REPLY;
   try {
     await browseChain(fixture, chain.id);
     await startMaking(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
     await typeAndSend(fixture, "帮我把对话写得更克制");
     await flushPromises();
     const saveDraft = fixture.document.querySelector<HTMLButtonElement>(".making-draft-panel .making-draft-actions .making-mini-btn.primary");
@@ -545,7 +636,7 @@ test("saving a draft requires confirmation and writes a new version without acti
     await flushPromises();
     assert.equal(fixture.backend.calls.some((call) => call.cmd === "chain_save_version"), false);
 
-    // 同意确认：携带映射后的 CardInput 与变更说明，刷新链路库。
+    // 同意确认：携带映射后的 CardInput（含卡类型，缺省＝要求卡）与变更说明，刷新链路库。
     fixture.confirmResult = true;
     saveDraft.click();
     await flushPromises();
@@ -556,6 +647,7 @@ test("saving a draft requires confirmation and writes a new version without acti
       title: "语气克制",
       trigger_desc: "适用：打磨对白时\n不适用：讨论故事结构时",
       body: "指出过火的台词，说明问题，再给两种更克制的写法候选，由你决定用哪种。",
+      slot_type: "requirement",
     }]);
     assert.equal(versionCall.args?.changeNote, "制作会话保存");
     assert.ok(fixture.backend.calls.filter((call) => call.cmd === "chain_library_load").length >= 2, "保存后重读链路库");
@@ -568,17 +660,65 @@ test("saving a draft requires confirmation and writes a new version without acti
   }
 });
 
-test("stop cancels the in-flight turn and ignores the late terminal result", async () => {
+test("the draft panel badges each card with its type and saves posture slot_type", async () => {
   const chain = chainOf("情节探索");
   const fixture = await conversationFixture(libraryOf([chain]));
-  const deferred = new DeferredSend();
-  fixture.backend.sendQueue.push(() => deferred.promise);
   try {
     await browseChain(fixture, chain.id);
     await startMaking(fixture);
+    fixture.backend.nextReply = [
+      "好的，出一版姿态草稿。",
+      "【卡草稿开始】",
+      "类型：姿态卡",
+      "卡名：傲娇搭档",
+      "何时用：日常陪想全程",
+      "何时不用：无",
+      "正文：你的出场姿态：嘴硬心软；底线不换皮。",
+      "【卡草稿结束】",
+    ].join("\n");
+    await typeAndSend(fixture, "想要一个傲娇姿态");
+    await flushPromises();
+
+    // 草稿面板逐卡类型徽标：姿态卡明确标注（不与要求卡混淆）。
+    const panel = fixture.document.querySelector(".making-draft-panel");
+    assert.ok(panel, "草稿面板已渲染");
+    const badge = panel.querySelector(".making-draft-type");
+    assert.ok(badge, "类型徽标已渲染");
+    assert.equal(badge.textContent, "姿态卡");
+    assert.equal(badge.classList.contains("is-posture"), true);
+    assert.match(panel.textContent ?? "", /卡名：傲娇搭档/);
+
+    // 保存确认后：链路库收到 slot_type=posture（纯姿态版本允许）。
+    const saveDraft = panel.querySelector<HTMLButtonElement>(".making-draft-actions .making-mini-btn.primary");
+    assert.ok(saveDraft);
+    saveDraft.click();
+    await flushPromises();
+    const versionCall = fixture.backend.calls.find((call) => call.cmd === "chain_save_version");
+    assert.ok(versionCall);
+    assert.deepEqual(versionCall.args?.cards, [{
+      title: "傲娇搭档",
+      trigger_desc: "适用：日常陪想全程\n不适用：无",
+      body: "你的出场姿态：嘴硬心软；底线不换皮。",
+      slot_type: "posture",
+    }]);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("stop cancels the in-flight turn and ignores the late terminal result", async () => {
+  const chain = chainOf("情节探索");
+  const fixture = await conversationFixture(libraryOf([chain]));
+  try {
+    await browseChain(fixture, chain.id);
+    await startMaking(fixture);
+    const deferred = new DeferredSend();
+    fixture.backend.sendQueue.push(() => deferred.promise);
     await typeAndSend(fixture, "出一个草稿");
     const id = currentConversationId(fixture);
-    const send = fixture.backend.calls.find((call) => call.cmd === "making_send_message");
+    const send = fixture.backend.calls.find(
+      (call) => call.cmd === "making_send_message" && call.args?.text === "出一个草稿",
+    );
     const messageId = String(send?.args?.messageId);
 
     fixture.bus.emit("making-message-event", { session_id: id, message_id: messageId, seq: 1, text: "已生成一半" });
@@ -609,11 +749,11 @@ test("stop cancels the in-flight turn and ignores the late terminal result", asy
 test("failed sends mark the turn failed with a concrete Chinese notice", async () => {
   const chain = chainOf("情节探索");
   const fixture = await conversationFixture(libraryOf([chain]));
-  const deferred = new DeferredSend();
-  fixture.backend.sendQueue.push(() => deferred.promise);
   try {
     await browseChain(fixture, chain.id);
     await startMaking(fixture);
+    const deferred = new DeferredSend();
+    fixture.backend.sendQueue.push(() => deferred.promise);
     await typeAndSend(fixture, "出一个草稿");
     const id = currentConversationId(fixture);
     deferred.fail("capacity_exceeded", "raw backend message");
@@ -677,6 +817,171 @@ test("driver loss ends open making sessions and recovery notice shows", async ()
     await typeAndSend(fixture, "继续刚才的话题");
     await flushPromises();
     assert.equal(fixture.backend.calls.filter((call) => call.cmd === "making_start_session").length, 2);
+  } finally {
+    fixture.restore();
+  }
+});
+
+// ========== 新会话链路现状附言（add-posture-slot 任务 7.6） ==========
+
+test("a new session auto-sends the chain status preamble with full card texts", async () => {
+  const chain = chainOf("情节探索");
+  // 第 2 版（最新）：要求卡（多行触发描述）＋姿态卡；第 1 版的旧卡不进附言。
+  chain.versions.push({
+    id: nextId("chainver"),
+    index: 2,
+    created_at: "2026-10-06T00:00:00Z",
+    cards: [
+      {
+        id: nextId("card"),
+        title: "反差与反转",
+        trigger_desc: "适用：探索情节可能性时\n不适用：只讨论台词情绪时",
+        body: "先指出当前场景的人物动机，再给两种可能走向，由用户决定。",
+      },
+      {
+        id: nextId("card"),
+        title: "傲娇搭档",
+        trigger_desc: "适用：日常陪想全程",
+        body: "你的出场姿态：嘴硬心软；底线不换皮。",
+        slot_type: "posture",
+      },
+    ],
+    change_note: "",
+    trials: [],
+  });
+  const fixture = await conversationFixture(libraryOf([chain]));
+  try {
+    await browseChain(fixture, chain.id);
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+
+    // 首条发送即附言，经既有发送通道（making_send_message）发出。
+    const send = fixture.backend.calls.find((call) => call.cmd === "making_send_message");
+    assert.ok(send, "附言已发出");
+    assert.equal(send.args?.conversationId, id);
+    const text = String(send.args?.text);
+    assert.match(text, /^【链路现状】/);
+    assert.match(text, /第 2 版/, "取最新版本（末位）");
+    assert.match(text, /要求卡「反差与反转」/);
+    assert.ok(
+      text.includes("适用：探索情节可能性时\n不适用：只讨论台词情绪时"),
+      "触发描述全文（含负例行）",
+    );
+    assert.ok(text.includes("先指出当前场景的人物动机，再给两种可能走向，由用户决定。"), "正文全文");
+    assert.match(text, /姿态卡「傲娇搭档」/, "类型按 slot_type 标注（缺省＝要求卡）");
+    assert.ok(text.includes("你的出场姿态：嘴硬心软；底线不换皮。"));
+    assert.doesNotMatch(text, /「卡」/, "第 1 版旧卡不进附言");
+    assert.match(text, /供起草参考/, "用途说明在场");
+    assert.match(text, /完整重述全部卡/);
+    assert.equal(
+      fixture.backend.calls.filter((call) => call.cmd === "making_send_message").length,
+      1,
+      "附言是唯一自动发送",
+    );
+
+    // 档案：首条 user 轮即附言（对用户可见），助手轮正常终态；附言不派生标题。
+    const record = savedRecordOf(fixture, id);
+    assert.equal(record?.turns[0]?.role, "user");
+    assert.match(record?.turns[0]?.text ?? "", /^【链路现状】/);
+    assert.equal(record?.turns[1]?.status, "success", "助手自然回应");
+    assert.equal(record?.title, "", "附言不占用标题，标题留给用户首条口述");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("a new session on a versionless chain notes the honest status and stays usable", async () => {
+  const chain: Chain = { id: nextId("chain"), name: "空链路", created_at: "2026-10-06T00:00:00Z", versions: [] };
+  const fixture = await conversationFixture(libraryOf([chain]));
+  try {
+    await browseChain(fixture, chain.id);
+    await startMaking(fixture);
+    const send = fixture.backend.calls.find((call) => call.cmd === "making_send_message");
+    assert.ok(send, "无版本链路同样发附言（如实注明）");
+    const text = String(send.args?.text);
+    assert.match(text, /^【链路现状】/);
+    assert.match(text, /当前链路「空链路」还没有版本/);
+
+    // 会话照常可用：用户可直接口述，第二轮正常发送。
+    assert.equal((elementOf(fixture, "making-conversation-input") as HTMLTextAreaElement).disabled, false);
+    fixture.backend.nextReply = "好的，说说你想加什么。";
+    await typeAndSend(fixture, "我想要一张要求卡");
+    const sends = fixture.backend.calls.filter((call) => call.cmd === "making_send_message");
+    assert.equal(sends.length, 2);
+    assert.equal(sends[1]?.args?.text, "我想要一张要求卡");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("continuing an existing session never repeats the status preamble", async () => {
+  const chain = chainOf("情节探索");
+  const fixture = await conversationFixture(libraryOf([chain]));
+  fixture.backend.nextReply = "好的。";
+  try {
+    fixture.backend.conversations.set("mc-old", {
+      id: "mc-old",
+      chain_id: chain.id,
+      title: "克制对白",
+      created_at: "2026-10-05T00:00:00Z",
+      updated_at: "2026-10-05T00:00:00Z",
+      turns: [
+        { role: "user", text: "帮我把对白改克制", status: "success" },
+        { role: "assistant", text: "好的，先聊聊哪几句过火。", status: "success" },
+      ],
+    });
+    await browseChain(fixture, chain.id);
+    const continueButton = fixture.document.querySelector<HTMLButtonElement>(".making-recent-continue");
+    assert.ok(continueButton, "继续入口已渲染");
+    continueButton.click();
+    await flushPromises();
+    await typeAndSend(fixture, "再出一版");
+    await flushPromises();
+
+    // 打开与继续发送都不产生附言轮：唯一发送就是用户口述这条。
+    const sends = fixture.backend.calls.filter((call) => call.cmd === "making_send_message");
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0]?.args?.text, "再出一版");
+    assert.ok(sends.every((call) => !String(call.args?.text).startsWith("【链路现状】")));
+    const record = savedRecordOf(fixture, "mc-old");
+    assert.equal(record?.turns.length, 4, "不新增附言轮");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("a failed preamble surfaces an honest error and the session stays usable", async () => {
+  const chain = chainOf("情节探索");
+  const fixture = await conversationFixture(libraryOf([chain]));
+  try {
+    const deferred = new DeferredSend();
+    fixture.backend.sendQueue.push(() => deferred.promise);
+    await browseChain(fixture, chain.id);
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+
+    // 附言进行中：沿用「同会话单轮进行中禁发」约束。
+    const input = elementOf(fixture, "making-conversation-input") as HTMLTextAreaElement;
+    assert.equal(input.disabled, true, "附言发送期间禁发");
+
+    // 失败：如实提示（正常失败轮），不阻断会话。
+    deferred.fail("capacity_exceeded", "raw backend message");
+    await flushPromises();
+    const record = savedRecordOf(fixture, id);
+    assert.equal(record?.turns[record.turns.length - 1].status, "failed", "附言轮如实失败");
+    const statusLine = fixture.document.querySelector("#making-session-messages .making-msg-status.is-error");
+    assert.ok(statusLine, "失败状态行已渲染");
+    assert.match(statusLine.textContent ?? "", /同时上限/);
+    assert.equal(input.disabled, false, "失败后恢复输入，会话可用");
+
+    // 用户仍可口述：下一条正常发送成功。
+    fixture.backend.nextReply = "好的。";
+    await typeAndSend(fixture, "我自己说明要求");
+    const sends = fixture.backend.calls.filter((call) => call.cmd === "making_send_message");
+    assert.equal(sends.length, 2);
+    assert.equal(sends[1]?.args?.text, "我自己说明要求");
+    const after = savedRecordOf(fixture, id);
+    assert.equal(after?.turns[after.turns.length - 1].status, "success");
   } finally {
     fixture.restore();
   }
@@ -764,6 +1069,9 @@ test("history list opens sessions and deletion is an explicit confirmed action",
     assert.ok(fixture.backend.calls.some((call) => call.cmd === "making_conversation_delete" && call.args?.conversationId === "mc-old"));
     assert.equal(fixture.backend.conversations.has("mc-old"), false);
     assert.match(fixture.confirms[0], /不可恢复/);
+    // 删除后的兜底新会话会自动发「链路现状」附言轮：等完该异步再结束用例，
+    // 避免续段在夹具销毁、全局 document 复位后才执行（任务 7.6）。
+    await flushPromises(24);
   } finally {
     fixture.restore();
   }
@@ -774,10 +1082,10 @@ test("history list opens sessions and deletion is an explicit confirmed action",
 test("trial button is wired by default and guards unsaved drafts with a save-first hint", async () => {
   const chain = chainOf("情节探索");
   const fixture = await conversationFixture(libraryOf([chain]));
-  fixture.backend.nextReply = DRAFT_REPLY;
   try {
     await browseChain(fixture, chain.id);
     await startMaking(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
     await typeAndSend(fixture, "出一个草稿");
     await flushPromises();
     const trial = fixture.document.querySelector<HTMLButtonElement>(".making-draft-panel .making-draft-actions .making-mini-btn:not(.primary)");
@@ -807,10 +1115,10 @@ test("trial button is wired by default and guards unsaved drafts with a save-fir
 test("explicit trial hook override still takes precedence over the wired controller", async () => {
   const chain = chainOf("情节探索");
   const wired = await conversationFixture(libraryOf([chain]), { withTrialHook: true });
-  wired.backend.nextReply = DRAFT_REPLY;
   try {
     await browseChain(wired, chain.id);
     await startMaking(wired);
+    wired.backend.nextReply = DRAFT_REPLY;
     await typeAndSend(wired, "出一个草稿");
     await flushPromises();
     const trial = wired.document.querySelector<HTMLButtonElement>(".making-draft-panel .making-draft-actions .making-mini-btn:not(.primary)");

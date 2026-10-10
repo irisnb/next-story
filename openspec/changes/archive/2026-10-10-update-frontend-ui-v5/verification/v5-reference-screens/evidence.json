@@ -1,0 +1,1192 @@
+{
+  "stages": [
+    {
+      "state": "sidebar",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 694,
+            "y": 104,
+            "width": 330,
+            "height": 566,
+            "client": 330,
+            "scroll": 330
+          },
+          {
+            "id": "expand-ai",
+            "x": 874,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 694,
+            "y": 518,
+            "width": 330,
+            "height": 152,
+            "client": 330,
+            "scroll": 330
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "maximized",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          },
+          {
+            "id": "expand-ai",
+            "x": 874,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 132,
+            "y": 518,
+            "width": 760,
+            "height": 152,
+            "client": 760,
+            "scroll": 760
+          }
+        ],
+        "focused": true,
+        "visible": true
+      }
+    },
+    {
+      "state": "restored",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 694,
+            "y": 104,
+            "width": 330,
+            "height": 566,
+            "client": 330,
+            "scroll": 330
+          },
+          {
+            "id": "expand-ai",
+            "x": 874,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 694,
+            "y": 518,
+            "width": 330,
+            "height": 152,
+            "client": 330,
+            "scroll": 330
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "writing",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "files",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "files",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "making",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "making",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1024,
+            "scroll": 1024
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "settings",
+      "size": [
+        1024,
+        670
+      ],
+      "metrics": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "page": [
+          {
+            "id": "settings",
+            "x": 0,
+            "y": 104,
+            "width": 1024,
+            "height": 566,
+            "client": 1009,
+            "scroll": 1009
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "sidebar",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 910,
+            "y": 104,
+            "width": 370,
+            "height": 616,
+            "client": 370,
+            "scroll": 370
+          },
+          {
+            "id": "expand-ai",
+            "x": 1122,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 910,
+            "y": 568,
+            "width": 370,
+            "height": 152,
+            "client": 370,
+            "scroll": 370
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "maximized",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          },
+          {
+            "id": "expand-ai",
+            "x": 1122,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 260,
+            "y": 568,
+            "width": 760,
+            "height": 152,
+            "client": 760,
+            "scroll": 760
+          }
+        ],
+        "focused": true,
+        "visible": true
+      }
+    },
+    {
+      "state": "restored",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 910,
+            "y": 104,
+            "width": 370,
+            "height": 616,
+            "client": 370,
+            "scroll": 370
+          },
+          {
+            "id": "expand-ai",
+            "x": 1122,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 910,
+            "y": 568,
+            "width": 370,
+            "height": 152,
+            "client": 370,
+            "scroll": 370
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "writing",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "files",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "files",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "making",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "making",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1280,
+            "scroll": 1280
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "settings",
+      "size": [
+        1280,
+        720
+      ],
+      "metrics": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "page": [
+          {
+            "id": "settings",
+            "x": 0,
+            "y": 104,
+            "width": 1280,
+            "height": 616,
+            "client": 1265,
+            "scroll": 1265
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "sidebar",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 1070,
+            "y": 104,
+            "width": 370,
+            "height": 796,
+            "client": 370,
+            "scroll": 370
+          },
+          {
+            "id": "expand-ai",
+            "x": 1282,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 1070,
+            "y": 748,
+            "width": 370,
+            "height": 152,
+            "client": 370,
+            "scroll": 370
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "maximized",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          },
+          {
+            "id": "expand-ai",
+            "x": 1282,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 340,
+            "y": 748,
+            "width": 760,
+            "height": 152,
+            "client": 760,
+            "scroll": 760
+          }
+        ],
+        "focused": true,
+        "visible": true
+      }
+    },
+    {
+      "state": "restored",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 1070,
+            "y": 104,
+            "width": 370,
+            "height": 796,
+            "client": 370,
+            "scroll": 370
+          },
+          {
+            "id": "expand-ai",
+            "x": 1282,
+            "y": 115.5,
+            "width": 108,
+            "height": 32,
+            "client": 106,
+            "scroll": 106
+          },
+          {
+            "id": "ai-form",
+            "x": 1070,
+            "y": 748,
+            "width": 370,
+            "height": 152,
+            "client": 370,
+            "scroll": 370
+          }
+        ],
+        "focused": false,
+        "visible": true
+      }
+    },
+    {
+      "state": "writing",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "writing",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "files",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "files",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "making",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "making",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    },
+    {
+      "state": "settings",
+      "size": [
+        1440,
+        900
+      ],
+      "metrics": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "page": [
+          {
+            "id": "settings",
+            "x": 0,
+            "y": 104,
+            "width": 1440,
+            "height": 796,
+            "client": 1440,
+            "scroll": 1440
+          }
+        ],
+        "nodes": [
+          {
+            "id": "ai-panel",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "expand-ai",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          },
+          {
+            "id": "ai-form",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "client": 0,
+            "scroll": 0
+          }
+        ],
+        "focused": false,
+        "visible": false
+      }
+    }
+  ],
+  "errors": [],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\sidebar-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\maximized-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\restored-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\writing-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\files-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\making-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\settings-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\sidebar-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\maximized-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\restored-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\writing-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\files-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\making-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\settings-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\sidebar-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\maximized-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\restored-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\writing-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\files-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\making-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-reference-screens\\settings-1440x900.png"
+  ],
+  "focusedRules": [
+    ".ai-focused .writing-column, .ai-focused .divider { display: none; }",
+    ".ai-focused .ai-panel { width: 100%; max-width: none; flex: 1 1 0%; }",
+    ".ai-focused .ai-body, .ai-focused .discussion-meta, .ai-focused .ai-compose { width: min(760px, 100%); margin-inline: auto; }",
+    ".ai-focused .ai-head { padding-inline: 30px; }",
+    ".ai-focused .discussion-list { left: auto; width: 350px; right: 25px; }",
+    ".writing-layout.ai-focused .ai-head { padding-inline: 16px; }",
+    "@media (max-width: 1199px) {\n  .writing-layout.ai-focused .ai-head { padding-inline: 8px; }\n}"
+  ]
+}

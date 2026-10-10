@@ -1,0 +1,12 @@
+{
+  "pid": 32224,
+  "parentPidAtInspection": 33240,
+  "executable": "D:/Next Story/src-tauri/target/debug/next-story.exe",
+  "creationDateLocal": "2026-10-10T02:14:23",
+  "owner": "UI verification agent (prior session launch, recorded by session handoff)",
+  "launchMode": "debug exe with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223",
+  "evidenceLimit": "Original ui-v5-app-owned.json in temp describes stale PID 25172; this is a retrospective session ownership record, not original spawn output.",
+  "verifiedApplicationWindow": { "hwnd": 3348336, "windowClass": "Tauri Window" },
+  "incorrectPreviousWindow": { "hwnd": 2102734, "windowClass": "com.nextstory.desktop-sic" },
+  "termination": "Not stopped by this lane. Recheck PID, executable and creation time before any later termination."
+}

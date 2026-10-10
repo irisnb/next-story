@@ -1,0 +1,380 @@
+{
+  "owned": {
+    "pid": 25588,
+    "executable": "D:/Next Story/src-tauri/target/debug/next-story.exe",
+    "args": [],
+    "started": "2026-10-09T20:46:27.572Z"
+  },
+  "started": "2026-10-10T00:31:50.183Z",
+  "stages": [
+    {
+      "size": [
+        1024,
+        670
+      ],
+      "native": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 1709508,
+            "parent": 922916,
+            "root": 922916,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 6690194,
+            "parent": 1709508,
+            "root": 922916,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 988434,
+            "parent": 6690194,
+            "root": 922916,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1054146,
+            "parent": 988434,
+            "root": 922916,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2364782,
+            "parent": 988434,
+            "root": 922916,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 922916,
+          "parent": 0,
+          "root": 922916,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 25588,
+        "bounds": {
+          "hwnd": 922916,
+          "parent": 0,
+          "root": 922916,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "viewport": [
+        1024,
+        670
+      ],
+      "disabled": {
+        "name": "提问",
+        "disabled": true,
+        "button": [
+          72,
+          32
+        ],
+        "background": "rgb(228, 228, 228)",
+        "outline": [
+          "none",
+          "3px"
+        ],
+        "focused": false,
+        "focusVisible": false,
+        "image": {
+          "width": "28px",
+          "height": "22.3594px",
+          "ratio": "988 / 789",
+          "filter": "none",
+          "opacity": "0.45"
+        }
+      },
+      "enabled": {
+        "name": "提问",
+        "disabled": false,
+        "button": [
+          72,
+          32
+        ],
+        "background": "rgb(32, 32, 32)",
+        "outline": [
+          "solid",
+          "2px"
+        ],
+        "focused": true,
+        "focusVisible": true,
+        "image": {
+          "width": "28px",
+          "height": "22.3594px",
+          "ratio": "988 / 789",
+          "filter": "invert(1)",
+          "opacity": "1"
+        }
+      },
+      "projection": 1
+    },
+    {
+      "size": [
+        1440,
+        900
+      ],
+      "native": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1440,
+          900
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 1709508,
+            "parent": 922916,
+            "root": 922916,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 6690194,
+            "parent": 1709508,
+            "root": 922916,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 988434,
+            "parent": 6690194,
+            "root": 922916,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 1054146,
+            "parent": 988434,
+            "root": 922916,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 2364782,
+            "parent": 988434,
+            "root": 922916,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1792,
+              1280
+            ],
+            "screen": [
+              768,
+              376,
+              1792,
+              1280
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 922916,
+          "parent": 0,
+          "root": 922916,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        },
+        "pid": 25588,
+        "bounds": {
+          "hwnd": 922916,
+          "parent": 0,
+          "root": 922916,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        }
+      },
+      "viewport": [
+        1440,
+        900
+      ],
+      "disabled": {
+        "name": "提问",
+        "disabled": true,
+        "button": [
+          72,
+          32
+        ],
+        "background": "rgb(228, 228, 228)",
+        "outline": [
+          "none",
+          "3px"
+        ],
+        "focused": false,
+        "focusVisible": false,
+        "image": {
+          "width": "28px",
+          "height": "22.3594px",
+          "ratio": "988 / 789",
+          "filter": "none",
+          "opacity": "0.45"
+        }
+      },
+      "enabled": {
+        "name": "提问",
+        "disabled": false,
+        "button": [
+          72,
+          32
+        ],
+        "background": "rgb(32, 32, 32)",
+        "outline": [
+          "solid",
+          "2px"
+        ],
+        "focused": true,
+        "focusVisible": true,
+        "image": {
+          "width": "28px",
+          "height": "22.3594px",
+          "ratio": "988 / 789",
+          "filter": "invert(1)",
+          "opacity": "1"
+        }
+      },
+      "projection": 1
+    }
+  ],
+  "errors": [],
+  "limits": [
+    "No model request; draft only. No user body/secret read or global chain write. Observer owns visual review."
+  ],
+  "projectName": "UI-v5-cleanup-1791592312376"
+}

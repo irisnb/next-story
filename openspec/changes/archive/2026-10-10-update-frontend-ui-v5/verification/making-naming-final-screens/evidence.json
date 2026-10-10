@@ -1,0 +1,2568 @@
+{
+  "started": "2026-10-10T06:40:22.246Z",
+  "native": [
+    {
+      "action": "initial",
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          0,
+          0
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              -32000,
+              -32000,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              -32000,
+              -32000,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              -32000,
+              -32000,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              -32000,
+              -32000,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              -32000,
+              -32000,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            0,
+            0
+          ],
+          "screen": [
+            -32000,
+            -32000,
+            160,
+            28
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            0,
+            0
+          ],
+          "screen": [
+            -32000,
+            -32000,
+            160,
+            28
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "action": "Restore",
+      "requested": [
+        0,
+        0
+      ],
+      "before": {
+        "action": "Restore",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            0,
+            0
+          ],
+          "screen": [
+            -32000,
+            -32000,
+            160,
+            28
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1024,
+          670
+        ]
+      },
+      "resizeEvents": []
+    },
+    {
+      "action": "Resize",
+      "requested": [
+        1024,
+        670
+      ],
+      "before": {
+        "action": "Resize",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1024,
+          670
+        ]
+      },
+      "resizeEvents": []
+    },
+    {
+      "action": "Resize",
+      "requested": [
+        1280,
+        720
+      ],
+      "before": {
+        "action": "Resize",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1280,
+          720
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1280,
+          720
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1536,
+              1024
+            ],
+            "screen": [
+              768,
+              376,
+              1536,
+              1024
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "outer": [
+          1280,
+          720
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1280,
+          720
+        ]
+      },
+      "resizeEvents": [
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614427677
+        }
+      ]
+    },
+    {
+      "action": "Maximize",
+      "requested": [
+        0,
+        0
+      ],
+      "before": {
+        "action": "Maximize",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          2560,
+          1369
+        ],
+        "zoomedAfter": true,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              2816,
+              1792
+            ],
+            "screen": [
+              0,
+              23,
+              2816,
+              1792
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            2560,
+            1369
+          ],
+          "screen": [
+            -8,
+            -8,
+            2576,
+            1408
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": true,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          2560,
+          1369
+        ],
+        "zoomedAfter": true,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              0,
+              23,
+              2560,
+              1369
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              2816,
+              1792
+            ],
+            "screen": [
+              0,
+              23,
+              2816,
+              1792
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            2560,
+            1369
+          ],
+          "screen": [
+            -8,
+            -8,
+            2576,
+            1408
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            2560,
+            1369
+          ],
+          "screen": [
+            -8,
+            -8,
+            2576,
+            1408
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          2560,
+          1369
+        ],
+        "outer": [
+          2560,
+          1369
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          2560,
+          1369
+        ]
+      },
+      "resizeEvents": [
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614427677
+        },
+        {
+          "viewport": [
+            2560,
+            1369
+          ],
+          "at": 1791614429361
+        }
+      ]
+    },
+    {
+      "action": "Restore",
+      "requested": [
+        0,
+        0
+      ],
+      "before": {
+        "action": "Restore",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": true,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1280,
+          720
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              768,
+              376,
+              2560,
+              1369
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            2560,
+            1369
+          ],
+          "screen": [
+            -8,
+            -8,
+            2576,
+            1408
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1280,
+          720
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              2560,
+              1369
+            ],
+            "screen": [
+              768,
+              376,
+              2560,
+              1369
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "outer": [
+          1280,
+          720
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1280,
+          720
+        ]
+      },
+      "resizeEvents": [
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614427677
+        },
+        {
+          "viewport": [
+            2560,
+            1369
+          ],
+          "at": 1791614429361
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614431049
+        }
+      ]
+    },
+    {
+      "action": "Resize",
+      "requested": [
+        1440,
+        900
+      ],
+      "before": {
+        "action": "Resize",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1440,
+          900
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        }
+      },
+      "window": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1440,
+          900
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1792,
+              1280
+            ],
+            "screen": [
+              768,
+              376,
+              1792,
+              1280
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        }
+      },
+      "page": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1440,
+          900
+        ]
+      },
+      "resizeEvents": [
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614427677
+        },
+        {
+          "viewport": [
+            2560,
+            1369
+          ],
+          "at": 1791614429361
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "at": 1791614431049
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "at": 1791614432794
+        }
+      ]
+    }
+  ],
+  "graphs": [
+    {
+      "size": [
+        1024,
+        670
+      ],
+      "mode": "native",
+      "native": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1024,
+          670
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1024,
+              670
+            ],
+            "screen": [
+              768,
+              376,
+              1024,
+              670
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1024,
+            670
+          ],
+          "screen": [
+            760,
+            345,
+            1040,
+            709
+          ]
+        }
+      },
+      "nativePage": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1024,
+          670
+        ]
+      },
+      "geometry": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "library": {
+          "x": 0,
+          "y": 236.6875,
+          "width": 158,
+          "height": 433.3125
+        },
+        "overflow": false,
+        "rows": [
+          {
+            "id": "chain-1791307765609458800-1",
+            "status": "正在查看 · 未启用"
+          },
+          {
+            "id": "chain-1791378014941277900-1",
+            "status": "未启用"
+          },
+          {
+            "id": "chain-1791386053916501600-1",
+            "status": "未启用"
+          }
+        ],
+        "active": "",
+        "idle": "当前未启用链路，使用日常陪想",
+        "view": "正在查看：装配验证链·第2版",
+        "making": "未选择",
+        "wires": [
+          "M1 1 L7 4 L1 7",
+          "M 549 118 H 565 V 184 H 581",
+          "M 549 276 H 565 V 184 H 581",
+          "M 549 342 H 565 V 184 H 581",
+          "M 677 184 H 707"
+        ],
+        "cards": 1,
+        "presentation": {
+          "title": {
+            "whiteSpace": "nowrap",
+            "height": 24
+          },
+          "button": {
+            "whiteSpace": "nowrap",
+            "overflow": false
+          },
+          "assembly": {
+            "background": "rgb(37, 37, 37)",
+            "color": "rgb(255, 255, 255)",
+            "text": "组装汇合三路内容"
+          },
+          "output": "\n                  完整提示词\n                  发给 AI 的说明\n                ",
+          "quickVisible": false
+        }
+      }
+    },
+    {
+      "size": [
+        1280,
+        720
+      ],
+      "mode": "native",
+      "native": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1280,
+          720
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1280,
+              720
+            ],
+            "screen": [
+              768,
+              376,
+              1280,
+              720
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1536,
+              1024
+            ],
+            "screen": [
+              768,
+              376,
+              1536,
+              1024
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1280,
+            720
+          ],
+          "screen": [
+            760,
+            345,
+            1296,
+            759
+          ]
+        }
+      },
+      "nativePage": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "outer": [
+          1280,
+          720
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1280,
+          720
+        ]
+      },
+      "geometry": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "library": {
+          "x": 0,
+          "y": 236.6875,
+          "width": 220,
+          "height": 483.3125
+        },
+        "overflow": false,
+        "rows": [
+          {
+            "id": "chain-1791307765609458800-1",
+            "status": "正在查看 · 未启用"
+          },
+          {
+            "id": "chain-1791378014941277900-1",
+            "status": "未启用"
+          },
+          {
+            "id": "chain-1791386053916501600-1",
+            "status": "未启用"
+          }
+        ],
+        "active": "",
+        "idle": "当前未启用链路，使用日常陪想",
+        "view": "正在查看：装配验证链·第2版",
+        "making": "未选择",
+        "wires": [
+          "M1 1 L7 4 L1 7",
+          "M 546 118 H 570 V 184 H 594",
+          "M 546 276 H 570 V 184 H 594",
+          "M 546 342 H 570 V 184 H 594",
+          "M 702 184 H 732"
+        ],
+        "cards": 1,
+        "presentation": {
+          "title": {
+            "whiteSpace": "nowrap",
+            "height": 24
+          },
+          "button": {
+            "whiteSpace": "nowrap",
+            "overflow": false
+          },
+          "assembly": {
+            "background": "rgb(37, 37, 37)",
+            "color": "rgb(255, 255, 255)",
+            "text": "组装汇合三路内容"
+          },
+          "output": "\n                  完整提示词\n                  发给 AI 的说明\n                ",
+          "quickVisible": false
+        }
+      }
+    },
+    {
+      "size": [
+        1440,
+        900
+      ],
+      "mode": "native",
+      "native": {
+        "action": "Inspect",
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe",
+        "zoomedBefore": false,
+        "messagePath": "ShowWindow/SetWindowPos on verified root HWND; no synthetic WM_SIZE sent",
+        "client": [
+          1440,
+          900
+        ],
+        "zoomedAfter": false,
+        "webviewChildBounds": [
+          {
+            "hwnd": 2495778,
+            "parent": 6034884,
+            "root": 6034884,
+            "windowClass": "WRY_WEBVIEW",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 7411070,
+            "parent": 2495778,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_0",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 4855688,
+            "parent": 7411070,
+            "root": 6034884,
+            "windowClass": "Chrome_WidgetWin_1",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 2889012,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Chrome_RenderWidgetHostHWND",
+            "client": [
+              1440,
+              900
+            ],
+            "screen": [
+              768,
+              376,
+              1440,
+              900
+            ]
+          },
+          {
+            "hwnd": 1907060,
+            "parent": 4855688,
+            "root": 6034884,
+            "windowClass": "Intermediate D3D Window",
+            "client": [
+              1792,
+              1280
+            ],
+            "screen": [
+              768,
+              376,
+              1792,
+              1280
+            ]
+          }
+        ],
+        "dpi": 96,
+        "before": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        },
+        "pid": 28820,
+        "bounds": {
+          "hwnd": 6034884,
+          "parent": 0,
+          "root": 6034884,
+          "windowClass": "Tauri Window",
+          "client": [
+            1440,
+            900
+          ],
+          "screen": [
+            760,
+            345,
+            1456,
+            939
+          ]
+        }
+      },
+      "nativePage": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "screen": [
+          2560,
+          1440
+        ],
+        "dpr": 1,
+        "visual": [
+          1440,
+          900
+        ]
+      },
+      "geometry": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "library": {
+          "x": 0,
+          "y": 236.6875,
+          "width": 220,
+          "height": 663.3125
+        },
+        "overflow": false,
+        "rows": [
+          {
+            "id": "chain-1791307765609458800-1",
+            "status": "正在查看 · 未启用"
+          },
+          {
+            "id": "chain-1791378014941277900-1",
+            "status": "未启用"
+          },
+          {
+            "id": "chain-1791386053916501600-1",
+            "status": "未启用"
+          }
+        ],
+        "active": "",
+        "idle": "当前未启用链路，使用日常陪想",
+        "view": "正在查看：装配验证链·第2版",
+        "making": "未选择",
+        "wires": [
+          "M1 1 L7 4 L1 7",
+          "M 546 118 H 570 V 184 H 594",
+          "M 546 276 H 570 V 184 H 594",
+          "M 546 342 H 570 V 184 H 594",
+          "M 702 184 H 732"
+        ],
+        "cards": 1,
+        "presentation": {
+          "title": {
+            "whiteSpace": "nowrap",
+            "height": 24
+          },
+          "button": {
+            "whiteSpace": "nowrap",
+            "overflow": false
+          },
+          "assembly": {
+            "background": "rgb(37, 37, 37)",
+            "color": "rgb(255, 255, 255)",
+            "text": "组装汇合三路内容"
+          },
+          "output": "\n                  完整提示词\n                  发给 AI 的说明\n                ",
+          "quickVisible": false
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "No secret read, no user body read, no global library writes. Existing activation state is observed, never changed.",
+    "No additional DPI or human click acceptance; screenshots require observer review.",
+    "Native child HWND rectangles expose hosting window bounds, not the COM CoreWebView2Controller.Bounds property."
+  ],
+  "projectName": "UI-v5-naming-1791614435519",
+  "existingLibrary": {
+    "mode": "Authorized read-only existing global chains; no activation, mutation, conversation start or model request",
+    "rows": [
+      {
+        "id": "chain-1791307765609458800-1",
+        "status": "未启用"
+      },
+      {
+        "id": "chain-1791378014941277900-1",
+        "status": "未启用"
+      },
+      {
+        "id": "chain-1791386053916501600-1",
+        "status": "未启用"
+      }
+    ]
+  },
+  "widthCopy": "标准 · 720"
+}

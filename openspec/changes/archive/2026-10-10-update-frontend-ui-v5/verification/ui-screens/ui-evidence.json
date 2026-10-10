@@ -1,0 +1,1490 @@
+{
+  "started": "2026-10-09T16:02:26.513Z",
+  "consoleErrors": [],
+  "stages": [
+    {
+      "name": "initial-real-webview",
+      "metrics": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "isolated-create-ui",
+      "metrics": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AI-open",
+      "result": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 1070,
+              "y": 132,
+              "width": 370,
+              "height": 768
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1180.40625,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": true,
+            "rect": {
+              "x": 1067,
+              "y": 132,
+              "width": 8,
+              "height": 768
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AI-draft",
+      "error": "Click target not visible: #ai-dock [data-role=\"direct-question-input\"]"
+    },
+    {
+      "name": "AI-maximize",
+      "result": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 56,
+              "y": 132,
+              "width": 1384,
+              "height": 768
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 166.40625,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AI-restore",
+      "result": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 1070,
+              "y": 132,
+              "width": 370,
+              "height": 768
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1180.40625,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": true,
+            "rect": {
+              "x": 1067,
+              "y": 132,
+              "width": 8,
+              "height": 768
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AI-hide-reopen-draft",
+      "result": {
+        "hidden": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": false,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": false,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": false,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        },
+        "reopened": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": true,
+              "rect": {
+                "x": 1070,
+                "y": 132,
+                "width": 370,
+                "height": 768
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": true,
+              "rect": {
+                "x": 1180.40625,
+                "y": 143.5,
+                "width": 108,
+                "height": 32
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": true,
+              "rect": {
+                "x": 1067,
+                "y": 132,
+                "width": 8,
+                "height": 768
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        },
+        "draftPreserved": false
+      }
+    },
+    {
+      "name": "divider-keyboard",
+      "result": {
+        "before": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": true,
+              "rect": {
+                "x": 1070,
+                "y": 132,
+                "width": 370,
+                "height": 768
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": true,
+              "rect": {
+                "x": 1180.40625,
+                "y": 143.5,
+                "width": 108,
+                "height": 32
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": true,
+              "rect": {
+                "x": 1067,
+                "y": 132,
+                "width": 8,
+                "height": 768
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        },
+        "after": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": true,
+              "rect": {
+                "x": 1070,
+                "y": 132,
+                "width": 370,
+                "height": 768
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": true,
+              "rect": {
+                "x": 1180.40625,
+                "y": 143.5,
+                "width": 108,
+                "height": 32
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": true,
+              "rect": {
+                "x": 1067,
+                "y": 132,
+                "width": 8,
+                "height": 768
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "divider-mouse",
+      "result": {
+        "before": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": true,
+              "rect": {
+                "x": 1070,
+                "y": 132,
+                "width": 370,
+                "height": 768
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": true,
+              "rect": {
+                "x": 1180.40625,
+                "y": 143.5,
+                "width": 108,
+                "height": 32
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": true,
+              "rect": {
+                "x": 1067,
+                "y": 132,
+                "width": 8,
+                "height": 768
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        },
+        "after": {
+          "inner": [
+            1440,
+            900
+          ],
+          "outer": [
+            1440,
+            900
+          ],
+          "dpr": 1,
+          "pages": [
+            "editor-page"
+          ],
+          "homeVisible": false,
+          "recentNames": [
+            "8b 验证作品",
+            "导出验收-20261001",
+            "8b 验证作品",
+            "编号复验-20261005",
+            "保真复验-20261004",
+            "王测试",
+            "切换验收-合成-B-20260924",
+            "切换验收-合成-A-132223-9aab42"
+          ],
+          "overflow": [],
+          "ai": [
+            {
+              "id": "ai-dock",
+              "visible": true,
+              "rect": {
+                "x": 1036,
+                "y": 132,
+                "width": 404,
+                "height": 768
+              }
+            },
+            {
+              "id": "ai-dock-maximize",
+              "visible": true,
+              "rect": {
+                "x": 1146.40625,
+                "y": 143.5,
+                "width": 108,
+                "height": 32
+              }
+            },
+            {
+              "id": "ai-dock-divider",
+              "visible": true,
+              "rect": {
+                "x": 1033,
+                "y": 132,
+                "width": 8,
+                "height": 768
+              }
+            }
+          ],
+          "labels": [
+            {
+              "id": "making-zone-custom",
+              "label": "自定义要求与姿态"
+            },
+            {
+              "id": "making-zone-scroll",
+              "label": "自定义要求与姿态内容，可滚动"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "client-1024x670",
+      "native": {
+        "dpi": 96,
+        "outer": [
+          1040,
+          709
+        ],
+        "pid": 25172,
+        "method": "Win32 SetWindowPos; physical client pixels",
+        "client": [
+          1024,
+          670
+        ]
+      },
+      "metrics": {
+        "inner": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 620,
+              "y": 132,
+              "width": 404,
+              "height": 538
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 730.40625,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": true,
+            "rect": {
+              "x": 617,
+              "y": 132,
+              "width": 8,
+              "height": 538
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "making-1024x670",
+      "metrics": {
+        "inner": [
+          1024,
+          670
+        ],
+        "outer": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "client-1280x720",
+      "native": {
+        "dpi": 96,
+        "outer": [
+          1296,
+          759
+        ],
+        "pid": 25172,
+        "method": "Win32 SetWindowPos; physical client pixels",
+        "client": [
+          1280,
+          720
+        ]
+      },
+      "metrics": {
+        "inner": [
+          1280,
+          720
+        ],
+        "outer": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "making-1280x720",
+      "metrics": {
+        "inner": [
+          1280,
+          720
+        ],
+        "outer": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "client-1440x900",
+      "native": {
+        "dpi": 96,
+        "outer": [
+          1456,
+          939
+        ],
+        "pid": 25172,
+        "method": "Win32 SetWindowPos; physical client pixels",
+        "client": [
+          1440,
+          900
+        ]
+      },
+      "metrics": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "making-1440x900",
+      "metrics": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "manage",
+      "result": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    },
+    {
+      "name": "settings",
+      "result": {
+        "inner": [
+          1440,
+          900
+        ],
+        "outer": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "pages": [
+          "editor-page"
+        ],
+        "homeVisible": false,
+        "recentNames": [
+          "8b 验证作品",
+          "导出验收-20261001",
+          "8b 验证作品",
+          "编号复验-20261005",
+          "保真复验-20261004",
+          "王测试",
+          "切换验收-合成-B-20260924",
+          "切换验收-合成-A-132223-9aab42"
+        ],
+        "overflow": [
+          {
+            "id": "max-tokens",
+            "role": null,
+            "rect": {
+              "x": 272.5,
+              "y": 881.171875,
+              "width": 520,
+              "height": 44
+            }
+          },
+          {
+            "id": "btn-back-config",
+            "role": null,
+            "rect": {
+              "x": 272.5,
+              "y": 925.140625,
+              "width": 284,
+              "height": 44
+            }
+          },
+          {
+            "id": "btn-test-config",
+            "role": null,
+            "rect": {
+              "x": 570.5,
+              "y": 925.140625,
+              "width": 284,
+              "height": 44
+            }
+          },
+          {
+            "id": "btn-save-config",
+            "role": null,
+            "rect": {
+              "x": 868.5,
+              "y": 925.140625,
+              "width": 284,
+              "height": 44
+            }
+          },
+          {
+            "id": "btn-column-width",
+            "role": null,
+            "rect": {
+              "x": 272.5,
+              "y": 1103.640625,
+              "width": 277.328125,
+              "height": 36
+            }
+          },
+          {
+            "id": "btn-margin",
+            "role": null,
+            "rect": {
+              "x": 573.828125,
+              "y": 1103.640625,
+              "width": 277.328125,
+              "height": 36
+            }
+          },
+          {
+            "id": "writing-background",
+            "role": null,
+            "rect": {
+              "x": 875.15625,
+              "y": 1103.640625,
+              "width": 277.34375,
+              "height": 36
+            }
+          }
+        ],
+        "ai": [
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          },
+          {
+            "id": "ai-dock-divider",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            }
+          }
+        ],
+        "labels": [
+          {
+            "id": "making-zone-custom",
+            "label": "自定义要求与姿态"
+          },
+          {
+            "id": "making-zone-scroll",
+            "label": "自定义要求与姿态内容，可滚动"
+          }
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-initial.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-ai-maximized.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-writing-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-making-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-writing-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-making-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-writing-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-making-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-manage-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\ui-screens\\ui-settings-1440x900.png"
+  ],
+  "limitations": [
+    "No document body input, model request or global chain/config modification. Native folder picker alone bypassed by setting ordinary form location and dispatching input/change. DPI 96/DPR1 only. Human click verification remains."
+  ],
+  "target": {
+    "id": "C2E0309C119C1E821BF8B9ED6A4408B4",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "tauriResizeAttempt": {
+    "ok": false,
+    "error": "window.set_size not allowed. Permissions associated with this command: core:window:allow-set-size"
+  },
+  "finished": "2026-10-09T16:02:33.382Z"
+}

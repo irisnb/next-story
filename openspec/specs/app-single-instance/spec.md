@@ -1,6 +1,10 @@
 # 能力：应用单实例（app-single-instance）
 
+## Purpose
+
 应用级单实例规则：同一时刻最多一个 Next Story 实例；重复启动不创建窗口、立即退出，并把已有主窗口呈现给用户。
+
+## Requirements
 
 ### Requirement: 应用单实例
 系统 SHALL 确保同一时刻最多运行一个 Next Story 应用实例。启动时若检测到已有实例在运行，新进程 MUST NOT 创建主窗口并 MUST 立即退出。

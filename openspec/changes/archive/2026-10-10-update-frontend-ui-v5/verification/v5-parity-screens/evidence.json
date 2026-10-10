@@ -1,0 +1,1561 @@
+{
+  "started": "2026-10-09T18:24:53.831Z",
+  "stages": [
+    {
+      "size": [
+        1024,
+        670
+      ],
+      "native": {
+        "dpi": 96,
+        "client": [
+          1024,
+          670
+        ],
+        "pid": 32224,
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe"
+      },
+      "sidebar": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 694,
+              "y": 132,
+              "width": 330,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 818,
+              "y": 143.5,
+              "width": 54,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 874,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 984,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": []
+      },
+      "maximized": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 1024,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 818,
+              "y": 143.5,
+              "width": 54,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 874,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "true"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 984,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "content": {
+          "nodes": [
+            {
+              "class": "ai-window-head",
+              "x": 132.5,
+              "y": 197,
+              "width": 760,
+              "height": 66
+            },
+            {
+              "class": "ai-window-body",
+              "x": 132.5,
+              "y": 263,
+              "width": 760,
+              "height": 206.140625
+            },
+            {
+              "class": "ai-window-input",
+              "x": 132.5,
+              "y": 469.140625,
+              "width": 760,
+              "height": 191.859375
+            }
+          ],
+          "icon": {
+            "x": 893,
+            "y": 151.5,
+            "width": 16,
+            "height": 16,
+            "path": "M8 4h12v12h-4M4 8h12v12H4ZM4 12h12",
+            "label": "恢复边栏"
+          }
+        }
+      },
+      "restored": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 694,
+              "y": 132,
+              "width": 330,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 818,
+              "y": 143.5,
+              "width": 54,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 874,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 984,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "icon": {
+          "width": 16,
+          "height": 16,
+          "path": "M4 4h16v16H4ZM4 8h16",
+          "label": "最大化"
+        }
+      },
+      "hidden": {
+        "viewport": [
+          1024,
+          670
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 538
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "root": {
+          "client": 1024,
+          "scroll": 1024
+        }
+      },
+      "draftPreserved": true
+    },
+    {
+      "size": [
+        1280,
+        720
+      ],
+      "native": {
+        "dpi": 96,
+        "client": [
+          1280,
+          720
+        ],
+        "pid": 32224,
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe"
+      },
+      "sidebar": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 950,
+              "y": 132,
+              "width": 330,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1063.125,
+              "y": 143.5,
+              "width": 56.875,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1122,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1232,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": []
+      },
+      "maximized": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 1280,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1062,
+              "y": 143.5,
+              "width": 58,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1122,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "true"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1232,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "content": {
+          "nodes": [
+            {
+              "class": "ai-window-head",
+              "x": 260.5,
+              "y": 197,
+              "width": 760,
+              "height": 66
+            },
+            {
+              "class": "ai-window-body",
+              "x": 260.5,
+              "y": 263,
+              "width": 760,
+              "height": 256.140625
+            },
+            {
+              "class": "ai-window-input",
+              "x": 260.5,
+              "y": 519.140625,
+              "width": 760,
+              "height": 191.859375
+            }
+          ],
+          "icon": {
+            "x": 1141,
+            "y": 151.5,
+            "width": 16,
+            "height": 16,
+            "path": "M8 4h12v12h-4M4 8h12v12H4ZM4 12h12",
+            "label": "恢复边栏"
+          }
+        }
+      },
+      "restored": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 950,
+              "y": 132,
+              "width": 330,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1062,
+              "y": 143.5,
+              "width": 58,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1122,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1232,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "icon": {
+          "width": 16,
+          "height": 16,
+          "path": "M4 4h16v16H4ZM4 8h16",
+          "label": "最大化"
+        }
+      },
+      "hidden": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 588
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number"
+        ],
+        "overflow": [
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right",
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 2,
+        "projection": 1,
+        "overflowing": [],
+        "root": {
+          "client": 1280,
+          "scroll": 1280
+        }
+      },
+      "draftPreserved": true
+    },
+    {
+      "size": [
+        1440,
+        900
+      ],
+      "native": {
+        "dpi": 96,
+        "client": [
+          1440,
+          900
+        ],
+        "pid": 32224,
+        "executable": "D:\\Next Story\\src-tauri\\target\\debug\\next-story.exe"
+      },
+      "sidebar": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 1110,
+              "y": 132,
+              "width": 330,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1222,
+              "y": 143.5,
+              "width": 58,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1282,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1392,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number",
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right"
+        ],
+        "overflow": [
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 4,
+        "projection": 1,
+        "overflowing": []
+      },
+      "maximized": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 1440,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1222,
+              "y": 143.5,
+              "width": 58,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1282,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "true"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1392,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number",
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right"
+        ],
+        "overflow": [
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 4,
+        "projection": 1,
+        "overflowing": [],
+        "content": {
+          "nodes": [
+            {
+              "class": "ai-window-head",
+              "x": 340.5,
+              "y": 197,
+              "width": 760,
+              "height": 66
+            },
+            {
+              "class": "ai-window-body",
+              "x": 340.5,
+              "y": 263,
+              "width": 760,
+              "height": 436.140625
+            },
+            {
+              "class": "ai-window-input",
+              "x": 340.5,
+              "y": 699.140625,
+              "width": 760,
+              "height": 191.859375
+            }
+          ],
+          "icon": {
+            "x": 1301,
+            "y": 151.5,
+            "width": 16,
+            "height": 16,
+            "path": "M8 4h12v12h-4M4 8h12v12H4ZM4 12h12",
+            "label": "恢复边栏"
+          }
+        }
+      },
+      "restored": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": true,
+            "rect": {
+              "x": 1110,
+              "y": 132,
+              "width": 330,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": true,
+            "rect": {
+              "x": 1222,
+              "y": 143.5,
+              "width": 58,
+              "height": 32
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": true,
+            "rect": {
+              "x": 1282,
+              "y": 143.5,
+              "width": 108,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": true,
+            "rect": {
+              "x": 1392,
+              "y": 143.5,
+              "width": 32,
+              "height": 32
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number",
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right"
+        ],
+        "overflow": [
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 4,
+        "projection": 1,
+        "overflowing": [],
+        "icon": {
+          "width": 16,
+          "height": 16,
+          "path": "M4 4h16v16H4ZM4 8h16",
+          "label": "最大化"
+        }
+      },
+      "hidden": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "dpr": 1,
+        "controls": [
+          {
+            "id": "format-toolbar",
+            "visible": true,
+            "rect": {
+              "x": 0,
+              "y": 132,
+              "width": 56,
+              "height": 768
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-dock",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "ai-conversation-list-toggle",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": "false",
+            "pressed": null
+          },
+          {
+            "id": "ai-dock-maximize",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": "false"
+          },
+          {
+            "id": "ai-dock-collapse",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          },
+          {
+            "id": "writing-tool-options",
+            "visible": false,
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0
+            },
+            "expanded": null,
+            "pressed": null
+          }
+        ],
+        "rail": [
+          "btn-undo",
+          "btn-redo",
+          "btn-bold",
+          "btn-italic",
+          "btn-toolbar-underline",
+          "tool-size",
+          "tool-font",
+          "tool-style",
+          "tool-indent",
+          "btn-bullet-list",
+          "number",
+          "btn-find",
+          "btn-align-left",
+          "btn-align-center",
+          "btn-align-right"
+        ],
+        "overflow": [
+          "btn-align-justify",
+          "tool-line",
+          "tool-before",
+          "tool-after",
+          "btn-toolbar-strike",
+          "tool-color",
+          "tool-highlight",
+          "tool-link",
+          "btn-clear-character-format",
+          "btn-clear-paragraph-format"
+        ],
+        "rules": 4,
+        "projection": 1,
+        "overflowing": [],
+        "root": {
+          "client": 1440,
+          "scroll": 1440
+        }
+      },
+      "draftPreserved": true
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\sidebar-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\maximized-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\restored-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\writing-1024x670.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\sidebar-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\maximized-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\restored-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\writing-1280x720.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\sidebar-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\maximized-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\restored-1440x900.png",
+    "D:\\Next Story\\openspec\\changes\\update-frontend-ui-v5\\verification\\v5-parity-screens\\writing-1440x900.png"
+  ],
+  "errors": [],
+  "projectName": "UI-v5-toolbar-AI-1791570295509",
+  "limitations": [
+    "Isolated empty project; no user document body read or changed, no model request.",
+    "Native folder picker bypassed only by ordinary form location input.",
+    "Viewport explicitly set with CDP; native resize alone did not update WebView viewport, so native resize behavior remains unverified.",
+    "DPI reported by verified native window; additional DPI and human visual comparison remain separate."
+  ],
+  "finished": "2026-10-09T18:25:03.201Z"
+}

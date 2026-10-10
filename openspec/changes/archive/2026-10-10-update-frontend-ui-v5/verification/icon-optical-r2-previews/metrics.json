@@ -1,0 +1,50 @@
+[
+  {
+    "name": "before",
+    "size": 16,
+    "darkPixels": 32,
+    "darkPercent": 12.5
+  },
+  {
+    "name": "after",
+    "size": 16,
+    "darkPixels": 31,
+    "darkPercent": 12.1
+  },
+  {
+    "name": "before",
+    "size": 20,
+    "darkPixels": 48,
+    "darkPercent": 12
+  },
+  {
+    "name": "after",
+    "size": 20,
+    "darkPixels": 50,
+    "darkPercent": 12.5
+  },
+  {
+    "name": "before",
+    "size": 24,
+    "darkPixels": 72,
+    "darkPercent": 12.5
+  },
+  {
+    "name": "after",
+    "size": 24,
+    "darkPixels": 67,
+    "darkPercent": 11.6
+  },
+  {
+    "name": "before",
+    "size": 32,
+    "darkPixels": 75,
+    "darkPercent": 7.3
+  },
+  {
+    "name": "after",
+    "size": 32,
+    "darkPixels": 75,
+    "darkPercent": 7.3
+  }
+]

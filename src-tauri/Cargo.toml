@@ -57,5 +57,5 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # 预扫描），此处不再重复声明。
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 windows-core = "0.61"

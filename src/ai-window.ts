@@ -18,8 +18,8 @@ import { deriveConversationTitle } from "./conversation-archive.ts";
 /**
  * 单个讨论窗口的动作（由窗口管理器按讨论身份绑定）。
  *
- * 追问 / 重试 / 直接提问等沿用「聚焦讨论」语义：窗口在交互前会先聚焦自身，
- * 因此这些动作作用于该窗口的讨论。停止 / 关闭是显示层动作，按讨论身份绑定。
+ * 追问 / 重试 / 直接提问沿用当前讨论语义；单面板只挂载当前讨论。
+ * 停止为业务动作，关闭仅结束显示，两者按讨论身份绑定。
  */
 export interface AiWindowActions {
   /** 首轮重试（error / configuration_required / stopped 首轮）。 */
@@ -141,11 +141,22 @@ export function setupAiWindow(
   state: AiPanelState,
   conversationId: string,
   actions: AiWindowActions,
+  displayMemory?: { scrollTop: number; pinnedToBottom: boolean },
 ): AiWindowController {
   const dom = buildAiWindowDom(root);
   const scrollReset = new AiPanelScrollResetController();
   let editingFailedQuestion = false;
   let disposed = false;
+  let firstRender = true;
+  const cleanups: Array<() => void> = [];
+  function listen<K extends keyof HTMLElementEventMap>(
+    element: HTMLElement,
+    type: K,
+    listener: (event: HTMLElementEventMap[K]) => void,
+  ): void {
+    element.addEventListener(type, listener);
+    cleanups.push(() => element.removeEventListener(type, listener));
+  }
   /** 「本次参考了什么」面板展开状态（纯显示层，不进状态、不持久化）。 */
   let materialsOpen = false;
   /** 补读过程详情（已读文档列表）展开状态（纯显示层，不进状态、不持久化）。 */
@@ -178,79 +189,85 @@ export function setupAiWindow(
     render();
   }
 
-  dom.materialsToggle.addEventListener("click", () => toggleMaterials());
-  dom.materialsClose.addEventListener("click", () => {
+  listen(dom.materialsToggle, "click", () => toggleMaterials());
+  listen(dom.materialsClose, "click", () => {
     materialsOpen = false;
     render();
   });
-  dom.focusSwitch.addEventListener("click", () => actions.onOpenFocusPicker?.(dom.focusSwitch));
+  listen(dom.focusSwitch, "click", () => actions.onOpenFocusPicker?.(dom.focusSwitch));
   // 授权卡决定（任务 7.1）：允许 → 继续原问题；拒绝 → 有限回答。
-  dom.readingAllow.addEventListener("click", () => actions.onResolveReadingRequest?.(true));
-  dom.readingDeny.addEventListener("click", () => actions.onResolveReadingRequest?.(false));
+  listen(dom.readingAllow, "click", () => actions.onResolveReadingRequest?.(true));
+  listen(dom.readingDeny, "click", () => actions.onResolveReadingRequest?.(false));
   // 补读过程详情（任务 7.3）：展开 / 收起已读文档列表。
-  dom.readingToggle.addEventListener("click", () => {
+  listen(dom.readingToggle, "click", () => {
     readingDetailsOpen = !readingDetailsOpen;
     render();
   });
 
   // 吸底滚动：滚动事件只维护「贴底」布尔标记（阈值约 40px）。
   const BOTTOM_FOLLOW_THRESHOLD_PX = 40;
-  let pinnedToBottom = true;
-  dom.body.addEventListener("scroll", () => {
+  let pinnedToBottom = displayMemory?.pinnedToBottom ?? true;
+  if (displayMemory) dom.body.scrollTop = displayMemory.scrollTop;
+  listen(dom.body, "scroll", () => {
     const distanceToBottom = dom.body.scrollHeight - dom.body.scrollTop - dom.body.clientHeight;
     pinnedToBottom = distanceToBottom < BOTTOM_FOLLOW_THRESHOLD_PX;
   });
 
-  dom.stopBtn.addEventListener("click", () => actions.onStop());
-  dom.closeBtn.addEventListener("click", () => actions.onClose());
-  dom.restrictionNewConversation.addEventListener("click", () => actions.onNewConversation());
-  dom.retryBtn.addEventListener("click", () => actions.onRetry());
-  dom.goConfigBtn.addEventListener("click", () => actions.onGoToConfig());
-  dom.followUpRetry.addEventListener("click", () => {
-    void actions.onRetryFollowUp();
+  listen(dom.stopBtn, "click", () => actions.onStop());
+  listen(dom.closeBtn, "click", () => actions.onClose());
+  listen(dom.restrictionNewConversation, "click", () => actions.onNewConversation());
+  listen(dom.retryBtn, "click", () => actions.onRetry());
+  listen(dom.goConfigBtn, "click", () => actions.onGoToConfig());
+  listen(dom.followUpRetry, "click", () => {
+    const view = buildAiPanelView(state.viewOf(conversationId), state.conversationOf(conversationId));
+    void (view.followUpStopped ? actions.onRetryStoppedFollowUp() : actions.onRetryFollowUp());
   });
-  dom.followUpEdit.addEventListener("click", () => {
+  listen(dom.followUpEdit, "click", () => {
     const pending = state.conversationOf(conversationId)?.pending;
     if (!pending?.error) return;
     editingFailedQuestion = true;
     dom.followUpInput.value = pending.question;
+    state.updateDirectQuestionDraft(conversationId, pending.question);
     dom.followUpInput.disabled = false;
     dom.followUpSend.textContent = "修改后重发";
     updateFollowUpSendState();
     dom.followUpInput.focus();
   });
 
-  dom.followUpInput.addEventListener("input", updateFollowUpSendState);
-  dom.followUpInput.addEventListener("keydown", (event) => {
+  listen(dom.followUpInput, "input", () => {
+    state.updateDirectQuestionDraft(conversationId, dom.followUpInput.value);
+    updateFollowUpSendState();
+  });
+  listen(dom.followUpInput, "keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       void submitFollowUp();
     }
   });
-  dom.followUpForm.addEventListener("submit", (event) => {
+  listen(dom.followUpForm, "submit", (event) => {
     event.preventDefault();
     void submitFollowUp();
   });
 
-  dom.directQuestionInput.addEventListener("input", () => {
+  listen(dom.directQuestionInput, "input", () => {
     state.updateDirectQuestionDraft(conversationId, dom.directQuestionInput.value);
   });
-  dom.directQuestionInput.addEventListener("keydown", (event) => {
+  listen(dom.directQuestionInput, "keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       void submitDirectQuestion();
     }
   });
-  dom.directQuestionForm.addEventListener("submit", (event) => {
+  listen(dom.directQuestionForm, "submit", (event) => {
     event.preventDefault();
     void submitDirectQuestion();
   });
-  dom.directQuestionSelectionRemove.addEventListener("click", () => {
+  listen(dom.directQuestionSelectionRemove, "click", () => {
     actions.onRemoveDirectQuestionSelection();
   });
-  dom.directQuestionGoConfig.addEventListener("click", () => actions.onGoToConfig());
-  dom.directQuestionInput.addEventListener("mousedown", () => actions.onDirectQuestionFocus());
-  dom.directQuestionInput.addEventListener("focus", () => actions.onDirectQuestionFocus());
+  listen(dom.directQuestionGoConfig, "click", () => actions.onGoToConfig());
+  listen(dom.directQuestionInput, "mousedown", () => actions.onDirectQuestionFocus());
+  listen(dom.directQuestionInput, "focus", () => actions.onDirectQuestionFocus());
 
   async function submitDirectQuestion(): Promise<void> {
     const question = dom.directQuestionInput.value;
@@ -270,6 +287,7 @@ export function setupAiWindow(
       : actions.onSubmitFollowUp(question));
     if (!accepted) return;
     editingFailedQuestion = false;
+    state.updateDirectQuestionDraft(conversationId, "");
     dom.followUpInput.value = "";
     dom.followUpSend.textContent = "发送";
     updateFollowUpSendState();
@@ -283,11 +301,20 @@ export function setupAiWindow(
   }
 
   function renderConversation(conversation: ConversationView | null): void {
-    dom.conversation.replaceChildren();
     dom.conversation.classList.toggle("hidden", conversation === null);
-    if (!conversation) return;
-    for (const item of conversation.messages) {
-      dom.conversation.append(message(item.text, item.role));
+    const messages = conversation?.messages ?? [];
+    for (let index = 0; index < messages.length; index += 1) {
+      const item = messages[index];
+      const existing = dom.conversation.children[index] as HTMLElement | undefined;
+      if (existing) {
+        existing.className = `ai-message ai-message-${item.role}`;
+        if (existing.textContent !== item.text) existing.textContent = item.text;
+      } else {
+        dom.conversation.append(message(item.text, item.role));
+      }
+    }
+    while (dom.conversation.children.length > messages.length) {
+      dom.conversation.children[dom.conversation.children.length - 1].remove();
     }
   }
 
@@ -467,7 +494,7 @@ export function setupAiWindow(
     dom.stopBtn.classList.toggle("hidden", status !== "generating" && status !== "queued");
 
     // 新请求开始：回到贴底跟随，让新消息可见。
-    if (scrollReset.shouldReset(state.viewOf(conversationId).request)) {
+    if (scrollReset.shouldReset(state.viewOf(conversationId).request) && !(firstRender && displayMemory)) {
       pinnedToBottom = true;
     }
 
@@ -476,7 +503,8 @@ export function setupAiWindow(
       dom.snapshotText.textContent = view.snapshot.text;
     }
 
-    dom.loading.classList.toggle("hidden", !view.loadingVisible);
+    // 轮次内已有状态时，不再重复显示独立的「正在思考」提示。
+    dom.loading.classList.toggle("hidden", !view.loadingVisible || view.conversation !== null);
     if (view.loadingMessage !== null) {
       dom.loading.textContent = view.loadingMessage;
     }
@@ -516,9 +544,6 @@ export function setupAiWindow(
     dom.followUpEdit.classList.toggle("hidden", !showFollowUpError);
     dom.followUpEdit.disabled = !followUpErrorView?.editAvailable;
     // 停止后的重试走 onRetryStoppedFollowUp；失败后的重试走 onRetryFollowUp。
-    dom.followUpRetry.onclick = showFollowUpStopped
-      ? () => { void actions.onRetryStoppedFollowUp(); }
-      : () => { void actions.onRetryFollowUp(); };
 
     // 受限讨论提示（材料权限已变化）：历史保留只读，引导新建干净讨论。
     const restrictionNotice = view.restrictionNotice;
@@ -529,6 +554,10 @@ export function setupAiWindow(
 
     // 追问输入区。
     const followUpFormView = view.followUpForm;
+    if (followUpFormView !== null && !editingFailedQuestion) {
+      const draft = state.viewOf(conversationId).directQuestionDraft;
+      if (dom.followUpInput.value !== draft) dom.followUpInput.value = draft;
+    }
     dom.followUpForm.classList.toggle("hidden", followUpFormView === null);
     if (followUpFormView === null) {
       editingFailedQuestion = false;
@@ -582,6 +611,7 @@ export function setupAiWindow(
     if (pinnedToBottom) {
       dom.body.scrollTop = dom.body.scrollHeight;
     }
+    firstRender = false;
   }
 
   function applyStatusDot(dom: AiWindowDom, status: WindowStatus): void {
@@ -613,9 +643,16 @@ export function setupAiWindow(
     toggleMaterials,
     showFocusNotice,
     destroy(): void {
+      if (disposed) return;
+      if (displayMemory) {
+        displayMemory.scrollTop = dom.body.scrollTop;
+        displayMemory.pinnedToBottom = pinnedToBottom;
+      }
       disposed = true;
       clearFocusNoticeTimer();
       unsubscribe();
+      for (const cleanup of cleanups) cleanup();
+      cleanups.length = 0;
       root.remove();
     },
   };

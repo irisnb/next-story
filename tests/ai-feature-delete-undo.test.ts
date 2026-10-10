@@ -126,7 +126,7 @@ test("2.8 撤销读档期间切换作品，迟到内容不进入新作品", asyn
     await ui.undo.deleteDiscussion("archived");
     ui.onRead(ui.switchProject);
     await ui.undo.undoDelete();
-    assert.equal(ui.state.windows.size, 0);
+    assert.equal(ui.state.openDiscussionIds.size, 0);
     assert.equal(ui.state.conversations.length, 0);
   } finally { ui.undo.clearUndo(); }
 });

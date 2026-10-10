@@ -38,7 +38,6 @@ import { sameSelectionSnapshot } from "./shared-storage-and-selection-identity.t
 import type {
   AiPanelEvent,
   PendingReadingRequest,
-  WindowPlacement,
 } from "./ai-panel-events.ts";
 
 // 事件与配套载荷类型的单一事实源在 ai-panel-events.ts；此处重导出保持既有
@@ -47,18 +46,17 @@ export type {
   AiPanelEvent,
   PendingReadingRequest,
   ReadingProgress,
-  WindowPlacement,
 } from "./ai-panel-events.ts";
 
 /**
  * AI 面板核心状态的显式数据模型（reducer 的输入 / 输出）。
  *
- * 讨论集合模型（change: add-conversation-persistence-and-isolation）：
+ * 讨论集合模型（change: add-conversation-persistence-and-isolation；单面板迁移
+ * update-frontend-ui-v5 后不再保存停靠/浮动、聚焦窗口或多窗口几何）：
  * - `discussions`：当前作品内各讨论的完整运行期数据（身份、时间、关注文档、请求状态、
  *   已建立对话、首轮材料与锚点）。
- * - `windows`：当前打开的窗口集合（以讨论 id 为键，一讨论至多一个窗口）；
- *   `focusedConversationId`：当前聚焦窗口的讨论，替代旧单一 `activeConversationId`
- *   的显示语义。窗口几何（位置/尺寸/层叠）留在窗口层，不进状态、不持久化。
+ * - `focusedConversationId`：当前显示的讨论身份（单面板当前投影）；无当前投影时为 null。
+ *   不存在窗口容器/几何状态。
  * - `previewRequest`：首轮预检预览 / 阻塞提示等瞬态请求状态（不归属任何讨论）。
  * - `generation`：单调递增的代次计数器（ABA 安全：`newConversation` / 首轮接受 / reset 推进）。
  * - `nextTurnId`：讨论内追问轮次的单调编号。
@@ -73,9 +71,7 @@ export interface AiPanelCoreState {
   readonly deletedIds: ReadonlySet<string>;
   readonly opening: ReadonlyMap<string, { readonly error: string | null }>;
   readonly saveErrors: ReadonlyMap<string, string>;
-  /** 当前打开的窗口（键为讨论 id，一讨论至多一个窗口）。 */
-  readonly windows: ReadonlyMap<string, WindowPlacement>;
-  /** 当前聚焦窗口的讨论；无窗口时为 null。 */
+  /** 当前显示的讨论身份（单面板当前投影）；无当前投影时为 null。 */
   readonly focusedConversationId: string | null;
   readonly generation: number;
   readonly nextTurnId: number;
@@ -97,7 +93,6 @@ export function initialAiPanelCoreState(): AiPanelCoreState {
     deletedIds: new Set(),
     opening: new Map(),
     saveErrors: new Map(),
-    windows: new Map(),
     focusedConversationId: null,
     generation: 1,
     nextTurnId: 1,
@@ -130,6 +125,22 @@ export function activeRequestOf(state: AiPanelCoreState): PanelRequestState {
 function isFirstRoundInFlight(request: PanelRequestState): boolean {
   if (request.kind === "loading") return request.phase !== "follow_up";
   return request.kind === "first_preview" || request.kind === "first_blocked";
+}
+
+/**
+ * 该讨论当前是否有可等待授权的在途轮（首轮或追问正在生成，且未排队 / 未停止）。
+ * 迟到的按需补读授权请求不得在已停止、失败、完成或排队未发送的轮次上重现授权卡；
+ * 跨轮的同 messageId 迟到由传输层按在途消息身份拦截（`ai-session-transport`）。
+ */
+function canAwaitReadingAuthorization(discussion: Discussion): boolean {
+  const request = discussion.request;
+  if (request.kind === "direct_question") {
+    return request.status === "loading" && request.queued !== true;
+  }
+  if (request.kind === "loading") {
+    return request.queued !== true;
+  }
+  return false;
 }
 
 /** 讨论是否为空（未接受首轮）：无对话、无待首轮材料、请求为空闲。 */
@@ -226,7 +237,6 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        windows: new Map(state.windows).set(discussion.id, "docked"),
         focusedConversationId: discussion.id,
         generation: state.generation + 1,
       };
@@ -477,7 +487,6 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        windows: new Map(state.windows).set(discussion.id, "docked"),
         focusedConversationId: discussion.id,
         generation: state.generation + 1,
         pendingSelection: null,
@@ -607,7 +616,6 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        windows: new Map(state.windows).set(discussion.id, "docked"),
         focusedConversationId: discussion.id,
         generation: state.generation + 1,
         pendingSelection: null,
@@ -625,7 +633,6 @@ export function reduceAiPanelState(
         deletedIds: new Set(),
         opening: new Map(),
         saveErrors: new Map(),
-        windows: new Map(),
         focusedConversationId: null,
         generation: state.generation + 1,
         saveError: null,
@@ -667,7 +674,6 @@ export function reduceAiPanelState(
         visibility: "open",
         previewRequest: null,
         opening: new Map(state.opening).set(event.conversationId, { error: null }),
-        windows: new Map(state.windows).set(event.conversationId, "docked"),
         focusedConversationId: event.conversationId,
       };
     }
@@ -715,7 +721,7 @@ export function reduceAiPanelState(
     case "open_discussion": {
       const conversation = event.conversation;
       if (state.deletedIds.has(conversation.id)) return state;
-      if (state.windows.has(conversation.id) && !state.opening.has(conversation.id)) {
+      if (state.discussions.has(conversation.id) && !state.opening.has(conversation.id)) {
         return { ...state, visibility: "open", focusedConversationId: conversation.id };
       }
       const opening = new Map(state.opening);
@@ -736,19 +742,24 @@ export function reduceAiPanelState(
       };
       return {
         ...state,
-        visibility: "open",
+        // 完成读档只有当面板仍可见或本就未隐藏时才显示；隐藏期间完成不自动展开、不抢回投影。
+        visibility: state.opening.has(conversation.id) ? state.visibility : "open",
         previewRequest: null,
         opening,
         discussions: new Map(state.discussions).set(discussion.id, discussion),
-        // 一讨论至多一个窗口：已打开则聚焦，不重复创建。
-        windows: new Map(state.windows).set(discussion.id, state.windows.get(discussion.id) ?? "docked"),
         focusedConversationId: state.opening.has(discussion.id) ? state.focusedConversationId : discussion.id,
         generation: state.generation + 1,
         saveError: null,
       };
     }
     case "delete_discussion": {
-      if (!state.discussions.has(event.conversationId) && !state.summaries.has(event.conversationId) && !state.windows.has(event.conversationId)) return state;
+      if (
+        !state.discussions.has(event.conversationId) &&
+        !state.summaries.has(event.conversationId) &&
+        !state.opening.has(event.conversationId)
+      ) {
+        return state;
+      }
       const discussions = new Map(state.discussions);
       discussions.delete(event.conversationId);
       const summaries = new Map(state.summaries);
@@ -757,8 +768,6 @@ export function reduceAiPanelState(
       opening.delete(event.conversationId);
       const saveErrors = new Map(state.saveErrors);
       saveErrors.delete(event.conversationId);
-      const windows = new Map(state.windows);
-      windows.delete(event.conversationId);
       const drafts = new Map(state.directQuestionDrafts);
       drafts.delete(event.conversationId);
       const focusedConversationId =
@@ -770,7 +779,6 @@ export function reduceAiPanelState(
         opening,
         saveErrors,
         deletedIds: new Set(state.deletedIds).add(event.conversationId),
-        windows,
         directQuestionDrafts: drafts,
         focusedConversationId,
         ...(focusedConversationId === null ? { previewRequest: null } : {}),
@@ -841,25 +849,18 @@ export function reduceAiPanelState(
       }
       return setDiscussion(state, cleared);
     }
-    case "focus_window": {
-      if (!state.windows.has(event.conversationId)) return state;
-      if (state.focusedConversationId === event.conversationId) return state;
-      return { ...state, focusedConversationId: event.conversationId };
-    }
-    case "close_window": {
-      if (!state.windows.has(event.conversationId)) return state;
-      const windows = new Map(state.windows);
-      windows.delete(event.conversationId);
-      const opening = new Map(state.opening);
-      opening.delete(event.conversationId);
-      const focusedConversationId =
-        state.focusedConversationId === event.conversationId ? null : state.focusedConversationId;
+    case "select_discussion": {
+      // 单面板迁移：把已有运行期讨论选为当前投影，不读盘、不覆盖其对话。
+      const discussion = discussionById(state, event.conversationId);
+      if (!discussion) return state;
+      const alreadySelected =
+        state.focusedConversationId === event.conversationId &&
+        state.visibility === "open";
+      if (alreadySelected) return state;
       return {
         ...state,
-        windows,
-        opening,
-        focusedConversationId,
-        ...(focusedConversationId === null ? { previewRequest: null } : {}),
+        visibility: "open",
+        focusedConversationId: event.conversationId,
       };
     }
     case "retry_direct_question": {
@@ -882,24 +883,6 @@ export function reduceAiPanelState(
         conversation: { ...conversation, pending: { id: pending.id, question: pending.question, streamedText: "" } },
         request: followUpLoadingRequest(conversation.anchor, discussion.id, pending.id),
       });
-    }
-    case "set_window_placement": {
-      if (!state.windows.has(event.conversationId)) return state;
-      if (state.windows.get(event.conversationId) === event.placement) return state;
-      return {
-        ...state,
-        windows: new Map(state.windows).set(event.conversationId, event.placement),
-      };
-    }
-    case "reset_layout": {
-      let changed = false;
-      const windows = new Map<string, WindowPlacement>();
-      for (const [id, placement] of state.windows) {
-        if (placement !== "docked") changed = true;
-        windows.set(id, "docked");
-      }
-      if (!changed) return state;
-      return { ...state, windows };
     }
     case "queue_request": {
       const discussion = discussionById(state, event.conversationId);
@@ -1066,9 +1049,11 @@ export function reduceAiPanelState(
       });
     }
     case "reading_request": {
-      // 收到按需补读授权请求（任务 7.1）：显示授权卡，轮次挂起等待用户决定。
+      // 收到按需补读授权请求（任务 7.1）：仅当该讨论仍有可等待授权的在途轮时才显示
+      // 授权卡；已停止 / 失败 / 完成 / 排队未发送的轮次拒绝迟到请求，避免卡重现或污染下一轮。
       const discussion = discussionById(state, event.conversationId);
       if (!discussion) return state;
+      if (!canAwaitReadingAuthorization(discussion)) return state;
       const request: PendingReadingRequest = {
         sessionId: event.sessionId,
         messageId: event.messageId,

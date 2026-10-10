@@ -143,31 +143,31 @@ test("map view carries the three isomorphic zones with unified naming", () => {
   const data = library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id });
 
   const view = buildMakingMapView(data, chainA.id, chainA.versions[1].id)!;
-  // 三区命名逐字：「自定义要求」「固定底座」「每轮动态」；不出现「链路可变区」。
-  assert.equal(view.customZone.heading, "自定义要求");
+  // 三区命名逐字：「自定义要求与姿态」「固定底座」「每轮动态」；不出现「链路可变区」。
+  assert.equal(view.customZone.heading, "自定义提示词");
   assert.equal(view.customZone.affordanceLabel, "可改 · 可加");
   // 说明性副标（add-posture-slot）：不构成分区第二名称。
-  assert.equal(view.customZone.subtitle, "包含要求卡与姿态卡");
+  assert.equal(view.customZone.subtitle, "规定回应的方向与说话方式");
   // 两组同级：要求类（现行）＋姿态类（无姿态卡时组在、卡行空）。
-  assert.equal(view.customZone.requirementGroup.slotTitle, "要求类插槽");
+  assert.equal(view.customZone.requirementGroup.slotTitle, "回应要求");
   assert.equal(view.customZone.requirementGroup.cardCountLabel, "· 2 张卡");
   assert.deepEqual(
     view.customZone.requirementGroup.cards.map((card) => card.title),
     ["反差与反转", "保留不同可能"],
   );
-  assert.equal(view.customZone.postureGroup.slotTitle, "姿态类插槽");
+  assert.equal(view.customZone.postureGroup.slotTitle, "回应风格");
   assert.equal(view.customZone.postureGroup.cardCountLabel, "· 0 张卡");
   assert.deepEqual(view.customZone.postureGroup.cards, []);
-  assert.equal(view.baseZone.heading, "固定底座");
+  assert.equal(view.baseZone.heading, "公用基础提示词");
   assert.equal(view.baseZone.suffix, "共用 · 只读");
   assert.deepEqual(view.baseZone.items, MAKING_BASE_ITEMS.map((item) => item.title));
-  assert.equal(view.dynamicZone.heading, "每轮动态");
+  assert.equal(view.dynamicZone.heading, "本次问题与材料");
   assert.equal(view.dynamicZone.suffix, "自动");
   assert.deepEqual(view.dynamicZone.items, MAKING_DYNAMIC_ITEMS.map((item) => item.title));
   assert.equal(view.assemblyLabel, "组装");
-  assert.equal(view.outputLabel, "提示词");
-  assert.equal(view.outputSublabel, "组装输出");
-  assert.doesNotMatch(JSON.stringify(view), /链路可变区/, "用户可见命名统一「自定义要求」");
+  assert.equal(view.outputLabel, "完整提示词");
+  assert.equal(view.outputSublabel, "发给 AI 的说明");
+  assert.doesNotMatch(JSON.stringify(view), /链路可变区/, "用户可见命名统一「自定义要求与姿态」");
 
   // 连线数据：仅四条流线（三区→组装、组装→输出），无卡片间连线。
   assert.equal(view.wires.length, 4);
@@ -203,7 +203,7 @@ test("map view splits requirement and posture cards into their slot groups", () 
   const chainB = chain("纯姿态", [pure]);
   const pureView = buildMakingMapView(library([chainB]), chainB.id, pure.id)!;
   assert.deepEqual(pureView.customZone.requirementGroup.cards, []);
-  assert.match(pureView.customZone.requirementGroup.emptyNote, /还没有要求卡/);
+  assert.match(pureView.customZone.requirementGroup.emptyNote, /还没有回应要求/);
 });
 
 test("map view lists multiple posture cards side by side with honest counts", () => {
@@ -230,11 +230,11 @@ test("map view lists multiple posture cards side by side with honest counts", ()
 
   // 区级详情如实计数并列出全部卡名；「添加」恒提供两类目标（有卡可继续追加）。
   const zone = buildMakingDetail(library([chainA]), chainA.id, v.id, { kind: "custom-zone" })!;
-  assert.equal(zone.quickMeta, "要求类插槽 · 1 张卡；姿态类插槽 · 3 张卡");
+  assert.equal(zone.quickMeta, "回应要求 · 1 张卡；回应风格 · 3 张卡");
   assert.equal(zone.quickSummary, "反差与反转、傲娇搭档、吐槽视角、冷面旁观。");
   assert.deepEqual(
     zone.actions!.map((action) => action.label),
-    ["请制作助手添加要求卡", "请制作助手添加姿态卡"],
+    ["请制作助手添加回应要求", "请制作助手添加回应风格"],
   );
 });
 
@@ -329,7 +329,7 @@ test("card panel carries the full body and the five required items", () => {
   const chainA = chain("情节探索", [v1]);
   const panel = buildCardPanelView(library([chainA]), chainA.id, v1.id, v1.cards[0])!;
   assert.match(panel.identity, /卡名「反差与反转」/);
-  assert.match(panel.identity, /插槽：要求类/);
+  assert.match(panel.identity, /插槽：回应要求/);
   assert.match(panel.identity, /情节探索·第1版/);
   assert.equal(panel.whenToUse, "适用：a\n不适用：b");
   assert.equal(panel.howTo, body, "正文全文透传，不做概括");
@@ -349,7 +349,7 @@ test("posture card panel shows its slot, stored description, and the fixed note"
   const chainA = chain("情节探索", [v]);
   const panel = buildCardPanelView(library([chainA]), chainA.id, v.id, v.cards[0])!;
   // 身份行插槽＝姿态类；「何时用」＝所存描述＋固定说明（不自动切换）；「怎么做」正文原样。
-  assert.match(panel.identity, /插槽：姿态类/);
+  assert.match(panel.identity, /插槽：回应风格/);
   assert.match(panel.whenToUse, /^适用：日常陪想全程/);
   assert.match(panel.whenToUse, /供你判断何时选择此姿态，不会据此自动切换/);
   assert.equal(panel.howTo, body, "姿态卡正文原样，不概括不改写");
@@ -367,16 +367,16 @@ test("detail model unifies the three clickable sources with per-source operabili
   const card = buildMakingDetail(data, chainA.id, v3.id, { kind: "card", cardId: v3.cards[0].id })!;
   assert.equal(card.kind, "card");
   assert.equal(card.title, "反差与反转");
-  assert.equal(card.quickMeta, "要求类 · 情节探索·第3版");
+  assert.equal(card.quickMeta, "回应要求 · 情节探索·第3版");
   assert.equal(card.quickSummary, "适用：探索情节可能性时");
   assert.equal(card.quickHelp, "不适用：只讨论台词情绪时");
   assert.equal(card.quickNote, null, "要求卡不带姿态固定说明");
   assert.equal(card.hasFullDetail, true);
-  assert.equal(card.eyebrow, "要求类 / 反差与反转");
+  assert.equal(card.eyebrow, "回应要求 / 反差与反转");
   assert.equal(card.card!.howTo, "正文", "怎么做＝完整正文");
   assert.deepEqual(
     card.actions!.map((action) => action.label),
-    ["请制作助手修改", "请制作助手删除", "请制作助手添加要求卡"],
+    ["请制作助手修改", "请制作助手删除", "请制作助手添加回应要求"],
   );
   assert.equal(card.actions![0].cardTitle, "反差与反转");
   assert.equal(card.actions![2].cardTitle, null, "添加落在插槽层");
@@ -386,11 +386,11 @@ test("detail model unifies the three clickable sources with per-source operabili
     kind: "card",
     cardId: chainA.versions[2].cards[0].id,
   })!;
-  assert.equal(draft.quickMeta, "要求类 · 情节探索·第4版 · 尚未启用");
+  assert.equal(draft.quickMeta, "回应要求 · 情节探索·第4版 · 尚未启用");
 
   // 固定底座／每轮动态：只读、无任何操作或配置控件，但有完整详情入口。
   const base = buildMakingDetail(data, chainA.id, v3.id, { kind: "base" })!;
-  assert.equal(base.title, "固定底座 · 共用 · 只读");
+  assert.equal(base.title, "公用基础提示词 · 共用 · 只读");
   assert.equal(base.actions, null);
   assert.equal(base.hasFullDetail, true);
   assert.deepEqual(
@@ -399,7 +399,7 @@ test("detail model unifies the three clickable sources with per-source operabili
   );
 
   const dynamic = buildMakingDetail(data, chainA.id, v3.id, { kind: "dynamic" })!;
-  assert.equal(dynamic.title, "每轮动态 · 自动");
+  assert.equal(dynamic.title, "本次问题与材料 · 自动");
   assert.equal(dynamic.actions, null);
   assert.equal(dynamic.hasFullDetail, true);
   assert.deepEqual(
@@ -410,27 +410,27 @@ test("detail model unifies the three clickable sources with per-source operabili
 
   // 自定义要求区／添加说明：快捷小窗说明＋「添加」操作；无全页形态。
   const zone = buildMakingDetail(data, chainA.id, v3.id, { kind: "custom-zone" })!;
-  assert.equal(zone.title, "自定义要求 · 可改 · 可加");
-  assert.equal(zone.quickMeta, "要求类插槽 · 2 张卡；姿态类插槽 · 0 张卡");
+  assert.equal(zone.title, "自定义提示词 · 可改 · 可加");
+  assert.equal(zone.quickMeta, "回应要求 · 2 张卡；回应风格 · 0 张卡");
   assert.equal(zone.hasFullDetail, false);
   // 无姿态卡时：区级「添加」明确两类目标（要求卡＋姿态卡）。
   assert.deepEqual(
     zone.actions!.map((action) => action.label),
-    ["请制作助手添加要求卡", "请制作助手添加姿态卡"],
+    ["请制作助手添加回应要求", "请制作助手添加回应风格"],
   );
 
   const add = buildMakingDetail(data, chainA.id, v3.id, { kind: "add-card" })!;
-  assert.equal(add.title, "要求类 · 添加要求卡");
+  assert.equal(add.title, "回应要求 · 添加回应要求");
   assert.equal(add.hasFullDetail, false);
   assert.deepEqual(add.actions!.map((action) => action.action), ["add"]);
 
   const addPosture = buildMakingDetail(data, chainA.id, v3.id, { kind: "add-posture-card" })!;
-  assert.equal(addPosture.title, "姿态类 · 添加姿态卡");
+  assert.equal(addPosture.title, "回应风格 · 添加回应风格");
   assert.equal(addPosture.hasFullDetail, false);
-  assert.equal(addPosture.quickSummary, "在姿态类插槽加入一张姿态卡（每版本可多张）。");
+  assert.equal(addPosture.quickSummary, "在回应风格中加入一张卡（每版本可多张）。");
   assert.deepEqual(
     addPosture.actions!.map((action) => action.label),
-    ["请制作助手添加姿态卡"],
+    ["请制作助手添加回应风格"],
   );
 
   // 来源失效（卡片不存在）：诚实返回 null。
@@ -447,8 +447,8 @@ test("posture card detail names its slot and omits the posture add entry", () =>
   const postureCard = v.cards[1]!;
 
   const detail = buildMakingDetail(data, chainA.id, v.id, { kind: "card", cardId: postureCard.id })!;
-  assert.equal(detail.quickMeta, "姿态类 · 情节探索·第2版 · 尚未启用");
-  assert.equal(detail.eyebrow, "姿态类 / 傲娇搭档");
+  assert.equal(detail.quickMeta, "回应风格 · 情节探索·第2版 · 尚未启用");
+  assert.equal(detail.eyebrow, "回应风格 / 傲娇搭档");
   assert.equal(detail.quickNote, "供你判断何时选择此姿态，不会据此自动切换");
   // 已有姿态卡：卡片详情不提供「添加」入口（修改／删除照常，均转制作对话）。
   assert.deepEqual(
@@ -459,10 +459,10 @@ test("posture card detail names its slot and omits the posture add entry", () =>
 
   // 有姿态卡时区级「添加」仍提供两类目标（2026-10-07 修订：姿态卡可多张、可继续追加）。
   const zone = buildMakingDetail(data, chainA.id, v.id, { kind: "custom-zone" })!;
-  assert.equal(zone.quickMeta, "要求类插槽 · 1 张卡；姿态类插槽 · 1 张卡");
+  assert.equal(zone.quickMeta, "回应要求 · 1 张卡；回应风格 · 1 张卡");
   assert.deepEqual(
     zone.actions!.map((action) => action.label),
-    ["请制作助手添加要求卡", "请制作助手添加姿态卡"],
+    ["请制作助手添加回应要求", "请制作助手添加回应风格"],
   );
 });
 
@@ -476,13 +476,13 @@ test("detail transfer prefill names the action and the target card", () => {
     "请制作助手删除「反差与反转」：",
   );
   assert.equal(
-    makingTransferPrefill({ action: "add", label: "请制作助手添加要求卡", cardTitle: null }),
-    "请制作助手添加要求卡：",
+    makingTransferPrefill({ action: "add", label: "请制作助手添加回应要求", cardTitle: null }),
+    "请制作助手添加回应要求：",
   );
   // 「添加」明确目标卡类型：姿态类入口的预填写明姿态卡。
   assert.equal(
-    makingTransferPrefill({ action: "add", label: "请制作助手添加姿态卡", cardTitle: null }),
-    "请制作助手添加姿态卡：",
+    makingTransferPrefill({ action: "add", label: "请制作助手添加回应风格", cardTitle: null }),
+    "请制作助手添加回应风格：",
   );
   // 姿态卡的修改／删除照常点名目标卡。
   assert.equal(
@@ -619,13 +619,13 @@ test("real index.html resolves the complete making DOM contract", () => {
     assert.ok(making.addCardBtn);
     // add-posture-slot：分区副标与姿态组为 index.html 静态节点（与要求类组同构），
     // 这里验证解析结果真实存在于文档且挂在正确的锚点下。
-    assert.equal(making.zoneSubtitle.textContent, "包含要求卡与姿态卡");
+    assert.equal(making.zoneSubtitle.textContent, "规定回应的方向与说话方式");
     assert.ok(making.zoneCustom.contains(making.zoneSubtitle), "副标在分区标题下方");
     assert.ok(making.postureGroup);
-    assert.equal(making.postureGroup.getAttribute("aria-label"), "姿态类插槽");
+    assert.equal(making.postureGroup.getAttribute("aria-label"), "回应风格");
     assert.ok(making.zoneScroll.contains(making.postureGroup), "姿态组在分区单一滚动区内");
     assert.ok(making.zoneScroll.contains(making.postureCardList));
-    assert.equal(making.addPostureCardBtn.textContent, "＋ 添加姿态卡");
+    assert.equal(making.addPostureCardBtn.textContent, "＋ 添加回应风格");
     assert.ok(making.addPostureCardBtn.closest(".making-card-group") === making.postureGroup, "入口归姿态组");
     // 同一文档重复解析返回同一元素。
     const again = getAppDom().making;
@@ -805,10 +805,16 @@ test("status bar tracks the global active chain and ignores browsing", async () 
     assert.equal(idle.classList.contains("hidden"), true);
     assert.match(makingElement(fixture, "making-status-text").textContent ?? "", /当前链路：情节探索·第3版/);
 
+    fixture.controller.setMakingObject(chainA.id);
+    assert.match(fixture.document.querySelector(`[data-chain-id="${chainA.id}"]`)?.textContent ?? "", /正在制作/);
+
     // 浏览另一条链路：导图标题变化，状态条不变（三态分离）。
     await browseChain(fixture, chainB.id);
     assert.match(makingElement(fixture, "making-inspector-title").textContent ?? "", /正在查看：对话打磨·第1版/);
     assert.equal(makingElement(fixture, "making-inspector-state").textContent, "尚未启用");
+    assert.match(fixture.document.querySelector(`[data-chain-id="${chainB.id}"]`)?.textContent ?? "", /正在查看/);
+    assert.doesNotMatch(fixture.document.querySelector(`[data-chain-id="${chainB.id}"]`)?.textContent ?? "", /正在制作|已启用/);
+    assert.match(fixture.document.querySelector(`[data-chain-id="${chainA.id}"]`)?.textContent ?? "", /正在制作.*已启用/);
     assert.match(makingElement(fixture, "making-status-text").textContent ?? "", /当前链路：情节探索·第3版/);
   } finally {
     fixture.restore();
@@ -855,19 +861,34 @@ test("the map renders zones, wires, and the reading notes with exact semantics",
   ]);
   const fixture = await makingFixture(library([chainA]));
   try {
+    // happy-dom 不计算布局；给出两档真实形状，验证连线端点随节点移动。
+    const bounds = (selector: string, x: number, y: number, width: number, height: number) => {
+      const element = fixture.document.querySelector(selector);
+      assert.ok(element);
+      Object.defineProperty(element, "getBoundingClientRect", { configurable: true, value: () => ({
+        x, y, left: x, top: y, right: x + width, bottom: y + height, width, height,
+      }) });
+    };
+    bounds("#making-graph", 100, 100, 600, 368);
+    bounds("#making-zone-custom", 100, 100, 306, 236);
+    bounds("#making-base-node", 100, 350, 306, 52);
+    bounds("#making-dynamic-node", 100, 416, 306, 52);
+    bounds(".making-assembly-node", 454, 259, 108, 50);
+    bounds("#making-output-node", 592, 249, 108, 70);
     await browseChain(fixture, chainA.id);
     // 三区命名与插槽组。
     const zone = makingElement(fixture, "making-zone-custom");
-    assert.equal(zone.getAttribute("aria-label"), "自定义要求");
-    assert.match(zone.textContent ?? "", /自定义要求/);
-    assert.match(zone.textContent ?? "", /包含要求卡与姿态卡/, "分区说明性副标呈现");
-    assert.match(zone.textContent ?? "", /要求类插槽/);
-    assert.match(zone.textContent ?? "", /姿态类插槽/, "姿态组与要求组同级呈现");
+    assert.equal(zone.getAttribute("aria-label"), "自定义提示词");
+    assert.equal(makingElement(fixture, "making-custom-trigger").textContent, "自定义提示词");
+    assert.match(zone.textContent ?? "", /规定回应的方向与说话方式/, "分区说明性副标呈现");
+    assert.match(zone.textContent ?? "", /回应要求/);
+    assert.match(zone.textContent ?? "", /回应风格/, "姿态组与要求组同级呈现");
     assert.match(makingElement(fixture, "making-card-count").textContent ?? "", /· 1 张卡/);
-    assert.match(makingElement(fixture, "making-base-node").textContent ?? "", /固定底座/);
-    assert.match(makingElement(fixture, "making-dynamic-node").textContent ?? "", /每轮动态/);
+    assert.match(makingElement(fixture, "making-base-node").textContent ?? "", /公用基础提示词/);
+    assert.match(makingElement(fixture, "making-dynamic-node").textContent ?? "", /本次问题与材料/);
     // 自定义要求区定高单一滚动：两组卡行与 ghost 都在同一滚动容器内（组内无独立滚动）。
     const scroll = makingElement(fixture, "making-zone-scroll");
+    assert.equal(scroll.getAttribute("aria-label"), "自定义提示词内容，可滚动");
     assert.ok(scroll.contains(makingElement(fixture, "making-card-list")), "要求组卡行在滚动内容内");
     assert.ok(scroll.contains(makingElement(fixture, "making-add-card-btn")), "要求组 ghost 在滚动内容尾部");
     assert.ok(scroll.contains(makingElement(fixture, "making-posture-card-list")), "姿态组在滚动内容内");
@@ -876,7 +897,7 @@ test("the map renders zones, wires, and the reading notes with exact semantics",
     // 无姿态卡：姿态组呈现同式 ghost 入口，不显示灰色占位假卡或「解锁」入口。
     const postureGhost = makingElement(fixture, "making-add-posture-btn") as HTMLButtonElement;
     assert.equal(postureGhost.hidden, false);
-    assert.equal(postureGhost.textContent, "＋ 添加姿态卡");
+    assert.equal(postureGhost.textContent, "＋ 添加回应风格");
     assert.equal(postureGhost.className, makingElement(fixture, "making-add-card-btn").className, "两组入口同式 ghost 样式");
     assert.equal(makingElement(fixture, "making-posture-card-list").children.length, 0, "无占位假卡");
     assert.match(makingElement(fixture, "making-posture-card-count").textContent ?? "", /· 0 张卡/);
@@ -884,6 +905,15 @@ test("the map renders zones, wires, and the reading notes with exact semantics",
     const paths = [...fixture.document.querySelectorAll("#making-wire-paths path")];
     assert.equal(paths.length, 4, "三区→组装 ×3＋组装→输出 ×1");
     assert.ok(paths.every((path) => path.getAttribute("marker-end") === "url(#making-arrow)"));
+    assert.equal(paths[0]!.getAttribute("d"), "M 306 118 H 330 V 184 H 354");
+    assert.equal(paths[3]!.getAttribute("d"), "M 462 184 H 492");
+    bounds("#making-graph", 100, 100, 540, 368);
+    bounds("#making-zone-custom", 100, 100, 266, 236);
+    bounds(".making-assembly-node", 398, 259, 96, 50);
+    bounds("#making-output-node", 524, 249, 96, 70);
+    await fixture.controller.refresh();
+    assert.equal(fixture.document.querySelector("#making-wires")!.getAttribute("viewBox"), "0 0 540 368");
+    assert.equal(fixture.document.querySelector("#making-wire-paths path")!.getAttribute("d"), "M 266 118 H 282 V 184 H 298");
     assert.equal(fixture.document.querySelectorAll("#making-card-list svg, #making-card-list path").length, 0);
     // 阅读说明条三句逐字，位于图区容器之外。
     const notes = makingElement(fixture, "making-reading-notes");
@@ -931,7 +961,7 @@ test("the posture group lists multiple card rows and keeps the add entry always 
     dispatchEvent(fixture.page, select, "change");
     await flushPromises();
     assert.equal(makingElement(fixture, "making-card-list").children.length, 0);
-    assert.match(makingElement(fixture, "making-no-cards").textContent ?? "", /还没有要求卡/, "要求组空态不误称「还没有卡片」");
+    assert.match(makingElement(fixture, "making-no-cards").textContent ?? "", /还没有回应要求/, "要求组空态不误称「还没有卡片」");
     assert.equal(fixture.document.querySelectorAll("#making-posture-card-list .making-card-row").length, 1);
     assert.equal((makingElement(fixture, "making-add-posture-btn") as HTMLButtonElement).hidden, false, "纯姿态版本入口同样常驻");
 
@@ -942,7 +972,7 @@ test("the posture group lists multiple card rows and keeps the add entry always 
     await flushPromises();
     const host = makingElement(fixture, "making-quick-panel");
     assert.equal(host.dataset.source, "card");
-    assert.match(host.textContent ?? "", /姿态类 · 情节探索·第1版/);
+    assert.match(host.textContent ?? "", /回应风格 · 情节探索·第1版/);
     assert.match(host.textContent ?? "", /供你判断何时选择此姿态，不会据此自动切换/);
   } finally {
     fixture.restore();
@@ -958,19 +988,19 @@ test("the posture add entry transfers to the making conversation with an explici
     click(fixture, "making-add-posture-btn");
     const host = makingElement(fixture, "making-quick-panel");
     assert.equal(host.dataset.source, "add-posture-card");
-    assert.match(host.textContent ?? "", /姿态类 · 添加姿态卡/);
+    assert.match(host.textContent ?? "", /回应风格 · 添加回应风格/);
     assert.match(host.textContent ?? "", /导图不直接编辑/);
     assert.equal(makingElement(fixture, "making-add-posture-btn").getAttribute("aria-expanded"), "true");
     // 「添加」明确目标类型：转入制作对话（不改全局启用指针），焦点落输入区。
     const add = [...fixture.document.querySelectorAll<HTMLButtonElement>("#making-quick-panel button")]
-      .find((button) => button.textContent === "请制作助手添加姿态卡");
+      .find((button) => button.textContent === "请制作助手添加回应风格");
     assert.ok(add);
     add.click();
     await flushPromises();
     assert.equal(makingElement(fixture, "module-making").dataset.makingView, "chat", "切到「制作对话」标签");
     assert.equal(fixture.controller.makingChainId, chainA.id, "转接是显式的制作对象切换");
     const input = makingElement(fixture, "making-conversation-input") as HTMLTextAreaElement;
-    assert.match(input.value, /^请制作助手添加姿态卡：$/);
+    assert.match(input.value, /^请制作助手添加回应风格：$/);
     assert.equal(makingElement(fixture, "making-quick-panel").classList.contains("hidden"), true, "小窗已收起");
     // 不改全局启用指针：浏览未启用链路发起转接后，状态条仍是未启用。
     assert.equal(makingElement(fixture, "making-status-idle").classList.contains("hidden"), false);
@@ -1023,13 +1053,13 @@ test("three detail sources open the same quick window host in turn", async () =>
 
     click(fixture, "making-base-node");
     assert.equal(host.dataset.source, "base");
-    assert.match(host.textContent ?? "", /固定底座 · 共用 · 只读/);
+    assert.match(host.textContent ?? "", /公用基础提示词 · 共用 · 只读/);
     assert.match(host.textContent ?? "", /红线/);
     assert.equal(cardRow.getAttribute("aria-expanded"), "false", "上一个来源的展开态复位");
 
     click(fixture, "making-dynamic-node");
     assert.equal(host.dataset.source, "dynamic");
-    assert.match(host.textContent ?? "", /每轮动态 · 自动/);
+    assert.match(host.textContent ?? "", /本次问题与材料 · 自动/);
     // 只读来源的小窗没有任何操作按钮（仅「关闭详情」与「打开完整详情」）。
     const buttons = [...host.querySelectorAll("button")].map((button) => button.textContent);
     assert.deepEqual([...buttons].sort(), ["关闭详情", "打开完整详情"]);
@@ -1107,7 +1137,7 @@ test("full detail occupies the map view and returns to the quick window", async 
     assert.match(bodies[0]!, /卡名「反差与反转」/);
     assert.equal(bodies[2], body, "完整正文");
     assert.match(bodies[4]!, /1 次试问记录/);
-    assert.match(makingElement(fixture, "making-full-eyebrow").textContent ?? "", /要求类 \/ 反差与反转/);
+    assert.match(makingElement(fixture, "making-full-eyebrow").textContent ?? "", /回应要求 \/ 反差与反转/);
 
     // 返回导图：恢复图区与原来源（卡片）的快捷小窗，不跳回别的来源。
     // 返回会重渲染卡片五项并再排一轮试问记录的异步读取（trial_list_for_version
@@ -1186,14 +1216,14 @@ test("card detail actions transfer to the making conversation", async () => {
     click(fixture, "making-add-card-btn");
     assert.match(makingElement(fixture, "making-quick-panel").textContent ?? "", /导图不直接编辑/);
     const add = [...fixture.document.querySelectorAll<HTMLButtonElement>("#making-quick-panel button")]
-      .find((button) => button.textContent === "请制作助手添加要求卡");
+      .find((button) => button.textContent === "请制作助手添加回应要求");
     assert.ok(add);
     add.click();
     await flushPromises();
     assert.equal(makingElement(fixture, "module-making").dataset.makingView, "chat");
     assert.match(
       (makingElement(fixture, "making-conversation-input") as HTMLTextAreaElement).value,
-      /^请制作助手添加要求卡：$/,
+      /^请制作助手添加回应要求：$/,
     );
   } finally {
     fixture.restore();

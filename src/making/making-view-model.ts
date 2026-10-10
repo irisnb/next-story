@@ -17,7 +17,7 @@ import type {
  *   「生效／成功／正在执行」类视觉与措辞）；
  * - 制作对话标题＝正在制作什么（由控制器单独承载）；
  * - 箭头只表达「分区→组装」「组装→输出」，卡片之间永不生成连线；
- * - 用户可见命名一律「自定义要求」（原内部名「链路可变区」退役）。
+ * - 用户可见来源名称为「自定义提示词」「公用基础提示词」「本次问题与材料」。
  */
 
 /** 导图免责说明句（不暗示 AI 内部思考过程；呈现于阅读说明条）。 */
@@ -58,7 +58,7 @@ export const MAKING_BASE_ITEMS: readonly {
   readonly description: string;
 }[] = [
   { key: "redline", title: "红线", description: "AI 不改写你的文档；回复只是临时材料，判断权始终在你手里。" },
-  { key: "stance", title: "骨（底线立场）", description: "AI 只提观察、问题与可能性，不替你判断创意高低，不把假设当成事实。" },
+  { key: "stance", title: "基本立场", description: "AI 只提观察、问题与可能性，不替你判断创意高低，不把假设当成事实。" },
   { key: "tools", title: "工具", description: "阅读、检索等公共能力对所有链路一样可用，不按链路分档。" },
   { key: "materials", title: "材料规则", description: "AI 只按你授权的范围读取作品材料；链路不改变任何读取授权。" },
 ];
@@ -73,8 +73,8 @@ export const MAKING_DYNAMIC_ITEMS: readonly {
   readonly description: string;
 }[] = [
   { key: "question", title: "你的问题", description: "来自本轮提问。" },
-  { key: "materials", title: "当轮材料", description: "按既有取材、可见性与授权规则准备，自动加入不等于任意读取作品。" },
-  { key: "entry", title: "入口", description: "说明本轮从直接提问还是选区召唤发起。" },
+  { key: "materials", title: "参考材料", description: "按既有取材、可见性与授权规则准备，自动加入不等于任意读取作品。" },
+  { key: "entry", title: "提问方式", description: "说明本轮从直接提问还是选区召唤发起。" },
 ];
 
 /** 每轮动态详情的尾注（明示「自动」语义，不给配置暗示）。 */
@@ -87,11 +87,11 @@ export const MAKING_DETAIL_ACTION_LABELS: readonly {
 }[] = [
   { action: "modify", label: "请制作助手修改" },
   { action: "delete", label: "请制作助手删除" },
-  { action: "add", label: "请制作助手添加要求卡" },
+  { action: "add", label: "请制作助手添加回应要求" },
 ];
 
 /** 「添加」操作的目标类型必须明确（add-posture-slot 任务 4.2）：姿态类专用文案。 */
-export const MAKING_ADD_POSTURE_CARD_LABEL = "请制作助手添加姿态卡";
+export const MAKING_ADD_POSTURE_CARD_LABEL = "请制作助手添加回应风格";
 
 /**
  * 姿态卡「何时用」的固定说明（add-posture-slot D3）：触发描述仅供选择参考，
@@ -104,9 +104,9 @@ export function slotTypeOf(card: RequirementCard): CardSlotType {
   return card.slot_type === "posture" ? "posture" : "requirement";
 }
 
-/** 插槽显示名：要求类／姿态类（详情身份行与快捷 meta 共用）。 */
+/** 插槽显示名：回应要求／回应风格（仅显示映射，底层类型不改）。 */
 export function slotTypeLabel(slotType: CardSlotType): string {
-  return slotType === "posture" ? "姿态类" : "要求类";
+  return slotType === "posture" ? "回应风格" : "回应要求";
 }
 
 /** 顶部状态条的显示决策（数据源＝链路库 active 指针，非当前检视对象）。 */
@@ -253,20 +253,20 @@ export interface MakingMapView {
   readonly versionOptions: readonly { readonly versionId: string; readonly label: string }[];
   /** 自定义要求区（用户可改的零件分区；原内部名「链路可变区」退役）。 */
   readonly customZone: {
-    readonly heading: "自定义要求";
+    readonly heading: "自定义提示词";
     readonly affordanceLabel: "可改 · 可加";
     /** 说明性副标（add-posture-slot D7）：不构成该分区的第二名称。 */
-    readonly subtitle: "包含要求卡与姿态卡";
+    readonly subtitle: "规定回应的方向与说话方式";
     /** 要求类插槽组（现行；可多张）。 */
     readonly requirementGroup: {
-      readonly slotTitle: "要求类插槽";
+      readonly slotTitle: "回应要求";
       readonly cardCountLabel: string;
       readonly cards: readonly MakingMapCardRow[];
       readonly emptyNote: string;
     };
     /** 姿态类插槽组（add-posture-slot；2026-10-07 修订：每版本可多张，排在要求组下方）。 */
     readonly postureGroup: {
-      readonly slotTitle: "姿态类插槽";
+      readonly slotTitle: "回应风格";
       readonly cardCountLabel: string;
       /** 姿态卡卡行（多张并列呈现；无姿态卡时为空数组）。 */
       readonly cards: readonly MakingMapCardRow[];
@@ -274,19 +274,19 @@ export interface MakingMapView {
   };
   /** 固定底座区（所有链路共用·只读；任何链路、任何版本、任何状态完全一致）。 */
   readonly baseZone: {
-    readonly heading: "固定底座";
+    readonly heading: "公用基础提示词";
     readonly suffix: "共用 · 只读";
     readonly items: readonly string[];
   };
   /** 每轮动态区（自动；无 hover 可点态）。 */
   readonly dynamicZone: {
-    readonly heading: "每轮动态";
+    readonly heading: "本次问题与材料";
     readonly suffix: "自动";
     readonly items: readonly string[];
   };
   readonly assemblyLabel: "组装";
-  readonly outputLabel: "提示词";
-  readonly outputSublabel: "组装输出";
+  readonly outputLabel: "完整提示词";
+  readonly outputSublabel: "发给 AI 的说明";
   /** 连线数据（固定四条流线；见 MAP_WIRE_PATHS）。 */
   readonly wires: readonly MakingWireView[];
 }
@@ -367,35 +367,35 @@ export function buildMakingMapView(
           : `第${candidate.index}版`,
       })),
     customZone: {
-      heading: "自定义要求",
+      heading: "自定义提示词",
       affordanceLabel: "可改 · 可加",
-      subtitle: "包含要求卡与姿态卡",
+      subtitle: "规定回应的方向与说话方式",
       requirementGroup: {
-        slotTitle: "要求类插槽",
+        slotTitle: "回应要求",
         cardCountLabel: `· ${requirementCards.length} 张卡`,
         cards: requirementCards.map((card) => ({ cardId: card.id, title: card.title })),
         // 空态说明限定要求类（纯姿态版本允许：姿态组有卡时这里的「还没有」只指要求卡）。
-        emptyNote: "这个版本还没有要求卡。可以在制作对话里口述要求，让助手起草。",
+        emptyNote: "这个版本还没有回应要求。可以在制作对话里口述要求，让助手起草。",
       },
       postureGroup: {
-        slotTitle: "姿态类插槽",
+        slotTitle: "回应风格",
         cardCountLabel: `· ${postureCards.length} 张卡`,
         cards: postureCards.map((card) => ({ cardId: card.id, title: card.title })),
       },
     },
     baseZone: {
-      heading: "固定底座",
+      heading: "公用基础提示词",
       suffix: "共用 · 只读",
       items: MAKING_BASE_ITEMS.map((item) => item.title),
     },
     dynamicZone: {
-      heading: "每轮动态",
+      heading: "本次问题与材料",
       suffix: "自动",
       items: MAKING_DYNAMIC_ITEMS.map((item) => item.title),
     },
     assemblyLabel: "组装",
-    outputLabel: "提示词",
-    outputSublabel: "组装输出",
+    outputLabel: "完整提示词",
+    outputSublabel: "发给 AI 的说明",
     wires: MAP_WIRE_PATHS.map((d) => ({ d })),
   };
 }
@@ -528,13 +528,13 @@ export function buildMakingDetail(
     const postureCards = version.cards.filter((card) => slotTypeOf(card) === "posture");
     return {
       kind: "custom-zone",
-      title: "自定义要求 · 可改 · 可加",
-      quickMeta: `要求类插槽 · ${requirementCards.length} 张卡；姿态类插槽 · ${postureCards.length} 张卡`,
+      title: "自定义提示词 · 可改 · 可加",
+      quickMeta: `回应要求 · ${requirementCards.length} 张卡；回应风格 · ${postureCards.length} 张卡`,
       quickSummary: version.cards.length > 0
         ? `${[...requirementCards, ...postureCards].map((card) => card.title).join("、")}。`
         : "这个版本还没有卡片。",
       quickHelp: null,
-      quickNote: "通过制作对话调整卡片或添加要求／姿态。选择具体卡片后查看它的完整详情。",
+      quickNote: "通过制作对话调整卡片或添加回应要求／回应风格。选择具体卡片后查看它的完整详情。",
       hasFullDetail: false,
       eyebrow: null,
       card: null,
@@ -548,13 +548,13 @@ export function buildMakingDetail(
   if (source.kind === "base") {
     return {
       kind: "base",
-      title: "固定底座 · 共用 · 只读",
+      title: "公用基础提示词 · 共用 · 只读",
       quickMeta: null,
       quickSummary: null,
       quickHelp: null,
       quickNote: null,
       hasFullDetail: true,
-      eyebrow: "共用 · 只读 / 固定底座",
+      eyebrow: "共用 · 只读 / 公用基础提示词",
       card: null,
       readonlyItems: MAKING_BASE_ITEMS.map(({ title, description }) => ({ title, description })),
       readonlyNote: null,
@@ -565,13 +565,13 @@ export function buildMakingDetail(
   if (source.kind === "dynamic") {
     return {
       kind: "dynamic",
-      title: "每轮动态 · 自动",
+      title: "本次问题与材料 · 自动",
       quickMeta: null,
       quickSummary: null,
       quickHelp: null,
       quickNote: null,
       hasFullDetail: true,
-      eyebrow: "自动 / 每轮动态",
+      eyebrow: "自动 / 本次问题与材料",
       card: null,
       readonlyItems: MAKING_DYNAMIC_ITEMS.map(({ title, description }) => ({ title, description })),
       readonlyNote: MAKING_DYNAMIC_NOTE,
@@ -582,9 +582,9 @@ export function buildMakingDetail(
   if (source.kind === "add-posture-card") {
     return {
       kind: "add-posture-card",
-      title: "姿态类 · 添加姿态卡",
+      title: "回应风格 · 添加回应风格",
       quickMeta: null,
-      quickSummary: "在姿态类插槽加入一张姿态卡（每版本可多张）。",
+      quickSummary: "在回应风格中加入一张卡（每版本可多张）。",
       quickHelp: "通过制作对话描述你希望 AI 以什么姿态出场；导图不直接编辑。",
       quickNote: null,
       hasFullDetail: false,
@@ -598,9 +598,9 @@ export function buildMakingDetail(
 
   return {
     kind: "add-card",
-    title: "要求类 · 添加要求卡",
+    title: "回应要求 · 添加回应要求",
     quickMeta: null,
-    quickSummary: "在要求类插槽中加入一张卡。",
+    quickSummary: "在回应要求中加入一张卡。",
     quickHelp: "通过制作对话说明你希望增加什么要求；导图不直接编辑。",
     quickNote: null,
     hasFullDetail: false,

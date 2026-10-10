@@ -18,7 +18,6 @@ import { AiPanelState } from "./ai-panel-state.ts";
 import {
   buildDiscussionRecord,
   conversationFromRecord,
-  isConversationRestrictedForRecovery,
   type ReadonlyTemporaryConversation,
 } from "./ai-panel-conversation.ts";
 import { waitTiming } from "./ai-timing.ts";
@@ -132,6 +131,11 @@ export interface AiFeatureController {
   deleteDiscussion(conversationId: string): Promise<void>;
   /** 权限变更后重算已打开讨论的材料限制并锁存（任务 5.2/5.4）。 */
   recomputeRestrictions(): void;
+  /**
+   * 文档切换的业务钩子：清未发送的实时选区重点提示，保留各讨论草稿、绑定与冻结材料。
+   * 由编辑器/显示泳道在切换文档时调用（AI 业务不自行监听文档切换）。
+   */
+  clearUnsentSelection(): void;
   drainPendingSaves(): Promise<void>;
   destroy(): void;
 }
@@ -438,17 +442,23 @@ export function setupAiFeature(
   function openDiscussion(summary: ConversationSummary): void {
     const id = summary.conversation_id;
     if (state.isDeleted(id)) return;
-    if (state.windows.has(id)) {
-      state.open();
-      state.focusWindow(id);
+    // 重开已有运行期讨论：直接选为当前投影，不重新读盘覆盖正在生成/排队/授权状态。
+    if (state.hasRuntimeConversation(id)) {
+      state.selectDiscussion(id);
+      return;
+    }
+    // 已加载但尚无对话的运行期讨论（空讨论）：选为当前投影，不读盘。
+    if (state.getDiscussion(id) !== null) {
+      state.selectDiscussion(id);
       return;
     }
     const projectPath = context.getCurrentProjectPath();
     if (projectPath === null) return;
     const token = context.getProjectToken();
     const opening = state.beginOpenDiscussion(id);
+    // 读档按讨论身份归入：隐藏/切换投影不使有效读档失效，也不抢回当前投影。
     const current = (): boolean => !context.isDestroyed() && context.getProjectToken() === token &&
-      !state.isDeleted(id) && state.windows.has(id) && state.openingToken(id) === opening;
+      !state.isDeleted(id) && state.isOpeningValid(id, opening);
     void readConversation(projectPath, id).then((record) => {
       if (!current()) return;
       const hidden = context.hiddenDocumentIds();
@@ -743,29 +753,24 @@ export function setupAiFeature(
   });
   const unsubscribeDriverLost = transport.onDriverLost(() => {
     if (context.isDestroyed()) return;
-    // 驱动进程丢失：所有会话失效，在途请求作废；对每个打开窗口的讨论执行重放恢复。
+    // 驱动进程丢失：所有会话失效，在途请求作废；对全部有效讨论（不按当前可见窗口）
+    // 执行重放恢复。材料权限受限的讨论不得把显示历史重放给 DSH（保留面板历史，
+    // 不重建可继续上下文）。按当前 hiddenDocumentIds 重算：打开后新隐藏的来源文档
+    // 也会被拦下，不重放。
     context.getCoordinator().releaseStaleRequestOwnership();
-    const recoverable = [...context.state.windows.keys()].filter((id) => {
-      const discussion = context.state.getDiscussion(id);
-      return (
-        discussion !== null &&
-        discussion.conversation !== null &&
-        // 材料权限受限的讨论不得把显示历史重放给 DSH（保留面板历史，不重建可继续上下文）。
-        // 按当前 hiddenDocumentIds 重算：打开后新隐藏的来源文档也会被拦下，不重放。
-        !isConversationRestrictedForRecovery(discussion.conversation, context.hiddenDocumentIds())
-      );
-    });
+    const recoverable = context.state.recoverableConversationIds(context.hiddenDocumentIds());
     if (recoverable.length === 0) {
       context.getTransport().endAllSessions();
       return;
     }
     for (const conversationId of recoverable) {
-      const discussion = context.state.getDiscussion(conversationId)!;
+      const discussion = context.state.getDiscussion(conversationId);
+      if (!discussion?.conversation) continue;
       if (!context.state.beginRecovery(conversationId)) continue;
       context.getTransport().replaySession(
         conversationId,
-        historyTurnsOf(discussion.conversation!),
-        originOf(discussion.conversation!),
+        historyTurnsOf(discussion.conversation),
+        originOf(discussion.conversation),
       )
         .then(() => {
           if (context.isDestroyed()) return;
@@ -893,6 +898,10 @@ export function setupAiFeature(
     openDiscussion,
     deleteDiscussion,
     recomputeRestrictions,
+    clearUnsentSelection(): void {
+      if (context.isDestroyed()) return;
+      context.state.clearUnsentSelection();
+    },
     drainPendingSaves,
     destroy,
   };

@@ -3,6 +3,7 @@
 // （getSelection/getDocument/runCommand/canUndo/canRedo），不依赖完整编辑器控制器。
 
 import type { JSONContent } from "@tiptap/core";
+import { linkHrefAt } from "./editor-link-actions.ts";
 
 import type { AppDom } from "./dom.ts";
 import {
@@ -35,9 +36,9 @@ const MARGIN_LABELS: Record<MarginPreset, string> = {
 };
 
 const COLUMN_WIDTH_LABELS: Record<ColumnWidthPreset, string> = {
-  narrow: "窄",
-  standard: "标准",
-  wide: "宽",
+  narrow: "窄 · 640",
+  standard: "标准 · 720",
+  wide: "宽 · 860",
 };
 
 /** 编号样式子菜单的五值（与有序列表按钮旁 flyout 的 data-style 一一对应）。 */
@@ -202,6 +203,21 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnUndo.disabled = true;
     dom.btnRedo.disabled = true;
     for (const control of drawerControls) control.disabled = true;
+    if (typeof document !== "undefined") {
+      for (const id of ["toolbar-link-url", "toolbar-link-save", "toolbar-link-remove"]) {
+        const control = document.getElementById(id) as HTMLInputElement | HTMLButtonElement | null;
+        if (control) control.disabled = true;
+      }
+    }
+    notifyFormatRendered();
+  }
+
+  function notifyFormatRendered(): void {
+    if (typeof document === "undefined" || typeof document.dispatchEvent !== "function" ||
+      typeof document.createEvent !== "function") return;
+    const event = document.createEvent("Event");
+    event.initEvent("writing-format-rendered", false, false);
+    document.dispatchEvent(event);
   }
 
   function render(): void {
@@ -279,6 +295,16 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnUndo.disabled = !canUndo;
     dom.btnRedo.disabled = !canRedo;
     for (const control of drawerControls) control.disabled = !hasSelection;
+    if (typeof document !== "undefined") {
+      const url = document.getElementById("toolbar-link-url") as HTMLInputElement | null;
+      const save = document.getElementById("toolbar-link-save") as HTMLButtonElement | null;
+      const remove = document.getElementById("toolbar-link-remove") as HTMLButtonElement | null;
+      const href = linkHrefAt(current.getDocument(), selection.from, selection.to);
+      if (url) { url.disabled = !hasSelection; if (document.activeElement !== url) url.value = href ?? ""; }
+      if (save) save.disabled = !hasSelection;
+      if (remove) remove.disabled = !hasSelection || href === null;
+    }
+    notifyFormatRendered();
   }
 
   function runFormatCommand(command: FormatCommand): boolean {
@@ -364,6 +390,16 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
 
   bind(dom.btnUndo, "click", () => runFormatCommand({ kind: "undo" }));
   bind(dom.btnRedo, "click", () => runFormatCommand({ kind: "redo" }));
+  if (typeof document !== "undefined") {
+    const url = document.getElementById("toolbar-link-url") as HTMLInputElement | null;
+    const save = document.getElementById("toolbar-link-save");
+    const remove = document.getElementById("toolbar-link-remove");
+    if (save && url) bind(save, "click", () => {
+      const href = url.value.trim();
+      if (href) runSelectionCommand({ kind: "setLink", href });
+    });
+    if (remove) bind(remove, "click", () => runSelectionCommand({ kind: "unsetLink" }));
+  }
   bind(dom.paragraphStyle, "change", () => {
     if (!hasSelection()) return;
     const value = dom.paragraphStyle.value;

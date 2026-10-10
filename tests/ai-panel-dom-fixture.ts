@@ -176,8 +176,8 @@ export class FakeElement {
 
 /** 窗口模板里所需的全部 `data-role`。 */
 export const AI_WINDOW_ROLES = [
-  "drag-handle", "grip", "status-dot", "title", "doc", "focus-switch", "badge",
-  "materials-toggle", "stop", "more", "close", "body", "resize",
+  "discussion-header", "status-dot", "title", "doc", "focus-switch", "badge",
+  "materials-toggle", "stop", "more", "close", "body",
   "snapshot-block", "snapshot-text", "welcome", "loading", "response",
   "materials-panel", "materials-body", "materials-close",
   "reading-request", "reading-request-title", "reading-request-reason",
@@ -250,14 +250,14 @@ export function createAiWindowFixture(conversationId: string): {
     roles.get("follow-up-form")!,
     roles.get("direct-question")!,
   );
-  const head = roles.get("drag-handle")!;
+  const head = roles.get("discussion-header")!;
   head.append(
-    roles.get("grip")!, roles.get("status-dot")!, roles.get("title")!,
+    roles.get("status-dot")!, roles.get("title")!,
     roles.get("doc")!, roles.get("focus-switch")!, roles.get("badge")!,
     roles.get("materials-toggle")!, roles.get("stop")!,
     roles.get("more")!, roles.get("close")!,
   );
-  root.append(head, body, input, roles.get("resize")!);
+  root.append(head, body, input);
   return { root, roles };
 }
 
@@ -275,11 +275,12 @@ export function createAiDockDomFixture(): {
   const count = new FakeElement("ai-dock-count");
   const notice = new FakeElement("ai-dock-notice", ["hidden"]);
   const body = new FakeElement("ai-dock-body", ["ai-dock-body"]);
-  const floatLayer = new FakeElement("ai-dock-float-layer", ["ai-dock-float-layer"]);
   const listToggleBtn = new FakeElement("ai-conversation-list-toggle");
   const newConversationBtn = new FakeElement("ai-new-conversation");
   const moreBtn = new FakeElement("ai-dock-more");
   const collapseBtn = new FakeElement("ai-dock-collapse");
+  const maximizeBtn = new FakeElement("ai-dock-maximize");
+  const divider = new FakeElement("ai-dock-divider");
   const conversationList = new FakeElement("ai-conversation-list", ["hidden"]);
   const conversationListCloseBtn = new FakeElement("ai-conversation-list-close");
   const conversationListItems = new FakeElement("ai-conversation-list-items");
@@ -302,7 +303,7 @@ export function createAiDockDomFixture(): {
     return win.root;
   };
 
-  for (const el of [dock, rail, count, notice, body, floatLayer, listToggleBtn, newConversationBtn, moreBtn, collapseBtn, conversationList, conversationListCloseBtn, conversationListItems, conversationListEmpty, listNewConversationBtn, searchInput, railNewBtn, railListBtn, railMoreBtn, railExpandBtn, railDot, template]) {
+  for (const el of [dock, rail, count, notice, body, listToggleBtn, newConversationBtn, moreBtn, collapseBtn, maximizeBtn, divider, conversationList, conversationListCloseBtn, conversationListItems, conversationListEmpty, listNewConversationBtn, searchInput, railNewBtn, railListBtn, railMoreBtn, railExpandBtn, railDot, template]) {
     elements.set(el.id, el);
   }
 
@@ -312,12 +313,13 @@ export function createAiDockDomFixture(): {
     count: count as unknown as HTMLElement,
     notice: notice as unknown as HTMLElement,
     body: body as unknown as HTMLElement,
-    floatLayer: floatLayer as unknown as HTMLElement,
     windowTemplate: template as unknown as HTMLTemplateElement,
     listToggleBtn: listToggleBtn as unknown as HTMLButtonElement,
     newConversationBtn: newConversationBtn as unknown as HTMLButtonElement,
     moreBtn: moreBtn as unknown as HTMLButtonElement,
     collapseBtn: collapseBtn as unknown as HTMLButtonElement,
+    maximizeBtn: maximizeBtn as unknown as HTMLButtonElement,
+    divider: divider as unknown as HTMLElement,
     conversationList: conversationList as unknown as HTMLElement,
     conversationListCloseBtn: conversationListCloseBtn as unknown as HTMLButtonElement,
     conversationListItems: conversationListItems as unknown as HTMLElement,
@@ -382,9 +384,10 @@ export function collectText(element: FakeElement): string {
 /** 导出给测试断言用的窗口契约类型引用（避免误用）。 */
 export type { AiWindowDom };
 
-/** 安装供窗口渲染使用的假全局 document（createElement 返回 FakeElement）。 */
+/** 安装供窗口渲染使用的假全局 document / window（createElement 返回 FakeElement）。 */
 export function installDocument(): { restore(): void; body: FakeElement } {
   const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
   const body = new FakeElement("body");
   globalThis.document = {
     getElementById: () => null,
@@ -394,7 +397,18 @@ export function installDocument(): { restore(): void; body: FakeElement } {
     removeEventListener: () => {},
     body,
   } as unknown as Document;
-  return { restore: () => { globalThis.document = previousDocument; }, body };
+  // 单面板外壳在装配时监听 window resize（调整面板宽度/布局），测试环境须提供最小 window。
+  globalThis.window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as Window & typeof globalThis;
+  return {
+    restore: () => {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    },
+    body,
+  };
 }
 
 /** 安装 AI feature 集成测试所需的完整假 DOM 环境（停靠区 + 编辑器 + 全局 document）。 */

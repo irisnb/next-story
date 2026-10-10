@@ -1,0 +1,2 @@
+<!-- Approved standard geometry and main stroke unchanged. Border-only optical bridge at 32px: .5px #aaa. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect x="8" y="8" width="240" height="240" rx="42" fill="#fff" stroke="#aaa" stroke-width="4"/><path d="M145 200H75V57H141L183 99H141V57M183 99V163Q183 181 163 181H107V122H151" fill="none" stroke="#252525" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>

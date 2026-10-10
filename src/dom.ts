@@ -1,5 +1,5 @@
 /**
- * AI 停靠区与讨论窗口的显式 DOM 依赖契约。
+ * AI 单面板与当前讨论的显式 DOM 依赖契约。
  *
  * 窗口初始化只消费 `AiWindowDom`（按窗口根节点解析，`buildAiWindowDom`），
  * 停靠区外壳消费 `AiDockDom`（`getAppDom()` 集中解析）。契约不包含任何向作品
@@ -10,7 +10,6 @@
 export interface AiWindowDom {
   readonly root: HTMLElement;
   readonly head: HTMLElement;
-  readonly grip: HTMLElement;
   readonly statusDot: HTMLElement;
   readonly title: HTMLElement;
   readonly doc: HTMLElement;
@@ -23,7 +22,6 @@ export interface AiWindowDom {
   readonly moreBtn: HTMLButtonElement;
   readonly closeBtn: HTMLButtonElement;
   readonly body: HTMLElement;
-  readonly resize: HTMLElement;
   readonly snapshotBlock: HTMLElement;
   readonly snapshotText: HTMLPreElement;
   readonly loading: HTMLElement;
@@ -79,19 +77,20 @@ export interface AiWindowDom {
   readonly restrictionNewConversation: HTMLButtonElement;
 }
 
-/** AI 停靠区外壳的 DOM 契约（停靠区头、提示区、会话列表、停靠窗口容器与浮动层）。 */
+/** AI 单面板外壳的 DOM 契约（头部、调宽、提示区、讨论列表与当前讨论容器）。 */
 export interface AiDockDom {
   readonly root: HTMLElement;
   readonly rail: HTMLElement;
   readonly count: HTMLElement;
   readonly notice: HTMLElement;
   readonly body: HTMLElement;
-  readonly floatLayer: HTMLElement;
   readonly windowTemplate: HTMLTemplateElement;
   readonly listToggleBtn: HTMLButtonElement;
   readonly newConversationBtn: HTMLButtonElement;
   readonly moreBtn: HTMLButtonElement;
   readonly collapseBtn: HTMLButtonElement;
+  readonly maximizeBtn: HTMLButtonElement;
+  readonly divider: HTMLElement;
   readonly conversationList: HTMLElement;
   readonly conversationListCloseBtn: HTMLButtonElement;
   readonly conversationListItems: HTMLElement;
@@ -408,8 +407,7 @@ function requireRole<T extends HTMLElement>(root: HTMLElement, role: string): T 
 export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
   return {
     root,
-    head: requireRole(root, "drag-handle"),
-    grip: requireRole(root, "grip"),
+    head: requireRole(root, "discussion-header"),
     statusDot: requireRole(root, "status-dot"),
     title: requireRole(root, "title"),
     doc: requireRole(root, "doc"),
@@ -420,7 +418,6 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     moreBtn: requireRole<HTMLButtonElement>(root, "more"),
     closeBtn: requireRole<HTMLButtonElement>(root, "close"),
     body: requireRole(root, "body"),
-    resize: requireRole(root, "resize"),
     snapshotBlock: requireRole(root, "snapshot-block"),
     snapshotText: requireRole<HTMLPreElement>(root, "snapshot-text"),
     loading: requireRole(root, "loading"),
@@ -705,12 +702,13 @@ export function getAppDom(): AppDom {
       count: requireElement("ai-dock-count"),
       notice: requireElement("ai-dock-notice"),
       body: requireElement("ai-dock-body"),
-      floatLayer: requireElement("ai-dock-float-layer"),
       windowTemplate: requireElement<HTMLTemplateElement>("ai-window-template"),
       listToggleBtn: requireElement<HTMLButtonElement>("ai-conversation-list-toggle"),
       newConversationBtn: requireElement<HTMLButtonElement>("ai-new-conversation"),
       moreBtn: requireElement<HTMLButtonElement>("ai-dock-more"),
       collapseBtn: requireElement<HTMLButtonElement>("ai-dock-collapse"),
+      maximizeBtn: requireElement<HTMLButtonElement>("ai-dock-maximize"),
+      divider: requireElement("ai-dock-divider"),
       conversationList: requireElement("ai-conversation-list"),
       conversationListCloseBtn: requireElement<HTMLButtonElement>("ai-conversation-list-close"),
       conversationListItems: requireElement("ai-conversation-list-items"),

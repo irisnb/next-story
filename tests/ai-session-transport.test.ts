@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   ResidentAiSessionTransport,
+  type ReadingRequestEvent,
   type ResidentSessionDependencies,
 } from "../src/ai-session-transport.ts";
 import type {
   AiDeltaPayload,
+  AiReadingRequestPayload,
   AiReplayTurn,
   ListenFn,
   UnlistenFn,
@@ -18,10 +20,15 @@ interface TransportHarness {
   commands: { cmd: string; args: Record<string, unknown> }[];
   deltaHandlers: ((payload: AiDeltaPayload) => void)[];
   driverLostHandlers: (() => void)[];
+  readingRequestHandlers: ((payload: AiReadingRequestPayload) => void)[];
   ids: string[];
   failNextCommand(failure: unknown): void;
   failBusinessCommand(command: string, message: string): void;
   delayNextCommand(command: string, result: Promise<GenerateAiResult>): void;
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
 }
 
 function okResult(content = "思考"): GenerateAiResult {
@@ -38,6 +45,7 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
   const commands: { cmd: string; args: Record<string, unknown> }[] = [];
   const deltaHandlers: ((payload: AiDeltaPayload) => void)[] = [];
   const driverLostHandlers: (() => void)[] = [];
+  const readingRequestHandlers: ((payload: AiReadingRequestPayload) => void)[] = [];
   const ids = ["session-1", "session-2", "session-3"];
   let idIndex = 0;
   let failure: unknown = null;
@@ -116,6 +124,10 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
       listenFn<AiDeltaPayload>("ai-delta", (event) => handler(event.payload)),
     listenDriverLost: (handler, listenFn = listen) =>
       listenFn<null>("ai-driver-lost", () => handler()),
+    listenReadingRequest: (handler) => {
+      readingRequestHandlers.push((payload) => handler(payload));
+      return Promise.resolve((() => {}) as UnlistenFn);
+    },
     newId: () => {
       const id = ids[Math.min(idIndex, ids.length - 1)];
       idIndex += 1;
@@ -129,6 +141,7 @@ function harness(overrides: Partial<ResidentSessionDependencies> = {}): Transpor
     commands,
     deltaHandlers,
     driverLostHandlers,
+    readingRequestHandlers,
     ids,
     failNextCommand: (err) => { failure = err; },
     failBusinessCommand: (command, message) => {
@@ -886,4 +899,123 @@ test("cancelMessage for a conversation without an in-flight message sends nothin
   const ui = harness();
   ui.transport.cancelMessage("c-unknown");
   assert.equal(ui.commands.some((entry) => entry.cmd === "ai_cancel_message"), false);
+});
+
+// ---- 按需补读授权请求：按当前在途消息身份路由（P2 竞态修复，update-frontend-ui-v5） ----
+
+/** 挂起 sendMessage，使目标讨论保持「在途」直到测试显式结算。 */
+function pendingSendHarness(): {
+  ui: TransportHarness;
+  sendResults: Array<{ resolve(value: GenerateAiResult): void }>;
+} {
+  const sendResults: Array<{ resolve(value: GenerateAiResult): void }> = [];
+  const ui = harness({
+    sendMessage: () =>
+      new Promise<GenerateAiResult>((resolve) => { sendResults.push({ resolve }); }),
+  });
+  return { ui, sendResults };
+}
+
+function readingRequest(overrides: Partial<AiReadingRequestPayload> = {}): AiReadingRequestPayload {
+  return {
+    session_id: "session-1",
+    message_id: "c-1:msg-1",
+    call_id: "call-1",
+    conversation_id: "c-1",
+    reason: "材料不足",
+    ...overrides,
+  };
+}
+
+test("reading request is forwarded only for the currently in-flight message identity", async () => {
+  const { ui, sendResults } = pendingSendHarness();
+  const events: ReadingRequestEvent[] = [];
+  ui.transport.onReadingRequest((event) => events.push(event));
+  ui.transport.installSessionEventRouting();
+
+  const send = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
+  await flushMicrotasks();
+
+  ui.readingRequestHandlers[0](readingRequest());
+  assert.deepEqual(events, [
+    { conversationId: "c-1", sessionId: "session-1", messageId: "c-1:msg-1", callId: "call-1", reason: "材料不足" },
+  ], "在途消息的授权请求按讨论身份路由");
+
+  // 从未在途的消息身份：不转发（后台合法 grant 仍按在途消息放行，不受可见性影响）。
+  ui.readingRequestHandlers[0](readingRequest({ message_id: "c-1:msg-99", call_id: "call-2" }));
+  // 会话身份不符：不转发。
+  ui.readingRequestHandlers[0](readingRequest({ session_id: "other", call_id: "call-3" }));
+  assert.equal(events.length, 1, "未知消息与会话不符的授权请求不得转发");
+
+  sendResults[0].resolve(okResult());
+  await send;
+});
+
+test("a late reading request after cancelMessage is dropped for the stopped turn", async () => {
+  const { ui, sendResults } = pendingSendHarness();
+  const events: ReadingRequestEvent[] = [];
+  ui.transport.onReadingRequest((event) => events.push(event));
+  ui.transport.installSessionEventRouting();
+
+  const send = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("问题"));
+  await flushMicrotasks();
+
+  ui.transport.cancelMessage("c-1");
+  ui.readingRequestHandlers[0](readingRequest());
+  assert.equal(events.length, 0, "停止后迟到授权请求不得重现授权卡");
+
+  sendResults[0].resolve(okResult());
+  await send;
+});
+
+test("a late reading request from a previous turn cannot attach to the next turn", async () => {
+  const { ui, sendResults } = pendingSendHarness();
+  const events: ReadingRequestEvent[] = [];
+  ui.transport.onReadingRequest((event) => events.push(event));
+  ui.transport.installSessionEventRouting();
+
+  const first = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第一问"));
+  await flushMicrotasks();
+  ui.transport.cancelMessage("c-1");
+
+  const second = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("第二问"));
+  await flushMicrotasks();
+
+  ui.readingRequestHandlers[0](readingRequest({ message_id: "c-1:msg-1", call_id: "old" }));
+  ui.readingRequestHandlers[0](readingRequest({ message_id: "c-1:msg-2", call_id: "new" }));
+  assert.deepEqual(
+    events.map((event) => event.messageId),
+    ["c-1:msg-2"],
+    "旧轮 messageId 迟到不得污染新轮；新轮正常路由",
+  );
+
+  sendResults[0].resolve(okResult());
+  sendResults[1].resolve(okResult());
+  await first;
+  await second;
+});
+
+test("a background discussion's reading request stays routed (identity based, not visibility based)", async () => {
+  const { ui, sendResults } = pendingSendHarness();
+  const events: ReadingRequestEvent[] = [];
+  ui.transport.onReadingRequest((event) => events.push(event));
+  ui.transport.installSessionEventRouting();
+
+  const first = ui.transport.sendViaResidentSession("c-1", directQuestionRequest("A"));
+  const second = ui.transport.sendViaResidentSession("c-2", directQuestionRequest("B"));
+  await flushMicrotasks();
+
+  // 两个讨论都在途；对非当前显示讨论 c-2 的授权请求仍须转发。
+  ui.readingRequestHandlers[0](readingRequest({
+    session_id: "session-2",
+    message_id: "c-2:msg-2",
+    call_id: "call-b",
+    conversation_id: "c-2",
+  }));
+  assert.deepEqual(events.map((event) => event.conversationId), ["c-2"], "后台讨论授权请求不因不可见被丢弃");
+
+  sendResults[0].resolve(okResult());
+  sendResults[1].resolve(okResult());
+  await first;
+  await second;
 });

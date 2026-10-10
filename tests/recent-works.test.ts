@@ -261,6 +261,23 @@ test("welcome page renders recent works with name and path subtitle", async () =
   }
 });
 
+test("welcome page displays only the first three recent projects without changing backend history", async () => {
+  installWindow();
+  try {
+    const entries = Array.from({ length: 8 }, (_, i) => entry(`项目${i}`, `D:\\项目${i}`));
+    mockIPC((command) => {
+      if (command === "load_recent_works") return entries;
+      throw new Error(`Unexpected IPC command: ${command}`);
+    });
+    const ui = projectFlowFixture({ onProjectReady: () => {}, guardLeave: async () => true });
+    try {
+      await flushUntil(() => renderedEntries(ui.dom.recentWorksList).length === 3);
+      assert.deepEqual(renderedEntries(ui.dom.recentWorksList).map(e => e.children[1]?.textContent), ["项目0", "项目1", "项目2"]);
+      assert.equal(entries.length, 8);
+    } finally { ui.restore(); clearMocks(); }
+  } finally { restoreWindow(); }
+});
+
 test("welcome page renders exactly the entries the backend returned", async () => {
   installWindow();
   try {
@@ -375,6 +392,27 @@ test("renderRecentWorkEntries replaces previous entries on re-render", async () 
     assert.equal(container.children.length, 2);
     assert.equal(container.children[0]?.children[1]?.textContent, "作品甲");
     assert.equal(emptyState.classList.contains("hidden"), true, "非空列表空态隐藏");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("recent projects show three entries without removing history and preserve open callbacks", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    createElement: () => new FakeElement(),
+    createElementNS: () => new FakeElement(),
+  } as unknown as Document;
+  try {
+    const container = new FakeElement();
+    const history = Array.from({ length: 8 }, (_, index) => entry(`项目${index}`, `D:\\项目${index}`));
+    const opened: string[] = [];
+    renderRecentWorkEntries(container as unknown as HTMLElement, new FakeElement() as unknown as HTMLElement, history, (item) => opened.push(item.path));
+    assert.equal(container.children.length, 3);
+    assert.equal(history.length, 8);
+    assert.deepEqual(container.children.map((item) => item.children[1]?.textContent), ["项目0", "项目1", "项目2"]);
+    container.children[2]?.click();
+    assert.deepEqual(opened, [history[2]!.path]);
   } finally {
     globalThis.document = previousDocument;
   }

@@ -79,6 +79,7 @@ export function setupFileManagement(
   options: {
     /** 结构操作后通知宿主（编辑器）刷新其持有的树及其装载身份。 */
     onTreeChanged(tree: ContentTree, identity: ProjectLoadIdentity, acceptance: TreeRefreshAcceptance): Promise<SessionResult> | SessionResult | void;
+    onOpenDocument?(documentId: string, identity: ProjectLoadIdentity): Promise<void> | void;
     services?: Partial<FileManagementServices>;
   },
 ): FileManagementController {
@@ -97,6 +98,7 @@ export function setupFileManagement(
   let workspacePaused = false;
   type TreeCandidate = { identity: ProjectLoadIdentity; request: number; tree: ContentTree; owner?: number };
   let deferredTree: TreeCandidate | null = null;
+  let dismissActiveMenu: (() => void) | null = null;
 
   async function trackWrite<T>(promise: Promise<T>): Promise<T> {
     pendingWrites.add(promise);
@@ -278,7 +280,10 @@ export function setupFileManagement(
       await trackWrite(services.setDocumentAiVisibility(path, id, next));
       if (!owns(identity, operation)) return;
       const refreshed = await refreshTree(operation);
-      if (refreshed && owns(identity, operation)) setStatus("", "idle", operation);
+      if (refreshed && owns(identity, operation)) {
+        setStatus("", "idle", operation);
+        dom.fmFileTree.querySelector<HTMLButtonElement>(`[data-node-id="${id}"] .file-ai-visibility-toggle`)?.focus();
+      }
     } catch {
       // 失败回滚：不改动本地树，保持原可见性状态，只给中文可读提示。
       if (owns(identity, operation)) setStatus("AI 可见性保存失败，已保持原状态。", "error", operation);
@@ -290,8 +295,23 @@ export function setupFileManagement(
     const button = document.createElement("button");
     button.type = "button";
     button.className = "file-ai-visibility-toggle";
-    button.textContent = visible ? "允许 AI 查看" : "不允许 AI 查看";
-    button.addEventListener("click", () => {
+    button.setAttribute("role", "switch");
+    button.setAttribute("aria-checked", String(visible));
+    button.setAttribute("aria-label", "允许 AI 查看这篇文档");
+    const track = document.createElement("span");
+    track.className = "switch-track";
+    track.setAttribute("aria-hidden", "true");
+    const thumb = document.createElement("span");
+    thumb.className = "switch-thumb";
+    track.appendChild(thumb);
+    const label = document.createElement("span");
+    label.className = "switch-label";
+    label.textContent = visible ? "可读" : "不可读";
+    button.appendChild(track);
+    button.appendChild(label);
+    button.addEventListener("dblclick", (event) => event.stopPropagation());
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
       void toggleVisibility(id, visible);
     });
     return button;
@@ -307,13 +327,14 @@ export function setupFileManagement(
     const row = document.createElement("div");
     row.className = "file-row";
     row.dataset.nodeId = id;
-    row.style.paddingLeft = `${depth * 1.5 + 0.75}rem`;
+    row.style.paddingLeft = `${depth * 18 + 12}px`;
 
     if (node.kind === "Folder") {
       const isExpanded = expanded.has(id);
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "file-expander";
+      toggle.setAttribute("aria-label", `${isExpanded ? "折叠" : "展开"}${node.name}`);
       toggle.textContent = isExpanded ? "▾" : "▸";
       toggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
       toggle.addEventListener("click", () => {
@@ -328,32 +349,103 @@ export function setupFileManagement(
       row.appendChild(spacer);
     }
 
+    const icon = document.createElement("span");
+    icon.className = `file-type-icon ${node.kind === "Folder" ? "is-folder" : "is-document"}`;
+    icon.setAttribute("aria-hidden", "true");
+    row.appendChild(icon);
     const name = document.createElement("span");
     name.className = node.kind === "Folder" ? "file-name file-folder" : "file-name file-document";
     name.textContent = node.name;
+    name.title = node.name;
     row.appendChild(name);
 
     const actions = document.createElement("span");
     actions.className = "file-actions";
+    const menu = document.createElement("span");
+    menu.className = "file-row-menu hidden";
+    menu.setAttribute("role", "menu");
+    const more = makeButton("···", () => openMenu());
+    more.classList.add("file-row-more");
+    more.classList.add("btn");
+    more.dataset.variant = "ghost";
+    more.dataset.size = "icon-sm";
+    more.setAttribute("aria-label", `${node.name}的更多操作`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    function closeMenu(restoreFocus = false): void {
+      menu.classList.add("hidden");
+      more.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("scroll", dismissOnLayout, true);
+      window.removeEventListener("resize", dismissOnLayout);
+      if (dismissActiveMenu === closeMenu) dismissActiveMenu = null;
+      if (restoreFocus && more.isConnected) more.focus();
+    }
+    function dismiss(event: PointerEvent): void {
+      if (!actions.contains(event.target as Node)) closeMenu();
+    }
+    function dismissOnLayout(): void { closeMenu(); }
+    function openMenu(): void {
+      if (!menu.classList.contains("hidden")) { closeMenu(true); return; }
+      dismissActiveMenu?.();
+      dismissActiveMenu = closeMenu;
+      menu.classList.remove("hidden");
+      more.setAttribute("aria-expanded", "true");
+      const rect = more.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(rect.right - 190, window.innerWidth - 198))}px`;
+      menu.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8))}px`;
+      menu.querySelector<HTMLButtonElement>("button")?.focus();
+      document.addEventListener("pointerdown", dismiss);
+      document.addEventListener("scroll", dismissOnLayout, true);
+      window.addEventListener("resize", dismissOnLayout);
+    }
+    menu.addEventListener("dismiss-menu", () => closeMenu());
+    menu.addEventListener("click", () => closeMenu());
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button"));
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        items[(current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+      }
+    });
+    row.addEventListener("contextmenu", (event) => { event.preventDefault(); openMenu(); });
     if (node.kind === "Folder") {
-      actions.appendChild(makeButton("新建文档", () => {
+      menu.appendChild(makeButton("新建文档", () => {
         // 在折叠的文件夹内新建节点后自动展开该文件夹，让新节点立即可见。
         expanded.add(id);
         void runOperation(rowIdentity, () => services.createDocument(rowIdentity.projectPath, id));
       }));
-      actions.appendChild(makeButton("新建文件夹", () => {
+      menu.appendChild(makeButton("新建文件夹", () => {
         expanded.add(id);
         void runOperation(rowIdentity, () => services.createFolder(rowIdentity.projectPath, id));
       }));
     } else {
       // 文档级 AI 可见性开关：只作用于当前文档，文件夹不显示。
       actions.appendChild(makeVisibilityToggle(id, isDocumentAiVisible(node)));
+      row.addEventListener("dblclick", (event) => {
+        if ((event.target as HTMLElement | null)?.closest?.("button,input,.file-actions")) return;
+        if (owns(rowIdentity) && !workspacePaused) void options.onOpenDocument?.(id, rowIdentity);
+      });
     }
-    actions.appendChild(makeButton("重命名", () => startRename(id, node.name)));
-    actions.appendChild(makeButton("移动", () => startMove(id, parentOf(id))));
-    actions.appendChild(makeButton("删除", () => {
+    const modified = document.createElement("span");
+    modified.className = "file-modified";
+    modified.textContent = "—";
+    modified.title = "暂无修改时间";
+    actions.appendChild(modified);
+    menu.appendChild(makeButton("重命名", () => startRename(id, node.name)));
+    menu.appendChild(makeButton("移动", () => startMove(id, parentOf(id))));
+    menu.appendChild(makeButton("删除", () => {
       void runOperation(rowIdentity, () => services.deleteNode(rowIdentity.projectPath, id));
     }));
+    for (const item of Array.from(menu.children)) {
+      item.setAttribute("role", "menuitem");
+      item.classList.add("btn");
+      (item as HTMLElement).dataset.variant = "ghost";
+    }
+    actions.appendChild(more);
+    actions.appendChild(menu);
     row.appendChild(actions);
 
     container.appendChild(row);
@@ -377,9 +469,15 @@ export function setupFileManagement(
 
   function renderFileTree(): void {
     if (tree === null) return;
+    dismissActiveMenu?.();
     dom.fmFileTree.replaceChildren();
     for (const id of tree.root_children) {
       renderNodeRow(dom.fmFileTree, id, 0);
+    }
+    const summary = document.getElementById("fm-file-summary");
+    if (summary) {
+      const nodes = Object.values(tree.nodes);
+      summary.textContent = `${nodes.filter(node => node.kind === "Folder").length} 个文件夹 · ${nodes.filter(node => node.kind === "Document").length} 篇文档`;
     }
     if (tree.root_children.length === 0) {
       const empty = document.createElement("div");
@@ -432,6 +530,7 @@ export function setupFileManagement(
   }
 
   function openRecycleBin(): void {
+    dismissActiveMenu?.();
     view = "recycle";
     render();
   }
@@ -454,8 +553,8 @@ export function setupFileManagement(
 
   // ===== 文档导入入口（add-word-import 建立，add-markdown-import / add-fdx-import 接入）=====
 
-  const IMPORT_ENTRY_LABEL = "导入文档";
-  const IMPORT_ENTRY_HINT = "先打开作品，才能导入文档";
+  const IMPORT_ENTRY_LABEL = "导入";
+  const IMPORT_ENTRY_HINT = "先打开项目，才能导入文档";
 
   /** 同步导入入口的可用态：未打开作品或工作区暂停时禁用并提示。 */
   function syncImportEntry(): void {
@@ -511,6 +610,8 @@ export function setupFileManagement(
     operationSequence += 1;
     statusOwner = operationSequence;
     projectPath = projectState.projectPath;
+    const breadcrumb = document.getElementById("fm-project-name");
+    if (breadcrumb) breadcrumb.textContent = projectState.projectName;
     tree = projectState.tree;
     deferredTree = null;
     expanded.clear();
@@ -550,6 +651,7 @@ export function setupFileManagement(
       this.commitProject(projectState);
     },
     unload(): void {
+      dismissActiveMenu?.();
       loadGeneration = ++allocatedLoadGeneration;
       refreshSequence += 1;
       operationSequence += 1;
@@ -561,6 +663,10 @@ export function setupFileManagement(
       view = "tree";
       dom.fmFileTree.replaceChildren();
       dom.fmRecycleList.replaceChildren();
+      const breadcrumb = document.getElementById("fm-project-name");
+      if (breadcrumb) breadcrumb.textContent = "";
+      const summary = document.getElementById("fm-file-summary");
+      if (summary) summary.textContent = "0 个文件夹 · 0 篇文档";
       dom.fmRecycleBin.classList.add("hidden");
       dom.fmFileTree.classList.remove("hidden");
       setStatus("", "idle");

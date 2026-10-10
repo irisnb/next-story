@@ -310,6 +310,9 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
       if (attempt !== undefined) attempt.invalidated = true;
       return;
     }
+    // 立即失效该在途目标：停止后的迟到增量 / 授权请求不得再按此消息身份路由
+    // （下一轮使用新的 messageId，不会误命中）。
+    this.clearStreamTarget(target);
     void this.deps.cancelMessage(target.sessionId, target.messageId).catch(() => {});
   }
 
@@ -317,6 +320,9 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
   endSession(conversationId: string): void {
     const attempt = this.startingAttempts.get(conversationId);
     if (attempt !== undefined) attempt.invalidated = true;
+    // 删除 / 离开 / 退出：该讨论的在途目标立即失效，迟到的授权请求与增量不得再路由。
+    const target = this.inFlightByConversation.get(conversationId);
+    if (target !== undefined) this.clearStreamTarget(target);
     const sessionId = this.sessions.get(conversationId);
     if (sessionId === undefined) return;
     this.sessions.delete(conversationId);
@@ -328,6 +334,9 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
     for (const attempt of this.startingAttempts.values()) {
       attempt.invalidated = true;
     }
+    // 作品边界：所有在途目标一并失效，避免旧作品讨论的迟到授权 / 增量串入新作品。
+    this.currentStreams.clear();
+    this.inFlightByConversation.clear();
     for (const conversationId of [...this.sessions.keys()]) {
       this.endSession(conversationId);
     }
@@ -461,12 +470,18 @@ export class ResidentAiSessionTransport implements AiSessionTransport {
         });
       }
     }).then(retainUnlisten).catch(() => {});
-    // 按需补读授权请求（任务 7.1）：按载荷中的讨论身份路由（授权属于讨论）。
+    // 按需补读授权请求（任务 7.1）：按当前在途消息身份路由（授权属于讨论，不按可见性
+    // 过滤——后台讨论的合法授权请求照常接收）。停止 / 删除 / 离开 / 退出已使目标失效，
+    // 迟到的授权请求不得再重现授权卡或污染后续轮次。
     void this.deps.listenReadingRequest((payload) => {
       if (generation !== this.eventRoutingGeneration) return;
+      const stream = this.currentStreams.get(payload.message_id);
+      if (stream === undefined) return;
+      if (payload.session_id !== stream.sessionId || payload.message_id !== stream.messageId) return;
+      if (payload.conversation_id !== stream.conversationId) return;
       for (const listener of this.readingRequestListeners) {
         listener({
-          conversationId: payload.conversation_id,
+          conversationId: stream.conversationId,
           sessionId: payload.session_id,
           messageId: payload.message_id,
           callId: payload.call_id,

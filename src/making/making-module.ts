@@ -183,9 +183,10 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const status = document.createElement("span");
     status.className = "making-chain-row-status";
     if (row.hasNewerDraft) status.classList.add("is-draft");
-    status.textContent = row.hasNewerDraft
-      ? `${row.statusLabel} · 有第${row.newerDraftIndex}版草稿`
-      : row.statusLabel;
+    status.textContent = [row.chainId === viewChainId ? "正在查看" : null,
+      row.chainId === makingChainId ? "正在制作" : null,
+      row.isActiveChain ? `已启用 · 第${row.activeVersionIndex}版` : "未启用",
+      row.hasNewerDraft ? `有第${row.newerDraftIndex}版草稿` : null].filter(Boolean).join(" · ");
     button.append(name, status);
     // 点击只查看：不切换制作对象，也不改变全局当前链路。
     button.addEventListener("click", () => { viewChain(row.chainId); });
@@ -227,8 +228,8 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     renderVersionOptions(view);
     dom.enableBtn.hidden = view.enableLabel === null;
     if (view.enableLabel !== null) dom.enableBtn.textContent = view.enableLabel;
-    renderWires(view);
     renderZoneCards(view);
+    renderWires(view);
     renderDetail();
     syncDetailExpanded();
   }
@@ -249,19 +250,42 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
 
   /**
    * 连线渲染：箭头（marker-end）只出现在「分区→组装」「组装→输出」的流线上
-   * （数据见视图模型 MAP_WIRE_PATHS）；卡片节点在 DOM 结构上不生成任何连线。
+   * 按实际节点边界计算；卡片节点在 DOM 结构上不生成任何连线。
    */
   function renderWires(view: MakingMapView): void {
     dom.wirePaths.replaceChildren();
-    for (const wire of view.wires) {
+    const graph = dom.graph.getBoundingClientRect();
+    const assembly = dom.graph.querySelector<HTMLElement>(".making-assembly-node");
+    const output = dom.graph.querySelector<HTMLElement>(".making-output-node");
+    const sources = Array.from(dom.graph.querySelectorAll<HTMLElement>(".making-zone"));
+    if (!assembly || !output || graph.width <= 0 || graph.height <= 0) return;
+    dom.wires.setAttribute("viewBox", `0 0 ${graph.width} ${graph.height}`);
+    const inlet = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.left - graph.left, y: rect.top - graph.top + rect.height / 2 };
+    };
+    const outlet = (element: HTMLElement) => {
+      const point = inlet(element);
+      return { x: point.x + element.getBoundingClientRect().width, y: point.y };
+    };
+    const target = inlet(assembly);
+    const paths = sources.map((source) => {
+      const start = outlet(source);
+      const junction = start.x + (target.x - start.x) / 2;
+      return `M ${start.x} ${start.y} H ${junction} V ${target.y} H ${target.x}`;
+    });
+    const start = outlet(assembly);
+    const end = inlet(output);
+    paths.push(`M ${start.x} ${start.y} H ${end.x}`);
+    for (const d of paths.slice(0, view.wires.length)) {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", wire.d);
+      path.setAttribute("d", d);
       path.setAttribute("marker-end", "url(#making-arrow)");
       dom.wirePaths.append(path);
     }
   }
 
-  /** 自定义要求区的紧凑卡行（点开＝统一详情快捷小窗，不再有下方展开面板）。 */
+  /** 自定义提示词区的紧凑卡行（点开＝统一详情快捷小窗，不再有下方展开面板）。 */
   function cardRowElement(card: MakingMapView["customZone"]["requirementGroup"]["cards"][number]): HTMLElement {
     const button = document.createElement("button");
     button.type = "button";
@@ -700,14 +724,16 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
   });
 
   // 制作对话：「开始新制作」是制作对象的显式切换动作（浏览链路不会触发），
-  // 并立即为该链路开启一个新的制作会话（标题在首条消息后派生）。
+  // 并立即为当前对象开启一个新的制作会话（标题在首条消息后派生）。
+  // 空库（没有任何链路）时允许「直接口述」：以未绑定会话开始，保存草稿时才建立链路。
   dom.conversationStartBtn.addEventListener("click", () => {
-    if (viewChainId === null) {
+    const emptyLibrary = library !== null && library.chains.length === 0;
+    if (viewChainId === null && !emptyLibrary) {
       opError = "先在链路库选择或新建一条链路，再开始制作。";
       renderStatus();
       return;
     }
-    setMakingObject(viewChainId);
+    if (viewChainId !== null) setMakingObject(viewChainId);
     conversation.startNewSession();
   });
 
@@ -799,6 +825,7 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
 
   function setMakingObject(chainId: string | null): void {
     makingChainId = chainId;
+    renderLibrary();
     renderConversation();
     conversation.setChain(chainId);
   }
@@ -817,6 +844,14 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     setActiveView,
   };
 
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      if (library === null || viewChainId === null || viewVersionId === null) return;
+      const view = buildMakingMapView(library, viewChainId, viewVersionId);
+      if (view !== null) renderWires(view);
+    });
+    observer.observe(dom.graph);
+  }
   void controller.refresh();
   return controller;
 }

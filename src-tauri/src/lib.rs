@@ -1028,6 +1028,7 @@ pub fn run() {
             chain_library::chain_library_load,
             chain_library::chain_create,
             chain_library::chain_save_version,
+            chain_library::making_chain_ensure_for_conversation,
             chain_library::chain_set_active,
             chain_library::chain_rollback,
             chain_library::chain_deactivate,

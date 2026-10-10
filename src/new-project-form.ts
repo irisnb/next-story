@@ -54,17 +54,17 @@ export function renderRecentWorkEntries(
 ): void {
   container.replaceChildren();
   emptyState.classList.toggle("hidden", entries.length > 0);
-  for (const entry of entries) {
+  for (const entry of entries.slice(0, 3)) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "recent-work-item";
     item.title = entry.path;
-    // 图标复用 index.html 顶部 SVG 精灵里的文档符号（与内容树文档同款）。
+    // 使用批准原型的文件夹图标，显示限制不改变完整历史。
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("class", "recent-work-ic");
     icon.setAttribute("aria-hidden", "true");
     const iconUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
-    iconUse.setAttribute("href", "#i-doc");
+    iconUse.setAttribute("href", "#i-folder");
     icon.append(iconUse);
     const name = document.createElement("span");
     name.className = "recent-work-name";

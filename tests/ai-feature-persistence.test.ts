@@ -294,7 +294,7 @@ test("2.4 读档失败结束加载并保留具体错误，关闭后可重新打�
   } finally { ui.restore(); }
 });
 
-for (const action of ["switch", "delete", "close", "destroy"] as const) {
+for (const action of ["switch", "delete", "destroy"] as const) {
   test(`2.4 ${action} 后丢弃迟到读档，不复活窗口`, async () => {
     const read = deferred<ConversationRecord>();
     const record = savedRecord();
@@ -303,15 +303,28 @@ for (const action of ["switch", "delete", "close", "destroy"] as const) {
       ui.controller.openDiscussion(deriveConversationSummary(record));
       if (action === "switch") ui.controller.beginProject();
       if (action === "delete") await ui.controller.deleteDiscussion(record.conversation_id);
-      if (action === "close") ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
       if (action === "destroy") ui.controller.destroy();
       read.resolve(record);
       await flush();
       assert.equal(ui.controller.state.conversationOf(record.conversation_id), null);
-      assert.equal(ui.controller.state.windows.has(record.conversation_id), false);
+      assert.equal(ui.controller.state.openDiscussionIds.has(record.conversation_id), false);
     } finally { ui.restore(); }
   });
 }
+
+test("2.4 隐藏（×收起）不使有效读档失效：读档完成归入目标讨论，不抢回投影", async () => {
+  const read = deferred<ConversationRecord>();
+  const record = savedRecord();
+  const ui = persistenceHarness({ dependencies: { conversationRead: () => read.promise } });
+  try {
+    ui.controller.openDiscussion(deriveConversationSummary(record));
+    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    read.resolve(record);
+    await flush();
+    assert.notEqual(ui.controller.state.conversationOf(record.conversation_id), null, "隐藏后读档结果仍归入所属讨论");
+    assert.equal(ui.controller.state.isOpen, false, "读档完成不自动展开面板");
+  } finally { ui.restore(); }
+});
 
 test("2.4 关闭并重开同一讨论，第一次读取不得覆盖第二次", async () => {
   const first = deferred<ConversationRecord>();
@@ -358,7 +371,7 @@ test("2.6 保存后更新轻量列表，不重新 list 或重建其他窗口", a
     await flush();
     assert.equal(ui.listCalls(), 1);
     assert.equal(ui.controller.state.getDiscussion("other"), before);
-    assert.equal(ui.controller.state.windows.size, 2);
+    assert.equal(ui.controller.state.openDiscussionIds.size, 2);
     const item = ui.controller.getConversations().find((s) => s.conversation_id === "c-1")!;
     assert.equal(item.title, "新问题");
     assert.equal(item.last_status, "done");
@@ -877,7 +890,7 @@ test("5.8c 崩溃恢复重放直接提问讨论：首轮投影带后端同款标
 
 // ========== 任务 5.2/5.4：权限变更后锁存 + 重新开启可见性不解除 ==========
 
-test("补读-only 来源隐藏：真实编排过滤恢复、锁存、列表脱敏，关闭窗口后重读仍受限", async () => {
+test("补读-only 来源隐藏：真实编排过滤恢复、锁存、列表脱敏，重开复用运行期仍受限", async () => {
   const hidden = new Set<string>();
   const ui = persistenceHarness({ getHiddenDocumentIds: () => hidden });
   try {
@@ -901,10 +914,10 @@ test("补读-only 来源隐藏：真实编排过滤恢复、锁存、列表脱�
     assert.equal(displayFocusDocumentTitle(ui.controller.getConversations()[0]), "（已隐藏的文档）");
     assert.equal(await ui.controller.submitFollowUp("追问"), false);
     hidden.clear();
-    ui.controller.state.closeWindow("on-demand-only");
+    ui.controller.state.close();
     ui.controller.openDiscussion(deriveConversationSummary(archived));
     await flush();
-    assert.deepEqual(ui.reads, ["on-demand-only", "on-demand-only"], "重开确实重新读档");
+    assert.deepEqual(ui.reads, ["on-demand-only"], "重开复用运行期，不再重新读盘覆盖");
     assert.equal(ui.controller.state.conversation?.restricted, true);
     assert.equal(ui.controller.state.conversation?.restrictionReason, "hidden_material");
     assert.equal(ui.controller.state.followUpAvailable, false);

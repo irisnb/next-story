@@ -55,6 +55,7 @@ export interface EditorController {
   hasProject(): boolean;
   hasUnsavedChanges(): boolean;
   save(): Promise<boolean>;
+  switchDocument(documentId: string): Promise<void>;
   isTransitioning(): boolean;
   guardLeave(): Promise<boolean>;
   unload(): void;
@@ -313,6 +314,8 @@ export function setupEditor(
     },
     onDocumentLoaded: (project, documentId) => {
       // 文档切换（含内容树回落换绑）：只更新视图与记忆，不触发作品级 AI 重置（P0-3 修复）。
+      // 清未发送的实时选区重点提示（含回落为无文档）；各讨论草稿、关注绑定与已冻结材料保持不变。
+      aiFeature?.clearUnsentSelection();
       if (memoryStorage && documentId !== null) writeLastDocumentId(memoryStorage, project.projectPath, documentId);
       refreshEditorView(project);
     },
@@ -790,6 +793,7 @@ export function setupEditor(
     hasUnsavedChanges: () => persistence.hasUnsavedChanges(),
     save,
     isTransitioning: () => transition !== null,
+    switchDocument,
     guardLeave: guardCurrentLeave,
     unload,
     destroy: unload,

@@ -21,6 +21,7 @@ import { waitTiming } from "./ai-timing";
 import { canonicalNotebookJson } from "./structured-notebook";
 import { showModule, type ModuleId, type ModuleViews } from "./views";
 import { hiddenDocumentIdsFromTree } from "./types";
+import { setupUiV5 } from "./ui-v5";
 
 function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string | null {
   const current = editor.getCurrentEditor();
@@ -39,6 +40,7 @@ function currentDocumentVersion(editor: ReturnType<typeof setupEditor>): string 
 window.addEventListener("DOMContentLoaded", () => {
   installNativeDialogs();
   const dom = getAppDom();
+  const disposeUiV5 = setupUiV5();
   const moduleViews: ModuleViews = {
     writing: dom.moduleWriting,
     files: dom.moduleFiles,
@@ -94,6 +96,13 @@ window.addEventListener("DOMContentLoaded", () => {
   let ai: ReturnType<typeof setupAiFeature> | null = null;
   const fileManagement = setupFileManagement(dom, {
     onTreeChanged: createWorkspaceTreeReceiver(editor, () => { ai?.recomputeRestrictions(); }),
+    async onOpenDocument(documentId, identity) {
+      const current = editor.getProjectIdentity();
+      if (!current || current.projectPath !== identity.projectPath || current.loadGeneration !== identity.loadGeneration) return;
+      await editor.switchDocument(documentId);
+      const latest = editor.getProjectIdentity();
+      if (latest?.projectPath === identity.projectPath && latest.loadGeneration === identity.loadGeneration && editor.getCurrentDocumentId() === documentId) setModule("writing");
+    },
   });
 
   const exportController = setupExport(dom, {
@@ -164,7 +173,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const destroyApplication = createApplicationDestroyer({
     drainSaves: () => ai?.drainPendingSaves() ?? Promise.resolve(),
     destroyAi: () => ai?.destroy(),
-    destroyEditor: () => { projectFlow.destroy(); editor.destroy(); },
+    destroyEditor: () => { disposeUiV5(); projectFlow.destroy(); editor.destroy(); },
     destroyWindow: () => appWindow.destroy(),
   });
   const close = new CloseCoordinator({

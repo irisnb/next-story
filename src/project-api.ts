@@ -797,7 +797,8 @@ export interface MakingConversationTurn {
  */
 export interface MakingConversationRecord {
   id: string;
-  chain_id: string;
+  /** 所属链路 id；`null`＝未绑定会话（空库直接口述建立，保存草稿时才建链路并绑定）。 */
+  chain_id: string | null;
   title: string;
   created_at: string;
   updated_at: string;
@@ -807,7 +808,8 @@ export interface MakingConversationRecord {
 /** 制作会话列表摘要（不含 turns 全文）。 */
 export interface MakingConversationSummary {
   id: string;
-  chain_id: string;
+  /** 所属链路 id；`null`＝未绑定会话。 */
+  chain_id: string | null;
   title: string;
   created_at: string;
   updated_at: string;
@@ -873,12 +875,39 @@ export async function makingEndSession(
   return call<GenerateAiResult>("making_end_session", { conversationId });
 }
 
-/** 按链路列出制作会话（`updated_at` 倒序）；损坏/超限档案跳过并如实提示。 */
+/** 按链路列出制作会话（`updated_at` 倒序）；`chainId` 为 `null` 时列出未绑定会话。 */
 export async function makingConversationList(
-  chainId: string,
+  chainId: string | null,
   call: InvokeFn = defaultInvoke,
 ): Promise<MakingConversationListResult> {
   return call<MakingConversationListResult>("making_conversation_list", { chainId });
+}
+
+/**
+ * 空库直接口述的首次保存（有界限定操作）：以制作会话 id 派生确定性链路 id，
+ * 后端一次读改写建立「链路＋首版本」；幂等、不启用。旧档案（字符串 chain_id）
+ * 与已绑定会话不受影响。`action` 如实区分创建/补首版/幂等/冲突。
+ */
+export type EnsureChainAction = "created" | "repaired" | "idempotent" | "conflict";
+
+export interface EnsureChainResult {
+  chain: Chain;
+  action: EnsureChainAction;
+}
+
+export async function makingChainEnsureForConversation(
+  conversationId: string,
+  name: string,
+  cards: CardInput[],
+  changeNote: string,
+  call: InvokeFn = defaultInvoke,
+): Promise<EnsureChainResult> {
+  return call<EnsureChainResult>("making_chain_ensure_for_conversation", {
+    conversationId,
+    name,
+    cards,
+    changeNote,
+  });
 }
 
 /** 读取一份完整制作会话档案（重开会话用）；缺失/损坏/超限明确报错。 */

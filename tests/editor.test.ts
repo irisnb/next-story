@@ -553,6 +553,7 @@ test("showProject begins the AI project and unload ends it", async () => {
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      clearUnsentSelection: () => {},
       drainPendingSaves: async () => {},
       destroy: () => {},
     };
@@ -585,6 +586,7 @@ test("applyTree with the same document does not reset the AI project", async () 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      clearUnsentSelection: () => {},
       drainPendingSaves: async () => {},
       destroy: () => {},
     };
@@ -617,6 +619,7 @@ test("switching to another document does not reset the AI project", async () => 
       openDiscussion: () => {},
       deleteDiscussion: () => Promise.resolve(),
       recomputeRestrictions: () => {},
+      clearUnsentSelection: () => {},
       drainPendingSaves: async () => {},
       destroy: () => {},
     };
@@ -635,6 +638,60 @@ test("switching to another document does not reset the AI project", async () => 
 
     assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
     assert.equal(begins, 1, "同作品内切换文档不应再次触发 beginProject（P0-3）");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+function aiWithSelectionClearSpy(clears: { count: number }): AiFeatureController {
+  return {
+    state: new AiPanelState(),
+    beginProject: () => {},
+    endProject: () => {},
+    submitFollowUp: () => Promise.resolve(false),
+    retryFollowUp: () => Promise.resolve(false),
+    editFollowUp: () => Promise.resolve(false),
+    getConversations: () => [],
+    openDiscussion: () => {},
+    deleteDiscussion: () => Promise.resolve(),
+    recomputeRestrictions: () => {},
+    clearUnsentSelection: () => { clears.count += 1; },
+    drainPendingSaves: async () => {},
+    destroy: () => {},
+  };
+}
+
+test("switching documents clears the unsent AI selection hint but not the AI project", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("初稿"), "doc-2": notebookJson("第二章") });
+  const clears = { count: 0 };
+  try {
+    fixture.editor.attachAi(aiWithSelectionClearSpy(clears));
+    await fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "文档一"), docNode("doc-2", "文档二")])));
+    assert.equal(clears.count, 0, "打开作品（onProjectLoaded 路径）不清实时选区");
+
+    const list = fixture.ui.elements.get("document-list")!;
+    list.children.find((child) => child.textContent === "文档二")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
+    assert.equal(clears.count, 1, "文档切换成功后清未发送实时选区/提示（草稿与绑定保留在 AI 状态内）");
+  } finally {
+    fixture.ui.restore();
+  }
+});
+
+test("content-tree fallback to no document also clears the unsent AI selection", async () => {
+  const fixture = editorFixture({ "doc-1": notebookJson("初稿") });
+  const clears = { count: 0 };
+  try {
+    fixture.editor.attachAi(aiWithSelectionClearSpy(clears));
+    await fixture.editor.showProject(projectState("作品", treeFrom([docNode("doc-1", "文档一")])));
+    assert.equal(clears.count, 0);
+
+    await fixture.editor.applyTree(treeFrom([]));
+    assert.equal(fixture.editor.getCurrentDocumentId(), null, "内容树回落为无文档");
+    assert.equal(clears.count, 1, "无文档回落同样清未发送实时选区");
   } finally {
     fixture.ui.restore();
   }
@@ -1278,7 +1335,7 @@ test("column width preset is restored from injected storage on setup", async () 
     await fixture.editor.showProject(projectState("作品", tree));
 
     assert.equal(fixture.ui.elements.get("editor-page")!.getAttribute("data-column-width"), "wide");
-    assert.equal(fixture.ui.elements.get("btn-column-width")!.textContent, "宽");
+    assert.equal(fixture.ui.elements.get("btn-column-width")!.textContent, "宽 · 860");
   } finally {
     fixture.ui.restore();
   }

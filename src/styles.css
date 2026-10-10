@@ -21,27 +21,27 @@
 
 :root {
   /* ============================================================
-     设计令牌（唯一事实源）——新粗野主义方向
+     设计令牌（唯一事实源）——v5 中性灰白
      颜色 / 边框 / 阴影 / 圆角 全部集中在此，组件只引用令牌。
    ============================================================ */
 
   /* —— 颜色：主色（动作 / 选中 / 当前态） —— */
-  --color-primary: #2743e0;
-  --color-primary-hover: #1f38c0;
+  --color-primary: #202020;
+  --color-primary-hover: #383838;
   --color-on-primary: #ffffff;
 
   /* —— 颜色：辅助色（候选 / 选区高亮） —— */
-  --color-accent: #f0b429;
+  --color-accent: #e4e4e4;
   --color-on-accent: #171717;
 
   /* —— 颜色：中性 —— */
-  --color-ink: #171717;               /* 结构线 + 标题 */
+  --color-ink: #202020;               /* 结构线 + 标题 */
   --color-surface: #ffffff;           /* 表面白 */
   --color-surface-subtle: #f5f5f5;    /* 次级表面（快照/引用块） */
   --color-surface-hover: #f0f0f0;     /* hover 表面 */
-  --color-text: #1a1a1a;              /* 普通文字 */
+  --color-text: #202020;              /* 普通文字 */
   --color-text-body: #333333;         /* 正文长文 */
-  --color-muted: #8a8a8a;             /* 弱化文字 */
+  --color-muted: #737373;             /* 弱化文字 */
 
   /* —— 颜色：语义 —— */
   --color-success: #1e9e5a;
@@ -49,22 +49,22 @@
   --color-warning: #c77800;
 
   /* —— 边框（黑色只做结构线和文字） —— */
-  --border-hairline: 1px solid rgba(23, 23, 23, 0.42);  /* 细线：弱分隔 */
-  --border-structural: 2px solid rgba(23, 23, 23, 0.8); /* chrome 结构线 */
-  --border-control: 2px solid rgba(23, 23, 23, 0.9);     /* 按钮 / 控件 */
-  --border-editor: 2px solid #171717;                    /* 文本编辑区（全浓，最重） */
+  --border-hairline: 1px solid #e4e4e4;
+  --border-structural: 1px solid #e4e4e4;
+  --border-control: 1px solid #d4d4d4;
+  --border-editor: 1px solid #e4e4e4;
 
   /* —— 阴影（硬边纯偏移，无模糊无扩散） —— */
-  --shadow-hairline: 0 2px 0 rgba(0, 0, 0, 0.14);        /* 横向分隔（顶栏/标签页底） */
-  --shadow-edge: -2px 0 0 rgba(0, 0, 0, 0.15);           /* 侧滑面板边缘 */
-  --shadow-control-sm: 1.5px 1.5px 0 rgba(0, 0, 0, 0.2); /* 密集按钮（工具栏） */
-  --shadow-control: 2px 2px 0 rgba(0, 0, 0, 0.28);       /* 按钮 / 卡片 */
-  --shadow-editor: 5px 5px 0 rgba(0, 0, 0, 0.42);        /* 文本编辑区（最重） */
+  --shadow-hairline: none;
+  --shadow-edge: none;
+  --shadow-control-sm: none;
+  --shadow-control: none;
+  --shadow-editor: 0 2px 12px rgba(0, 0, 0, 0.025);
 
   /* —— 圆角（极小） —— */
   --radius-none: 0;
-  --radius-sm: 2px;
-  --radius-md: 4px;
+  --radius-sm: 0.4rem;
+  --radius-md: 0.4rem;
 
   /* —— 遮罩 —— */
   --color-backdrop: rgba(0, 0, 0, 0.5);
@@ -82,32 +82,28 @@
   --editor-column-width-standard: 720px;     /* 标准档：约 45 字/行（默认） */
   --editor-column-width-wide: 860px;         /* 宽档：约 53 字/行 */
 
-  /* —— AI 停靠区 / 窗口（多窗口，阶段 3） —— */
-  --dock-width: 420px;
+  /* —— AI 单面板与当前讨论容器 —— */
+  --dock-width: 370px;
   --window-titlebar-h: 32px;
-  --window-min-w: 300px;
   --window-min-h: 200px;
-  --window-border: 2px solid rgba(23, 23, 23, 0.55);
-  --window-border-active: 2px solid var(--color-primary);
-  --window-shadow-rest: 2px 2px 0 rgba(0, 0, 0, 0.16);
-  --window-shadow-active: 3px 3px 0 rgba(0, 0, 0, 0.3);
-  --window-shadow-float: 4px 4px 0 rgba(0, 0, 0, 0.26);
+  --window-border: 1px solid #e4e4e4;
+  --window-border-active: 1px solid #e4e4e4;
+  --window-shadow-rest: none;
+  --window-shadow-active: none;
   --window-inactive-border-color: rgba(23, 23, 23, 0.35);
-  --window-inactive-shadow: 1px 1px 0 rgba(0, 0, 0, 0.12);
-  --window-grip-color: rgba(23, 23, 23, 0.5);
-  --window-resize-color: rgba(23, 23, 23, 0.5);
+  --window-inactive-shadow: none;
 
   /* —— 边框细线 / 面（AI 停靠区与列表，集中在此不散落字面值） —— */
   --hairline: 1px solid rgba(23, 23, 23, 0.1);          /* 列表条目间的小横线 */
-  --border-soft: 2px solid rgba(23, 23, 23, 0.6);        /* 搜索框等次级控件 */
-  --border-thin: 1.5px solid rgba(23, 23, 23, 0.6);      /* 紧凑图标按钮 */
-  --border-thin-strong: 1.5px solid rgba(23, 23, 23, 0.7); /* 停靠区头图标按钮 */
+  --border-soft: 1px solid #d4d4d4;
+  --border-thin: 1px solid #e4e4e4;
+  --border-thin-strong: 1px solid #d4d4d4;
   --border-window-head: 1px solid rgba(23, 23, 23, 0.28); /* 窗口头底边 */
   --border-window-btn: 1px solid rgba(23, 23, 23, 0.5);   /* 窗口头动作按钮 */
   --border-window-sep: 1px solid rgba(23, 23, 23, 0.25);  /* 菜单分隔 */
   --border-danger: 1px solid rgba(214, 54, 30, 0.5);      /* 删除确认等危险细边 */
   --color-danger-border: rgba(214, 54, 30, 0.5);
-  --color-selected-surface: #eef1ff;                      /* 当前讨论行底色 */
+  --color-selected-surface: #f0f0f0;                      /* 当前讨论行底色 */
   --color-warning-surface: #fffaf0;                       /* 提醒提示条底色 */
   --color-danger-surface: #fff5f3;                        /* 危险提示条底色 */
   --color-muted-weak: #a0a0a0;                            /* 月份子分节标题 */
@@ -116,8 +112,8 @@
      编辑器与导出（PDF 打印页）共用同一份字体文件：同一内核、同一字体、对齐的
      CSS，「所见即所得」才有确定含义（add-pdf-and-markdown-export design 决策 4）。
      未加载完成前回退系统字体栈，避免文字闪空。 */
-  font-family: "Source Han Sans CN", "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
 
@@ -130,18 +126,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 深色模式：仅最小反转颜色令牌；边框/阴影的完整深色方案另开 change */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-surface: #1a1a1a;
-    --color-surface-subtle: #242424;
-    --color-surface-hover: #2c2c2c;
-    --color-ink: #e5e5e5;
-    --color-text: #e5e5e5;
-    --color-text-body: #d5d5d5;
-    --color-muted: #8a8a8a;
-  }
-}
+/* v5 的界面统一使用浅色；正文显示偏好与系统主题独立。 */
 
 .leave-dialog {
   width: min(28rem, calc(100% - var(--space-8)));
@@ -507,17 +492,19 @@
 }
 
 .editor-header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
-  padding: 1rem 2rem;
+  min-height: 76px;
+  padding: 12px 24px;
   background: var(--color-surface);
   border-bottom: var(--border-structural);
   box-shadow: var(--shadow-hairline);
 }
 
 .project-name {
-  font-size: 1.25rem;
+  font-size: 23px;
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -542,6 +529,8 @@
 .editor-actions {
   display: flex;
   gap: 0.5rem;
+  justify-self: end;
+  align-items: center;
 }
 
 .save-btn {
@@ -579,17 +568,18 @@
 .editor-tabs {
   display: flex;
   background: var(--color-surface);
-  border-bottom: var(--border-structural);
+  gap: 6px;
 }
 
 .tab-btn {
-  padding: 1rem 2rem;
+  padding: 8px 15px;
   font-size: 1rem;
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--color-muted);
   transition: background-color 0.15s;
+  border-radius: var(--radius-sm);
 }
 
 .tab-btn:hover {
@@ -630,7 +620,7 @@
   overflow-y: auto;
   outline: none;
   font-size: 1rem;
-  font-family: inherit;
+  font-family: "Source Han Sans CN", "Microsoft YaHei", sans-serif;
   color: var(--color-text-body);
 }
 
@@ -650,6 +640,7 @@
 }
 
 .editor-body {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -766,7 +757,6 @@
 }
 
 /* 列表打开时替换停靠区头与窗口区：列表独占停靠列，编辑区始终可见 */
-.ai-dock:has(.ai-conversation-list:not(.hidden)) .ai-dock-header { display: none; }
 .ai-dock:has(.ai-conversation-list:not(.hidden)) .ai-dock-body { display: none; }
 
 .ai-conversation-list-header {
@@ -1316,6 +1306,11 @@
   position: relative;
 }
 .ai-dock.hidden { display: none; }
+.ai-dock-divider { position: absolute; inset: 0 auto 0 -4px; width: 8px; cursor: col-resize; z-index: 5; touch-action: none; }
+.ai-dock-divider:focus-visible { outline: 2px solid var(--color-ink); outline-offset: -2px; }
+.ai-dock.ai-panel-maximized { position: absolute; inset: 0; width: 100%; z-index: 20; }
+.ai-panel-maximized .ai-dock-divider { display: none; }
+.ai-panel-maximize { width: 108px; height: 28px; flex: none; border: var(--border-thin-strong); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-ink); cursor: pointer; }
 
 .ai-dock-header {
   height: 44px;
@@ -1328,6 +1323,7 @@
 }
 .ai-dock-title { font-weight: 600; font-size: 0.95rem; color: var(--color-ink); }
 .ai-dock-count { font-size: 0.75rem; color: var(--color-muted); }
+.ai-dock-count { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .ai-dock-header-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 
 .ai-icon-btn {
@@ -1371,20 +1367,6 @@
   flex-direction: column;
   gap: 8px;
 }
-/* 放置区高亮：拖动窗口进入停靠区时点亮，离开/结束/取消时熄灭。 */
-.ai-dock-body.drop-target {
-  outline: 2px dashed var(--color-accent);
-  outline-offset: -4px;
-  background: rgba(240, 180, 41, 0.08);
-}
-
-.ai-dock-float-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-}
-
 .ai-window {
   position: relative;
   display: flex;
@@ -1397,16 +1379,10 @@
   overflow: hidden;
   transition: box-shadow 120ms ease;
 }
-/* 停靠窗口在停靠区内纵向等分：各窗至少最小高度，超出时停靠区整体滚动 */
-.ai-window-docked { flex: 1 1 0; width: auto; height: auto; }
-.ai-window-floating { pointer-events: auto; min-width: var(--window-min-w); }
+/* 当前讨论占满单面板内容区；保留现有 DOM 容器类名。 */
+.ai-discussion-projection { flex: 1 1 0; width: auto; height: auto; }
 .ai-window.active { border: var(--window-border-active); box-shadow: var(--window-shadow-active); }
 .ai-window.inactive { border-color: var(--window-inactive-border-color); box-shadow: var(--window-inactive-shadow); }
-.ai-window.dragging {
-  box-shadow: var(--window-shadow-float);
-  will-change: left, top, width, height;
-}
-.ai-window.dragging .ai-window-head { cursor: grabbing; }
 
 .ai-window-head {
   position: relative;
@@ -1418,7 +1394,7 @@
   padding: 0 6px 0 10px;
   border-bottom: var(--border-window-head);
   background: var(--color-surface);
-  cursor: grab;
+  cursor: default;
 }
 .ai-window.inactive .ai-window-head { background: var(--color-surface-subtle); }
 .ai-window.active .ai-window-head::before {
@@ -1430,7 +1406,6 @@
   width: 3px;
   background: var(--color-primary);
 }
-.ai-window-grip { color: var(--window-grip-color); display: inline-flex; }
 .ai-window-title {
   font-size: 12.5px;
   font-weight: 600;
@@ -1512,34 +1487,6 @@
   flex-direction: column;
   gap: 6px;
 }
-.ai-window-resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  border-right: 2px solid var(--window-resize-color);
-  border-bottom: 2px solid var(--window-resize-color);
-}
-/* 停靠窗口不支持缩放：隐藏缩放手柄（缩放在停靠态本就无意义）。 */
-.ai-window-docked .ai-window-resize { display: none; }
-
-.ai-snap-guide {
-  position: absolute;
-  pointer-events: none;
-  z-index: 70;
-}
-.ai-snap-tag {
-  position: absolute;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-}
 
 .ai-menu {
   position: fixed;
@@ -1603,8 +1550,6 @@
 .ai-rail-btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
 .ai-rail-btn:hover:not(:disabled) { background: var(--color-surface-hover); }
 .ai-rail-btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
-
-body.ai-window-dragging { user-select: none; }
 
 .ai-selection-entry {
   position: fixed;

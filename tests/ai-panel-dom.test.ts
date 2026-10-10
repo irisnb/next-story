@@ -105,6 +105,30 @@ test("window streams incremental text into the conversation thread", () => {
   }
 });
 
+test("streaming and completion preserve existing message nodes", () => {
+  const { root, roles } = createAiWindowFixture("stable");
+  const doc = installDocument();
+  try {
+    const state = new AiPanelState(undefined, () => "stable");
+    setupAiWindow(root as unknown as HTMLElement, state, "stable", windowActions(state).actions);
+    state.beginDirectQuestion("问题", null);
+    const thread = roles.get("conversation")!;
+    const user = thread.children[0];
+    state.appendStreamText("stable", "第一段");
+    assert.equal(thread.children[0], user, "流式更新保留用户消息节点");
+    const assistant = thread.children[1];
+    state.appendStreamText("stable", "\n第二段");
+    assert.equal(thread.children[1], assistant, "增量更新复用回复节点");
+    assert.equal(assistant.textContent, "第一段\n第二段");
+    state.succeedDirectQuestion("最终回答");
+    assert.equal(thread.children[0], user);
+    assert.equal(thread.children[1], assistant, "完成时不整体替换消息区");
+    assert.equal(assistant.textContent, "最终回答");
+  } finally {
+    doc.restore();
+  }
+});
+
 test("window stop and close buttons invoke the bound actions", () => {
   const { root } = createAiWindowFixture("1");
   const doc = installDocument();
@@ -320,7 +344,7 @@ test("stopRequest marks only the target discussion stopped", async () => {
     await flushAiFeatureFlow();
 
     const state = ui.controller.state;
-    const idA = [...state.windows.keys()].find((id) => {
+    const idA = [...state.openDiscussionIds.keys()].find((id) => {
       const d = state.getDiscussion(id)!;
       return d.request.kind === "direct_question" && d.request.status === "loading";
     });
@@ -340,16 +364,16 @@ test("stopRequest marks only the target discussion stopped", async () => {
   }
 });
 
-test("closeWindow ends display but keeps the discussion", async () => {
+test("close hides the panel but keeps the discussion", async () => {
   const ui = featureHarness([{ ok: true, content: "回答" }]);
   try {
     submitDirectQuestion(ui, "问题");
     await flushAiFeatureFlow();
     const id = ui.controller.state.conversations[0].conversation_id;
 
-    assert.equal(ui.controller.state.closeWindow(id), true);
-    assert.equal(ui.controller.state.windows.size, 0);
-    assert.ok(ui.controller.state.getDiscussion(id), "关闭窗口不删除讨论");
+    ui.controller.state.close();
+    assert.equal(ui.controller.state.isOpen, false, "面板收起");
+    assert.ok(ui.controller.state.getDiscussion(id), "收起不删除讨论");
   } finally {
     ui.restore();
   }
@@ -363,7 +387,7 @@ test("project lifecycle reset clears windows and discussions", async () => {
     assert.equal(ui.windowRoots.length, 1);
 
     ui.controller.endProject();
-    assert.equal(ui.controller.state.windows.size, 0);
+    assert.equal(ui.controller.state.openDiscussionIds.size, 0);
     assert.equal(ui.windowRoots[0].parentElement, null, "切换作品销毁所有窗口");
 
     ui.controller.beginProject();

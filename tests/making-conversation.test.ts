@@ -263,6 +263,8 @@ class FakeMakingBackend {
   readonly failures = new Map<string, string>();
   /** making_send_message 行为队列（空则用默认：成功返回 nextReply）。 */
   readonly sendQueue: Array<() => Promise<GenerateAiResult>> = [];
+  /** making_conversation_save 行为闸门队列（空则立即执行）；用于受控延迟整档写入。 */
+  readonly saveGates: Array<() => Promise<void>> = [];
   nextReply = "";
   private versionSeed = 0;
 
@@ -298,15 +300,64 @@ class FakeMakingBackend {
         if (record === undefined) throw new Error(`制作会话不存在: ${args?.conversationId}`);
         return structuredClone(record) as T;
       }
-      case "making_conversation_save":
-        this.conversations.set(
-          (args?.record as MakingConversationRecord).id,
-          structuredClone(args?.record as MakingConversationRecord),
-        );
+      case "making_conversation_save": {
+        const gate = this.saveGates.shift();
+        if (gate !== undefined) await gate();
+        const incoming = structuredClone(args?.record as MakingConversationRecord);
+        const current = this.conversations.get(incoming.id);
+        // 镜像后端绑定单调保护：不得撤销 / 改绑已落盘绑定。
+        if (current?.chain_id != null && incoming.chain_id !== current.chain_id) {
+          throw new Error(`制作会话绑定冲突：已绑定 ${current.chain_id}`);
+        }
+        this.conversations.set(incoming.id, incoming);
         return null as T;
+      }
       case "making_conversation_delete":
         this.conversations.delete(String(args?.conversationId));
         return null as T;
+      case "making_chain_ensure_for_conversation": {
+        // 镜像后端：以会话 id 派生确定性链路 id；边界＝会话档案存在；按卡内容判重/冲突。
+        const conversationId = String(args?.conversationId);
+        if (!this.conversations.has(conversationId)) {
+          throw new Error(`制作会话不存在: ${conversationId}`);
+        }
+        const chainId = `chain-${conversationId}`;
+        const inputs = args?.cards as { title: string; trigger_desc: string; body: string; slot_type?: string }[];
+        const matches = (cards: readonly { title: string; trigger_desc: string; body: string; slot_type?: string }[]): boolean =>
+          cards.length === inputs.length &&
+          cards.every((card, index) =>
+            card.title === inputs[index].title.trim() &&
+            card.trigger_desc === inputs[index].trigger_desc &&
+            card.body === inputs[index].body &&
+            (card.slot_type ?? "requirement") === (inputs[index].slot_type ?? "requirement"),
+          );
+        let chain = this.library.chains.find((candidate) => candidate.id === chainId);
+        if (chain === undefined) {
+          chain = {
+            id: chainId,
+            name: String(args?.name ?? "").trim() || "新链路",
+            created_at: "2026-10-06T00:00:00Z",
+            versions: [],
+          };
+          this.library.chains.push(chain);
+        }
+        if (chain.versions.length === 0) {
+          this.versionSeed += 1;
+          chain.versions.push({
+            id: `chainver-new-${this.versionSeed}`,
+            index: 1,
+            created_at: "2026-10-06T00:00:00Z",
+            cards: inputs.map((card, index) => ({ id: `card-new-${this.versionSeed}-${index}`, ...card })) as ChainVersion["cards"],
+            change_note: String(args?.changeNote ?? ""),
+            trials: [],
+          });
+          return { chain: structuredClone(chain), action: "created" } as T;
+        }
+        if (chain.versions.some((version) => matches(version.cards))) {
+          return { chain: structuredClone(chain), action: "idempotent" } as T;
+        }
+        return { chain: structuredClone(chain), action: "conflict" } as T;
+      }
       case "making_start_session":
       case "making_end_session":
       case "making_cancel_message":
@@ -684,7 +735,7 @@ test("the draft panel badges each card with its type and saves posture slot_type
     assert.ok(panel, "草稿面板已渲染");
     const badge = panel.querySelector(".making-draft-type");
     assert.ok(badge, "类型徽标已渲染");
-    assert.equal(badge.textContent, "姿态卡");
+    assert.equal(badge.textContent, "回应风格");
     assert.equal(badge.classList.contains("is-posture"), true);
     assert.match(panel.textContent ?? "", /卡名：傲娇搭档/);
 
@@ -1133,5 +1184,371 @@ test("explicit trial hook override still takes precedence over the wired control
     assert.equal(elementOf(wired, "making-trial-panel").classList.contains("hidden"), true);
   } finally {
     wired.restore();
+  }
+});
+
+// ========== 空库直接口述（未绑定会话；update-frontend-ui-v5 有界限定操作） ==========
+
+function draftSaveButton(fixture: ConversationFixture): HTMLButtonElement | null {
+  return fixture.document.querySelector<HTMLButtonElement>(
+    ".making-draft-panel .making-draft-actions .making-mini-btn.primary",
+  );
+}
+
+test("empty library dictation starts an unbound session without a chain or status preamble", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    assert.equal(fixture.controller.makingChainId, null);
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    assert.match(id, /^mc-/);
+    // 未绑定：不自动发「链路现状」附言（无链路可述，不虚构）；输入可用。
+    assert.equal(messageTexts(fixture).length, 0, "不虚构链路现状附言");
+    assert.equal((elementOf(fixture, "making-conversation-input") as HTMLTextAreaElement).disabled, false);
+    const saved = savedRecordOf(fixture, id);
+    assert.ok(saved);
+    assert.equal(saved!.chain_id, null, "未绑定会话以 null chain_id 落盘");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("unbound session persists across restart and reopens with history", async () => {
+  const first = await conversationFixture(libraryOf([]));
+  let id = "";
+  let record: MakingConversationRecord | undefined;
+  try {
+    await startMaking(first);
+    id = currentConversationId(first);
+    first.backend.nextReply = "好的";
+    await typeAndSend(first, "我想让 AI 多问动机");
+    await flushPromises();
+    record = savedRecordOf(first, id);
+    assert.ok(record);
+    assert.equal(record!.chain_id, null);
+  } finally {
+    first.restore();
+  }
+
+  // 模拟重启：新装配 + 同一档案，从空态未绑定最近入口继续。
+  const second = await conversationFixture(libraryOf([]));
+  try {
+    second.backend.conversations.set(id, structuredClone(record!));
+    await second.controller.refresh();
+    await flushPromises();
+    const recent = elementOf(second, "making-conversation-recent");
+    assert.equal(recent.classList.contains("hidden"), false, "未绑定会话出现在最近入口");
+    const continueBtn = recent.querySelector<HTMLButtonElement>(".making-recent-continue");
+    assert.ok(continueBtn);
+    continueBtn!.click();
+    await flushPromises();
+    assert.equal(currentConversationId(second), id, "重开同一未绑定会话");
+    assert.ok(messageTexts(second).some((text) => text.includes("我想让 AI 多问动机")), "历史可见");
+  } finally {
+    second.restore();
+  }
+});
+
+test("browsing another chain and refresh does not clear or auto-bind the unbound session", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+
+    // 之后链路库出现一条链路（用户另建）；浏览它不得清掉未绑定会话，也不自动绑定。
+    const chain = chainOf("情节探索");
+    fixture.backend.library = libraryOf([chain]);
+    await fixture.controller.refresh();
+    await flushPromises();
+    await browseChain(fixture, chain.id);
+
+    assert.equal(
+      fixture.controller.conversation.currentConversationId,
+      id,
+      "浏览链路不清未绑定会话",
+    );
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, null, "不自动绑定");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("cancelling draft save does not create a chain for an unbound session", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "出一个草稿");
+    await flushPromises();
+
+    fixture.confirmResult = false;
+    const save = draftSaveButton(fixture);
+    assert.ok(save, "草稿面板有保存按钮");
+    save!.click();
+    await flushPromises();
+
+    assert.equal(
+      fixture.backend.calls.some((call) => call.cmd === "making_chain_ensure_for_conversation"),
+      false,
+      "取消保存不建立链路",
+    );
+    assert.equal(fixture.backend.library.chains.length, 0);
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, null, "仍保持未绑定");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("first draft save creates a chain with first version, binds the session, and does not enable", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "帮我做一条语气克制的链路");
+    await flushPromises();
+
+    fixture.confirmResult = true;
+    const save = draftSaveButton(fixture);
+    assert.ok(save, "草稿面板有保存按钮");
+    save!.click();
+    await flushPromises(24);
+
+    const ensure = fixture.backend.calls.find(
+      (call) => call.cmd === "making_chain_ensure_for_conversation",
+    );
+    assert.ok(ensure, "调用有界「建链路＋首版本」操作");
+    assert.equal(ensure!.args?.conversationId, id);
+
+    const chain = fixture.backend.library.chains.find((candidate) => candidate.id === `chain-${id}`);
+    assert.ok(chain, "确定性链路 id 由会话 id 派生");
+    assert.equal(chain!.versions.length, 1, "首版本建立");
+    assert.equal(chain!.versions[0].index, 1);
+    assert.equal(fixture.backend.library.active, null, "保存草稿不启用（全局启用版本不变）");
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, chain!.id, "会话已绑定具体链路");
+    assert.equal(fixture.controller.makingChainId, chain!.id, "制作对象切到新链路");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trial is disabled for an unsaved unbound draft (no chain to bind)", async () => {
+  const fixture = await conversationFixture(libraryOf([]), { withTrialHook: true });
+  try {
+    await startMaking(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "出一个草稿");
+    await flushPromises();
+
+    const trial = fixture.document.querySelector<HTMLButtonElement>(
+      ".making-draft-panel .making-draft-actions .making-mini-btn:not(.primary)",
+    );
+    assert.equal(trial?.disabled, true, "未保存不可试问");
+    assert.match(trial?.title ?? "", /先保存草稿/);
+    trial!.click();
+    await flushPromises();
+    assert.equal(fixture.trials.length, 0, "点击不触发试问");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("first-save binding write failure enters pending-bind; retry only补绑定 without a second version", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "帮我做一条链路");
+    await flushPromises();
+
+    // 绑定写入失败：ensure 建链路＋首版成功，但整档保存失败。
+    fixture.backend.failures.set("making_conversation_save", "磁盘写入失败");
+    draftSaveButton(fixture)!.click();
+    await flushPromises(24);
+
+    const chain = fixture.backend.library.chains.find((c) => c.id === `chain-${id}`);
+    assert.ok(chain, "链路已建立");
+    assert.equal(chain!.versions.length, 1, "首版本已建立");
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, null, "绑定未落盘（保存失败）");
+    assert.equal(
+      fixture.backend.calls.filter((c) => c.cmd === "making_chain_ensure_for_conversation").length,
+      1,
+      "ensure 只调用一次",
+    );
+    assert.equal(
+      fixture.backend.calls.filter((c) => c.cmd === "chain_save_version").length,
+      0,
+      "绑定失败不追加版本",
+    );
+
+    // 重试：清除失败，再次保存 → 只补绑定，不重复 ensure、不追加第 2 版。
+    fixture.backend.failures.delete("making_conversation_save");
+    draftSaveButton(fixture)!.click();
+    await flushPromises(24);
+
+    assert.equal(
+      fixture.backend.calls.filter((c) => c.cmd === "making_chain_ensure_for_conversation").length,
+      1,
+      "重试不重复 ensure",
+    );
+    assert.equal(
+      fixture.backend.calls.filter((c) => c.cmd === "chain_save_version").length,
+      0,
+      "重试不追加第 2 版",
+    );
+    assert.equal(chain!.versions.length, 1, "仍只有首版本");
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, chain!.id, "重试补保存绑定成功");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("ensure conflict is explicit (no false success); append happens only after binding recovers", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "帮我做一条链路");
+    await flushPromises();
+
+    // 预置：该会话的确定性链路已存在且首版与当前草稿不同（模拟 A 部分成功后重启）。
+    fixture.backend.library.chains.push({
+      id: `chain-${id}`,
+      name: "早先链路",
+      created_at: "2026-10-06T00:00:00Z",
+      versions: [{
+        id: "chainver-old",
+        index: 1,
+        created_at: "2026-10-06T00:00:00Z",
+        cards: [{ id: "card-old", title: "完全不同的卡", trigger_desc: "x", body: "y" }],
+        change_note: "",
+        trials: [],
+      }],
+    });
+
+    draftSaveButton(fixture)!.click();
+    await flushPromises(24);
+    const chain = fixture.backend.library.chains.find((c) => c.id === `chain-${id}`)!;
+    assert.equal(chain.versions.length, 1, "冲突不追加版本");
+    assert.equal(
+      fixture.backend.calls.filter((c) => c.cmd === "chain_save_version").length,
+      0,
+      "冲突路径不谎称保存（未调用追加）",
+    );
+    assert.equal(savedRecordOf(fixture, id)?.chain_id, chain.id, "冲突后恢复绑定");
+    assert.match(elementOf(fixture, "making-session-notice").textContent ?? "", /不同|追加/);
+
+    // 恢复绑定后再次保存：追加为新版本。
+    draftSaveButton(fixture)!.click();
+    await flushPromises(24);
+    assert.equal(chain.versions.length, 2, "恢复绑定后追加第 2 版");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("two unbound sessions keep unbound history; browsing another chain does not switch the list scope", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const u1 = currentConversationId(fixture);
+    fixture.backend.nextReply = "好的";
+    await typeAndSend(fixture, "第一条");
+    await flushPromises();
+
+    (elementOf(fixture, "making-session-new-btn") as unknown as { click(): void }).click();
+    await flushPromises();
+    const u2 = currentConversationId(fixture);
+    assert.notEqual(u2, u1, "第二个未绑定会话");
+
+    (elementOf(fixture, "making-session-history-btn") as unknown as { click(): void }).click();
+    await flushPromises();
+    const history = elementOf(fixture, "making-session-history-list");
+    assert.equal(history.classList.contains("hidden"), false, "未绑定会话历史可用");
+    assert.match(history.textContent ?? "", /第一条/, "未绑定会话（U1）出现在历史");
+
+    // 库中出现链路 B 并浏览：列表作用域仍按会话绑定（未绑定），不被 B 覆盖。
+    const chainB = chainOf("链路B");
+    fixture.backend.library = libraryOf([chainB]);
+    await fixture.controller.refresh();
+    await flushPromises();
+    await browseChain(fixture, chainB.id);
+    const historyAfter = elementOf(fixture, "making-session-history-list");
+    assert.equal(historyAfter.classList.contains("hidden"), false, "浏览 B 不隐藏未绑定历史");
+    assert.match(historyAfter.textContent ?? "", /第一条/, "列表仍按未绑定身份，不被 B 覆盖");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("a delayed binding save of an old session does not steal the current projection", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const u1 = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "U1 草稿");
+    await flushPromises();
+
+    // 延迟 U1 的绑定整档写入。
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    fixture.backend.saveGates.push(() => gate);
+
+    draftSaveButton(fixture)!.click(); // ensure + 绑定保存（挂在 gate）
+    await flushPromises(24);
+
+    // 等待期间切到新会话 U2（未绑定）。
+    (elementOf(fixture, "making-session-new-btn") as unknown as { click(): void }).click();
+    await flushPromises();
+    const u2 = currentConversationId(fixture);
+    assert.notEqual(u2, u1);
+
+    release();
+    await flushPromises(48);
+
+    // U1 绑定完成，但当前仍是 U2，制作对象未被旧会话抢走；U1 绑定本身已保存。
+    assert.equal(currentConversationId(fixture), u2, "U2 仍为当前会话");
+    assert.equal(fixture.controller.makingChainId, null, "未跳到 U1 的链路（未抢当前投影）");
+    assert.equal(savedRecordOf(fixture, u1)?.chain_id, `chain-${u1}`, "U1 绑定仍已保存");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("saveQueue keeps ordering: a suspended first write cannot drop a later turn or the binding", async () => {
+  const fixture = await conversationFixture(libraryOf([]));
+  try {
+    await startMaking(fixture);
+    const id = currentConversationId(fixture);
+    fixture.backend.nextReply = DRAFT_REPLY;
+    await typeAndSend(fixture, "第一轮");
+    await flushPromises();
+
+    // 延迟首次绑定写入。
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    fixture.backend.saveGates.push(() => gate);
+    draftSaveButton(fixture)!.click();
+    await flushPromises(24);
+
+    // 首写未完成时又发一条新消息（其整档保存排在同一队列之后）。
+    fixture.backend.nextReply = "回复";
+    await typeAndSend(fixture, "第二轮");
+    await flushPromises();
+
+    release();
+    await flushPromises(64);
+
+    const persisted = savedRecordOf(fixture, id);
+    assert.ok(persisted);
+    assert.equal(persisted!.chain_id, `chain-${id}`, "绑定保留");
+    assert.ok(persisted!.turns.some((turn) => turn.text === "第二轮"), "新轮次保留");
+    assert.ok(persisted!.turns.some((turn) => turn.text === "第一轮"), "旧轮次保留");
+  } finally {
+    fixture.restore();
   }
 });

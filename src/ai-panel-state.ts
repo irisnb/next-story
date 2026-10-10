@@ -4,6 +4,7 @@ import {
   followUpAvailableOf,
   followUpRequestForQuestionOf,
   followUpRequestOf,
+  isConversationRestrictedForRecovery,
   latchConversationRestriction,
   readonlyConversationView,
   retryFollowUpQuestionOf,
@@ -19,7 +20,6 @@ import {
   reduceAiPanelState,
   type AiPanelCoreState,
   type AiPanelEvent,
-  type WindowPlacement,
 } from "./ai-panel-reducer.ts";
 import type { PanelStateView } from "./ai-panel-request-state.ts";
 import { idleRequest } from "./ai-panel-request-state.ts";
@@ -217,14 +217,17 @@ export class AiPanelState {
     return this.state.focusedConversationId;
   }
 
-  /** 当前聚焦窗口的讨论身份；无窗口时为 null。 */
+  /** 当前显示的讨论身份（单面板当前投影）；无当前投影时为 null。 */
   get focusedConversationId(): string | null {
     return this.state.focusedConversationId;
   }
 
-  /** 当前打开的窗口集合（键为讨论 id，一讨论至多一个窗口）。 */
-  get windows(): ReadonlyMap<string, WindowPlacement> {
-    return this.state.windows;
+  /**
+   * 运行期讨论 id 集合（单面板迁移后不再有窗口/几何状态）。
+   * 供显示层计数等兼容消费；不承载停靠/浮动或多窗口几何。
+   */
+  get openDiscussionIds(): ReadonlySet<string> {
+    return new Set(this.state.discussions.keys());
   }
 
   /** 列表缓存与运行态分离；尚未保存的新讨论保留临时列表入口。 */
@@ -577,24 +580,39 @@ export class AiPanelState {
     return this.dispatch({ type: "stop_request", conversationId });
   }
 
-  /** 聚焦指定讨论的窗口（仅已打开窗口有效；非法迁移原样返回 false）。 */
-  focusWindow(conversationId: string): boolean {
-    return this.dispatch({ type: "focus_window", conversationId });
+  /**
+   * 崩溃恢复枚举：所有具备可重放对话且材料权限允许的讨论，独立于当前可见窗口。
+   * 恢复按讨论业务身份而非显示窗口键（resident-ai-session / ai-panel-state-structure）。
+   */
+  recoverableConversationIds(hiddenDocumentIds: ReadonlySet<string> = new Set()): string[] {
+    const ids: string[] = [];
+    for (const [id, discussion] of this.state.discussions) {
+      const conversation = discussion.conversation;
+      if (!conversation) continue;
+      if (isConversationRestrictedForRecovery(conversation, hiddenDocumentIds)) continue;
+      ids.push(id);
+    }
+    return ids;
   }
 
-  /** 关闭指定讨论的窗口（只结束显示，不删除讨论与档案）。 */
-  closeWindow(conversationId: string): boolean {
-    return this.dispatch({ type: "close_window", conversationId });
+  /** 该讨论是否已有运行期对话（重开时据此复用，不重新读盘覆盖）。 */
+  hasRuntimeConversation(conversationId: string): boolean {
+    return (this.state.discussions.get(conversationId)?.conversation ?? null) !== null;
   }
 
-  /** 设置指定窗口的停靠/浮动归属（拖动 / 双击标题栏切换）。 */
-  setWindowPlacement(conversationId: string, placement: WindowPlacement): boolean {
-    return this.dispatch({ type: "set_window_placement", conversationId, placement });
+  /** 选择已有运行期讨论为当前投影：不读盘、不覆盖运行态。 */
+  selectDiscussion(conversationId: string): boolean {
+    return this.dispatch({ type: "select_discussion", conversationId });
   }
 
-  /** 恢复默认布局：所有窗口回到停靠（几何由窗口层重置，不进状态）。 */
-  resetLayout(): boolean {
-    return this.dispatch({ type: "reset_layout" });
+  /** 读档尝试是否仍有效：按讨论身份与尝试令牌判断，不依赖显示窗口/可见性。 */
+  isOpeningValid(conversationId: string, token: object | undefined): boolean {
+    return token !== undefined && this.state.opening.get(conversationId) === token;
+  }
+
+  /** 文档切换：清除未发送的实时选区重点提示，保留各讨论草稿与冻结材料。 */
+  clearUnsentSelection(): void {
+    this.dispatch({ type: "remove_pending_selection" });
   }
 
   /** 重命名讨论（自定义标题持久化到档案）。 */

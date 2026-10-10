@@ -14,13 +14,13 @@ import type { ChainRoundRef, GenerateAiError, SelectionSnapshot } from "./types.
  * AI 面板事件类型的单一事实源（change: extract-ai-logic-seams 任务 2.1）。
  *
  * 本模块只定义 `AiPanelEvent` 联合与它的配套载荷类型（`PendingReadingRequest` /
- * `ReadingProgress` / `WindowPlacement`），不包含任何状态或迁移逻辑。
+ * `ReadingProgress`），不包含任何状态或迁移逻辑。
  * reducer 与各消费方经本模块（或 `ai-panel-reducer.ts` 的重导出）使用同一类型，
  * 全仓库不出现第二份定义或形状分叉。
+ *
+ * 单面板迁移（update-frontend-ui-v5）：不保存停靠/浮动、聚焦窗口或多窗口几何；
+ * 选择当前讨论投影经 `select_discussion`。
  */
-
-/** 窗口的停靠状态；浮动行为后续 wave 实现，本 wave 全部为「停靠」。 */
-export type WindowPlacement = "docked" | "floating";
 
 /**
  * 待决的按需补读授权请求（add-agent-on-demand-reading 任务 7.1）：后端拦截
@@ -157,12 +157,13 @@ export type AiPanelEvent =
   | { readonly type: "set_save_error"; readonly message: string; readonly conversationId?: string }
   | { readonly type: "clear_save_error"; readonly conversationId?: string }
   | { readonly type: "stop_request"; readonly conversationId: string }
-  | { readonly type: "focus_window"; readonly conversationId: string }
-  | { readonly type: "close_window"; readonly conversationId: string }
+  | {
+      /** 选择已有运行期讨论作为当前投影：不读盘、不覆盖运行态（单面板迁移）。 */
+      readonly type: "select_discussion";
+      readonly conversationId: string;
+    }
   | { readonly type: "retry_direct_question"; readonly conversationId: string }
   | { readonly type: "retry_stopped_follow_up" }
-  | { readonly type: "set_window_placement"; readonly conversationId: string; readonly placement: WindowPlacement }
-  | { readonly type: "reset_layout" }
   | { readonly type: "queue_request"; readonly conversationId: string }
   | { readonly type: "start_queued_request"; readonly conversationId: string }
   | { readonly type: "reject_queued_request"; readonly conversationId: string; readonly error: GenerateAiError }

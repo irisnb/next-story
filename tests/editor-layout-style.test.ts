@@ -34,7 +34,8 @@ test("Tiptap notebooks preserve the bounded writing surface and focus treatment"
   hasDeclaration(editable, "overflow-y", "auto");
   hasDeclaration(editable, "outline", "none");
   hasDeclaration(editable, "font-size", "1rem");
-  hasDeclaration(editable, "font-family", "inherit");
+  // v5 起正文显式使用文稿字体（不再继承界面字体），保证稿件排版与界面 UI 字体分离。
+  assert.match(editable, /font-family\s*:\s*"Source Han Sans CN"/);
 
   hasDeclaration(focusedMount, "border-color", "var(--color-primary)");
 });

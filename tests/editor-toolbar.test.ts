@@ -294,7 +294,7 @@ test("column width preset is restored from storage and cycles on click", () => {
   const { elements } = toolbarFixture({ columnWidthStorage: columnWidth });
 
   assert.equal(elements["editorPage"].getAttribute("data-column-width"), "wide");
-  assert.equal(elements["btnColumnWidth"].textContent, "宽");
+  assert.equal(elements["btnColumnWidth"].textContent, "宽 · 860");
 
   elements["btnColumnWidth"].dispatch("click");
   assert.equal(elements["editorPage"].getAttribute("data-column-width"), "narrow");
@@ -305,7 +305,7 @@ test("column width falls back to the default preset without storage", () => {
   const { elements } = toolbarFixture();
 
   assert.equal(elements["editorPage"].getAttribute("data-column-width"), "standard");
-  assert.equal(elements["btnColumnWidth"].textContent, "标准");
+  assert.equal(elements["btnColumnWidth"].textContent, "标准 · 720");
 
   elements["btnColumnWidth"].dispatch("click");
   assert.equal(elements["editorPage"].getAttribute("data-column-width"), "wide");

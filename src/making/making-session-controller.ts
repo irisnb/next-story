@@ -5,6 +5,7 @@ import {
   listenAiDriverLost,
   listenMakingMessage,
   makingCancelMessage,
+  makingChainEnsureForConversation,
   makingConversationDelete,
   makingConversationList,
   makingConversationLoad,
@@ -13,6 +14,7 @@ import {
   makingSendMessage,
   makingStartSession,
   type Chain,
+  type EnsureChainResult,
   type InvokeFn,
   type ListenFn,
   type MakingConversationRecord,
@@ -23,7 +25,6 @@ import {
   buildCardDraftPanelView,
   buildChainStatusMessage,
   deriveMakingTitle,
-  draftSlotTypeLabel,
   draftToCardInput,
   makingListTitle,
   makingListUpdatedAtLabel,
@@ -68,8 +69,8 @@ export interface MakingConversationServices {
   readonly listen?: ListenFn;
   /** 确认对话框（测试注入；缺省用 app-dialog 的原生确认）。 */
   readonly confirm?: (message: string) => Promise<boolean>;
-  /** 读取链路（草稿确认文案与试问钩子需要链路名称快照）。 */
-  readonly getChain: (chainId: string) => Chain | null;
+  /** 读取链路（草稿确认文案与试问钩子需要链路名称快照）；未绑定（null）返回 null。 */
+  readonly getChain: (chainId: string | null) => Chain | null;
   /** 链路库刷新入口（保存草稿成功后调用，刷新链路库与状态条的新草稿提示）。 */
   readonly refreshLibrary: () => Promise<void>;
   /** 切换制作对象（空态「继续最近会话」入口需要；即制作页的 setMakingObject）。 */
@@ -91,6 +92,13 @@ interface MakingSessionRuntime {
   turnError: string | null;
   /** 最近一次整档保存的错误；null＝无失败（不显示任何「已保存」表态）。 */
   saveError: string | null;
+  /**
+   * 待补保存的绑定链路 id：首次保存已建立链路，但会话绑定的整档保存失败时置位；
+   * 该阶段只补保存绑定，不重复 ensure、不再追加版本。null＝无待补绑定。
+   */
+  pendingBindChainId: string | null;
+  /** 同会话整档保存串行队列（避免旧轮快照晚到覆盖新状态）。 */
+  saveQueue: Promise<void>;
 }
 
 /** 制作对话区控制器的稳定接口（供制作页控制器与后续试问车道使用）。 */
@@ -204,16 +212,19 @@ export function setupMakingConversation(
 
   // ========== 会话列表（空态最近入口＋历史列表共用） ==========
 
+  /**
+   * 会话列表的作用域身份：有打开会话时以会话自身绑定为准（未绑定＝null），
+   * 不被当前浏览对象覆盖；无打开会话时用制作对象或浏览对象。
+   */
+  function listScopeChainId(): string | null {
+    const session = currentSession();
+    if (session !== null) return session.record.chain_id;
+    return makingChainId ?? browseChainId;
+  }
+
   async function refreshList(): Promise<void> {
-    const chainId = makingChainId ?? browseChainId;
-    if (chainId === null) {
-      list = [];
-      listSkipped = [];
-      listError = null;
-      renderRecent();
-      renderHistoryList();
-      return;
-    }
+    // 打开会话：按会话绑定身份列出（未绑定＝未绑定列表）；否则按制作/浏览对象。
+    const chainId = listScopeChainId();
     try {
       const result = await makingConversationList(chainId, call);
       list = result.conversations;
@@ -232,12 +243,15 @@ export function setupMakingConversation(
   function renderRecent(): void {
     const container = dom.conversationRecent;
     container.replaceChildren();
-    if (makingChainId !== null || browseChainId === null) {
+    // 只在空态（未打开会话）显示最近入口；制作对象存在或已有打开会话时由转录接管。
+    if (makingChainId !== null || currentSession() !== null) {
       container.classList.add("hidden");
       return;
     }
     container.classList.remove("hidden");
-    const chain = getChain(browseChainId);
+    // browseChainId 为 null 时展示未绑定会话（空库直接口述建立、尚未保存草稿）。
+    const chainId = browseChainId;
+    const chain = chainId === null ? null : getChain(chainId);
     if (listError !== null) {
       container.append(recentLine(`读取制作会话列表失败：${listError}`));
       return;
@@ -251,7 +265,7 @@ export function setupMakingConversation(
     }
     const heading = document.createElement("p");
     heading.className = "making-recent-title";
-    heading.textContent = `「${chain?.name ?? "该链路"}」的制作会话`;
+    heading.textContent = chainId === null ? "未绑定的制作会话" : `「${chain?.name ?? "该链路"}」的制作会话`;
     container.append(heading);
     const [mostRecent, ...rest] = list;
     const continueBtn = document.createElement("button");
@@ -259,12 +273,12 @@ export function setupMakingConversation(
     continueBtn.className = "making-action-btn primary making-recent-continue";
     continueBtn.textContent = `继续上次制作：${makingListTitle(mostRecent.title)}（${makingListUpdatedAtLabel(mostRecent.updated_at)}，${mostRecent.turn_count} 轮）`;
     continueBtn.addEventListener("click", () => {
-      switchMakingObject(browseChainId);
+      if (chainId !== null) switchMakingObject(chainId);
       void openConversation(mostRecent.id);
     });
     container.append(continueBtn);
     if (rest.length > 0) {
-      container.append(buildSessionList(rest, browseChainId));
+      container.append(buildSessionList(rest, chainId));
     }
   }
 
@@ -276,7 +290,7 @@ export function setupMakingConversation(
   }
 
   /** 会话列表（历史条目：点击打开＋独立删除动作）。 */
-  function buildSessionList(entries: readonly MakingConversationSummary[], chainId: string): HTMLElement {
+  function buildSessionList(entries: readonly MakingConversationSummary[], chainId: string | null): HTMLElement {
     const listElement = document.createElement("div");
     listElement.className = "making-session-list";
     listElement.setAttribute("role", "list");
@@ -288,7 +302,7 @@ export function setupMakingConversation(
       open.className = "making-session-list-open";
       open.textContent = `${makingListTitle(entry.title)}（${makingListUpdatedAtLabel(entry.updated_at)}，${entry.turn_count} 轮）`;
       open.addEventListener("click", () => {
-        if (makingChainId === null) switchMakingObject(chainId);
+        if (chainId !== null && makingChainId === null) switchMakingObject(chainId);
         void openConversation(entry.id);
       });
       const del = document.createElement("button");
@@ -305,7 +319,9 @@ export function setupMakingConversation(
   function renderHistoryList(): void {
     const container = dom.sessionHistoryList;
     container.replaceChildren();
-    if (makingChainId === null) {
+    // 有打开会话（含未绑定）或制作对象时都可用；未绑定时列出未绑定会话。
+    const scopeChainId = listScopeChainId();
+    if (scopeChainId === null && currentSession() === null) {
       container.classList.add("hidden");
       dom.sessionHistoryBtn.setAttribute("aria-expanded", "false");
       return;
@@ -321,16 +337,17 @@ export function setupMakingConversation(
       container.append(recentLine(`有 ${listSkipped.length} 份历史会话无法读取，已跳过。`));
     }
     if (list.length === 0) {
-      container.append(recentLine("这条链路还没有制作会话。"));
+      container.append(recentLine("还没有制作会话。"));
       return;
     }
-    container.append(buildSessionList(list, makingChainId));
+    container.append(buildSessionList(list, scopeChainId));
   }
 
   // ========== 转录渲染 ==========
 
   function renderPane(): void {
-    if (makingChainId === null) {
+    const session = currentSession();
+    if (makingChainId === null && session === null) {
       dom.conversationEmpty.classList.remove("hidden");
       dom.conversationActive.classList.add("hidden");
       renderRecent();
@@ -339,7 +356,6 @@ export function setupMakingConversation(
     }
     dom.conversationEmpty.classList.add("hidden");
     dom.conversationActive.classList.remove("hidden");
-    const session = currentSession();
     dom.sessionTitle.textContent = session === null
       ? "（尚未打开会话）"
       : makingListTitle(session.record.title);
@@ -395,7 +411,7 @@ export function setupMakingConversation(
       container.append(message);
       // 卡草稿面板：仅终态 assistant 轮解析（生成中不解析半截标记）。
       if (turn.role === "assistant" && (turn.status === "success" || turn.status === "cancelled")) {
-        const panel = buildDraftPanel(turn.text, record.chain_id, index);
+        const panel = buildDraftPanel(turn.text, session, index);
         if (panel !== null) container.append(panel);
       }
     }
@@ -424,11 +440,19 @@ export function setupMakingConversation(
 
   // ========== 卡草稿面板（保存经用户确认；试问留钩子） ==========
 
-  function buildDraftPanel(assistantText: string, chainId: string, turnIndex: number): HTMLElement | null {
+  /** 草稿保存的链路名：已绑定取链路名；未绑定以会话标题（首条口述）为名，空则「新链路」。 */
+  function chainNameOf(session: MakingSessionRuntime): string {
+    const boundChainId = session.record.chain_id;
+    const boundName = boundChainId === null ? null : getChain(boundChainId)?.name ?? null;
+    if (boundName !== null) return boundName;
+    const title = session.record.title.trim();
+    return title.length > 0 ? title : "新链路";
+  }
+
+  function buildDraftPanel(assistantText: string, session: MakingSessionRuntime, turnIndex: number): HTMLElement | null {
     const drafts = parseCardDrafts(assistantText);
     if (drafts.length === 0) return null;
-    const chain = getChain(chainId);
-    const chainName = chain?.name ?? "该链路";
+    const chainName = chainNameOf(session);
     const view = buildCardDraftPanelView(drafts, chainName);
     if (view === null) return null;
     const panel = document.createElement("section");
@@ -444,7 +468,7 @@ export function setupMakingConversation(
       // 逐卡类型徽标（add-posture-slot 任务 3.2）：草稿面板先看清是要求卡还是姿态卡。
       const typeBadge = document.createElement("p");
       typeBadge.className = `making-draft-type${draft.slotType === "posture" ? " is-posture" : ""}`;
-      typeBadge.textContent = draftSlotTypeLabel(draft.slotType);
+      typeBadge.textContent = draft.slotType === "posture" ? "回应风格" : "回应要求";
       card.append(
         typeBadge,
         draftLine("卡名", draft.title),
@@ -460,16 +484,17 @@ export function setupMakingConversation(
     save.type = "button";
     save.className = "making-mini-btn primary";
     save.textContent = "保存这版草稿";
-    save.addEventListener("click", () => { void saveDrafts(drafts, chainId, chainName); });
+    save.addEventListener("click", () => { void saveDrafts(drafts, session); });
     const trial = document.createElement("button");
     trial.type = "button";
     trial.className = "making-mini-btn";
     trial.textContent = "开始试问";
-    if (trialLauncher !== null) {
-      trial.addEventListener("click", () => trialLauncher!({ chainId, chainName, drafts }));
+    const boundChainId = session.record.chain_id;
+    if (boundChainId !== null && trialLauncher !== null) {
+      trial.addEventListener("click", () => trialLauncher!({ chainId: boundChainId, chainName, drafts }));
     } else {
       trial.disabled = true;
-      trial.title = "试问功能随后接入";
+      trial.title = boundChainId === null ? "先保存草稿建立链路后再试问" : "试问功能随后接入";
     }
     actions.append(save, trial);
     panel.append(actions);
@@ -499,12 +524,41 @@ export function setupMakingConversation(
     return pre;
   }
 
-  async function saveDrafts(drafts: readonly MakingCardDraft[], chainId: string, chainName: string): Promise<void> {
+  async function saveDrafts(drafts: readonly MakingCardDraft[], session: MakingSessionRuntime): Promise<void> {
+    const chainName = chainNameOf(session);
     const view = buildCardDraftPanelView(drafts, chainName);
     if (view === null) return;
+    // 取消保存：不建立链路（未绑定会话保持未绑定）。
     if (!await confirm(view.saveConfirm)) return;
+    const cards = drafts.map(draftToCardInput);
+    // 优先处理「待补绑定」阶段：首次保存的链路已建立，只需把绑定写回档案，
+    // 不再重复 ensure、不再追加版本。
+    if (session.pendingBindChainId !== null) {
+      await retryBind(session);
+      return;
+    }
+    const boundChainId = session.record.chain_id;
+    if (boundChainId === null) {
+      // 未绑定：一次建立「链路＋首版本」（后端有界限定操作，以会话 id 派生确定性 id、
+      // 以卡内容判重），再绑定并持久化。绑定保存失败进入待补绑定阶段，可安全重试。
+      try {
+        const result = await makingChainEnsureForConversation(
+          session.record.id,
+          chainName,
+          cards,
+          "制作会话保存",
+          call,
+        );
+        await persistBinding(session, result.chain.id, result);
+      } catch (error) {
+        notice = { kind: "error", text: `草稿保存失败：${errorMessage(error)}` };
+        renderNotice();
+      }
+      return;
+    }
+    // 已绑定：追加新版本（普通保存路径）。
     try {
-      const version = await chainSaveVersion(chainId, drafts.map(draftToCardInput), "制作会话保存", call);
+      const version = await chainSaveVersion(boundChainId, cards, "制作会话保存", call);
       notice = {
         kind: "info",
         text: `已保存为「${chainName}·第${version.index}版」草稿；尚未启用，启用请在结构检视里显式操作。`,
@@ -516,17 +570,104 @@ export function setupMakingConversation(
     renderNotice();
   }
 
-  // ========== 保存与发送 ==========
+  /**
+   * 绑定并持久化首次保存建立的链路。绑定保存失败时不改内存绑定为「已成功」，
+   * 而是进入待补绑定阶段：重试只补保存绑定，不重复 ensure、不再追加版本。
+   */
+  /**
+   * 异步完成后：该会话仍是当前打开且未被替换/删除时，才允许切换制作对象等 UI。
+   * 旧会话在等待期间被切走/替换/删除时，保存照旧完成，但不得抢当前投影。
+   */
+  function isStillCurrentSession(session: MakingSessionRuntime): boolean {
+    return currentId === session.record.id && sessions.get(session.record.id) === session;
+  }
 
-  async function saveSession(session: MakingSessionRuntime): Promise<void> {
-    session.record.updated_at = nowIso();
-    try {
-      await makingConversationSave(session.record, call);
-      session.saveError = null;
-    } catch (error) {
-      session.saveError = errorMessage(error);
+  async function persistBinding(
+    session: MakingSessionRuntime,
+    chainId: string,
+    result: EnsureChainResult,
+  ): Promise<void> {
+    session.record.chain_id = chainId;
+    const saved = await saveSession(session);
+    if (!saved) {
+      session.pendingBindChainId = chainId;
+      notice = {
+        kind: "error",
+        text: "链路已建立，但会话绑定未能保存；请再次点「保存这版草稿」补保存绑定（不会重复建立链路或版本）。",
+      };
+      renderNotice();
+      return;
+    }
+    session.pendingBindChainId = null;
+    await refreshLibrary();
+    // 异步保存期间用户可能已切到别的会话：不得用旧会话完成抢当前投影/制作对象。
+    if (!isStillCurrentSession(session)) return;
+    switchMakingObject(chainId);
+    if (result.action === "conflict") {
+      // 既有链路已有不同版本：明确冲突，不谎称已保存；恢复绑定后由普通保存追加。
+      notice = {
+        kind: "info",
+        text: `该制作会话此前已建立链路「${result.chain.name}」；已绑定。当前草稿与既有版本不同，请再次点「保存这版草稿」追加为新版本。`,
+      };
+    } else {
+      const version = result.chain.versions[result.chain.versions.length - 1];
+      notice = {
+        kind: "info",
+        text: `已保存为「${result.chain.name}·第${version?.index ?? 1}版」草稿；尚未启用，启用请在结构检视里显式操作。`,
+      };
     }
     renderNotice();
+  }
+
+  /** 待补绑定阶段：只补保存会话绑定（不建链路、不追加版本）。 */
+  async function retryBind(session: MakingSessionRuntime): Promise<void> {
+    const chainId = session.pendingBindChainId;
+    if (chainId === null) return;
+    session.record.chain_id = chainId;
+    const saved = await saveSession(session);
+    if (saved) {
+      session.pendingBindChainId = null;
+      await refreshList();
+      if (!isStillCurrentSession(session)) return;
+      switchMakingObject(chainId);
+      notice = { kind: "info", text: "已补保存会话绑定；可继续对话或再次保存草稿。" };
+    } else {
+      notice = {
+        kind: "error",
+        text: `会话绑定仍未保存：${session.saveError ?? "保存失败"}，可再次重试。`,
+      };
+    }
+    renderNotice();
+  }
+
+  // ========== 保存与发送 ==========
+
+  /**
+   * 整档保存（同会话串行）：呼叫方按入队顺序取快照落盘，旧轮快照不会晚到覆盖新状态。
+   * 返回本次写入是否成功（失败设置 `saveError`，调用方可据此决定重试/待补绑定）。
+   */
+  async function saveSession(session: MakingSessionRuntime): Promise<boolean> {
+    session.record.updated_at = nowIso();
+    const snapshot = structuredClone(session.record);
+    const write = session.saveQueue.then(async (): Promise<boolean> => {
+      try {
+        await makingConversationSave(snapshot, call);
+        session.saveError = null;
+        // 任意成功写入若已带上绑定，则待补绑定阶段结束（避免重复补绑定）。
+        if (session.pendingBindChainId !== null && session.record.chain_id === session.pendingBindChainId) {
+          session.pendingBindChainId = null;
+        }
+        return true;
+      } catch (error) {
+        session.saveError = errorMessage(error);
+        return false;
+      } finally {
+        renderNotice();
+      }
+    });
+    // 队列只负责串行；前序失败不影响后续写入。
+    session.saveQueue = write.then(() => undefined, () => undefined);
+    return write;
   }
 
   function newRuntime(record: MakingConversationRecord): MakingSessionRuntime {
@@ -537,6 +678,8 @@ export function setupMakingConversation(
       started: false,
       turnError: null,
       saveError: null,
+      pendingBindChainId: null,
+      saveQueue: Promise.resolve(),
     };
   }
 
@@ -656,6 +799,7 @@ export function setupMakingConversation(
       currentId = id;
       historyOpen = false;
       renderPane();
+      void refreshList();
       return;
     }
     try {
@@ -668,6 +812,7 @@ export function setupMakingConversation(
       currentId = id;
       historyOpen = false;
       renderPane();
+      void refreshList();
     } catch (error) {
       notice = { kind: "error", text: `打开制作会话失败：${errorMessage(error)}` };
       renderPane();
@@ -675,7 +820,8 @@ export function setupMakingConversation(
   }
 
   function startNewSession(): void {
-    if (makingChainId === null) return;
+    // 允许未绑定会话（空库直接口述）：makingChainId 为 null 时 chain_id 记 null，
+    // 不发「链路现状」附言（没有链路可述，不虚构），保存草稿时才建立链路并绑定。
     const record: MakingConversationRecord = {
       id: generateMakingConversationId(),
       chain_id: makingChainId,
@@ -690,14 +836,20 @@ export function setupMakingConversation(
     notice = null;
     historyOpen = false;
     renderPane();
+    void refreshList();
     dom.conversationInput.focus();
     // 新会话链路现状附言（add-posture-slot 任务 7.6）：建立新会话后自动经既有
     // 发送通道发出首条「链路现状」附言（最新版本全部卡的全文），让制作助手拿到
     // 既有卡的完整内容（「并存」草稿须完整重述）。取不到链路（getChain null）时
     // 不发（守则的诚实回退覆盖）、不报错；发送失败走正常失败轮如实呈现，不阻断
     // 会话。「继续上次制作」（openConversation）不经此路径，不重复附言。
-    const chain = getChain(makingChainId);
-    if (chain === null) return;
+    const chain = makingChainId === null ? null : getChain(makingChainId);
+    if (chain === null) {
+      // 未绑定（空库直接口述）：无「链路现状」附言可发；立即落一版空档案，
+      // 使未绑定会话在重启后仍可从最近入口重开（保存失败如实提示，不阻断）。
+      void saveSession(runtime);
+      return;
+    }
     void sendUserTurn(runtime, buildChainStatusMessage(chain), { deriveTitle: false });
   }
 
@@ -739,14 +891,17 @@ export function setupMakingConversation(
     setChain(chainId) {
       const changed = chainId !== makingChainId;
       makingChainId = chainId;
-      if (chainId === null) {
-        currentId = null;
-        historyOpen = false;
-      } else {
-        const session = currentSession();
-        if (session !== null && session.record.chain_id !== chainId) currentId = null;
-        if (currentId !== null && sessions.get(currentId) === undefined) currentId = null;
+      // 制作对象真实变化且与当前会话绑定不一致时才复位；未绑定会话在制作对象保持
+      // null（刷新 / 浏览链路）时保留，不丢草稿、不自动绑定。
+      if (changed && currentId !== null) {
+        const session = sessions.get(currentId);
+        const bound = session?.record.chain_id ?? null;
+        if (bound !== chainId) {
+          currentId = null;
+          historyOpen = false;
+        }
       }
+      if (currentId !== null && sessions.get(currentId) === undefined) currentId = null;
       // 只有制作对象真实变化才清提示：链路库 refresh（如启用/保存草稿后的重读）
       // 会带同一链路再次 setChain，不得抹掉「已保存草稿」等结果提示。
       if (changed) notice = null;

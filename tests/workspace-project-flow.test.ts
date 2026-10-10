@@ -269,6 +269,7 @@ function fixture(options: FixtureOptions = {}) {
     openDiscussion() {},
     async deleteDiscussion() {},
     recomputeRestrictions() {},
+    clearUnsentSelection() {},
     drainPendingSaves: async () => {},
     destroy() {},
   };

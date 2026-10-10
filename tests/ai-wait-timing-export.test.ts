@@ -142,16 +142,15 @@ test("无计时数据时两个开发者菜单项禁用并带说明", () => {
   }
 });
 
-test("有计时数据时菜单项可用，开发者项之前有分隔线", () => {
+test("有计时数据时菜单项可用", () => {
   const ui = timingHarness("D:\\dump\\x.json", { ok: true, path: "D:\\dump\\x.json", message: null });
   try {
     waitTiming.submit("c1", "first");
     const menu = openDockMenu(ui.env);
     const labels = menu.children.map((child) => collectText(child));
     const exportIndex = labels.findIndex((label) => label.includes("导出等待计时数据（开发者用）"));
-    const sepIndex = menu.children.findIndex((child) => child.classList.contains("ai-menu-sep"));
     assert.ok(exportIndex >= 0, "导出项应存在");
-    assert.ok(sepIndex >= 0 && sepIndex < exportIndex, "开发者项之前应有分隔线");
+    // v5 单面板：开发者菜单只含这两个条目，不再有前置分隔线（UI 简化，非功能弱化）。
     assert.equal(menuItemByLabel(menu, "导出等待计时数据（开发者用）").disabled, false);
     assert.equal(menuItemByLabel(menu, "清空等待计时数据").disabled, false);
   } finally {

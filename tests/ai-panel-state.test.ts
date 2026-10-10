@@ -714,12 +714,12 @@ test("newConversation opens an empty discussion window even at zero discussions"
   assert.equal(state.newConversation(), true);
   assert.equal(calls, 1, "新建空讨论窗口通知一次");
   assert.deepEqual(state.view.request, { kind: "idle" });
-  assert.equal(state.windows.size, 1, "0 条讨论时也打开一个空窗口");
+  assert.equal(state.openDiscussionIds.size, 1, "0 条讨论时也打开一个空讨论");
 
   // 聚焦窗口已是空窗口：复用，不新建第二个。
   assert.equal(state.newConversation(), false);
   assert.equal(calls, 1, "复用空窗口不通知");
-  assert.equal(state.windows.size, 1);
+  assert.equal(state.openDiscussionIds.size, 1);
 });
 
 test("drafts are isolated per discussion window", () => {
@@ -1023,24 +1023,24 @@ test("late increments and terminal results for a removed discussion do not pollu
   }
 });
 
-// ========== 阶段 3：窗口结构状态（任务 2.5） ==========
+// ========== 阶段 3：单面板讨论状态（任务 2.5） ==========
 
-test("window structure opens a docked window and focuses it on first request", () => {
+test("first request selects the current discussion projection", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题", null);
 
-  assert.equal(state.windows.size, 1);
-  assert.equal(state.windows.get("1"), "docked");
+  assert.equal(state.openDiscussionIds.size, 1);
+  assert.equal(state.openDiscussionIds.has("1"), true);
   assert.equal(state.focusedConversationId, "1");
   assert.equal(state.activeConversationId, "1");
 });
 
-test("window structure reopens an open discussion by focusing without duplicating", () => {
+test("reopening an open discussion selects it without duplicating", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题一", null);
   state.succeedDirectQuestion("回答一");
   state.beginDirectQuestion("问题二", null); // 讨论 "2"
-  assert.equal(state.windows.size, 2);
+  assert.equal(state.openDiscussionIds.size, 2);
   assert.equal(state.focusedConversationId, "2");
 
   state.openDiscussion(
@@ -1056,40 +1056,40 @@ test("window structure reopens an open discussion by focusing without duplicatin
     null,
     null,
   );
-  assert.equal(state.windows.size, 2, "重开已打开讨论不创建第二个窗口");
-  assert.equal(state.windows.get("1"), "docked");
+  assert.equal(state.openDiscussionIds.size, 2, "重开已打开讨论不重复创建");
+  assert.equal(state.openDiscussionIds.has("1"), true);
   assert.equal(state.focusedConversationId, "1");
 });
 
-test("window structure removes the window on delete and focuses nothing when it was focused", () => {
+test("delete removes the discussion and clears the projection when it was current", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题", null);
-  assert.equal(state.windows.size, 1);
+  assert.equal(state.openDiscussionIds.size, 1);
 
   state.deleteDiscussion("1");
-  assert.equal(state.windows.size, 0);
+  assert.equal(state.openDiscussionIds.size, 0);
   assert.equal(state.focusedConversationId, null);
   assert.equal(state.activeConversationId, null);
 });
 
-test("reset clears windows but list refresh preserves them", () => {
+test("reset clears discussions but list refresh preserves them", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题", null);
   state.succeedDirectQuestion("回答");
-  assert.equal(state.windows.size, 1);
+  assert.equal(state.openDiscussionIds.size, 1);
 
   state.reset();
-  assert.equal(state.windows.size, 0);
+  assert.equal(state.openDiscussionIds.size, 0);
   assert.equal(state.focusedConversationId, null);
 
   state.beginDirectQuestion("问题二", null);
   state.succeedDirectQuestion("回答二");
   state.loadDiscussions([], []);
-  assert.equal(state.windows.size, 1);
+  assert.equal(state.openDiscussionIds.size, 1);
   assert.equal(state.focusedConversationId, "2");
 });
 
-test("window structure notifies once per transition and is silent on illegal transitions", () => {
+test("discussion state notifies once per transition and is silent on illegal transitions", () => {
   let calls = 0;
   const state = new AiPanelState(() => { calls += 1; });
   state.beginDirectQuestion("问题", null);
@@ -1195,50 +1195,33 @@ test("retryDirectQuestion re-enters loading with the same question and selection
   }
 });
 
-test("focusWindow focuses an open window and is inert for non-window discussions", () => {
+test("selectDiscussion selects an existing discussion and is inert for unknown ones", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题一", null); // "1"
   state.beginDirectQuestion("问题二", null); // "2" 聚焦
   assert.equal(state.focusedConversationId, "2");
 
-  assert.equal(state.focusWindow("1"), true);
+  assert.equal(state.selectDiscussion("1"), true);
   assert.equal(state.focusedConversationId, "1");
-  // 非法：未打开窗口的讨论
-  assert.equal(state.focusWindow("unknown"), false);
+  // 非法：未知讨论
+  assert.equal(state.selectDiscussion("unknown"), false);
 });
 
-test("closeWindow ends display but keeps the discussion; reopen re-adds a window", () => {
+test("close hides the panel but keeps the discussion and its runtime", () => {
   const state = new AiPanelState();
   state.beginDirectQuestion("问题", null);
   state.succeedDirectQuestion("首答");
-  assert.equal(state.windows.size, 1);
+  assert.equal(state.openDiscussionIds.size, 1);
 
-  assert.equal(state.closeWindow("1"), true);
-  assert.equal(state.windows.size, 0, "关闭窗口不删除讨论");
+  state.close();
+  assert.equal(state.isOpen, false, "面板收起");
+  assert.equal(state.openDiscussionIds.size, 1, "收起不删除讨论");
   assert.equal(state.getDiscussion("1") !== null, true, "讨论保留");
-  assert.equal(state.focusedConversationId, null);
+  assert.equal(state.focusedConversationId, "1", "当前投影保留");
 
-  // 重开：重新打开窗口
-  state.openDiscussion(
-    {
-      id: "1",
-      createdAt: "t0",
-      anchor: null,
-      initialUserMaterial: { kind: "direct_question", question: "问题" },
-      firstResponse: "首答",
-      turns: [],
-      pending: null,
-    },
-    null,
-    null,
-  );
-  assert.equal(state.windows.size, 1);
+  // 重开：选择已有运行期讨论，不重新读盘。
+  assert.equal(state.selectDiscussion("1"), true);
   assert.equal(state.focusedConversationId, "1");
-});
-
-test("closeWindow is inert for a discussion without an open window", () => {
-  const state = new AiPanelState();
-  assert.equal(state.closeWindow("unknown"), false);
 });
 
 // ========== 阶段 3：排队与恢复覆盖（第 6、7 组） ==========

@@ -110,7 +110,10 @@ pub struct MakingTurn {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MakingConversationRecord {
     pub id: String,
-    pub chain_id: String,
+    /// 所属链路 id；`None`＝未绑定会话（空库直接口述建立，保存草稿时才建立链路并绑定）。
+    /// 旧档案的字符串 `chain_id` 反序列化为 `Some`，向后兼容；`null` 为未绑定。
+    #[serde(default)]
+    pub chain_id: Option<String>,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -121,7 +124,9 @@ pub struct MakingConversationRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MakingConversationSummary {
     pub id: String,
-    pub chain_id: String,
+    /// 所属链路 id；`None`＝未绑定会话。
+    #[serde(default)]
+    pub chain_id: Option<String>,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -155,6 +160,11 @@ pub enum MakingConversationError {
     Write(String),
     /// 会话已删除，迟到的保存被墓碑拒绝（不复活已删档案）。
     AlreadyDeleted { conversation_id: String },
+    /// 普通整档保存试图撤销或改绑已落盘的链路绑定（迟到旧快照 / 旧轮覆盖）。
+    BindingRegression {
+        conversation_id: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for MakingConversationError {
@@ -181,6 +191,10 @@ impl std::fmt::Display for MakingConversationError {
             MakingConversationError::AlreadyDeleted { conversation_id } => {
                 write!(f, "制作会话已删除，无法保存: {conversation_id}")
             }
+            MakingConversationError::BindingRegression {
+                conversation_id,
+                reason,
+            } => write!(f, "制作会话绑定冲突（{conversation_id}）: {reason}"),
         }
     }
 }
@@ -260,10 +274,13 @@ fn parse_record_file(path: &Path) -> Result<MakingConversationRecord, ReadRecord
 /// `updated_at`）、轮次角色与终态在锁定集合内。无效明确报错，不静默修复。
 fn validate_record(record: &MakingConversationRecord) -> Result<(), MakingConversationError> {
     validate_making_conversation_id(&record.id)?;
-    if record.chain_id.trim().is_empty() {
-        return Err(MakingConversationError::InvalidRecord {
-            reason: "缺少所属链路标识（chain_id）".to_string(),
-        });
+    // 未绑定会话（空库直接口述）以 `None` 表示；不得用空字符串伪造链路身份。
+    if let Some(chain_id) = &record.chain_id {
+        if chain_id.trim().is_empty() {
+            return Err(MakingConversationError::InvalidRecord {
+                reason: "所属链路标识（chain_id）不能为空字符串；未绑定会话应为 null".to_string(),
+            });
+        }
     }
     if record.created_at.trim().is_empty() || record.updated_at.trim().is_empty() {
         return Err(MakingConversationError::InvalidRecord {
@@ -319,11 +336,12 @@ fn save_record_to_dir(
 }
 
 /// 按链路列出制作会话（`updated_at` 倒序）。损坏/超限档案跳过并如实提示。
+/// `chain_id` 为 `None` 时列出未绑定会话（空库直接口述建立、尚未保存草稿）。
 /// 不校验链路是否仍存在（删除链路不清理制作会话档案——历史凭档案仍可读，
 /// 链路不存在时的呈现由前端处理）。
 pub fn list_making_conversations(
     conversations_dir: &Path,
-    chain_id: &str,
+    chain_id: Option<&str>,
 ) -> Result<MakingConversationListResult, MakingConversationError> {
     let mut result = MakingConversationListResult::default();
     let Ok(entries) = fs::read_dir(conversations_dir) else {
@@ -341,7 +359,7 @@ pub fn list_making_conversations(
         };
         match parse_record_file(&path) {
             Ok(record) => {
-                if record.chain_id == chain_id {
+                if record.chain_id.as_deref() == chain_id {
                     records.push(record);
                 }
             }
@@ -411,7 +429,77 @@ pub fn save_making_conversation(
             conversation_id: record.id.clone(),
         });
     }
+    // 绑定单调保护：整档保存不得撤销或改绑已落盘的链路绑定（同一把锁内读取现状比对）。
+    // 迟到的旧快照（chain_id 为 None 或旧链路 id）不能覆盖已绑定会话。
+    if let Ok(current) = parse_record_file(&path) {
+        match (&current.chain_id, &record.chain_id) {
+            (Some(current_id), None) => {
+                return Err(MakingConversationError::BindingRegression {
+                    conversation_id: record.id.clone(),
+                    reason: format!("已绑定链路 {current_id}，普通保存不得解除绑定"),
+                });
+            }
+            (Some(current_id), Some(incoming_id)) if incoming_id != current_id => {
+                return Err(MakingConversationError::BindingRegression {
+                    conversation_id: record.id.clone(),
+                    reason: format!("已绑定链路 {current_id}，普通保存不得改绑到 {incoming_id}"),
+                });
+            }
+            _ => {}
+        }
+    }
     save_record_to_dir(conversations_dir, record)
+}
+
+/// 会话存储锁内执行「建链路前置校验 + 链路库写入」的受限跨存储操作（有界线定）：
+/// - 会话标识安全；
+/// - 会话档案真实存在（未绑定会话建立时即落档）；
+/// - 未被删除（墓碑）；
+/// - 现有绑定为空，或不与目标链路冲突（同一会话不得改绑）。
+///
+/// **锁序（统一 session → chain）**：本函数在会话存储锁内运行 `body`（由调用方
+/// 在其中取链路库锁写链路），因此 delete（同样取会话存储锁）无法在校验与链路写入之间
+/// 插入；两锁不出现相反顺序（已核对：`chain_library` 的 `with_library` 锁内不访问
+/// 制作会话存储，唯一跨存储点即本函数），故不死锁。`body` 内不得再取会话存储锁。
+pub(crate) fn with_conversation_store_lock<R>(
+    conversations_dir: &Path,
+    conversation_id: &str,
+    target_chain_id: &str,
+    body: impl FnOnce() -> Result<R, String>,
+) -> Result<R, String> {
+    validate_making_conversation_id(conversation_id).map_err(|e| e.to_string())?;
+    let path = conversation_file_in(conversations_dir, conversation_id);
+    // 持有会话存储锁贯穿校验与 body（delete 走同一把锁，二者串行化）。
+    let tombstones = lock_recover(&MAKING_CONVERSATION_STORE_LOCK);
+    if tombstones.contains(&path) {
+        return Err(MakingConversationError::AlreadyDeleted {
+            conversation_id: conversation_id.to_string(),
+        }
+        .to_string());
+    }
+    let record = parse_record_file(&path).map_err(|failure| {
+        let error = match failure {
+            ReadRecordFailure::TooLarge => MakingConversationError::TooLarge {
+                actual_bytes: MAX_MAKING_CONVERSATION_BYTES + 1,
+            },
+            ReadRecordFailure::Corrupt => {
+                MakingConversationError::Read("制作会话档案损坏，无法建立链路".to_string())
+            }
+            ReadRecordFailure::Io(msg) => MakingConversationError::Read(msg),
+        };
+        error.to_string()
+    })?;
+    if let Some(current) = &record.chain_id {
+        if current != target_chain_id {
+            return Err(MakingConversationError::BindingRegression {
+                conversation_id: conversation_id.to_string(),
+                reason: format!("该会话已绑定链路 {current}，不得改绑"),
+            }
+            .to_string());
+        }
+    }
+    body()
+    // tombstones（会话存储锁）在 body 完成后随作用域释放。
 }
 
 /// 删除一份制作会话档案（幂等：不存在视为成功）并记入墓碑。
@@ -849,15 +937,15 @@ pub(crate) async fn making_end_session(
 }
 
 /// 按链路列出制作会话（`updated_at` 倒序）；损坏/超限档案跳过并如实提示。
-/// 不校验链路是否仍存在（删除链路不清理制作会话档案）。
+/// `chain_id` 为 `null` 时列出未绑定会话；不校验链路是否仍存在。
 #[tauri::command]
 pub(crate) async fn making_conversation_list(
     app: tauri::AppHandle,
-    chain_id: String,
+    chain_id: Option<String>,
 ) -> Result<MakingConversationListResult, String> {
     let conversations_dir = making_conversations_dir_from_app(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        list_making_conversations(&conversations_dir, &chain_id)
+        list_making_conversations(&conversations_dir, chain_id.as_deref())
     })
     .await
     .map_err(|e| format!("读取制作会话列表任务执行失败: {e}"))?
@@ -912,7 +1000,7 @@ pub(crate) async fn making_conversation_delete(
 }
 
 /// 解析应用本地数据目录 → `making-module/conversations/`（不可得时明确报错）。
-fn making_conversations_dir_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn making_conversations_dir_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_local_data_dir()
         .map(|dir| conversations_dir_in(&making_module_dir_in(&dir)))
@@ -1134,7 +1222,7 @@ mod tests {
     fn sample_record(id: &str, chain_id: &str, updated_at: &str) -> MakingConversationRecord {
         MakingConversationRecord {
             id: id.to_string(),
-            chain_id: chain_id.to_string(),
+            chain_id: Some(chain_id.to_string()),
             title: format!("制作 {id}"),
             created_at: "2026-10-06T10:00:00.000Z".to_string(),
             updated_at: updated_at.to_string(),
@@ -1183,7 +1271,7 @@ mod tests {
         )
         .expect("保存 3（其他链路）");
 
-        let list = list_making_conversations(&dir, "chain-a").expect("列出 chain-a");
+        let list = list_making_conversations(&dir, Some("chain-a")).expect("列出 chain-a");
         assert_eq!(list.skipped.len(), 0);
         assert_eq!(
             list.conversations
@@ -1223,9 +1311,159 @@ mod tests {
     #[test]
     fn making_conversation_list_empty_when_no_archive() {
         let (_base, dir) = temp_conversations_dir();
-        let list = list_making_conversations(&dir, "chain-none").expect("列出空链路");
+        let list = list_making_conversations(&dir, Some("chain-none")).expect("列出空链路");
         assert!(list.conversations.is_empty());
         assert!(list.skipped.is_empty());
+    }
+
+    fn sample_unbound_record(id: &str, updated_at: &str) -> MakingConversationRecord {
+        let mut record = sample_record(id, "chain-ignored", updated_at);
+        record.chain_id = None;
+        record
+    }
+
+    /// 未绑定会话（空库直接口述）：以 `null` chain_id 往返，并在未绑定列表下可见。
+    #[test]
+    fn making_conversation_unbound_roundtrip_and_list() {
+        let (_base, dir) = temp_conversations_dir();
+        save_making_conversation(
+            &dir,
+            &sample_unbound_record("mc-u1", "2026-10-06T10:00:00.000Z"),
+        )
+        .expect("保存未绑定 1");
+        save_making_conversation(
+            &dir,
+            &sample_unbound_record("mc-u2", "2026-10-06T12:00:00.000Z"),
+        )
+        .expect("保存未绑定 2");
+        save_making_conversation(
+            &dir,
+            &sample_record("mc-b1", "chain-a", "2026-10-06T11:00:00.000Z"),
+        )
+        .expect("保存已绑定");
+
+        let list = list_making_conversations(&dir, None).expect("列出未绑定");
+        assert_eq!(
+            list.conversations
+                .iter()
+                .map(|summary| summary.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["mc-u2", "mc-u1"],
+            "只含未绑定会话，按 updated_at 倒序"
+        );
+        assert!(list
+            .conversations
+            .iter()
+            .all(|summary| summary.chain_id.is_none()));
+
+        let loaded = load_making_conversation(&dir, "mc-u1").expect("读取未绑定");
+        assert!(loaded.chain_id.is_none(), "未绑定以 null 往返");
+    }
+
+    /// 旧档案兼容：字符串 chain_id 反序列化为 `Some`；`null` 为未绑定。
+    #[test]
+    fn making_conversation_legacy_string_chain_id_is_compatible() {
+        let legacy = r#"{"id":"mc-old","chain_id":"chain-a","title":"旧","created_at":"t","updated_at":"t","turns":[]}"#;
+        let record: MakingConversationRecord = serde_json::from_str(legacy).expect("旧档案可读");
+        assert_eq!(record.chain_id.as_deref(), Some("chain-a"));
+        let unbound = r#"{"id":"mc-new","chain_id":null,"title":"新","created_at":"t","updated_at":"t","turns":[]}"#;
+        let record: MakingConversationRecord = serde_json::from_str(unbound).expect("null 可读");
+        assert!(record.chain_id.is_none());
+    }
+
+    /// 空字符串 chain_id 明确拒绝（不得以空字符串伪造未绑定）。
+    #[test]
+    fn making_conversation_empty_string_chain_id_is_rejected() {
+        let (_base, dir) = temp_conversations_dir();
+        let mut record = sample_record("mc-x", "chain-a", "t");
+        record.chain_id = Some("   ".to_string());
+        let error = save_making_conversation(&dir, &record).expect_err("空字符串应被拒绝");
+        assert!(error.to_string().contains("空字符串"), "{error}");
+    }
+
+    /// 绑定单调保护：普通整档保存不得撤销或改绑已落盘绑定；首次绑定（None→Some）允许。
+    #[test]
+    fn save_rejects_binding_regression() {
+        let (_base, dir) = temp_conversations_dir();
+        let bound = sample_record("mc-b", "chain-a", "t");
+        save_making_conversation(&dir, &bound).expect("保存已绑定");
+
+        let mut unbound = bound.clone();
+        unbound.chain_id = None;
+        let error = save_making_conversation(&dir, &unbound).expect_err("不得撤销绑定");
+        assert!(error.to_string().contains("不得解除绑定"), "{error}");
+
+        let mut rebound = bound.clone();
+        rebound.chain_id = Some("chain-b".to_string());
+        let error = save_making_conversation(&dir, &rebound).expect_err("不得改绑");
+        assert!(error.to_string().contains("不得改绑"), "{error}");
+
+        // 首次绑定（None→Some）允许。
+        let unbound0 = sample_unbound_record("mc-u", "t");
+        save_making_conversation(&dir, &unbound0).expect("未绑定可保存");
+        let mut first_bind = unbound0.clone();
+        first_bind.chain_id = Some("chain-x".to_string());
+        save_making_conversation(&dir, &first_bind).expect("首次绑定允许");
+    }
+
+    /// ensure 边界（经受限跨存储 helper，空 body）：不存在 / 已删除 / 绑定冲突拒绝；绑定一致允许。
+    #[test]
+    fn with_conversation_store_lock_rejects_missing_deleted_and_conflict() {
+        let (_base, dir) = temp_conversations_dir();
+        assert!(
+            with_conversation_store_lock(&dir, "mc-none", "chain-mc-none", || Ok(())).is_err(),
+            "不存在的会话拒绝"
+        );
+
+        save_making_conversation(&dir, &sample_unbound_record("mc-del", "t")).expect("保存");
+        delete_making_conversation(&dir, "mc-del").expect("删除");
+        let error = with_conversation_store_lock(&dir, "mc-del", "chain-mc-del", || Ok(()))
+            .expect_err("删除后拒绝");
+        assert!(error.contains("已删除"), "{error}");
+
+        save_making_conversation(&dir, &sample_record("mc-conf", "chain-a", "t")).expect("保存");
+        let error = with_conversation_store_lock(&dir, "mc-conf", "chain-mc-conf", || Ok(()))
+            .expect_err("改绑拒绝");
+        assert!(error.contains("已绑定"), "{error}");
+        with_conversation_store_lock(&dir, "mc-conf", "chain-a", || Ok(())).expect("绑定一致允许");
+    }
+
+    /// 受限 helper 在 body 期间持有会话存储锁：并发 delete 阻塞到 body 完成，
+    /// 因此 delete 无法插入校验与链路写入之间（无孤链、无死锁）。
+    #[test]
+    fn with_conversation_store_lock_serializes_concurrent_delete() {
+        let (_base, dir) = temp_conversations_dir();
+        save_making_conversation(&dir, &sample_unbound_record("mc-lock", "t")).expect("保存");
+
+        let dir_for_ensure = dir.clone();
+        let (in_body_tx, in_body_rx) = std::sync::mpsc::channel::<()>();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let ensure = std::thread::spawn(move || {
+            with_conversation_store_lock(&dir_for_ensure, "mc-lock", "chain-mc-lock", || {
+                in_body_tx.send(()).expect("信号");
+                release_rx.recv().expect("等待放行");
+                Ok::<_, String>(())
+            })
+        });
+        in_body_rx.recv().expect("body 已进入（持锁）");
+
+        let dir_for_delete = dir.clone();
+        let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let deleted_flag = deleted.clone();
+        let deleter = std::thread::spawn(move || {
+            delete_making_conversation(&dir_for_delete, "mc-lock").expect("删除");
+            deleted_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(
+            !deleted.load(std::sync::atomic::Ordering::SeqCst),
+            "delete 应在 body 持锁期间阻塞"
+        );
+
+        release_tx.send(()).expect("放行");
+        ensure.join().expect("ensure 完成").expect("ensure 成功");
+        deleter.join().expect("delete 完成");
+        assert!(deleted.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     /// 损坏/超限档案：load 明确报错；list 跳过并如实提示（不静默吞）。
@@ -1247,7 +1485,7 @@ mod tests {
         let error = load_making_conversation(&dir, "mc-missing").expect_err("缺失档案必须明确报错");
         assert!(error.to_string().contains("不存在"), "{}", error);
 
-        let list = list_making_conversations(&dir, "chain-a").expect("列出");
+        let list = list_making_conversations(&dir, Some("chain-a")).expect("列出");
         assert!(list.conversations.is_empty());
         assert_eq!(list.skipped.len(), 2, "损坏与超限各产生一条可见提示");
         let skipped_text = list.skipped.join("\n");
@@ -1423,7 +1661,7 @@ setInterval(() => {}, 1000);
         // 不可重放（assistant failed / assistant pending / 空 user）各就位。
         let record = MakingConversationRecord {
             id: "mc-1".to_string(),
-            chain_id: "chain-a".to_string(),
+            chain_id: Some("chain-a".to_string()),
             title: "制作".to_string(),
             created_at: "2026-10-06T10:00:00.000Z".to_string(),
             updated_at: "2026-10-06T10:05:00.000Z".to_string(),
@@ -1641,7 +1879,7 @@ setInterval(() => {}, 1000);
     fn replay_seed_filters_unfinished_and_empty_turns() {
         let record = MakingConversationRecord {
             id: "mc-1".to_string(),
-            chain_id: "chain-a".to_string(),
+            chain_id: Some("chain-a".to_string()),
             title: String::new(),
             created_at: "2026-10-06T10:00:00.000Z".to_string(),
             updated_at: "2026-10-06T10:00:00.000Z".to_string(),

@@ -189,7 +189,6 @@ test("begin_request 建立召唤首轮 loading 讨论，打开停靠窗口并聚
   assert.equal(next.previewRequest, null);
   assert.equal(next.generation, initial.generation + 1);
   assert.equal(next.focusedConversationId, "c-9");
-  assert.equal(next.windows.get("c-9"), "docked");
   const discussion = next.discussions.get("c-9")!;
   assert.ok(discussion);
   assert.deepEqual(discussion.request, {
@@ -629,7 +628,6 @@ test("begin_direct_question 冻结问题与选区、消费待附带选区并打�
   });
   assert.equal(next.visibility, "open");
   assert.equal(next.focusedConversationId, "c-1");
-  assert.equal(next.windows.get("c-1"), "docked");
   assert.equal(next.pendingSelection, null, "发送后待附带选区被消费");
   const discussion = next.discussions.get("c-1")!;
   assert.deepEqual(discussion.request, {
@@ -864,7 +862,7 @@ test("open 展开面板；已展开返回同一引用", () => {
 
 // ========== 讨论与作品生命周期（new_conversation / reset / load_discussions / recompute / open / delete） ==========
 
-test("new_conversation 开启新的空讨论窗口并清掉瞬态字段", () => {
+test("new_conversation 开启新的空讨论并清掉瞬态字段", () => {
   let state = established();
   state = reduce(state, { type: "set_save_error", message: "旧错误" });
   const next = reduce(state, {
@@ -876,7 +874,7 @@ test("new_conversation 开启新的空讨论窗口并清掉瞬态字段", () => 
   });
   assert.equal(next.visibility, "open");
   assert.equal(next.focusedConversationId, "c-2");
-  assert.equal(next.windows.size, 2, "旧窗口保留");
+  assert.equal(next.discussions.size, 2, "旧讨论保留");
   assert.equal(next.discussions.get("c-2")!.request.kind, "idle");
   assert.equal(next.discussions.get("c-2")!.conversation, null);
   assert.equal(next.saveError, null);
@@ -903,7 +901,7 @@ test("new_conversation 聚焦窗口已是空讨论时复用并返回同一引用
   );
 });
 
-test("reset 清空讨论、窗口与草稿并推进代次", () => {
+test("reset 清空讨论与草稿并推进代次", () => {
   let state = established();
   state = reduce(state, {
     type: "update_direct_question_draft",
@@ -913,7 +911,6 @@ test("reset 清空讨论、窗口与草稿并推进代次", () => {
   const next = reduce(state, { type: "reset" });
   assert.equal(next.visibility, "closed");
   assert.equal(next.discussions.size, 0);
-  assert.equal(next.windows.size, 0);
   assert.equal(next.focusedConversationId, null);
   assert.equal(next.directQuestionDrafts.size, 0);
   assert.equal(next.pendingSelection, null);
@@ -922,7 +919,7 @@ test("reset 清空讨论、窗口与草稿并推进代次", () => {
   assert.equal(next.generation, state.generation + 1);
 });
 
-test("load_discussions 只刷新摘要，保留窗口与运行态", () => {
+test("load_discussions 只刷新摘要，保留运行态", () => {
   const state = established();
   const next = reduce(state, {
     type: "load_discussions",
@@ -931,7 +928,6 @@ test("load_discussions 只刷新摘要，保留窗口与运行态", () => {
     hiddenDocumentIds: new Set<string>(),
   });
   assert.equal(next.discussions, state.discussions);
-  assert.equal(next.windows, state.windows);
   assert.equal(next.focusedConversationId, state.focusedConversationId);
   assert.equal(next.generation, state.generation);
   assert.equal(next.summaries.has("c-load"), true);
@@ -985,7 +981,7 @@ test("recompute_restrictions 无变化时返回同一引用", () => {
   );
 });
 
-test("open_discussion 重开讨论：打开窗口、聚焦并显示已保存轮次", () => {
+test("open_discussion 重开讨论：选中为当前投影并显示已保存轮次", () => {
   const conversation: TemporaryConversation = {
     id: "c-open",
     createdAt: "t0",
@@ -1002,7 +998,6 @@ test("open_discussion 重开讨论：打开窗口、聚焦并显示已保存轮�
     focusDocumentTitle: "草稿",
   });
   assert.equal(next.visibility, "open");
-  assert.equal(next.windows.get("c-open"), "docked");
   assert.equal(next.focusedConversationId, "c-open");
   const discussion = next.discussions.get("c-open")!;
   assert.equal(discussion.request.kind, "success");
@@ -1010,7 +1005,7 @@ test("open_discussion 重开讨论：打开窗口、聚焦并显示已保存轮�
   assert.equal(discussion.focusDocumentId, "doc-1");
 });
 
-test("open_discussion 已打开的讨论只聚焦，不重复开窗", () => {
+test("open_discussion 已打开的讨论只选中，不重复建讨论", () => {
   const state = established();
   const conversation: TemporaryConversation = {
     id: "c-1",
@@ -1027,11 +1022,11 @@ test("open_discussion 已打开的讨论只聚焦，不重复开窗", () => {
     focusDocumentId: null,
     focusDocumentTitle: null,
   });
-  assert.equal(next.windows.size, 1);
+  assert.equal(next.discussions.size, 1);
   assert.equal(next.focusedConversationId, "c-1");
 });
 
-test("delete_discussion 移除讨论、窗口与草稿，聚焦被删讨论时清聚焦与瞬态预览", () => {
+test("delete_discussion 移除讨论与草稿，聚焦被删讨论时清聚焦与瞬态预览", () => {
   let state = established();
   state = reduce(state, {
     type: "update_direct_question_draft",
@@ -1041,7 +1036,6 @@ test("delete_discussion 移除讨论、窗口与草稿，聚焦被删讨论时�
   state = reduce(state, { type: "preview_first_request", snapshot: snapshot("预览") });
   const next = reduce(state, { type: "delete_discussion", conversationId: "c-1" });
   assert.equal(next.discussions.has("c-1"), false);
-  assert.equal(next.windows.has("c-1"), false);
   assert.equal(next.directQuestionDrafts.has("c-1"), false);
   assert.equal(next.focusedConversationId, null);
   assert.equal(next.previewRequest, null);
@@ -1066,7 +1060,7 @@ test("clear_save_error 无错误时返回同一引用", () => {
   assert.equal(reduce(state, { type: "clear_save_error" }), state);
 });
 
-// ========== 停止 / 聚焦 / 关闭窗口（stop_request / focus_window / close_window） ==========
+// ========== 停止（stop_request） ==========
 
 test("stop_request 停止直接提问：保留问题与已流式内容，进入已停止终态", () => {
   let state = directStarted("c-1", "问题");
@@ -1145,7 +1139,7 @@ test("stop_request 的非法迁移返回同一引用：非生成中且无残留�
   );
 });
 
-test("focus_window 聚焦已打开的窗口", () => {
+test("select_discussion 把已有讨论选为当前投影", () => {
   let state = established("c-1");
   state = reduce(state, {
     type: "begin_direct_question",
@@ -1157,30 +1151,25 @@ test("focus_window 聚焦已打开的窗口", () => {
     focusDocumentTitle: null,
   });
   assert.equal(state.focusedConversationId, "c-2");
-  const next = reduce(state, { type: "focus_window", conversationId: "c-1" });
+  const next = reduce(state, { type: "select_discussion", conversationId: "c-1" });
   assert.equal(next.focusedConversationId, "c-1");
 });
 
-test("focus_window 的非法迁移返回同一引用：非窗口讨论、已聚焦", () => {
+test("select_discussion 的非法迁移返回同一引用：未知讨论、已选中且可见", () => {
   const state = established();
-  assert.equal(reduce(state, { type: "focus_window", conversationId: "unknown" }), state);
-  assert.equal(reduce(state, { type: "focus_window", conversationId: "c-1" }), state);
+  assert.equal(reduce(state, { type: "select_discussion", conversationId: "unknown" }), state);
+  assert.equal(reduce(state, { type: "select_discussion", conversationId: "c-1" }), state);
 });
 
-test("close_window 结束显示但保留讨论；关闭聚焦窗口时清聚焦", () => {
+test("close 隐藏面板但保留讨论与当前投影（单面板无逐讨论关闭）", () => {
   const state = established();
-  const next = reduce(state, { type: "close_window", conversationId: "c-1" });
-  assert.equal(next.windows.size, 0, "窗口被关闭");
+  const next = reduce(state, { type: "close" });
+  assert.equal(next.visibility, "closed");
   assert.ok(next.discussions.get("c-1"), "讨论保留");
-  assert.equal(next.focusedConversationId, null);
+  assert.equal(next.focusedConversationId, "c-1", "当前投影保留");
 });
 
-test("close_window 的非法迁移返回同一引用：未打开窗口的讨论", () => {
-  const state = initialAiPanelCoreState();
-  assert.equal(reduce(state, { type: "close_window", conversationId: "unknown" }), state);
-});
-
-// ========== 重试与布局（retry_direct_question / retry_stopped_follow_up / set_window_placement / reset_layout） ==========
+// ========== 重试（retry_direct_question / retry_stopped_follow_up） ==========
 
 test("retry_direct_question 从已停止直接提问重回 loading 并重置流式草稿", () => {
   let state = directStarted("c-1", "问题");
@@ -1237,44 +1226,6 @@ test("retry_stopped_follow_up 的非法迁移返回同一引用：无待答轮�
     focusDocumentTitle: null,
   });
   assert.equal(reduce(limited, { type: "retry_stopped_follow_up" }), limited, "受限讨论不可重发");
-});
-
-test("set_window_placement 把停靠窗口切为浮动", () => {
-  const state = established();
-  const next = reduce(state, {
-    type: "set_window_placement",
-    conversationId: "c-1",
-    placement: "floating",
-  });
-  assert.equal(next.windows.get("c-1"), "floating");
-});
-
-test("set_window_placement 的非法迁移返回同一引用：未知窗口、同值", () => {
-  const state = established();
-  assert.equal(
-    reduce(state, { type: "set_window_placement", conversationId: "unknown", placement: "floating" }),
-    state,
-  );
-  assert.equal(
-    reduce(state, { type: "set_window_placement", conversationId: "c-1", placement: "docked" }),
-    state,
-  );
-});
-
-test("reset_layout 把浮动窗口收回停靠", () => {
-  let state = established();
-  state = reduce(state, {
-    type: "set_window_placement",
-    conversationId: "c-1",
-    placement: "floating",
-  });
-  const next = reduce(state, { type: "reset_layout" });
-  assert.equal(next.windows.get("c-1"), "docked");
-});
-
-test("reset_layout 全部已停靠时返回同一引用", () => {
-  const state = established();
-  assert.equal(reduce(state, { type: "reset_layout" }), state);
 });
 
 // ========== 排队调度（queue_request / start_queued_request / reject_queued_request） ==========

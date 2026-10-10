@@ -5,7 +5,7 @@ import { setupFileManagement, type FileManagementServices } from "../src/file-ma
 import type { AppDom } from "../src/dom.ts";
 import type { ContentTree, ProjectLoadIdentity, ProjectTreeState } from "../src/types.ts";
 
-type Listener = () => void;
+type Listener = (event: { stopPropagation(): void; target?: { closest(selector: string): unknown } }) => void;
 
 class FakeClassList {
   private readonly values = new Set<string>();
@@ -25,7 +25,9 @@ class FakeElement {
   readonly children: FakeElement[] = [];
   readonly dataset: Record<string, string> = {};
   readonly style: Record<string, string> = {};
-  textContent = "";
+  private ownText = "";
+  get textContent(): string { return this.ownText + this.children.map((child) => child.textContent).join(""); }
+  set textContent(value: string) { this.ownText = value; this.children.length = 0; }
   value = "";
   type = "";
   title = "";
@@ -55,7 +57,7 @@ class FakeElement {
   }
 
   click(): void {
-    for (const listener of this.listeners.get("click") ?? []) listener();
+    for (const listener of this.listeners.get("click") ?? []) listener({ stopPropagation() {} });
   }
 }
 
@@ -112,6 +114,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   calls: string[];
   treeChanges: ContentTree[];
   treeIdentities: ProjectLoadIdentity[];
+  opened: Array<{ id: string; identity: ProjectLoadIdentity }>;
   restore(): void;
 } {
   const ids = [
@@ -122,6 +125,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     "document-import-split-field", "document-import-split-whole", "document-import-split-by-marker",
     "document-import-split-marker-label", "document-import-target", "document-import-error",
     "btn-document-import-confirm", "btn-document-import-cancel",
+    "fm-project-name", "fm-file-summary",
   ];
   const elements = new Map(ids.map((id) => [id, new FakeElement()]));
   const previousDocument = globalThis.document;
@@ -133,6 +137,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   const calls: string[] = [];
   const treeChanges: ContentTree[] = [];
   const treeIdentities: ProjectLoadIdentity[] = [];
+  const opened: Array<{ id: string; identity: ProjectLoadIdentity }> = [];
   let currentTree = tree;
 
   const dom = {
@@ -189,6 +194,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
   };
 
   const controller = setupFileManagement(dom, {
+    onOpenDocument: (id, identity) => { opened.push({ id, identity }); },
     onTreeChanged: (next, identity, acceptance) => {
       acceptance.installPeer();
       treeChanges.push(next); treeIdentities.push(identity);
@@ -210,6 +216,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
     calls,
     treeChanges,
     treeIdentities,
+    opened,
     restore: () => { globalThis.document = previousDocument; },
   };
 }
@@ -280,7 +287,7 @@ test("document import entry is disabled without a project and enabled after open
     // 卸载作品后禁用并提示需先打开作品。
     h.controller.unload();
     assert.equal(entry.disabled, true, "未打开作品时导入入口应禁用");
-    assert.match(entry.title, /先打开作品/);
+    assert.match(entry.title, /先打开项目/);
 
     // 重新打开作品后恢复可用。
     h.controller.showProject({ projectPath: "D:\\作品B", projectName: "B", tree: TREE });
@@ -348,13 +355,52 @@ test("rename via prompt invokes renameNode with the entered name", async () => {
   }
 });
 
+test("document double-click opens only the owned, unpaused row outside its controls", () => {
+  const h = makeHarness(TREE);
+  try {
+    const row = h.elements.get("fm-file-tree")!.children.find(child => child.dataset.nodeId === "doc-1")!;
+    const doubleClick = (control = false) => {
+      for (const listener of row.listeners.get("dblclick") ?? []) {
+        listener({ stopPropagation() {}, target: { closest: () => control ? {} : null } });
+      }
+    };
+    doubleClick(true);
+    assert.equal(h.opened.length, 0);
+    doubleClick();
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.opened[0].id, "doc-1");
+    assert.equal(h.opened[0].identity.projectPath, "D:\\作品");
+    h.controller.setWorkspacePaused(true);
+    doubleClick();
+    assert.equal(h.opened.length, 1);
+    h.controller.setWorkspacePaused(false);
+    h.controller.showProject({ projectPath: "D:\\作品", projectName: "重新打开", tree: TREE });
+    doubleClick();
+    assert.equal(h.opened.length, 1, "旧装载行不能打开新装载的文档");
+    h.controller.unload();
+    doubleClick();
+    assert.equal(h.opened.length, 1);
+  } finally { h.restore(); }
+});
+
+test("project breadcrumb and counts exclude recycle-bin nodes and clear on unload", () => {
+  const h = makeHarness(RECYCLE_TREE);
+  try {
+    assert.equal(h.elements.get("fm-project-name")!.textContent, "作品");
+    assert.equal(h.elements.get("fm-file-summary")!.textContent, "0 个文件夹 · 1 篇文档");
+    h.controller.unload();
+    assert.equal(h.elements.get("fm-project-name")!.textContent, "");
+    assert.equal(h.elements.get("fm-file-summary")!.textContent, "0 个文件夹 · 0 篇文档");
+  } finally { h.restore(); }
+});
+
 test("renders an AI visibility toggle only for documents, not folders", () => {
   const h = makeHarness(VISIBILITY_TREE);
   try {
     const fileTree = h.elements.get("fm-file-tree")!;
     // 两篇文档各有一个开关；文件夹不显示开关。
-    assert.equal(collectButtons(fileTree, "允许 AI 查看").length, 1, "默认可见文档显示「允许」");
-    assert.equal(collectButtons(fileTree, "不允许 AI 查看").length, 1, "隐藏文档显示「不允许」");
+    assert.equal(collectButtons(fileTree, "可读").length, 1, "默认可见文档显示「可读」");
+    assert.equal(collectButtons(fileTree, "不可读").length, 1, "隐藏文档显示「不可读」");
   } finally {
     h.restore();
   }
@@ -364,7 +410,7 @@ test("toggling a visible document flips to not-visible via the service", async (
   const h = makeHarness(VISIBILITY_TREE);
   try {
     const fileTree = h.elements.get("fm-file-tree")!;
-    const toggle = collectButtons(fileTree, "允许 AI 查看")[0];
+    const toggle = collectButtons(fileTree, "可读")[0];
     assert.ok(toggle);
     toggle.click();
     await Promise.resolve();
@@ -383,7 +429,7 @@ test("toggle failure keeps the original state and shows a Chinese message", asyn
   });
   try {
     const fileTree = h.elements.get("fm-file-tree")!;
-    const toggle = collectButtons(fileTree, "允许 AI 查看")[0];
+    const toggle = collectButtons(fileTree, "可读")[0];
     assert.ok(toggle);
     toggle.click();
     await settle();
@@ -391,8 +437,8 @@ test("toggle failure keeps the original state and shows a Chinese message", asyn
     const status = h.elements.get("fm-status")!;
     assert.match(status.textContent, /AI 可见性保存失败/);
     // 开关仍显示原状态（未切到「不允许」）。
-    assert.equal(collectButtons(fileTree, "允许 AI 查看").length, 1);
-    assert.equal(collectButtons(fileTree, "不允许 AI 查看").length, 1);
+    assert.equal(collectButtons(fileTree, "可读").length, 1);
+    assert.equal(collectButtons(fileTree, "不可读").length, 1);
   } finally {
     h.restore();
   }
@@ -411,7 +457,7 @@ test("late refresh from A is discarded after switching to B", async () => {
     await settle();
     assert.equal(h.treeChanges.length, 0, "A 的迟到树不能通知当前作品");
     assert.equal(h.treeIdentities.length, 0);
-    assert.equal(collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看").length, 1);
+    assert.equal(collectButtons(h.elements.get("fm-file-tree")!, "可读").length, 1);
   } finally {
     h.restore();
   }
@@ -452,7 +498,7 @@ test("visibility usage query does not confirm or write after unload", async () =
     setDocumentAiVisibility: async () => { throw new Error("不应写入"); },
   });
   try {
-    const toggle = collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看")[0];
+    const toggle = collectButtons(h.elements.get("fm-file-tree")!, "可读")[0];
     assert.ok(toggle);
     toggle.click();
     await Promise.resolve();
@@ -484,7 +530,7 @@ for (const decision of [false, true, "reject", "unload", "new-operation"] as con
         prompted = true;
         return confirmation.promise;
       }) as unknown as typeof globalThis.confirm;
-      collectButtons(h.elements.get("fm-file-tree")!, "允许 AI 查看")[0]!.click();
+      collectButtons(h.elements.get("fm-file-tree")!, "可读")[0]!.click();
       await settle();
       assert.equal(prompted, true);
       assert.equal(writes, 0, "等待用户决定时不写入");

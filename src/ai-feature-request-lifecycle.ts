@@ -38,7 +38,7 @@ export function retryAcceptedRequest(
 export interface AiRequestLifecycle {
   /** 停止指定讨论的当前生成：进入「已停止」终态并持久化。 */
   stopGeneration(conversationId: string): void;
-  /** 关闭指定讨论的窗口：只结束显示与在途请求，不删除讨论。 */
+  /** 收起 / ×：只结束显示，不停止生成、不取消排队、不删除讨论。 */
   closeWindow(conversationId: string): void;
   /** 首轮失败 / 缺配置 / 已停止后的重试（直接提问与召唤双分支）。 */
   retryFirstRound(): void;
@@ -88,10 +88,12 @@ export function setupAiRequestLifecycle(options: AiRequestLifecycleOptions): AiR
     persistDiscussion(conversationId);
   }
 
-  function closeWindow(conversationId: string): void {
-    detachRequest(conversationId);
-    context.state.stopRequest(conversationId);
-    context.state.closeWindow(conversationId);
+  /**
+   * 收起 / ×：只隐藏显示，保留消息、草稿与业务状态。不得停止生成、取消排队或
+   * 释放请求锁（update-frontend-ui-v5 单面板迁移；显式停止是独立动作）。
+   */
+  function closeWindow(_conversationId: string): void {
+    context.state.close();
   }
 
   function retryFirstRound(): void {

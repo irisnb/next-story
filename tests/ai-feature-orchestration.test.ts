@@ -190,9 +190,8 @@ function orchestrationHarness(options: { maxConcurrent?: number } = {}): Orchest
     },
     clickStoppedFollowUpRetry(index: number): void {
       const retryBtn = env.windowRoots[index].queryResults.get('[data-role="follow-up-retry"]')!;
-      const installed = (retryBtn as unknown as { onclick: (() => void) | null }).onclick;
-      assert.ok(installed, "停止后的追问窗口应装有「重试」处理器");
-      installed();
+      assert.ok(retryBtn.listenerCount("click") > 0, "停止后的追问窗口应装有「重试」处理器");
+      retryBtn.dispatch("click");
     },
     finishNext(result?: GenerateAiResult): void {
       const resolve = resolvers.shift();
@@ -392,7 +391,7 @@ test("派发前复核：优先按冻结锚点判定（锚点文档隐藏时拒�
     ui.submitDirectQuestion("占位问题");
     await flush();
     assert.equal(ui.sent.length, 2);
-    ui.controller.state.focusWindow(anchoredId);
+    ui.controller.state.selectDiscussion(anchoredId);
     assert.equal(await ui.controller.submitFollowUp("锚点相关的追问"), true);
     await flush();
     assert.equal(ui.sent.length, 2, "追问应排队而非立即发送");
@@ -428,7 +427,7 @@ test("派发前复核：锚点文档可见时放行，不受关注文档可见�
     ui.submitDirectQuestion("占位问题");
     await flush();
     assert.equal(ui.sent.length, 2);
-    ui.controller.state.focusWindow(anchoredId);
+    ui.controller.state.selectDiscussion(anchoredId);
     assert.equal(await ui.controller.submitFollowUp("锚点可见的追问"), true);
     await flush();
     assert.equal(ui.sent.length, 2);

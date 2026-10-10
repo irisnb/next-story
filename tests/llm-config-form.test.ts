@@ -57,24 +57,20 @@ test("LLM config page distinguishes connection test data from AI generation data
 
   // 测试连接链路：只发固定测试语句与身份凭据
   assert.match(html, /测试连接[^。]*固定测试语句/);
-  assert.match(html, /不会发送你的剧本文字或讨论内容/);
   // 常规讨论链路：问题、可选选区、讨论上下文与自动附带材料
-  assert.match(html, /常规讨论[^。]*问题原文/);
-  assert.match(html, /可选选区原文/);
-  assert.match(html, /问答上下文/);
-  assert.match(html, /关注文档的最新内容（含尚未保存的修改）/);
-  assert.match(html, /允许 AI 查看的目录结构/);
-  assert.match(html, /跨文档检索到的正文片段/);
+  assert.match(html, /常规讨论[^。]*问题、可选选区、讨论历史/);
+  assert.match(html, /关注文档现场内容（含未保存修改）/);
+  assert.match(html, /获准目录与跨文档字面检索片段/);
   // 可见性与回收站规则生效
-  assert.match(html, /不允许 AI 查看的文档与回收站内的内容不会被读取或发送/);
+  assert.match(html, /不可读文档与回收站内容不会提供/);
   // 及时召唤链路：冻结选区，不走常规取材
-  assert.match(html, /AI 及时召唤以发起时冻结的选区为材料直接开始/);
-  assert.match(html, /不经过常规自动取材/);
+  assert.match(html, /及时召唤首轮使用冻结选区/);
+  assert.match(html, /补读需要授权/);
   // 第三方处理与作品边界
-  assert.match(html, /第三方服务如何处理这些数据/);
-  assert.match(html, /回复只显示在 AI 面板/);
-  assert.match(html, /作品之外的临时材料/);
-  assert.match(html, /不会自动进入任何文档/);
+  assert.match(html, /第三方的数据处理遵循其服务协议/);
+  assert.match(html, /AI 回复为临时材料，不会自动写入文档/);
+  assert.match(html, /密钥保存在 Windows 凭据管理器/);
+  assert.doesNotMatch(html, /class="config-warning"/);
   // 旧表述不得回潮
   assert.doesNotMatch(html, /思维扩展方向/);
   assert.doesNotMatch(html, /AI 生成会把用户问题/);

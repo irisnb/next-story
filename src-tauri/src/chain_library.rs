@@ -248,6 +248,27 @@ fn default_format_version() -> u32 {
 
 // ========== 错误 ==========
 
+/// 「空库直接口述」首次保存的动作结果（有界限定操作；供前端如实措辞）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnsureChainAction {
+    /// 新建链路并写入首版本。
+    Created,
+    /// 链路已存在但无版本（前次部分失败）：补写首版本。
+    Repaired,
+    /// 链路已有版本且卡内容与本次一致：幂等返回，未追加。
+    Idempotent,
+    /// 链路已有版本但均与本次卡内容不同：明确冲突，未追加、未改动。
+    Conflict,
+}
+
+/// `making_chain_ensure_for_conversation` 的返回：链路快照＋动作。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnsureChainResult {
+    pub chain: Chain,
+    pub action: EnsureChainAction,
+}
+
 /// 链路库错误：全部映射为明确的中文文案，绝不静默截断/丢弃/谎报成功。
 #[derive(Debug)]
 pub enum ChainLibraryError {
@@ -679,6 +700,109 @@ fn save_version_in_dir(
     Ok(version)
 }
 
+/// 由卡输入构造链路的首版本（序号 1；卡 id 由后端生成）。
+fn first_version_from_inputs(cards: &[CardInput], change_note: &str) -> ChainVersion {
+    ChainVersion {
+        id: new_id("chainver"),
+        index: 1,
+        created_at: Utc::now(),
+        cards: cards
+            .iter()
+            .map(|card| RequirementCard {
+                id: new_id("card"),
+                title: card.title.trim().to_string(),
+                trigger_desc: card.trigger_desc.clone(),
+                body: card.body.clone(),
+                slot_type: card.slot_type.clone(),
+            })
+            .collect(),
+        change_note: change_note.trim().to_string(),
+        trials: Vec::new(),
+    }
+}
+
+/// 空库直接口述的首次保存（有界限定操作）：以制作会话 id 派生确定性链路 id
+/// （`chain-<conversation_id>`），在同一链路库锁内一次读改写完成「建链路＋首版本」，
+/// 绝不触碰 `active`（保存草稿不等于启用）。
+///
+/// 幂等：同会话 id 重复调用不产生第二条链路或重复首版本——已有版本原样返回；
+/// 仅有链路、尚缺版本（前次部分失败）时补写首版本。写入失败即整体未落盘，可安全重试。
+/// 试问卡的既有版本与新入参卡是否同内容（顺序敏感；与 `save_version_in_dir`
+/// 的落盘口径一致：标题去首尾空白，其余原样）。
+fn chain_version_matches_inputs(version: &ChainVersion, cards: &[CardInput]) -> bool {
+    version.cards.len() == cards.len()
+        && version.cards.iter().zip(cards).all(|(existing, incoming)| {
+            existing.title == incoming.title.trim()
+                && existing.trigger_desc == incoming.trigger_desc
+                && existing.body == incoming.body
+                && existing.slot_type == incoming.slot_type
+        })
+}
+
+fn ensure_chain_with_first_version_in_dir(
+    module_dir: &Path,
+    conversation_id: &str,
+    name: &str,
+    cards: &[CardInput],
+    change_note: &str,
+) -> Result<EnsureChainResult, ChainLibraryError> {
+    if !is_safe_id_component(conversation_id) {
+        return Err(ChainLibraryError::InvalidChainName {
+            reason: "制作会话标识无效，无法建立链路".to_string(),
+        });
+    }
+    validate_cards(cards)?;
+    let chain_id = format!("chain-{conversation_id}");
+    let mut library = load_library_from_dir(module_dir)?;
+    if let Some(existing) = library.chains.iter_mut().find(|chain| chain.id == chain_id) {
+        if existing.versions.is_empty() {
+            // 前次部分失败：链路已建、首版本缺失 → 补写首版本。
+            existing
+                .versions
+                .push(first_version_from_inputs(cards, change_note));
+            let chain = existing.clone();
+            save_library_to_dir(module_dir, &library)?;
+            return Ok(EnsureChainResult {
+                chain,
+                action: EnsureChainAction::Repaired,
+            });
+        }
+        // 已有任一版本与本次卡内容一致 → 幂等（相同保存重试不追加）。
+        if existing
+            .versions
+            .iter()
+            .any(|version| chain_version_matches_inputs(version, cards))
+        {
+            return Ok(EnsureChainResult {
+                chain: existing.clone(),
+                action: EnsureChainAction::Idempotent,
+            });
+        }
+        // 既有版本均不同 → 明确冲突：不追加、不改动（恢复绑定后由普通保存追加）。
+        return Ok(EnsureChainResult {
+            chain: existing.clone(),
+            action: EnsureChainAction::Conflict,
+        });
+    }
+    let trimmed = name.trim();
+    let chain = Chain {
+        id: chain_id,
+        name: if trimmed.is_empty() {
+            "新链路".to_string()
+        } else {
+            trimmed.to_string()
+        },
+        created_at: Utc::now(),
+        versions: vec![first_version_from_inputs(cards, change_note)],
+    };
+    library.chains.push(chain.clone());
+    save_library_to_dir(module_dir, &library)?;
+    Ok(EnsureChainResult {
+        chain,
+        action: EnsureChainAction::Created,
+    })
+}
+
 /// 解析链路与版本（两者都必须真实存在，防悬空指针）。
 fn resolve_chain_and_version<'a>(
     library: &'a ChainLibrary,
@@ -925,6 +1049,19 @@ impl ChainLibraryStore {
         self.with_library(|dir| save_version_in_dir(dir, chain_id, cards, change_note))
     }
 
+    /// 空库直接口述的首次保存（有界限定操作）：建链路＋首版本；幂等、不改 `active`。
+    pub fn ensure_chain_with_first_version(
+        &self,
+        conversation_id: &str,
+        name: &str,
+        cards: &[CardInput],
+        change_note: &str,
+    ) -> Result<EnsureChainResult, ChainLibraryError> {
+        self.with_library(|dir| {
+            ensure_chain_with_first_version_in_dir(dir, conversation_id, name, cards, change_note)
+        })
+    }
+
     /// 显式启用/切换当前链路（全局一条，所有作品共用）。
     pub fn set_active(
         &self,
@@ -1018,6 +1155,39 @@ pub async fn chain_save_version(
         .await
         .map_err(|e| format!("保存链路版本任务执行失败: {e}"))?
         .map_err(|e| e.to_string())
+}
+
+/// 空库直接口述的首次保存（有界限定操作）：入参＝制作会话 id、链路名、卡列表、
+/// 变更说明。以会话 id 派生确定性链路 id，一次读改写建链路＋首版本；幂等、绝不启用。
+/// 边界与写入在同一会话存储锁内完成（session → chain 锁序），delete 无法在校验与写入
+/// 之间插入，避免孤链；不出现相反锁序（`with_library` 锁内不访问会话存储）。
+#[tauri::command]
+pub async fn making_chain_ensure_for_conversation(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    name: String,
+    cards: Vec<CardInput>,
+    change_note: Option<String>,
+) -> Result<EnsureChainResult, String> {
+    let store = store_from_app(&app);
+    let note = change_note.unwrap_or_default();
+    let conversations_dir = crate::making_session::making_conversations_dir_from_app(&app)?;
+    let target_chain_id = format!("chain-{conversation_id}");
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::making_session::with_conversation_store_lock(
+            &conversations_dir,
+            &conversation_id,
+            &target_chain_id,
+            || {
+                store
+                    .ensure_chain_with_first_version(&conversation_id, &name, &cards, &note)
+                    .map_err(|e| e.to_string())
+            },
+        )
+    })
+    .await
+    .map_err(|e| format!("建立链路任务执行失败: {e}"))?
+    .map_err(|e| e.to_string())
 }
 
 /// 显式启用/切换当前链路（全局一条，所有作品共用；从下一轮开始生效）。
@@ -1139,6 +1309,128 @@ mod tests {
                 with_card: true,
             });
         save_library_to_dir(&dir, &library).expect("写库");
+    }
+
+    /// 空库直接口述的首次保存：一次建链路＋首版本；不改 active；同内容重复调用幂等。
+    #[test]
+    fn ensure_chain_with_first_version_creates_once_and_is_idempotent() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+
+        let first = store
+            .ensure_chain_with_first_version("mc-1", "口述链路", &sample_cards(), "制作会话保存")
+            .expect("建链路＋首版");
+        assert_eq!(first.action, EnsureChainAction::Created);
+        assert_eq!(first.chain.id, "chain-mc-1", "确定性链路 id 由会话 id 派生");
+        assert_eq!(first.chain.name, "口述链路");
+        assert_eq!(first.chain.versions.len(), 1);
+        assert_eq!(first.chain.versions[0].index, 1);
+        assert_eq!(first.chain.versions[0].cards.len(), 1);
+
+        // 幂等：同会话、同内容再次调用不新增链路 / 版本。
+        let again = store
+            .ensure_chain_with_first_version("mc-1", "口述链路", &sample_cards(), "重复")
+            .expect("幂等返回");
+        assert_eq!(again.action, EnsureChainAction::Idempotent);
+        assert_eq!(again.chain.versions.len(), 1, "不重复首版本");
+        let library = store.load().expect("读库");
+        assert_eq!(library.chains.len(), 1, "不重复建链路");
+        assert!(
+            library.active.is_none(),
+            "保存草稿不得启用（active 保持 None）"
+        );
+    }
+
+    /// 不同卡内容：明确冲突，不追加、不改动（不谎称已保存）；恢复绑定后普通保存追加。
+    #[test]
+    fn ensure_chain_with_first_version_reports_conflict_without_appending() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        store
+            .ensure_chain_with_first_version("mc-c", "口述链路", &sample_cards(), "首版")
+            .expect("首版");
+
+        let mut different = sample_cards();
+        different[0].title = "完全不同的卡".to_string();
+        let result = store
+            .ensure_chain_with_first_version("mc-c", "口述链路", &different, "改稿")
+            .expect("冲突返回（不报错、不谎称成功）");
+        assert_eq!(result.action, EnsureChainAction::Conflict);
+        assert_eq!(result.chain.versions.len(), 1, "冲突不追加版本");
+        assert_eq!(result.chain.id, "chain-mc-c");
+        // 冲突后（会话已绑定该链路）普通保存追加为第 2 版。
+        let appended = store
+            .save_version("chain-mc-c", &different, "改稿")
+            .expect("追加新版本");
+        assert_eq!(appended.index, 2);
+    }
+
+    /// 前次部分失败（链路已建、尚无版本）：补写首版本，不重复建链路。
+    #[test]
+    fn ensure_chain_with_first_version_repairs_chain_without_versions() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        store.create_chain("半成品").expect("建空链路（无版本）");
+        // 改写为确定性 id，模拟「链路已建、但首版本尚未写入」的部分成功状态。
+        let dir = module_dir_of(&base);
+        let mut library = load_library_from_dir(&dir).expect("读库");
+        library.chains[0].id = "chain-mc-2".to_string();
+        save_library_to_dir(&dir, &library).expect("改写库");
+
+        let chain = store
+            .ensure_chain_with_first_version("mc-2", "半成品", &sample_cards(), "补首版")
+            .expect("补首版");
+        assert_eq!(chain.action, EnsureChainAction::Repaired);
+        assert_eq!(chain.chain.id, "chain-mc-2");
+        assert_eq!(chain.chain.versions.len(), 1, "补写首版本");
+        assert_eq!(
+            load_library_from_dir(&dir).expect("读库").chains.len(),
+            1,
+            "不重复建链路"
+        );
+    }
+
+    /// 空名称回退「新链路」，不虚空建名。
+    #[test]
+    fn ensure_chain_with_first_version_falls_back_name() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let chain = store
+            .ensure_chain_with_first_version("mc-3", "   ", &sample_cards(), "")
+            .expect("建链路");
+        assert_eq!(chain.chain.name, "新链路");
+    }
+
+    /// 命令组合的并发语义：会话已删除时 ensure 拒绝且不产生孤链（校验与写入同锁内）。
+    #[test]
+    fn ensure_via_helper_rejects_deleted_conversation_without_creating_chain() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let conversations_dir = conversations_dir_in(&module_dir_of(&base));
+        let record = crate::making_session::MakingConversationRecord {
+            id: "mc-del".to_string(),
+            chain_id: None,
+            title: "制作".to_string(),
+            created_at: "t".to_string(),
+            updated_at: "t".to_string(),
+            turns: Vec::new(),
+        };
+        crate::making_session::save_making_conversation(&conversations_dir, &record).expect("保存");
+        crate::making_session::delete_making_conversation(&conversations_dir, "mc-del")
+            .expect("删除");
+
+        let result = crate::making_session::with_conversation_store_lock(
+            &conversations_dir,
+            "mc-del",
+            "chain-mc-del",
+            || {
+                store
+                    .ensure_chain_with_first_version("mc-del", "链路", &sample_cards(), "")
+                    .map_err(|e| e.to_string())
+            },
+        );
+        assert!(result.is_err(), "删除会话后 ensure 拒绝");
+        assert!(store.load().expect("读库").chains.is_empty(), "不产生孤链");
     }
 
     #[test]

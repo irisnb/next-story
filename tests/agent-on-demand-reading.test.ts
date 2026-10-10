@@ -813,7 +813,7 @@ function visibilityHarness(options: {
     confirmMessages,
     async toggleVisibleDocument() {
       const fileTree = elements.get("fm-file-tree")!;
-      const button = findClickableByText(fileTree, "允许 AI 查看");
+      const button = findClickableByText(fileTree, "可读");
       assert.ok(button, "应渲染可见性开关");
       button.dispatch("click");
       for (let i = 0; i < 8; i += 1) await Promise.resolve();
@@ -826,7 +826,7 @@ function visibilityHarness(options: {
 }
 
 function findClickableByText(root: FakeElement, label: string): FakeElement | null {
-  if (root.textContent === label && root.listeners.has("click")) return root;
+  if (collectText(root).trim() === label && root.listeners.has("click")) return root;
   for (const child of root.children) {
     const found = findClickableByText(child, label);
     if (found) return found;

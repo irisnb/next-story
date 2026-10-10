@@ -4,13 +4,18 @@ import test from "node:test";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
+test("return home uses the approved back arrow symbol", () => {
+  assert.match(html, /id="btn-back-welcome"[^>]*aria-label="返回首页"[^]*?<use href="#i-back"/);
+  assert.match(html, /<symbol id="i-back"[^>]*><path d="M19 12H5m5-5-5 5 5 5"/);
+});
+
 test("production uses a single generic editor mount and three module tabs", () => {
   assert.doesNotMatch(html, /<textarea\b[^>]*\bid="(?:draft|main)-textarea"/);
   assert.doesNotMatch(html, /\bid="draft-textarea"/);
   assert.doesNotMatch(html, /\bid="main-textarea"/);
   assert.match(html, /<div\b[^>]*\bid="editor-textarea"/);
   assert.match(html, /<button\b[^>]*\bid="tab-writing"[^>]*>写作<\/button>/);
-  assert.match(html, /<button\b[^>]*\bid="tab-files"[^>]*>文件管理<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="tab-files"[^>]*>文档管理<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="tab-settings"[^>]*>设置<\/button>/);
 });
 
@@ -18,7 +23,7 @@ test("writing module exposes a lightweight document switcher and empty state", (
   assert.match(html, /<button\b[^>]*\bid="current-doc-toggle"/);
   assert.match(html, /<span\b[^>]*\bid="current-document-name"/);
   assert.match(html, /<div\b[^>]*\bid="document-list"/);
-  assert.match(html, /<div\b[^>]*\bid="writing-empty-state"[^>]*>[^<]*去文件管理新建一篇/);
+  assert.match(html, /<div\b[^>]*\bid="writing-empty-state"[^>]*>[^<]*去文档管理新建一篇/);
 });
 
 test("writing module exposes a unified export entry with format/scope/filename dialog", () => {
@@ -49,10 +54,10 @@ test("LLM config lives inside the settings module, not a standalone page", () =>
 });
 
 test("file management module exposes tree, recycle bin, and new-node actions", () => {
-  assert.match(html, /<button\b[^>]*\bid="fm-new-document"[^>]*>新建文档<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="fm-new-document"[^>]*>＋ 新建文档<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-new-folder"[^>]*>新建文件夹<\/button>/);
   // add-markdown-import：入口泛化为「导入文档」（.docx / .md 共用）。
-  assert.match(html, /<button\b[^>]*\bid="fm-import-document"[^>]*>导入文档<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="fm-import-document"[^>]*>导入<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="fm-open-recycle-bin"[^>]*>回收站<\/button>/);
   assert.match(html, /<div\b[^>]*\bid="fm-file-tree"/);
   assert.match(html, /<div\b[^>]*\bid="fm-recycle-list"/);
@@ -84,16 +89,16 @@ test("document import dialog exposes conclusion, collapsible losses, split choic
 });
 
 test("AI dock header exposes new-conversation and collapse entries", () => {
-  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*title="新建对话"/);
-  assert.match(html, /<button\b[^>]*\bid="ai-dock-collapse"[^>]*title="收起停靠区"/);
-  assert.match(html, /<button\b[^>]*\bid="ai-conversation-list-toggle"[^>]*title="会话列表"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*aria-label="新建对话"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-dock-collapse"[^>]*aria-label="收起 AI 面板"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-conversation-list-toggle"[^>]*aria-label="讨论列表"/);
   assert.match(html, /<template\b[^>]*\bid="ai-window-template"/);
   assert.match(html, /<aside\b[^>]*\bid="ai-dock"/);
 });
 
 test("making module exposes a fourth tab and a status bar bound to the global active chain", () => {
   // 第四页面：主导航末位新增「制作模块」，独立占用主内容区。
-  assert.match(html, /<button\b[^>]*\bid="tab-making"[^>]*>制作模块<\/button>/);
+  assert.match(html, /<button\b[^>]*\bid="tab-making"[^>]*>制作<\/button>/);
   assert.match(html, /<section\b[^>]*\bid="module-making"[^>]*aria-label="制作模块"/);
   // 状态条（常驻）：启用态（名·第N版｜所有作品共用｜停用＋生效时机说明）与未启用态。
   assert.match(html, /\bid="making-status-bar"/);
@@ -118,19 +123,20 @@ test("making module exposes dual tabs, graph zones, and unified detail mounts", 
   assert.match(html, /\bid="making-chain-list"/);
   assert.match(html, /\bid="making-chain-empty"/);
   assert.match(html, /说说你希望 AI 多做什么、少做什么/);
-  // 导图视图：三区同构——自定义要求（定高滚动＋要求类插槽＋ghost）／固定底座／每轮动态。
+  // 导图视图：三区同构——自定义要求与姿态（定高滚动＋要求类插槽＋ghost）／固定底座／每轮动态。
   assert.match(html, /\bid="making-graph"/);
-  assert.match(html, /\bid="making-zone-custom"[^>]*aria-label="自定义要求"/);
-  assert.match(html, /\bid="making-zone-scroll"/);
-  assert.match(html, /要求类插槽/);
+  assert.match(html, /\bid="making-zone-custom"[^>]*aria-label="自定义提示词"/);
+  assert.match(html, /\bid="making-zone-scroll"[^>]*aria-label="自定义提示词内容，可滚动"/);
+  assert.match(html, /回应要求/);
   assert.match(html, /\bid="making-card-list"/);
-  assert.match(html, /\bid="making-add-card-btn"[^>]*>＋ 添加要求卡<\/button>/);
+  assert.match(html, /\bid="making-add-card-btn"[^>]*>＋ 添加回应要求<\/button>/);
   assert.match(html, /\bid="making-base-node"/);
-  assert.match(html, /<strong>固定底座<\/strong><span>共用 · 只读<\/span>/);
-  assert.match(html, /<span>红线<\/span><span>骨<\/span><span>工具<\/span><span>材料规则<\/span>/);
+  assert.match(html, /<strong>公用基础提示词<\/strong><span>共用 · 只读<\/span>/);
+  assert.match(html, /<span>红线<\/span><span>基本立场<\/span><span>工具<\/span><span>材料规则<\/span>/);
   assert.match(html, /\bid="making-dynamic-node"/);
-  assert.match(html, /<strong>每轮动态<\/strong><span>自动<\/span>/);
-  // 命名统一：用户可见一律「自定义要求」，不出现「链路可变区」。
+  assert.match(html, /<strong>本次问题与材料<\/strong><span>自动<\/span>/);
+  assert.match(html, /<span>你的问题<\/span><span>参考材料<\/span><span>提问方式<\/span>/);
+  // 命名统一：用户可见一律「自定义要求与姿态」，不出现「链路可变区」。
   assert.doesNotMatch(html, /链路可变区/);
   // 统一详情挂载位：唯一快捷小窗＋全页详情（卡片五项面板在其中）＋返回入口。
   assert.match(html, /\bid="making-quick-panel"/);
@@ -179,11 +185,11 @@ test("making graph keeps arrows in the wire svg only and the output block purely
   assert.doesNotMatch(makingSection, /draggable="true"/);
   assert.doesNotMatch(makingSection, /data-step|步骤\s*[1-9一二三四五]/);
   // add-posture-slot：自定义要求分区＝说明性副标＋要求类/姿态类两组同构（静态节点）。
-  assert.match(makingSection, /<p\b[^>]*\bid="making-zone-subtitle"[^>]*>包含要求卡与姿态卡</);
-  assert.match(makingSection, /<section\b[^>]*\bid="making-posture-group"[^>]*aria-label="姿态类插槽"/);
+  assert.match(makingSection, /<p\b[^>]*\bid="making-zone-subtitle"[^>]*>规定回应的方向与说话方式</);
+  assert.match(makingSection, /<section\b[^>]*\bid="making-posture-group"[^>]*aria-label="回应风格"/);
   assert.match(makingSection, /\bid="making-posture-card-count"/);
   assert.match(makingSection, /\bid="making-posture-card-list"/);
-  assert.match(makingSection, /<button\b[^>]*\bid="making-add-posture-btn"[^>]*>＋ 添加姿态卡</);
+  assert.match(makingSection, /<button\b[^>]*\bid="making-add-posture-btn"[^>]*>＋ 添加回应风格</);
   const orderMentions = makingSection.match(/执行顺序/g) ?? [];
   assert.equal(orderMentions.length, 1, "「执行顺序」仅出现于阅读说明条的否定句");
   assert.match(makingSection, /箭头只表示流向组装，不表示卡片执行顺序/);

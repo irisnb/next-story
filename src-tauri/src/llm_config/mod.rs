@@ -205,6 +205,14 @@ pub enum GenerateAiRequest {
         /// 未保存正文快照（规范化 Tiptap JSON 字符串）；与 document_version 同源。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         snapshot: Option<String>,
+        /// 结构化选区范围起点（ProseMirror 文档位置，fix-ai-and-making-usability
+        /// D4）：与 `selection_to` 一起由前端冻结快照携带，后端在授权材料上据此
+        /// 按前端同源语义派生选区；MUST NOT 使用 canonical JSON 字符串偏移。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_from: Option<usize>,
+        /// 结构化选区范围终点（左闭右开）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_to: Option<usize>,
         /// 兼容旧调用方的可选方向字段；当前前端不再发送。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
@@ -220,6 +228,12 @@ pub enum GenerateAiRequest {
         /// 未保存正文快照（规范化 Tiptap JSON 字符串）；追问增量发送时随请求保留。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         snapshot: Option<String>,
+        /// 结构化选区范围起点（ProseMirror 文档位置）；见 `First` 同名说明。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_from: Option<usize>,
+        /// 结构化选区范围终点（左闭右开）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_to: Option<usize>,
         /// 兼容旧调用方的可选方向字段；缺省或空白表示无方向。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thinking_direction: Option<String>,
@@ -243,6 +257,12 @@ pub enum GenerateAiRequest {
         /// 未保存正文快照（规范化 Tiptap JSON 字符串）；无选区直接提问时缺省。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         snapshot: Option<String>,
+        /// 结构化选区范围起点（ProseMirror 文档位置）；见 `First` 同名说明。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_from: Option<usize>,
+        /// 结构化选区范围终点（左闭右开）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_to: Option<usize>,
     },
 }
 
@@ -265,6 +285,8 @@ impl From<&str> for GenerateAiRequest {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
             thinking_direction: None,
         }
     }

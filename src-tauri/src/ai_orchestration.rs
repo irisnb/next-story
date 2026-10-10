@@ -98,12 +98,22 @@ async fn authorize_request_selection(
     let document_version = request
         .get("document_version")
         .and_then(serde_json::Value::as_str);
+    let selection_from = request
+        .get("selection_from")
+        .and_then(serde_json::Value::as_u64)
+        .map(|value| value as usize);
+    let selection_to = request
+        .get("selection_to")
+        .and_then(serde_json::Value::as_u64)
+        .map(|value| value as usize);
     authorize_selection(
         project_path,
         document_id,
         document_version,
         selected_text,
         snapshot,
+        selection_from,
+        selection_to,
         Some(locks),
     )
     .await
@@ -111,12 +121,15 @@ async fn authorize_request_selection(
 
 /// 异步授权入口：在阻塞线程内完成「作品锁 + 受控只读读取」（见 [`authorize_selection_sync`]）。
 /// 返回授权后的受控材料；无选区且无快照时返回 `None`（无选区直接提问不携带材料）。
+#[allow(clippy::too_many_arguments)] // 选区授权参数一一对应请求身份与结构化范围，收拢会遮蔽契约
 async fn authorize_selection(
     project_path: Option<&str>,
     document_id: Option<&str>,
     document_version: Option<&str>,
     selected_text: Option<&str>,
     snapshot: Option<&str>,
+    selection_from: Option<usize>,
+    selection_to: Option<usize>,
     locks: Option<ProjectLocks>,
 ) -> Result<Option<project::StoryMaterial>, llm_config::GenerateAiError> {
     selection_identity_error(
@@ -153,6 +166,8 @@ async fn authorize_selection(
             &document_version,
             selected_text.as_deref(),
             snapshot.as_deref(),
+            selection_from,
+            selection_to,
             locks.as_ref(),
         )
     })
@@ -161,19 +176,26 @@ async fn authorize_selection(
 }
 
 /// 同步授权核心：把选区材料身份映射为 `ReadMaterialRequest`，在作品锁保护下调用
-/// `read_material` 校验作品 / 文档 / 可见性 / 版本 / 快照身份，并确认选区文本落在
-/// 授权材料正文内。返回授权后的受控材料；失败关闭，绝不返回正文。
+/// `read_material` 校验作品 / 文档 / 可见性 / 版本 / 快照身份，并在授权材料上按
+/// 前端同源语义派生请求声明的选区（fix-ai-and-making-usability D4）。返回授权后的
+/// 受控材料；失败关闭，绝不返回正文。
 ///
 /// `snapshot`（前端规范化 Tiptap JSON 字符串）被映射为 [`project::MaterialSnapshot`]，
 /// 其 work_id / document_id / version 与请求身份一致，由 `read_material` 统一校验；
 /// 生成层只能使用授权后的材料内容，不得回读原始 `selected_text` 字段。
+/// 有选区时必须携带结构化选区范围（`selection_from`/`selection_to`），后端据其在
+/// 授权结构化材料上派生原文并验证其等于请求声明的选区；缺范围或派生不符即失败关闭
+/// （不以 canonical JSON 子串包含判定，也不放宽匹配）。
 /// `locks` 为 `None` 时跳过取锁（测试路径，单线程无并发）。
+#[allow(clippy::too_many_arguments)] // 选区授权参数一一对应请求身份与结构化范围，收拢会遮蔽契约
 fn authorize_selection_sync(
     project_path: &str,
     document_id: &str,
     document_version: &str,
     selected_text: Option<&str>,
     snapshot: Option<&str>,
+    selection_from: Option<usize>,
+    selection_to: Option<usize>,
     locks: Option<&ProjectLocks>,
 ) -> Result<Option<project::StoryMaterial>, llm_config::GenerateAiError> {
     let canonical = std::path::Path::new(project_path)
@@ -207,8 +229,13 @@ fn authorize_selection_sync(
             invalid_selection_error()
         }
     })?;
-    if let Some(selection) = selected_text.map(str::trim).filter(|text| !text.is_empty()) {
-        if !material.content.contains(selection) {
+    if let Some(selection) = selected_text.filter(|text| !text.trim().is_empty()) {
+        let range = match (selection_from, selection_to) {
+            (Some(from), Some(to)) => project::SelectionRange { from, to },
+            // 有选区却缺结构化范围：失败关闭，不以子串包含放行。
+            _ => return Err(invalid_selection_error()),
+        };
+        if authorized_selection_from_material(&material, selection, Some(range)).is_none() {
             return Err(invalid_selection_error());
         }
     }
@@ -222,27 +249,39 @@ fn invalid_selection_error() -> llm_config::GenerateAiError {
     )
 }
 
-/// 从已授权的结构化材料中提取请求声明的选区。返回值来自受控材料，
-/// 而不是直接复用请求中的原始字符串；未找到时失败关闭。
+/// 从已授权的结构化材料中派生请求声明的选区。返回值来自受控材料按前端同源语义的
+/// 派生结果，绝不直接复用请求中的原始字符串；派生为空、越界或不等于声明的选区时
+/// 返回 `None`（失败关闭）。`Some(range)` 为结构化选区范围（ProseMirror 文档位置）。
 fn authorized_selection_from_material(
     material: &project::StoryMaterial,
     requested_selection: &str,
+    range: Option<project::SelectionRange>,
 ) -> Option<String> {
-    let selection = requested_selection.trim();
-    if selection.is_empty() {
+    let trimmed = requested_selection.trim();
+    if trimmed.is_empty() {
         return None;
     }
-    let start = material.content.find(selection)?;
-    let end = start.checked_add(selection.len())?;
-    material.content.get(start..end).map(str::to_string)
+    let range = range?;
+    let derived = project::derive_selection_text(&material.content, range)?;
+    if derived.is_empty() {
+        return None;
+    }
+    // 派生结果必须就是请求声明的那段选区（允许请求侧的整段首尾空白差异，
+    // 保持既有 trim 语义；内容仍来自授权材料）。
+    if derived == requested_selection || derived == trimmed {
+        Some(derived)
+    } else {
+        None
+    }
 }
 
-/// 由已授权材料提取请求声明的选区内容；返回值必须来自受控材料的正文子串，
+/// 由已授权材料派生请求声明的选区内容；返回值必须来自受控材料的派生结果，
 /// 绝不直接复用原始 `selected_text` 字段。无选区（直接提问 / 追问）时返回
-/// `Ok(None)`；有选区但无授权材料、或选区未落在授权材料正文内时失败关闭。
+/// `Ok(None)`；有选区但无授权材料、缺结构化范围或派生不符时失败关闭。
 fn authorized_selection_text(
     material: Option<&project::StoryMaterial>,
     selected_text: Option<&str>,
+    range: Option<project::SelectionRange>,
 ) -> Result<Option<String>, llm_config::GenerateAiError> {
     let has_selection = selected_text
         .map(str::trim)
@@ -253,7 +292,7 @@ fn authorized_selection_text(
     }
     let selection = selected_text.expect("has_selection checked above");
     match material {
-        Some(material) => authorized_selection_from_material(material, selection)
+        Some(material) => authorized_selection_from_material(material, selection, range)
             .map(Some)
             .ok_or_else(invalid_selection_error),
         None => Err(invalid_selection_error()),
@@ -274,15 +313,20 @@ fn apply_authorized_selection(
             project_path,
             document_version,
             snapshot,
+            selection_from,
+            selection_to,
             thinking_direction,
         } => {
-            let authorized = authorized_selection_text(material, Some(&selected_text))?;
+            let range = selection_range_of(selection_from, selection_to);
+            let authorized = authorized_selection_text(material, Some(&selected_text), range)?;
             Ok(llm_config::GenerateAiRequest::First {
                 selected_text: authorized.unwrap_or(selected_text),
                 document_id,
                 project_path,
                 document_version,
                 snapshot,
+                selection_from,
+                selection_to,
                 thinking_direction,
             })
         }
@@ -292,17 +336,22 @@ fn apply_authorized_selection(
             project_path,
             document_version,
             snapshot,
+            selection_from,
+            selection_to,
             thinking_direction,
             origin,
             messages,
         } => {
-            let authorized = authorized_selection_text(material, Some(&selected_text))?;
+            let range = selection_range_of(selection_from, selection_to);
+            let authorized = authorized_selection_text(material, Some(&selected_text), range)?;
             Ok(llm_config::GenerateAiRequest::FollowUp {
                 selected_text: authorized.unwrap_or(selected_text),
                 document_id,
                 project_path,
                 document_version,
                 snapshot,
+                selection_from,
+                selection_to,
                 thinking_direction,
                 origin,
                 messages,
@@ -315,8 +364,11 @@ fn apply_authorized_selection(
             project_path,
             document_version,
             snapshot,
+            selection_from,
+            selection_to,
         } => {
-            let authorized = authorized_selection_text(material, selected_text.as_deref())?;
+            let range = selection_range_of(selection_from, selection_to);
+            let authorized = authorized_selection_text(material, selected_text.as_deref(), range)?;
             Ok(llm_config::GenerateAiRequest::DirectQuestion {
                 question,
                 selected_text: authorized.or(selected_text),
@@ -324,8 +376,18 @@ fn apply_authorized_selection(
                 project_path,
                 document_version,
                 snapshot,
+                selection_from,
+                selection_to,
             })
         }
+    }
+}
+
+/// 由请求携带的两个可选端点构造结构化选区范围；两端齐备才成范围。
+fn selection_range_of(from: Option<usize>, to: Option<usize>) -> Option<project::SelectionRange> {
+    match (from, to) {
+        (Some(from), Some(to)) => Some(project::SelectionRange { from, to }),
+        _ => None,
     }
 }
 
@@ -431,6 +493,8 @@ pub(crate) async fn ai_send_message(
     project_path: Option<String>,
     document_version: Option<String>,
     snapshot: Option<String>,
+    selection_from: Option<usize>,
+    selection_to: Option<usize>,
     focus_document_id: Option<String>,
     focus_project_path: Option<String>,
     focus_document_version: Option<String>,
@@ -471,6 +535,8 @@ pub(crate) async fn ai_send_message(
         document_version.as_deref(),
         selected_text.as_deref(),
         snapshot.as_deref(),
+        selection_from,
+        selection_to,
         Some(app.state::<ProjectLocks>().inner().clone()),
     )
     .await
@@ -481,11 +547,14 @@ pub(crate) async fn ai_send_message(
     // 生成层只使用授权通过后的选区材料内容：由已授权的 StoryMaterial 提取实际
     // 材料（受控读取的正文子串），绝不回读原始 selected_text 字段；无选区
     // （直接提问 / 追问）时为 None。有选区却提取失败时失败关闭。
-    let authorized_selection =
-        match authorized_selection_text(authorized.as_ref(), selected_text.as_deref()) {
-            Ok(selection) => selection,
-            Err(error) => return Ok(GenerateAiResult::failure(error)),
-        };
+    let authorized_selection = match authorized_selection_text(
+        authorized.as_ref(),
+        selected_text.as_deref(),
+        selection_range_of(selection_from, selection_to),
+    ) {
+        Ok(selection) => selection,
+        Err(error) => return Ok(GenerateAiResult::failure(error)),
+    };
 
     // 链路卡冻结（add-making-module-core 任务 3.2，design D6）：在 kind 分流
     // 之前执行，三入口（常规首轮 / 召唤首轮 / 追问）共覆盖；轮内只读一次
@@ -1048,29 +1117,51 @@ mod tests {
         assert_eq!(error.message, "AI 请求内容无效，请重试");
     }
 
-    /// controlled-story-read-visibility：合法快照经授权后返回受控材料，
-    /// 生成层据此使用授权内容；错误快照失败关闭。
-    #[test]
-    fn valid_snapshot_is_authorized_and_wrong_snapshot_is_rejected() {
-        let temp = tempfile::TempDir::new().expect("create temp dir");
+    /// 测试专用：把 document 节点包成规范化前端的快照 JSON 字符串。
+    fn notebook_json(document: serde_json::Value) -> String {
+        serde_json::to_string(&serde_json::json!({
+            "format": "next-story-tiptap",
+            "version": 2,
+            "document": document
+        }))
+        .expect("serialize notebook")
+    }
+
+    fn range(from: usize, to: usize) -> Option<crate::project::SelectionRange> {
+        Some(crate::project::SelectionRange { from, to })
+    }
+
+    fn setup_project(temp: &tempfile::TempDir, name: &str) -> (std::path::PathBuf, String, String) {
         let root = crate::project::create_new_project(crate::project::CreateProjectParams {
-            name: "快照授权测试".to_string(),
+            name: name.to_string(),
             save_location: temp.path().to_string_lossy().to_string(),
         })
         .expect("create project");
         let tree = crate::project::recover_then_read_content_tree(&root).expect("open tree");
         let doc_id = tree.root_children[0].clone();
         let project_path = root.to_string_lossy().to_string();
+        (root, doc_id, project_path)
+    }
+
+    /// controlled-story-read-visibility：合法快照经授权后返回受控材料，
+    /// 生成层据此使用授权内容；错误快照失败关闭。
+    #[test]
+    fn valid_snapshot_is_authorized_and_wrong_snapshot_is_rejected() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let (_root, doc_id, project_path) = setup_project(&temp, "快照授权测试");
 
         // 合法快照：单段落正文，选区即整段纯文本，快照为规范化 Tiptap JSON。
         let snapshot = "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"林站在天台边。\"}]}]}}";
         let version = compute_version_for_test(snapshot);
+        // 段落 [0,9]，文字 [1,8]。
         let material = super::authorize_selection_sync(
             &project_path,
             &doc_id,
             &version,
             Some("林站在天台边。"),
             Some(snapshot),
+            Some(1),
+            Some(8),
             None,
         )
         .expect("合法快照必须授权通过")
@@ -1086,19 +1177,23 @@ mod tests {
             &version,
             Some("林站在天台边。"),
             Some("不是合法文档 JSON"),
+            Some(1),
+            Some(8),
             None,
         )
         .expect_err("非法快照必须拒绝");
         assert_eq!(invalid_json.code, GenerateAiErrorCode::InvalidResponse);
         assert_eq!(invalid_json.message, "AI 请求内容无效，请重试");
 
-        // 快照正文不包含选区文本 → 裸选区文本不能绕过授权。
+        // 选区不在授权材料内（声明的选区与派生结果不符）→ 裸选区文本不能绕过授权。
         let mismatch = super::authorize_selection_sync(
             &project_path,
             &doc_id,
             &version,
             Some("完全不相干的一段话"),
             Some(snapshot),
+            Some(1),
+            Some(8),
             None,
         )
         .expect_err("选区不落在快照正文内必须拒绝");
@@ -1106,18 +1201,183 @@ mod tests {
         assert_eq!(mismatch.message, "AI 请求内容无效，请重试");
     }
 
+    /// 安全负例（task 1.4）：有选区却缺结构化范围、范围越界、版本不符、隐藏文档
+    /// 均失败关闭，不返回正文。
+    #[test]
+    fn selection_authorization_fails_closed_on_missing_range_bounds_version_and_hidden() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let (root, doc_id, project_path) = setup_project(&temp, "负例测试");
+        let snapshot = "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"林站在天台边。\"}]}]}}";
+        let version = compute_version_for_test(snapshot);
+
+        // 有选区却缺结构化范围 → 失败关闭（不以子串包含放行）。
+        assert!(
+            super::authorize_selection_sync(
+                &project_path,
+                &doc_id,
+                &version,
+                Some("林站在天台边。"),
+                Some(snapshot),
+                None,
+                None,
+                None,
+            )
+            .is_err(),
+            "有选区却缺结构化范围必须失败关闭"
+        );
+
+        // 范围越界 → 失败关闭。
+        assert!(
+            super::authorize_selection_sync(
+                &project_path,
+                &doc_id,
+                &version,
+                Some("林站在天台边。"),
+                Some(snapshot),
+                Some(1),
+                Some(999),
+                None,
+            )
+            .is_err(),
+            "越界范围必须失败关闭"
+        );
+
+        // 版本身份不符（与快照内容派生不符）→ 失败关闭。
+        assert!(
+            super::authorize_selection_sync(
+                &project_path,
+                &doc_id,
+                "不是由内容派生的版本",
+                Some("林站在天台边。"),
+                Some(snapshot),
+                Some(1),
+                Some(8),
+                None,
+            )
+            .is_err(),
+            "伪造版本身份必须失败关闭"
+        );
+
+        // 隐藏文档（关闭 AI 可见性）→ 失败关闭，不返回正文。
+        crate::project::set_document_ai_visibility(&root, &doc_id, false).expect("关闭可见性");
+        assert!(
+            super::authorize_selection_sync(
+                &project_path,
+                &doc_id,
+                &version,
+                Some("林站在天台边。"),
+                Some(snapshot),
+                Some(1),
+                Some(8),
+                None,
+            )
+            .is_err(),
+            "隐藏文档选区必须失败关闭"
+        );
+    }
+
+    /// 正例（task 1.4）：跨段落、跨行内标记、含引号 / 反斜杠、含列表前缀 / 缩进、
+    /// 部分列表项、跨首尾块裁切的合法选区都按同源派生语义被接受，且派生结果就是
+    /// 请求声明的选区。
+    #[test]
+    fn structured_derivation_accepts_complex_legal_selections() {
+        let temp = tempfile::TempDir::new().expect("create temp dir");
+        let (_root, doc_id, project_path) = setup_project(&temp, "复杂选区测试");
+
+        let cases: Vec<(&str, serde_json::Value, &str, usize, usize)> = vec![
+            (
+                "跨段落",
+                serde_json::json!({"type":"doc","content":[
+                    {"type":"paragraph","content":[{"type":"text","text":"甲乙"}]},
+                    {"type":"paragraph","content":[{"type":"text","text":"丙丁"}]}
+                ]}),
+                "甲乙\n丙丁",
+                1,
+                7,
+            ),
+            (
+                "跨行内标记＋引号＋反斜杠",
+                serde_json::json!({"type":"doc","content":[
+                    {"type":"paragraph","content":[
+                        {"type":"text","text":"他","marks":[{"type":"bold"}]},
+                        {"type":"text","text":"a\"b\\c"}
+                    ]}
+                ]}),
+                "他a\"b\\c",
+                1,
+                7,
+            ),
+            (
+                "部分列表项",
+                serde_json::json!({"type":"doc","content":[
+                    {"type":"orderedList","attrs":{"start":3},"content":[
+                        {"type":"listItem","content":[
+                            {"type":"paragraph","content":[{"type":"text","text":"第三项"}]}
+                        ]}
+                    ]}
+                ]}),
+                "三项",
+                4,
+                6,
+            ),
+            (
+                "跨首尾块裁切",
+                serde_json::json!({"type":"doc","content":[
+                    {"type":"paragraph","content":[{"type":"text","text":"甲乙丙"}]},
+                    {"type":"paragraph","content":[{"type":"text","text":"丁戊己"}]}
+                ]}),
+                "乙丙\n丁戊",
+                2,
+                8,
+            ),
+            (
+                "嵌套列表完整前缀与缩进",
+                serde_json::json!({"type":"doc","content":[
+                    {"type":"bulletList","content":[
+                        {"type":"listItem","content":[
+                            {"type":"paragraph","content":[{"type":"text","text":"父项"}]},
+                            {"type":"bulletList","content":[
+                                {"type":"listItem","content":[
+                                    {"type":"paragraph","content":[{"type":"text","text":"子项"}]}
+                                ]}
+                            ]}
+                        ]}
+                    ]}
+                ]}),
+                "- 父项\n  - 子项",
+                3,
+                11,
+            ),
+        ];
+
+        for (name, document, expected, from, to) in cases {
+            let snapshot = notebook_json(document);
+            let version = compute_version_for_test(&snapshot);
+            let material = super::authorize_selection_sync(
+                &project_path,
+                &doc_id,
+                &version,
+                Some(expected),
+                Some(&snapshot),
+                Some(from),
+                Some(to),
+                None,
+            )
+            .unwrap_or_else(|error| panic!("合法复杂选区「{name}」不得被误拒: {error:?}"))
+            .expect("应返回受控材料");
+            let derived =
+                super::authorized_selection_text(Some(&material), Some(expected), range(from, to))
+                    .unwrap_or_else(|error| panic!("派生失败「{name}」: {error:?}"))
+                    .expect("应派生选区原文");
+            assert_eq!(derived, expected, "派生原文必须等于请求声明「{name}」");
+        }
+    }
+
     /// 授权通过的快照材料进入生成提示词；原始 selected_text 不得绕过授权。
     #[test]
     fn authorized_snapshot_material_enters_prompt() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
-        let root = crate::project::create_new_project(crate::project::CreateProjectParams {
-            name: "授权材料进提示词".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
-        let tree = crate::project::recover_then_read_content_tree(&root).expect("open tree");
-        let doc_id = tree.root_children[0].clone();
-        let project_path = root.to_string_lossy().to_string();
+        let (_root, doc_id, project_path) = setup_project(&temp, "授权材料进提示词");
 
         let snapshot = "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"林站在天台边。\"}]}]}}";
         let version = compute_version_for_test(snapshot);
@@ -1127,13 +1387,14 @@ mod tests {
             &version,
             Some("林站在天台边。"),
             Some(snapshot),
+            Some(1),
+            Some(8),
             None,
         )
         .expect("合法快照必须授权通过")
         .expect("应返回受控材料");
 
         // 生成层使用授权材料 content，而非原始 selected_text 字段。
-        // 授权通过后，选区文本已被确认落在授权材料正文内，提示词只能携带该授权选区。
         assert!(
             material.content.contains("林站在天台边。"),
             "选区文本必须落在授权材料正文内"
@@ -1144,6 +1405,8 @@ mod tests {
             project_path: Some(project_path),
             document_version: Some(version.clone()),
             snapshot: Some(snapshot.to_string()),
+            selection_from: Some(1),
+            selection_to: Some(8),
             thinking_direction: None,
         };
         let task = crate::llm_config::generate::build_task_string(&request).expect("build task");
@@ -1152,28 +1415,22 @@ mod tests {
             "授权选区内容必须进入提示词"
         );
 
-        let selected = super::authorized_selection_from_material(&material, "林站在天台边。")
-            .expect("授权材料应能提取已验证选区");
+        let selected =
+            super::authorized_selection_from_material(&material, "林站在天台边。", range(1, 8))
+                .expect("授权材料应能派生已验证选区");
         assert_eq!(selected, "林站在天台边。");
         assert!(
-            super::authorized_selection_from_material(&material, "伪造材料").is_none(),
+            super::authorized_selection_from_material(&material, "伪造材料", range(1, 8)).is_none(),
             "不在受控材料中的原始选区不得进入提示词"
         );
     }
 
-    /// `authorized_selection_text` 必须从已授权材料提取选区，绝不直接复用原始
-    /// `selected_text` 字段；伪造选区或缺少授权材料时失败关闭，无选区返回 `None`。
+    /// `authorized_selection_text` 必须从已授权材料派生选区，绝不直接复用原始
+    /// `selected_text` 字段；伪造选区或缺结构化范围时失败关闭，无选区返回 `None`。
     #[test]
     fn authorized_selection_text_extracts_material_and_fails_closed() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
-        let root = crate::project::create_new_project(crate::project::CreateProjectParams {
-            name: "授权提取测试".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
-        let tree = crate::project::recover_then_read_content_tree(&root).expect("open tree");
-        let doc_id = tree.root_children[0].clone();
-        let project_path = root.to_string_lossy().to_string();
+        let (_root, doc_id, project_path) = setup_project(&temp, "授权提取测试");
 
         let snapshot = "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"林站在天台边。\"}]}]}}";
         let version = compute_version_for_test(snapshot);
@@ -1183,54 +1440,62 @@ mod tests {
             &version,
             Some("林站在天台边。"),
             Some(snapshot),
+            Some(1),
+            Some(8),
             None,
         )
         .expect("合法快照必须授权通过")
         .expect("应返回受控材料");
 
-        // 有授权材料 + 匹配选区 → 从材料正文提取。
-        let extracted = super::authorized_selection_text(Some(&material), Some("林站在天台边。"))
-            .expect("授权材料应能提取选区")
-            .expect("应返回选区内容");
+        // 有授权材料 + 匹配选区 + 结构化范围 → 从材料正文派生。
+        let extracted =
+            super::authorized_selection_text(Some(&material), Some("林站在天台边。"), range(1, 8))
+                .expect("授权材料应能派生选区")
+                .expect("应返回选区内容");
         assert_eq!(extracted, "林站在天台边。");
 
-        // 伪造选区（不落在授权材料正文内）→ 失败关闭，绝不进入提示词。
+        // 伪造选区（派生结果不符）→ 失败关闭，绝不进入提示词。
         assert!(
-            super::authorized_selection_text(Some(&material), Some("完全不相干的一段话")).is_err(),
+            super::authorized_selection_text(
+                Some(&material),
+                Some("完全不相干的一段话"),
+                range(1, 8)
+            )
+            .is_err(),
             "伪造选区必须失败关闭"
+        );
+
+        // 有选区却无结构化范围 → 失败关闭（缺范围即失败关闭）。
+        assert!(
+            super::authorized_selection_text(Some(&material), Some("林站在天台边。"), None)
+                .is_err(),
+            "缺结构化范围必须失败关闭"
         );
 
         // 有选区却无授权材料 → 失败关闭（绝不静默回退到原始 selected_text）。
         assert!(
-            super::authorized_selection_text(None, Some("林站在天台边。")).is_err(),
+            super::authorized_selection_text(None, Some("林站在天台边。"), range(1, 8)).is_err(),
             "有选区却无授权材料必须失败关闭"
         );
 
         // 无选区（直接提问 / 追问）与空白选区 → None。
         assert_eq!(
-            super::authorized_selection_text(None, None).expect("无选区应成功"),
+            super::authorized_selection_text(None, None, None).expect("无选区应成功"),
             None
         );
         assert_eq!(
-            super::authorized_selection_text(Some(&material), Some("   \n"))
+            super::authorized_selection_text(Some(&material), Some("   \n"), None)
                 .expect("空白选区应成功"),
             None
         );
     }
 
-    /// 生产命令路径：`apply_authorized_selection` 用授权材料重写请求中声明的选区，
+    /// 生产命令路径：`apply_authorized_selection` 用授权材料派生重写请求中声明的选区，
     /// 使提示词组装只看到受控材料内容，原始 `selected_text` 不直接进入 DSH prompt。
     #[test]
     fn apply_authorized_selection_rewrites_request_selection_from_material() {
         let temp = tempfile::TempDir::new().expect("create temp dir");
-        let root = crate::project::create_new_project(crate::project::CreateProjectParams {
-            name: "重写选区测试".to_string(),
-            save_location: temp.path().to_string_lossy().to_string(),
-        })
-        .expect("create project");
-        let tree = crate::project::recover_then_read_content_tree(&root).expect("open tree");
-        let doc_id = tree.root_children[0].clone();
-        let project_path = root.to_string_lossy().to_string();
+        let (_root, doc_id, project_path) = setup_project(&temp, "重写选区测试");
 
         let snapshot = "{\"format\":\"next-story-tiptap\",\"version\":2,\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"林站在天台边。\"}]}]}}";
         let version = compute_version_for_test(snapshot);
@@ -1240,6 +1505,8 @@ mod tests {
             &version,
             Some("林站在天台边。"),
             Some(snapshot),
+            Some(1),
+            Some(8),
             None,
         )
         .expect("合法快照必须授权通过")
@@ -1251,6 +1518,8 @@ mod tests {
             project_path: Some(project_path),
             document_version: Some(version.clone()),
             snapshot: Some(snapshot.to_string()),
+            selection_from: Some(1),
+            selection_to: Some(8),
             thinking_direction: None,
         };
         let rewritten = super::apply_authorized_selection(request, Some(&material))
@@ -1269,12 +1538,43 @@ mod tests {
             project_path: Some("project".to_string()),
             document_version: Some(version.clone()),
             snapshot: Some(snapshot.to_string()),
+            selection_from: Some(1),
+            selection_to: Some(8),
             thinking_direction: None,
         };
         assert!(
             super::apply_authorized_selection(forged, Some(&material)).is_err(),
             "伪造选区必须失败关闭，不得进入提示词"
         );
+    }
+
+    /// 跨语言派生一致性（task 1.5）：Rust 派生与前端 `serializeSelectionToPlainText`
+    /// 共享同一份选区样例夹具，逐例断言派生原文一致，防止跨语言漂移。
+    #[test]
+    fn selection_projection_matches_shared_frontend_samples() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/fixtures/selection-projection-samples.json"
+        );
+        let text = std::fs::read_to_string(path).expect("read shared selection samples");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&text).expect("parse shared selection samples");
+        let samples = parsed["samples"].as_array().expect("samples array");
+        assert!(!samples.is_empty(), "共享选区样例不得为空");
+        for sample in samples {
+            let name = sample["name"].as_str().unwrap_or("(unnamed)");
+            let document = sample["document"].clone();
+            let from = sample["from"].as_u64().expect("from") as usize;
+            let to = sample["to"].as_u64().expect("to") as usize;
+            let expected = sample["expected"].as_str().expect("expected");
+            let snapshot = notebook_json(document);
+            let derived = super::project::derive_selection_text(
+                &snapshot,
+                crate::project::SelectionRange { from, to },
+            )
+            .unwrap_or_else(|| panic!("样例「{name}」派生失败"));
+            assert_eq!(derived, expected, "样例「{name}」派生与前端不一致");
+        }
     }
 
     // ========== 链路冻结编排回归（add-making-module-core 任务 3.5，design D6） ==========

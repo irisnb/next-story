@@ -61,7 +61,12 @@ export function startDirectQuestion(options: StartDirectQuestionOptions): boolea
       ...(frozenSelection ? {
         selected_text: frozenSelection.selectedText,
         ...(frozenSelection.projectPath !== undefined || frozenSelection.documentVersion !== undefined
-          ? { document_id: frozenSelection.documentId }
+          ? {
+              document_id: frozenSelection.documentId,
+              // 结构化选区范围与来源身份一起携带（D4）。
+              selection_from: frozenSelection.from,
+              selection_to: frozenSelection.to,
+            }
           : {}),
         ...(frozenSelection.projectPath !== undefined ? { project_path: frozenSelection.projectPath } : {}),
         ...(frozenSelection.documentVersion !== undefined ? { document_version: frozenSelection.documentVersion } : {}),

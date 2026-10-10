@@ -134,6 +134,8 @@ function materialIdentityOf(
   projectPath?: string;
   documentVersion?: string;
   snapshot?: string;
+  selectionFrom?: number;
+  selectionTo?: number;
   focusDocumentId?: string;
   focusProjectPath?: string;
   focusDocumentVersion?: string;
@@ -144,6 +146,8 @@ function materialIdentityOf(
     request.project_path === undefined &&
     request.document_version === undefined &&
     request.snapshot === undefined &&
+    request.selection_from === undefined &&
+    request.selection_to === undefined &&
     request.focus_document_id === undefined &&
     request.focus_project_path === undefined &&
     request.focus_document_version === undefined &&
@@ -156,6 +160,8 @@ function materialIdentityOf(
     projectPath: request.project_path,
     documentVersion: request.document_version,
     snapshot: request.snapshot,
+    selectionFrom: request.selection_from,
+    selectionTo: request.selection_to,
     focusDocumentId: request.focus_document_id,
     focusProjectPath: request.focus_project_path,
     focusDocumentVersion: request.focus_document_version,

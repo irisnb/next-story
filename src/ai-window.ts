@@ -67,12 +67,14 @@ export interface AiWindowController {
 }
 
 /** 窗口状态点与徽标的统一状态词（排队中 / 生成中 / 已停止 / 失败 / 恢复中 / 已完成）。 */
-export type WindowStatus = "idle" | "generating" | "queued" | "stopped" | "failed" | "recovering" | "done";
+export type WindowStatus = "idle" | "generating" | "queued" | "waiting" | "stopped" | "failed" | "recovering" | "done";
 
 /** 从讨论的请求与对话推导窗口状态（纯派生，供标题栏状态点与徽标使用）。 */
 export function windowStatusOf(
   request: import("./ai-panel-request-state.ts").PanelRequestState,
+  waitingForReading = false,
 ): WindowStatus {
+  if (waitingForReading) return "waiting";
   switch (request.kind) {
     case "loading":
       return request.queued ? "queued" : "generating";
@@ -114,6 +116,8 @@ export function discussionTitle(discussion: Discussion | null): string {
 /** 把统一状态词映射为徽标文字（「已完成」「空闲」不显示徽标）。 */
 export function statusBadgeLabel(status: WindowStatus): string | null {
   switch (status) {
+    case "waiting":
+      return "等待授权";
     case "generating":
       return "生成中";
     case "queued":
@@ -485,13 +489,13 @@ export function setupAiWindow(
     // 切换关注文档的清晰提示由选择器动作显式触发（`showFocusNotice`），
     // 避免把「讨论创建时的初始绑定」误报成用户切换。
 
-    const status = windowStatusOf(state.viewOf(conversationId).request);
+    const status = windowStatusOf(state.viewOf(conversationId).request, view.readingRequest !== null);
     applyStatusDot(dom, status);
     const badge = statusBadgeLabel(status);
     dom.badge.classList.toggle("hidden", badge === null);
     if (badge !== null) dom.badge.textContent = badge;
     applyBadgeClass(dom, status);
-    dom.stopBtn.classList.toggle("hidden", status !== "generating" && status !== "queued");
+    dom.stopBtn.classList.toggle("hidden", status !== "generating" && status !== "queued" && status !== "waiting");
 
     // 新请求开始：回到贴底跟随，让新消息可见。
     if (scrollReset.shouldReset(state.viewOf(conversationId).request) && !(firstRender && displayMemory)) {
@@ -624,7 +628,7 @@ export function setupAiWindow(
   }
 
   function applyBadgeClass(dom: AiWindowDom, status: WindowStatus): void {
-    dom.badge.classList.remove("is-generating", "is-queued", "is-stopped", "is-failed", "is-recovering");
+    dom.badge.classList.remove("is-generating", "is-queued", "is-waiting", "is-stopped", "is-failed", "is-recovering");
     if (status !== "idle" && status !== "done") {
       dom.badge.classList.add(`is-${status}`);
     }

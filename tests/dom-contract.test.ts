@@ -100,12 +100,12 @@ test("making module exposes a fourth tab and a status bar bound to the global ac
   // 第四页面：主导航末位新增「制作模块」，独立占用主内容区。
   assert.match(html, /<button\b[^>]*\bid="tab-making"[^>]*>制作<\/button>/);
   assert.match(html, /<section\b[^>]*\bid="module-making"[^>]*aria-label="制作模块"/);
-  // 状态条（常驻）：启用态（名·第N版｜所有作品共用｜停用＋生效时机说明）与未启用态。
+  // 状态条（常驻）：启用态（名·第N版｜所有项目共用）与未启用态；纯全局只读展示，
+  // 停用入口已随本 change 移入版本操作区（由下一个测试断言）。
   assert.match(html, /\bid="making-status-bar"/);
   assert.match(html, /\bid="making-status-active"/);
   assert.match(html, /\bid="making-status-text"/);
   assert.match(html, /\bid="making-status-idle"[^>]*>当前未启用链路，使用日常陪想/);
-  assert.match(html, /\bid="making-deactivate-btn"[^>]*>停用<\/button>/);
   assert.match(html, /从下一轮开始使用；正在生成的回复沿用发起时的版本/);
 });
 
@@ -114,6 +114,11 @@ test("making module exposes dual tabs, graph zones, and unified detail mounts", 
   assert.match(html, /<aside\b[^>]*\bid="making-chain-library"[^>]*aria-label="链路库"/);
   assert.match(html, /<section\b[^>]*\bid="making-inspector"[^>]*aria-label="导图"/);
   assert.match(html, /<aside\b[^>]*\bid="making-conversation-pane"[^>]*aria-label="制作对话"/);
+  // 版本操作区（固定头区）：启用/回退/停用集中同区，并标注「正在查看／正在使用」，
+  // 停用入口不再散落在顶部状态条（本 change 决策 D8）。
+  assert.match(html, /<header\b[^>]*\bmaking-version-operations\b[^>]*aria-label="版本操作区"/);
+  assert.match(html, /\bid="making-deactivate-btn"[^>]*>停用当前链路<\/button>/);
+  assert.match(html, /<span\b[^>]*class="[^"]*making-version-using[^"]*"/);
   assert.match(html, /\bid="making-view-switch"/);
   assert.match(html, /<button\b[^>]*\bid="making-view-map-btn"[^>]*role="tab"[^>]*>导图<\/button>/);
   assert.match(html, /<button\b[^>]*\bid="making-view-chat-btn"[^>]*role="tab"[^>]*>制作对话<\/button>/);

@@ -9,6 +9,7 @@ mod md_import;
 mod migration;
 mod notebook;
 mod operations;
+mod selection_projection;
 mod story_material;
 mod story_search;
 mod validation;
@@ -40,6 +41,9 @@ pub(crate) use operations::{read_bounded_string, write_file_atomically};
 pub(crate) use export::load_scoped_export_project;
 pub use story_material::*;
 pub use story_search::*;
+// 选区派生（fix-ai-and-making-usability D4）：只读纯函数，供 AI 选区授权路径按
+// 前端同源语义定位并派生选区原文；不读取 / 写入作品，不对外暴露正文。
+pub(crate) use selection_projection::{derive_selection_text, SelectionRange};
 // 常规取材组装只在 crate 内（lib.rs 命令层）使用，不对外导出。
 pub(crate) use story_search::assemble_round_context;
 // 宿主只读工具执行器（story_tools，add-agent-on-demand-reading 任务组 3）复用同一

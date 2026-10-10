@@ -251,7 +251,16 @@ export function setupAiDock(
         action: () => actions.onToggleOnDemandReading(conversationId, !readingEnabled),
       },
       { divider: true },
-      { icon: "i-trash", label: "删除讨论…", danger: true, action: () => { void actions.onDelete(conversationId); } },
+      { icon: "i-trash", label: "删除讨论…", danger: true, action: () => {
+        conversationListOpen = true;
+        renamingId = null;
+        pendingDeleteId = conversationId;
+        dom.searchInput.value = "";
+        listFilter = "";
+        expandedEarlier = true;
+        renderConversationList();
+        dom.conversationList.querySelector<HTMLButtonElement>(".ai-cl-confirm .danger")?.focus();
+      } },
     ]);
     positionMenu(menu, anchor);
   }
@@ -511,7 +520,7 @@ export function setupAiDock(
   /** 列表状态词：打开窗口的讨论用窗口状态，其余用档案终态。 */
   function listStatusOf(summary: ConversationSummary) {
     const discussion = state.getDiscussion(summary.conversation_id);
-    if (discussion) return describeWindowStatus(windowStatusOf(discussion.request));
+    if (discussion) return describeWindowStatus(windowStatusOf(discussion.request, state.viewOf(summary.conversation_id).readingRequest != null));
     return describeConversationStatus(summary.last_status);
   }
 
@@ -696,7 +705,7 @@ export function setupAiDock(
     });
 
     actionsRow.append(renameBtn, pinBtn, deleteBtn);
-    row.append(actionsRow);
+    if (pendingDeleteId !== item.conversationId) row.append(actionsRow);
 
     // 行主体点击 = 打开 / 聚焦讨论；行尾按钮点击不冒泡。
     row.addEventListener("click", () => openConversationFromId(item.conversationId));
@@ -787,7 +796,9 @@ export function setupAiDock(
         dom.notice.classList.remove("hidden", "warn");
         dom.notice.classList.add("ok");
         const text = document.createElement("span");
-        text.textContent = `已删除「${undo.title}」`;
+        text.classList.add("ai-dock-notice-text");
+        text.textContent = `已删除：${undo.title}`;
+        text.title = undo.title;
         dom.notice.append(text);
         const undoBtn = document.createElement("button");
         undoBtn.type = "button";

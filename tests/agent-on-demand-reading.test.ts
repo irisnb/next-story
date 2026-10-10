@@ -89,6 +89,36 @@ const baseWindowActions = {
   onNewConversation: () => {},
 };
 
+test("waiting authorization replaces thinking presentation without changing loading", () => {
+  const state = new AiPanelState();
+  state.newConversation();
+  const id = state.focusedConversationId!;
+  state.beginDirectQuestion("需要补读吗？", null);
+  state.receiveReadingRequest(id, { sessionId: "s", messageId: `${id}:msg-1`, callId: "c", reason: "确认时间线" });
+  const before = state.viewOf(id);
+  assert.equal(before.request.kind, "direct_question");
+  if (before.request.kind === "direct_question") assert.equal(before.request.status, "loading");
+  const view = buildAiPanelView(before, state.conversation);
+  assert.equal(view.loadingMessage, "等待授权");
+  assert.ok(view.conversation?.messages.some((message) => message.text === "等待授权"));
+  assert.ok(!view.conversation?.messages.some((message) => message.text === "正在思考…"));
+  assert.deepEqual(state.viewOf(id).request, before.request);
+});
+
+test("authorization presentation stays with its discussion across switching", () => {
+  const state = new AiPanelState();
+  state.beginDirectQuestion("讨论 A", null);
+  const a = state.focusedConversationId!;
+  state.receiveReadingRequest(a, { sessionId: "sa", messageId: `${a}:msg-1`, callId: "ca", reason: "A 的材料" });
+  const request = state.viewOf(a).request;
+  state.newConversation();
+  const b = state.focusedConversationId!;
+  assert.equal(buildAiPanelView(state.viewOf(b), state.conversationOf(b)).readingRequest, null);
+  state.selectDiscussion(a);
+  assert.equal(buildAiPanelView(state.viewOf(a), state.conversationOf(a)).readingRequest?.reason, "A 的材料");
+  assert.deepEqual(state.viewOf(a).request, request);
+});
+
 // ========== 任务 7.1：授权请求卡片（显示 / 允许 / 拒绝 / 措辞） ==========
 
 test("7.1a 授权请求进入讨论状态并在窗口显示原因与权限边界", () => {
@@ -110,6 +140,15 @@ test("7.1a 授权请求进入讨论状态并在窗口显示原因与权限边界
 
     const card = root.queryResults.get('[data-role="reading-request"]')!;
     assert.equal(card.classList.contains("hidden"), false, "等待授权时授权卡可见");
+    const badge = root.queryResults.get('[data-role="badge"]')!;
+    assert.equal(badge.textContent, "等待授权");
+    assert.equal(badge.classList.contains("is-waiting"), true);
+    state.resolveReadingRequest(conversationId, false);
+    assert.equal(badge.classList.contains("is-waiting"), false, "授权等待结束后清除等待样式");
+    state.receiveReadingRequest(conversationId, {
+      sessionId: "session-1", messageId: `${conversationId}:msg-1`, callId: "call-1",
+      reason: "需要确认第三章的时间线才能回答",
+    });
     assert.equal(
       root.queryResults.get('[data-role="reading-request-reason"]')!.textContent,
       "需要确认第三章的时间线才能回答",

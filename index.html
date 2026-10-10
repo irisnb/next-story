@@ -236,13 +236,25 @@
                   <span class="ai-window-status-dot" data-role="status-dot"></span>
                   <span class="ai-window-title" data-role="title"></span>
                   <span class="ai-window-doc" data-role="doc"></span>
+                  <div class="ai-window-actions">
                   <button class="ai-win-btn ai-win-btn-icon" data-role="focus-switch" type="button" title="切换关注文档"><svg class="ai-ic"><use href="#i-doc"></use></svg></button>
-                  <span class="spacer"></span>
                   <span class="ai-window-badge hidden" data-role="badge"></span>
                   <button class="ai-win-btn ai-win-btn-icon" data-role="materials-toggle" type="button" title="本次参考了什么"><svg class="ai-ic"><use href="#i-info"></use></svg></button>
                   <button class="ai-win-btn ai-win-btn-stop hidden" data-role="stop" type="button">停止</button>
                   <button class="ai-win-btn ai-win-btn-icon" data-role="more" type="button" title="更多"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
                   <button class="ai-win-btn ai-win-btn-close" data-role="close" type="button" title="收起 AI 面板"><svg class="ai-ic"><use href="#i-close"></use></svg></button>
+                  </div>
+                </div>
+                <div data-role="reading-request" class="ai-reading-request hidden" role="region" aria-label="等待补读授权">
+                  <div data-role="reading-request-title" class="ai-reading-request-title">AI 希望围绕这个问题补充阅读你的作品文档</div>
+                  <div class="ai-reading-request-content" tabindex="0" role="region" aria-label="补读理由与权限边界">
+                    <div data-role="reading-request-reason" class="ai-reading-request-reason"></div>
+                    <div data-role="reading-request-notes" class="ai-reading-request-notes"></div>
+                  </div>
+                  <div class="ai-reading-request-actions">
+                    <button data-role="reading-allow" class="ai-panel-btn ai-reading-allow" type="button">允许</button>
+                    <button data-role="reading-deny" class="ai-panel-btn" type="button">本次不允许</button>
+                  </div>
                 </div>
                 <div class="ai-window-body" data-role="body">
                   <div data-role="snapshot-block" class="ai-block hidden">
@@ -255,15 +267,6 @@
                       <button data-role="materials-close" class="ai-panel-btn" type="button">收起</button>
                     </div>
                     <div data-role="materials-body" class="ai-materials-body"></div>
-                  </div>
-                  <div data-role="reading-request" class="ai-reading-request hidden">
-                    <div data-role="reading-request-title" class="ai-reading-request-title">AI 希望围绕这个问题补充阅读你的作品文档</div>
-                    <div data-role="reading-request-reason" class="ai-reading-request-reason"></div>
-                    <div data-role="reading-request-notes" class="ai-reading-request-notes"></div>
-                    <div class="ai-reading-request-actions">
-                      <button data-role="reading-allow" class="ai-panel-btn ai-reading-allow" type="button">允许</button>
-                      <button data-role="reading-deny" class="ai-panel-btn" type="button">本次不允许</button>
-                    </div>
                   </div>
                   <div data-role="reading-status" class="ai-reading-status hidden">
                     <button data-role="reading-toggle" class="ai-reading-toggle" type="button">
@@ -602,7 +605,6 @@
               <span id="making-status-text" class="making-status-text"></span>
               <span class="making-status-sep" aria-hidden="true">｜</span>
               <span class="making-status-shared">所有项目共用</span>
-              <button id="making-deactivate-btn" class="making-status-btn" type="button">停用</button>
             </span>
             <span class="making-status-timing">从下一轮开始使用；正在生成的回复沿用发起时的版本</span>
           </div>
@@ -654,14 +656,16 @@
               <p>从左侧选择一条链路，查看它的组装结构。</p>
             </div>
             <div id="making-inspector-content" class="making-inspector-content hidden">
-              <header class="making-inspector-head">
+              <header class="making-inspector-head making-version-operations" aria-label="版本操作区">
                 <h2 id="making-inspector-title" class="making-inspector-title"></h2>
                 <span id="making-inspector-state" class="making-inspector-state"></span>
                 <span class="spacer"></span>
                 <label class="making-field-label" for="making-version-select">版本</label>
                 <select id="making-version-select" class="making-version-select" aria-label="版本记录"></select>
                 <button id="making-enable-btn" class="making-action-btn primary" type="button" hidden></button>
+                <button id="making-deactivate-btn" class="making-action-btn" type="button" disabled>停用当前链路</button>
                 <button id="making-delete-chain-btn" class="making-action-btn" type="button">删除链路</button>
+                <span class="making-version-using">正在使用：未启用链路</span>
               </header>
 
               <h3 id="making-composition-title" class="making-composition-title">提示词组成</h3>

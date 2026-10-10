@@ -977,6 +977,11 @@
 /* 停靠区提示区（保存失败 + 删除撤销，均在停靠区层） */
 .ai-dock-notice.ok { color: var(--color-text); background: var(--color-surface-subtle); border-left: 3px solid var(--color-success); }
 .ai-dock-notice-undo {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 48px;
+  min-height: 32px;
+  padding: 6px 10px;
   margin-left: auto;
   color: var(--color-success);
   font-weight: 600;
@@ -984,6 +989,13 @@
   border: none;
   cursor: pointer;
   font-size: 0.75rem;
+}
+.ai-dock-notice-text {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .ai-panel-btn.danger {
@@ -1069,7 +1081,16 @@
   gap: 6px;
 }
 .ai-reading-request.hidden { display: none; }
-.ai-reading-request-title { font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.ai-reading-request-title { flex: none; font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.ai-reading-request-content {
+  flex: 1 1 auto;
+  min-height: 32px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.ai-reading-request-content:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 .ai-reading-request-reason {
   font-size: 0.82rem;
   color: var(--color-text-body);
@@ -1077,7 +1098,8 @@
   white-space: pre-wrap;
 }
 .ai-reading-request-note { font-size: 0.78rem; color: var(--color-muted); line-height: 1.5; }
-.ai-reading-request-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ai-reading-request-actions { flex: none; display: flex; flex-wrap: nowrap; gap: var(--space-2); }
+.ai-reading-request-actions button { flex: none; white-space: nowrap; }
 
 /* 补读过程轻量状态（任务 7.3）：默认一行状态，可展开已读文档列表。 */
 .ai-reading-status {

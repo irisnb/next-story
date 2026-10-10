@@ -630,13 +630,17 @@ export function buildAiPanelView(
       : null;
   const stoppedFollowUp =
     panelState.request.kind === "stopped" && panelState.request.phase === "follow_up";
-  const conversationView = directQuestionRequest
+  const rawConversationView = directQuestionRequest
     ? buildDirectQuestionConversationView(directQuestionRequest)
     : firstRoundLoadingRequest
       ? buildFirstRoundLoadingView(firstRoundLoadingRequest)
       : stoppedFirstRequest
         ? buildFirstRoundStoppedView(stoppedFirstRequest)
         : buildConversationView(conversation, stoppedFollowUp ? "已停止" : "中断");
+  const conversationView = panelState.readingRequest && rawConversationView
+    ? { messages: rawConversationView.messages.map((message) => message.role === "status" && message.text === "正在思考…"
+      ? { ...message, text: "等待授权" } : message) }
+    : rawConversationView;
   const hasConversation = conversation !== null;
   // 材料权限已变化（隐藏材料 / 旧档案缺出处）：保留历史显示，但不可沿原上下文继续。
   const restrictionNotice = conversationRestrictionNotice(conversation);
@@ -683,7 +687,7 @@ export function buildAiPanelView(
     panelVisible: panelState.visibility === "open",
     snapshot: facts.snapshot,
     loadingVisible: panelState.archiveOpening || facts.loadingVisible,
-    loadingMessage: panelState.archiveOpening ? "正在打开…" : facts.loadingVisible
+    loadingMessage: panelState.readingRequest ? "等待授权" : panelState.archiveOpening ? "正在打开…" : facts.loadingVisible
       ? panelState.request.kind === "recovering"
         ? "恢复对话中"
         : "正在思考…"

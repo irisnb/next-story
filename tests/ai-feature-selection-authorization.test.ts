@@ -131,6 +131,9 @@ test("production wiring sends an allowed selection with source identity", async 
       question: "这段里人物在隐瞒什么？",
       selected_text: "林站在天台边。",
       document_id: "doc-1",
+      // 结构化选区范围随来源身份一起携带（fix-ai-and-making-usability D4）。
+      selection_from: 1,
+      selection_to: 8,
       project_path: "D:\\作品",
       document_version: "v1",
       snapshot: canonicalNotebookJson({

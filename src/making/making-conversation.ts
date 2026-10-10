@@ -164,7 +164,7 @@ export function buildCardDraftPanelView(drafts: readonly MakingCardDraft[], chai
     const lines = [`· 卡名「${draft.title}」（${draftSlotTypeLabel(draft.slotType)}）`];
     if (draft.whenToUse.length > 0) lines.push(`  何时用：${draft.whenToUse}`);
     if (draft.whenNotToUse.length > 0) lines.push(`  何时不用：${draft.whenNotToUse}`);
-    lines.push(`  正文：${bodyPreview(draft.body)}`);
+    lines.push(`  正文${draft.body.length > BODY_PREVIEW_LIMIT ? "摘要（已截断；可展开完整原文核对）" : ""}：${bodyPreview(draft.body)}`);
     return lines.join("\n");
   });
   return {

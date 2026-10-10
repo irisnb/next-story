@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -256,3 +257,38 @@ test("partial nested list item gets no prefix or indent", () => {
   // 只选子项一中间的 "项" 字（[10,11]），不补前缀不补缩进
   assert.equal(serializeSelectionToPlainText(doc, 10, 11), "项");
 });
+
+// ---------------------------------------------------------------------------
+// 跨语言派生一致性（fix-ai-and-making-usability D4 / task 1.5）
+//
+// 与 Rust `src-tauri/src/project/selection_projection.rs` 共享同一份选区样例夹具。
+// 两侧都按此夹具断言派生原文，任一侧规则漂移都会在另一端暴露。
+// ---------------------------------------------------------------------------
+
+interface SelectionSample {
+  name: string;
+  document: DocNode;
+  from: number;
+  to: number;
+  expected: string;
+}
+
+const selectionSamplesUrl = new URL(
+  "./fixtures/selection-projection-samples.json",
+  import.meta.url,
+);
+const selectionSamples: SelectionSample[] = JSON.parse(
+  readFileSync(selectionSamplesUrl, "utf8"),
+).samples;
+
+assert.ok(selectionSamples.length > 0, "共享选区样例不得为空");
+
+for (const sample of selectionSamples) {
+  test(`shared selection sample "${sample.name}" projects consistently`, () => {
+    assert.equal(
+      serializeSelectionToPlainText(sample.document, sample.from, sample.to),
+      sample.expected,
+      sample.name,
+    );
+  });
+}

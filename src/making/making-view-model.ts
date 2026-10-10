@@ -86,7 +86,7 @@ export const MAKING_DETAIL_ACTION_LABELS: readonly {
   readonly label: string;
 }[] = [
   { action: "modify", label: "请制作助手修改" },
-  { action: "delete", label: "请制作助手删除" },
+  { action: "delete", label: "删除卡片" },
   { action: "add", label: "请制作助手添加回应要求" },
 ];
 
@@ -509,7 +509,7 @@ export function buildMakingDetail(
     return {
       kind: "card",
       title: card.title,
-      quickMeta: `${slotLabel} · ${versionMeta}`,
+      quickMeta: `摘要 · ${slotLabel} · ${versionMeta}`,
       quickSummary: summary.length > 0 ? summary : null,
       quickHelp: help,
       // 姿态卡：快捷小窗同样如实附「仅供选择参考」的固定说明。

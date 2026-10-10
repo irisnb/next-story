@@ -427,7 +427,7 @@ interface ConversationFixture {
 
 async function conversationFixture(
   library: ChainLibrary,
-  options: { withTrialHook?: boolean } = {},
+  options: { withTrialHook?: boolean; realSaveConfirm?: boolean } = {},
 ): Promise<ConversationFixture> {
   const page = parseMakingDocument();
   const restore = installDocument(page.document);
@@ -454,10 +454,10 @@ async function conversationFixture(
   fixture.controller = setupMaking(getAppDom().making, {
     call: backend.invoke,
     listen: bus.listen,
-    confirm: async (message) => {
+    ...(options.realSaveConfirm ? {} : { confirm: async (message: string) => {
       fixture.confirms.push(message);
       return fixture.confirmResult;
-    },
+    } }),
     ...(options.withTrialHook ? { startTrial } : {}),
   });
   await flushPromises();
@@ -706,9 +706,47 @@ test("saving a draft requires confirmation and writes a new version without acti
     assert.match(notice.textContent ?? "", /已保存为「情节探索·第2版」草稿/, "链路已有第1版，草稿追加为第2版");
     assert.match(notice.textContent ?? "", /尚未启用/);
     assert.match(fixture.confirms[0], /不会自动启用/);
+    const savedVersion = fixture.backend.library.chains[0].versions[1];
+    assert.equal(fixture.controller.view.versionId, savedVersion.id, "保存后查看新版本");
   } finally {
     fixture.restore();
   }
+});
+
+test("save confirmation expands full original and save follows the exact new version", async () => {
+  const chain = chainOf("全文保存");
+  const fixture = await conversationFixture(libraryOf([chain]), { realSaveConfirm: true });
+  const body = `首段原文\n${"长正文保留原样\n".repeat(150)}中段原文\n${"后半正文\n".repeat(150)}尾段原文`;
+  try {
+    await browseChain(fixture, chain.id);
+    await startMaking(fixture);
+    fixture.backend.nextReply = ["【卡草稿开始】", "卡名：长卡", "何时用：探索时", "何时不用：无", `正文：${body}`, "【卡草稿结束】"].join("\n");
+    await typeAndSend(fixture, "准备长卡");
+    await flushPromises(40);
+    fixture.document.querySelector<HTMLButtonElement>(".making-draft-actions .primary")!.click();
+    await flushPromises(20);
+    let dialog = fixture.document.querySelector<HTMLDialogElement>(".making-save-confirm")!;
+    assert.ok(dialog);
+    assert.match(dialog.querySelector("p")!.textContent!, /已截断/);
+    assert.ok(dialog.querySelector("pre")!.textContent!.includes(body), "确认内完整原文");
+    dialog.querySelector("details")!.open = true;
+    assert.equal(dialog.querySelector("details")!.open, true);
+    [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "取消")!.click();
+    await flushPromises(20);
+    assert.equal(fixture.backend.calls.some((c) => c.cmd === "chain_save_version"), false);
+    fixture.document.querySelector<HTMLButtonElement>(".making-draft-actions .primary")!.click();
+    await flushPromises(20);
+    dialog = fixture.document.querySelector<HTMLDialogElement>(".making-save-confirm")!;
+    [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "确认保存")!.click();
+    await flushPromises(50);
+    const saved = fixture.backend.library.chains[0].versions[1];
+    assert.equal(saved.cards[0].body, body);
+    assert.equal(fixture.controller.view.versionId, saved.id);
+    await clickElement(fixture, "making-view-map-btn");
+    fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${saved.cards[0].id}"]`)!.click();
+    fixture.document.querySelector<HTMLButtonElement>(".making-quick-open")!.click();
+    assert.ok(elementOf(fixture, "making-card-panel").textContent!.includes(body));
+  } finally { await flushPromises(40); fixture.restore(); }
 });
 
 test("the draft panel badges each card with its type and saves posture slot_type", async () => {

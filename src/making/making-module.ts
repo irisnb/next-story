@@ -6,6 +6,7 @@ import {
   chainDelete,
   chainLibraryLoad,
   chainRollback,
+  chainSaveVersion,
   chainSetActive,
   type Chain,
   type ChainLibrary,
@@ -127,6 +128,7 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     getChain: findChain,
     refreshLibrary: refresh,
     switchMakingObject: (chainId) => { setMakingObject(chainId); },
+    onVersionSaved: (chainId, versionId) => { viewChain(chainId, versionId); },
   });
 
   // 试问控制器（车道 F2b）：经 F2a 留好的钩子注册后，草稿面板「开始试问」可用。
@@ -148,6 +150,7 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const errorText = view.kind === "error" ? view.label : opError;
     dom.statusError.classList.toggle("hidden", errorText === null);
     dom.statusError.textContent = errorText ?? "";
+    dom.deactivateBtn.disabled = library?.active == null;
     if (view.kind === "active") {
       dom.statusText.textContent = view.label;
     }
@@ -225,6 +228,10 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     dom.inspectorState.textContent = view.stateLabel;
     dom.inspectorState.classList.toggle("is-active", view.isActiveVersion);
     dom.inspectorState.classList.toggle("is-draft", !view.isActiveVersion);
+    const usingLabel = dom.inspectorContent.querySelector<HTMLElement>(".making-version-using");
+    if (usingLabel) usingLabel.textContent = library?.active
+      ? `正在使用：${buildMakingStatusView(library, null).label.replace(/^当前链路：/, "")}`
+      : "正在使用：未启用链路，使用日常陪想";
     renderVersionOptions(view);
     dom.enableBtn.hidden = view.enableLabel === null;
     if (view.enableLabel !== null) dom.enableBtn.textContent = view.enableLabel;
@@ -235,7 +242,6 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
   }
 
   function renderVersionOptions(view: MakingMapView): void {
-    const previous = dom.versionSelect.value;
     dom.versionSelect.replaceChildren();
     for (const option of view.versionOptions) {
       const element = document.createElement("option");
@@ -243,9 +249,7 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       element.textContent = option.label;
       dom.versionSelect.append(element);
     }
-    dom.versionSelect.value = view.versionOptions.some((option) => option.versionId === previous)
-      ? previous
-      : view.versionId;
+    dom.versionSelect.value = view.versionId;
   }
 
   /**
@@ -446,6 +450,8 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       openFull.addEventListener("click", () => {
         detailMode = "full";
         renderDetail();
+        dom.inspector.scrollTop = 0;
+        dom.fullBackBtn.focus({ preventScroll: true });
       });
       body.append(openFull);
     }
@@ -455,6 +461,9 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       footer.className = "making-quick-actions";
       for (const action of model.actions) {
         footer.append(detailActionButton(action));
+      }
+      if (model.actions.some((action) => action.action === "delete") && (findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId)?.cards.length ?? 0) <= 1) {
+        appendPara(footer, "每个版本至少保留一张卡，不能删除最后一张卡。", "making-readonly-note");
       }
       windowEl.append(footer);
     }
@@ -490,8 +499,46 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     button.type = "button";
     button.className = "making-mini-btn";
     button.textContent = action.label;
-    button.addEventListener("click", () => { transferToConversation(action); });
+    if (action.action === "delete") {
+      const version = findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId);
+      button.disabled = (version?.cards.length ?? 0) <= 1;
+      if (button.disabled) button.title = "每个版本至少保留一张卡，不能删除最后一张卡";
+      button.addEventListener("click", () => { void deleteViewedCard(); });
+    } else {
+      button.addEventListener("click", () => { transferToConversation(action); });
+    }
     return button;
+  }
+
+  async function deleteViewedCard(): Promise<void> {
+    if (detailSource?.kind !== "card" || viewChainId === null || viewVersionId === null) return;
+    const chainId = viewChainId;
+    const versionId = viewVersionId;
+    const cardId = detailSource.cardId;
+    const chain = findChain(chainId);
+    const baseline = chain?.versions.find((v) => v.id === versionId);
+    const card = baseline?.cards.find((c) => c.id === cardId);
+    if (!baseline || !card || baseline.cards.length <= 1) return;
+    const cards = structuredClone(baseline.cards);
+    if (!await confirm(`从「${chain!.name}·第${baseline.index}版」删除卡片「${card.title}」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。`)) return;
+    try {
+      const current = await chainLibraryLoad(call);
+      const locked = current.chains.find((c) => c.id === chainId)?.versions.find((v) => v.id === versionId);
+      if (!locked || JSON.stringify(locked.cards) !== JSON.stringify(cards)) {
+        opError = "原确认版本已变化或不存在，删除已取消。请重新查看并确认。";
+        renderStatus();
+        return;
+      }
+      const saved = await chainSaveVersion(chainId, cards.filter((c) => c.id !== cardId).map((c) => ({
+        title: c.title, trigger_desc: c.trigger_desc, body: c.body, slot_type: c.slot_type ?? "requirement",
+      })), `删除卡片「${card.title}」`, call);
+      opError = null;
+      await refresh();
+      viewChain(chainId, saved.id);
+    } catch (error) {
+      opError = `删除卡片失败：${errorMessage(error)}`;
+      renderStatus();
+    }
   }
 
   function cardActionsElement(actions: readonly MakingDetailActionView[] | null): HTMLElement {
@@ -500,6 +547,9 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     if (actions !== null) {
       for (const action of actions) {
         footer.append(detailActionButton(action));
+      }
+      if (actions.some((action) => action.action === "delete") && (findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId)?.cards.length ?? 0) <= 1) {
+        appendPara(footer, "每个版本至少保留一张卡，不能删除最后一张卡。", "making-readonly-note");
       }
     }
     return footer;

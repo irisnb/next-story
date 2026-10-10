@@ -135,6 +135,10 @@ export function startSummon(options: StartSummonOptions): boolean {
     {
       kind: "summon",
       selected_text: frozen.selectedText,
+      // 冻结的结构化选区范围随首轮材料留存（重试沿用同一冻结值，D4）。
+      ...(frozen.projectPath !== undefined || frozen.documentVersion !== undefined
+        ? { selection_from: frozen.from, selection_to: frozen.to }
+        : {}),
       ...(frozen.bodySnapshot !== undefined ? { snapshot: frozen.bodySnapshot } : {}),
     },
     options.focusDocumentId ?? frozen.documentId,
@@ -153,7 +157,12 @@ export function startSummon(options: StartSummonOptions): boolean {
       kind: "summon",
       selected_text: frozen.selectedText,
       ...(frozen.projectPath !== undefined || frozen.documentVersion !== undefined
-        ? { document_id: frozen.documentId }
+        ? {
+            document_id: frozen.documentId,
+            // 结构化选区范围与来源身份一起携带（D4）：后端据此在授权材料上派生选区。
+            selection_from: frozen.from,
+            selection_to: frozen.to,
+          }
         : {}),
       ...(frozen.projectPath !== undefined ? { project_path: frozen.projectPath } : {}),
       ...(frozen.documentVersion !== undefined ? { document_version: frozen.documentVersion } : {}),

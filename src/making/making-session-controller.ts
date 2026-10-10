@@ -73,6 +73,7 @@ export interface MakingConversationServices {
   readonly getChain: (chainId: string | null) => Chain | null;
   /** 链路库刷新入口（保存草稿成功后调用，刷新链路库与状态条的新草稿提示）。 */
   readonly refreshLibrary: () => Promise<void>;
+  readonly onVersionSaved?: (chainId: string, versionId: string) => void;
   /** 切换制作对象（空态「继续最近会话」入口需要；即制作页的 setMakingObject）。 */
   readonly switchMakingObject: (chainId: string | null) => void;
   /** 试问入口（下一车道接线）；缺省「开始试问」禁用占位。 */
@@ -121,6 +122,42 @@ export interface MakingConversationController {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 保存确认内提供原文核对；所有文本使用 textContent。 */
+function confirmDraftSave(summary: string, drafts: readonly MakingCardDraft[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "making-save-confirm";
+    const heading = document.createElement("h3");
+    heading.textContent = "确认保存卡草稿";
+    const preview = document.createElement("p");
+    preview.className = "making-save-summary";
+    preview.textContent = summary;
+    const details = document.createElement("details");
+    const toggle = document.createElement("summary");
+    toggle.textContent = "展开完整原文核对";
+    details.append(toggle);
+    for (const draft of drafts) {
+      const text = document.createElement("pre");
+      text.textContent = `卡名：${draft.title}\n何时用：${draft.whenToUse}\n何时不用：${draft.whenNotToUse}\n正文：\n${draft.body}`;
+      details.append(text);
+    }
+    const actions = document.createElement("footer");
+    const finish = (accepted: boolean): void => { dialog.close(); dialog.remove(); resolve(accepted); };
+    for (const [label, accepted] of [["取消", false], ["确认保存", true]] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "making-action-btn";
+      button.textContent = label;
+      button.addEventListener("click", () => finish(accepted));
+      actions.append(button);
+    }
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+    dialog.append(heading, preview, details, actions);
+    document.body.append(dialog);
+    dialog.showModal();
+  });
 }
 
 function nowIso(): string {
@@ -529,7 +566,7 @@ export function setupMakingConversation(
     const view = buildCardDraftPanelView(drafts, chainName);
     if (view === null) return;
     // 取消保存：不建立链路（未绑定会话保持未绑定）。
-    if (!await confirm(view.saveConfirm)) return;
+    if (!await (services.confirm ? confirm(view.saveConfirm) : confirmDraftSave(view.saveConfirm, drafts))) return;
     const cards = drafts.map(draftToCardInput);
     // 优先处理「待补绑定」阶段：首次保存的链路已建立，只需把绑定写回档案，
     // 不再重复 ensure、不再追加版本。
@@ -564,6 +601,7 @@ export function setupMakingConversation(
         text: `已保存为「${chainName}·第${version.index}版」草稿；尚未启用，启用请在结构检视里显式操作。`,
       };
       await refreshLibrary();
+      if (isStillCurrentSession(session)) services.onVersionSaved?.(boundChainId, version.id);
     } catch (error) {
       notice = { kind: "error", text: `草稿保存失败：${errorMessage(error)}` };
     }
@@ -611,6 +649,7 @@ export function setupMakingConversation(
       };
     } else {
       const version = result.chain.versions[result.chain.versions.length - 1];
+      if (version) services.onVersionSaved?.(chainId, version.id);
       notice = {
         kind: "info",
         text: `已保存为「${result.chain.name}·第${version?.index ?? 1}版」草稿；尚未启用，启用请在结构检视里显式操作。`,

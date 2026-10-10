@@ -80,6 +80,8 @@ export function describeWindowStatus(status: string | null | undefined): Convers
       return { label: "生成中", tone: "primary" };
     case "queued":
       return { label: "排队中", tone: "warning" };
+    case "waiting":
+      return { label: "等待授权", tone: "warning" };
     case "stopped":
       return { label: "已停止", tone: "muted" };
     case "failed":

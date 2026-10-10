@@ -1,0 +1,293 @@
+{
+  "samples": [
+    {
+      "name": "plain paragraph",
+      "document": {
+        "type": "doc",
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "背叛" }] }]
+      },
+      "from": 1,
+      "to": 3,
+      "expected": "背叛"
+    },
+    {
+      "name": "drops heading level and inline marks",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": { "level": 1 },
+            "content": [
+              { "type": "text", "text": "标", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": "题" }
+            ]
+          }
+        ]
+      },
+      "from": 1,
+      "to": 3,
+      "expected": "标题"
+    },
+    {
+      "name": "full bullet list items with markers",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "第一项" }] }] },
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "第二项" }] }] }
+            ]
+          }
+        ]
+      },
+      "from": 3,
+      "to": 13,
+      "expected": "- 第一项\n- 第二项"
+    },
+    {
+      "name": "full ordered list items with actual numbers",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": { "start": 3 },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "第三项" }] }] },
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "第四项" }] }] }
+            ]
+          }
+        ]
+      },
+      "from": 3,
+      "to": 13,
+      "expected": "3. 第三项\n4. 第四项"
+    },
+    {
+      "name": "styled ordered list with letter and roman markers",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": { "start": 3, "type": "A" },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "甲项" }] }] },
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "乙项" }] }] }
+            ]
+          },
+          {
+            "type": "orderedList",
+            "attrs": { "start": 4, "type": "i" },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "丙项" }] }] }
+            ]
+          }
+        ]
+      },
+      "from": 17,
+      "to": 19,
+      "expected": "iv. 丙项"
+    },
+    {
+      "name": "partial list item without marker",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": { "start": 3 },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "第三项" }] }] }
+            ]
+          }
+        ]
+      },
+      "from": 4,
+      "to": 6,
+      "expected": "三项"
+    },
+    {
+      "name": "full list item and following paragraph joined with single LF",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": { "start": 3 },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "选择" }] }] }
+            ]
+          },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "代价" }] }
+        ]
+      },
+      "from": 3,
+      "to": 11,
+      "expected": "3. 选择\n代价"
+    },
+    {
+      "name": "partial list item crossing into paragraph without marker",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": { "start": 3 },
+            "content": [
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "选择" }] }] }
+            ]
+          },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "代价" }] }
+        ]
+      },
+      "from": 4,
+      "to": 10,
+      "expected": "择\n代"
+    },
+    {
+      "name": "empty paragraph as empty line",
+      "document": {
+        "type": "doc",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "甲" }] },
+          { "type": "paragraph" },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "乙" }] }
+        ]
+      },
+      "from": 1,
+      "to": 7,
+      "expected": "甲\n\n乙"
+    },
+    {
+      "name": "boundary-aligned selection has no leading or trailing LF",
+      "document": {
+        "type": "doc",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "甲" }] },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "乙" }] }
+        ]
+      },
+      "from": 1,
+      "to": 5,
+      "expected": "甲\n乙"
+    },
+    {
+      "name": "leading and trailing spaces and emoji",
+      "document": {
+        "type": "doc",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "  前 后  🎬" }] }
+        ]
+      },
+      "from": 1,
+      "to": 10,
+      "expected": "  前 后  🎬"
+    },
+    {
+      "name": "nested list items with indentation",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  { "type": "paragraph", "content": [{ "type": "text", "text": "父项" }] },
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子项一" }] }] },
+                      { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子项二" }] }] }
+                    ]
+                  }
+                ]
+              },
+              { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "父项二" }] }] }
+            ]
+          }
+        ]
+      },
+      "from": 3,
+      "to": 28,
+      "expected": "- 父项\n  - 子项一\n  - 子项二\n- 父项二"
+    },
+    {
+      "name": "partial nested list item gets no prefix or indent",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  { "type": "paragraph", "content": [{ "type": "text", "text": "父项" }] },
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "子项一" }] }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "from": 10,
+      "to": 11,
+      "expected": "项"
+    },
+    {
+      "name": "cross-paragraph selection joined with a single LF",
+      "document": {
+        "type": "doc",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "甲乙" }] },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "丙丁" }] }
+        ]
+      },
+      "from": 1,
+      "to": 7,
+      "expected": "甲乙\n丙丁"
+    },
+    {
+      "name": "cross inline marks with quote and backslash",
+      "document": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "他", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": "a\"b\\c" }
+            ]
+          }
+        ]
+      },
+      "from": 1,
+      "to": 7,
+      "expected": "他a\"b\\c"
+    },
+    {
+      "name": "cross first and last block boundaries trimmed",
+      "document": {
+        "type": "doc",
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "甲乙丙" }] },
+          { "type": "paragraph", "content": [{ "type": "text", "text": "丁戊己" }] }
+        ]
+      },
+      "from": 2,
+      "to": 8,
+      "expected": "乙丙\n丁戊"
+    }
+  ]
+}

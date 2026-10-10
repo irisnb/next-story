@@ -808,6 +808,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
             thinking_direction: None,
         };
         let task = build_task_string(&request).expect("build task");
@@ -830,6 +832,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
             thinking_direction: None,
             origin: None,
             messages: vec![
@@ -857,6 +861,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
             thinking_direction: None,
         };
         let err = build_task_string(&request).expect_err("empty selection rejected");
@@ -872,6 +878,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
         };
         let task = build_task_string(&request).expect("build task");
         assert!(
@@ -898,6 +906,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
         };
         let task = build_task_string(&request).expect("build task");
         assert!(task.contains("用户问题：\n这段里人物在隐瞒什么？"));
@@ -913,6 +923,8 @@ mod tests {
             project_path: None,
             document_version: None,
             snapshot: None,
+            selection_from: None,
+            selection_to: None,
         };
         let err = build_task_string(&request).expect_err("blank question rejected");
         assert_eq!(err.code, GenerateAiErrorCode::InvalidResponse);
@@ -1089,6 +1101,8 @@ mod tests {
                 project_path: None,
                 document_version: None,
                 snapshot: None,
+                selection_from: None,
+                selection_to: None,
                 thinking_direction: None,
             })
             .expect("legacy first task"),
@@ -1101,6 +1115,8 @@ mod tests {
                 project_path: None,
                 document_version: None,
                 snapshot: None,
+                selection_from: None,
+                selection_to: None,
             })
             .expect("legacy direct question task"),
         );

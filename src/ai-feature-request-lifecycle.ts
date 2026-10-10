@@ -108,6 +108,9 @@ export function setupAiRequestLifecycle(options: AiRequestLifecycleOptions): AiR
         ...(request.selection ? {
           selected_text: request.selection.selectedText,
           document_id: request.selection.documentId,
+          // 结构化选区范围与来源身份一起携带（D4）。
+          selection_from: request.selection.from,
+          selection_to: request.selection.to,
           ...(request.selection.projectPath !== undefined ? { project_path: request.selection.projectPath } : {}),
           ...(request.selection.documentVersion !== undefined ? { document_version: request.selection.documentVersion } : {}),
           ...(request.selection.bodySnapshot !== undefined ? { snapshot: request.selection.bodySnapshot } : {}),

@@ -74,6 +74,8 @@ fn first_request(selected_text: impl Into<String>) -> GenerateAiRequest {
         project_path: None,
         document_version: None,
         snapshot: None,
+        selection_from: None,
+        selection_to: None,
         thinking_direction: None,
     }
 }
@@ -95,6 +97,8 @@ fn follow_up_request(
         project_path: None,
         document_version: None,
         snapshot: None,
+        selection_from: None,
+        selection_to: None,
         thinking_direction: None,
         origin: None,
         messages,
@@ -111,6 +115,8 @@ fn direct_question_follow_up_request(
         project_path: None,
         document_version: None,
         snapshot: None,
+        selection_from: None,
+        selection_to: None,
         thinking_direction: None,
         origin: Some(FollowUpOrigin::DirectQuestion),
         messages,

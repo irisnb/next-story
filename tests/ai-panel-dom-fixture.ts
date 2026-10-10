@@ -10,7 +10,7 @@ export class FakeClassList {
   }
 
   add(value: string): void { this.values.add(value); }
-  remove(value: string): void { this.values.delete(value); }
+  remove(...values: string[]): void { for (const value of values) this.values.delete(value); }
   contains(value: string): boolean { return this.values.has(value); }
   toggle(value: string, force?: boolean): boolean {
     const enabled = force ?? !this.values.has(value);

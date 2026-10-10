@@ -498,6 +498,12 @@ export async function aiSendMessage(
     documentVersion?: string;
     /** 未保存正文快照（`canonicalNotebookJson` 输出的合法 Tiptap JSON 字符串）。 */
     snapshot?: string;
+    /**
+     * 结构化选区范围（ProseMirror 文档位置，fix-ai-and-making-usability D4）：
+     * 与来源身份一起携带，供后端在授权结构化材料上按前端同源语义派生选区。
+     */
+    selectionFrom?: number;
+    selectionTo?: number;
     /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
     focusDocumentId?: string;
     focusProjectPath?: string;
@@ -521,6 +527,8 @@ export async function aiSendMessage(
     if (identityOrCall.projectPath !== undefined) args.projectPath = identityOrCall.projectPath;
     if (identityOrCall.documentVersion !== undefined) args.documentVersion = identityOrCall.documentVersion;
     if (identityOrCall.snapshot !== undefined) args.snapshot = identityOrCall.snapshot;
+    if (identityOrCall.selectionFrom !== undefined) args.selectionFrom = identityOrCall.selectionFrom;
+    if (identityOrCall.selectionTo !== undefined) args.selectionTo = identityOrCall.selectionTo;
     if (identityOrCall.focusDocumentId !== undefined) args.focusDocumentId = identityOrCall.focusDocumentId;
     if (identityOrCall.focusProjectPath !== undefined) args.focusProjectPath = identityOrCall.focusProjectPath;
     if (identityOrCall.focusDocumentVersion !== undefined) args.focusDocumentVersion = identityOrCall.focusDocumentVersion;

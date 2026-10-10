@@ -333,6 +333,8 @@ pub(crate) fn compose_trial_user_text(
         project_path: None,
         document_version: None,
         snapshot: None,
+        selection_from: None,
+        selection_to: None,
     };
     let mut text = crate::llm_config::generate::build_task_string(&request)?;
     if let Some(context) = context.map(str::trim).filter(|c| !c.is_empty()) {

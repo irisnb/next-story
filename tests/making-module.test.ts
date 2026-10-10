@@ -96,6 +96,102 @@ function library(chains: Chain[], active?: { chainId: string; versionId: string 
 
 // ========== 纯显示决策 ==========
 
+test("card deletion saves a new viewed version and protects active history", async () => {
+  const original = version(1, [{ title: "保留", trigger: "适用：a", body: "原文" }, { title: "移除", trigger: "适用：b" }]);
+  const c = chain("删除测试", [original]);
+  const fixture = await makingFixture(library([c], { chainId: c.id, versionId: original.id }));
+  try {
+    await browseChain(fixture, c.id);
+    fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${original.cards[1].id}"]`)!.click();
+    const del = [...fixture.document.querySelectorAll<HTMLButtonElement>(".making-quick-actions button")].find((b) => b.textContent === "删除卡片");
+    assert.ok(del, "直接删除入口存在");
+    fixture.confirmResult = false;
+    del.click();
+    await flushPromises();
+    assert.equal(fixture.store.calls.filter((call) => call.cmd === "chain_save_version").length, 0);
+    fixture.confirmResult = true;
+    del.click();
+    await flushPromises(40);
+    assert.equal(fixture.store.data.chains[0].versions.length, 2);
+    const saved = fixture.store.data.chains[0].versions[1];
+    assert.deepEqual(saved.cards.map((card) => card.title), ["保留"]);
+    assert.equal(fixture.controller.view.versionId, saved.id);
+    assert.deepEqual(fixture.store.data.active, { chain_id: c.id, version_id: original.id });
+    assert.equal(original.cards.length, 2);
+    assert.match(fixture.confirms[fixture.confirms.length - 1], /新版本.*历史.*不自动启用/s);
+  } finally { await flushPromises(40); fixture.restore(); }
+});
+
+test("last card deletion is disabled with a visible explanation", async () => {
+  const c = chain("最后卡", [version(1, [{ title: "唯一", trigger: "适用：a" }])]);
+  const fixture = await makingFixture(library([c]));
+  try {
+    await browseChain(fixture, c.id);
+    fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${c.versions[0].cards[0].id}"]`)!.click();
+    const del = [...fixture.document.querySelectorAll<HTMLButtonElement>(".making-quick-actions button")].find((b) => b.textContent === "删除卡片");
+    assert.ok(del);
+    assert.equal(del.disabled, true);
+    assert.match(makingElement(fixture, "making-quick-panel").textContent!, /至少保留一张卡/);
+  } finally { await flushPromises(40); fixture.restore(); }
+});
+
+test("version controls share one region outside the read-only status bar", () => {
+  const { document } = parseMakingDocument();
+  const enable = document.getElementById("making-enable-btn")!;
+  const deactivate = document.getElementById("making-deactivate-btn")!;
+  assert.equal(enable.closest(".making-version-operations"), deactivate.closest(".making-version-operations"));
+  assert.ok(enable.closest(".making-version-operations"));
+  assert.equal(deactivate.closest("#making-status-bar"), null);
+});
+
+for (const scenario of ["changed", "missing", "appended", "failure"] as const) {
+  test(`card deletion confirmation baseline: ${scenario}`, async () => {
+    const original = version(1, [{ title: "保留", trigger: "适用：a" }, { title: "删除目标", trigger: "适用：b" }]);
+    const c = chain("基线测试", [original]);
+    const fixture = await makingFixture(library([c], { chainId: c.id, versionId: original.id }));
+    try {
+      await browseChain(fixture, c.id);
+      fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${original.cards[1].id}"]`)!.click();
+      fixture.beforeConfirm = () => {
+        if (scenario === "changed") original.cards[1].body = "确认期间改变";
+        if (scenario === "missing") c.versions = [];
+        if (scenario === "appended") c.versions.push(version(2, [{ title: "其他版本", trigger: "适用：c" }]));
+        if (scenario === "failure") fixture.store.failures.set("chain_save_version", "磁盘不可用");
+      };
+      [...fixture.document.querySelectorAll<HTMLButtonElement>(".making-quick-actions button")].find((b) => b.textContent === "删除卡片")!.click();
+      await flushPromises(60);
+      const writes = fixture.store.calls.filter((call) => call.cmd === "chain_save_version");
+      if (scenario === "appended") {
+        assert.equal(writes.length, 1);
+        assert.deepEqual(c.versions[2].cards.map((card) => card.title), ["保留"]);
+        assert.equal(fixture.controller.view.versionId, c.versions[2].id);
+      } else {
+        assert.equal(writes.length, scenario === "failure" ? 1 : 0);
+        assert.equal(fixture.controller.view.versionId, original.id);
+        assert.match(fixture.document.getElementById("making-status-error")!.textContent!, scenario === "failure" ? /删除卡片失败/ : /重新查看并确认/);
+      }
+      assert.deepEqual(fixture.store.data.active, { chain_id: c.id, version_id: original.id });
+    } finally { await flushPromises(40); fixture.restore(); }
+  });
+}
+
+test("full card view preserves long trigger and body from beginning through end", async () => {
+  const trigger = `适用：触发开头\n${"完整触发描述\n".repeat(100)}触发结尾`;
+  const body = `正文开头\n${"原样正文与空行\n\n".repeat(200)}正文中段\n${"原样正文\n".repeat(200)}正文结尾`;
+  const c = chain("全文测试", [version(1, [{ title: "长卡", trigger, body }])]);
+  const fixture = await makingFixture(library([c]));
+  try {
+    await browseChain(fixture, c.id);
+    fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${c.versions[0].cards[0].id}"]`)!.click();
+    assert.match(makingElement(fixture, "making-quick-panel").textContent!, /摘要/);
+    fixture.document.querySelector<HTMLButtonElement>(".making-quick-open")!.click();
+    await flushPromises(40);
+    const full = makingElement(fixture, "making-card-panel").textContent!;
+    assert.ok(full.includes(trigger), "触发描述逐字完整");
+    assert.ok(full.includes(body), "正文逐字完整，包括中段、空行、结尾");
+  } finally { await flushPromises(40); fixture.restore(); }
+});
+
 test("status view reflects the global active pointer and degrades honestly", () => {
   const chainA = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }]), version(3, [{ title: "卡", trigger: "适用：x" }])]);
   const active = buildMakingStatusView(
@@ -367,7 +463,7 @@ test("detail model unifies the three clickable sources with per-source operabili
   const card = buildMakingDetail(data, chainA.id, v3.id, { kind: "card", cardId: v3.cards[0].id })!;
   assert.equal(card.kind, "card");
   assert.equal(card.title, "反差与反转");
-  assert.equal(card.quickMeta, "回应要求 · 情节探索·第3版");
+  assert.equal(card.quickMeta, "摘要 · 回应要求 · 情节探索·第3版");
   assert.equal(card.quickSummary, "适用：探索情节可能性时");
   assert.equal(card.quickHelp, "不适用：只讨论台词情绪时");
   assert.equal(card.quickNote, null, "要求卡不带姿态固定说明");
@@ -376,7 +472,7 @@ test("detail model unifies the three clickable sources with per-source operabili
   assert.equal(card.card!.howTo, "正文", "怎么做＝完整正文");
   assert.deepEqual(
     card.actions!.map((action) => action.label),
-    ["请制作助手修改", "请制作助手删除", "请制作助手添加回应要求"],
+    ["请制作助手修改", "删除卡片", "请制作助手添加回应要求"],
   );
   assert.equal(card.actions![0].cardTitle, "反差与反转");
   assert.equal(card.actions![2].cardTitle, null, "添加落在插槽层");
@@ -386,7 +482,7 @@ test("detail model unifies the three clickable sources with per-source operabili
     kind: "card",
     cardId: chainA.versions[2].cards[0].id,
   })!;
-  assert.equal(draft.quickMeta, "回应要求 · 情节探索·第4版 · 尚未启用");
+  assert.equal(draft.quickMeta, "摘要 · 回应要求 · 情节探索·第4版 · 尚未启用");
 
   // 固定底座／每轮动态：只读、无任何操作或配置控件，但有完整详情入口。
   const base = buildMakingDetail(data, chainA.id, v3.id, { kind: "base" })!;
@@ -447,13 +543,13 @@ test("posture card detail names its slot and omits the posture add entry", () =>
   const postureCard = v.cards[1]!;
 
   const detail = buildMakingDetail(data, chainA.id, v.id, { kind: "card", cardId: postureCard.id })!;
-  assert.equal(detail.quickMeta, "回应风格 · 情节探索·第2版 · 尚未启用");
+  assert.equal(detail.quickMeta, "摘要 · 回应风格 · 情节探索·第2版 · 尚未启用");
   assert.equal(detail.eyebrow, "回应风格 / 傲娇搭档");
   assert.equal(detail.quickNote, "供你判断何时选择此姿态，不会据此自动切换");
   // 已有姿态卡：卡片详情不提供「添加」入口（修改／删除照常，均转制作对话）。
   assert.deepEqual(
     detail.actions!.map((action) => action.label),
-    ["请制作助手修改", "请制作助手删除"],
+    ["请制作助手修改", "删除卡片"],
   );
   assert.equal(detail.actions![0].cardTitle, "傲娇搭档");
 
@@ -708,6 +804,17 @@ class FakeChainStore {
           this.data.chains.push(created);
           return structuredClone(created) as T;
         }
+        case "chain_save_version": {
+          const target = this.data.chains.find((item) => item.id === args?.chainId);
+          if (!target) throw new Error("链路不存在");
+          const saved: ChainVersion = {
+            id: nextId("version"), index: target.versions.length + 1,
+            created_at: "2026-10-10T00:00:00Z", change_note: String(args?.changeNote), trials: [],
+            cards: (args?.cards as ChainVersion["cards"]).map((card) => ({ ...card, id: nextId("card") })),
+          };
+          target.versions.push(saved);
+          return structuredClone(saved) as T;
+        }
         case "chain_set_active":
         case "chain_rollback": {
           this.data.active = {
@@ -739,6 +846,7 @@ interface MakingFixture {
   store: FakeChainStore;
   confirms: string[];
   confirmResult: boolean;
+  beforeConfirm?: () => void;
   page: ParsedMakingPage;
   document: Document;
   restore: () => void;
@@ -762,6 +870,7 @@ async function makingFixture(data: ChainLibrary): Promise<MakingFixture> {
     call: store.invoke,
     confirm: async (message) => {
       confirms.push(message);
+      fixture.beforeConfirm?.();
       return fixture.confirmResult;
     },
   });

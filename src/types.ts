@@ -185,6 +185,13 @@ export type GenerateAiRequest =
       document_version?: string;
       /** 未保存正文快照（`canonicalNotebookJson` 输出）；与 `document_version` 同源。 */
       snapshot?: string;
+      /**
+       * 结构化选区范围（ProseMirror 文档位置，fix-ai-and-making-usability D4）：
+       * 与来源身份一起携带，供后端在授权结构化材料上按前端同源语义派生选区；
+       * 不是 canonical JSON 字符串偏移。有选区且有来源身份时必带。
+       */
+      selection_from?: number;
+      selection_to?: number;
       /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
       focus_document_id?: string;
       /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */
@@ -211,6 +218,9 @@ export type GenerateAiRequest =
       messages: GenerateAiMessage[];
       /** 首轮冻结时捕获的未保存正文快照（追问增量发送时随请求保留）。 */
       snapshot?: string;
+      /** 结构化选区范围（ProseMirror 文档位置）；见 `summon` 同名说明。 */
+      selection_from?: number;
+      selection_to?: number;
       /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
       focus_document_id?: string;
       /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */
@@ -231,6 +241,9 @@ export type GenerateAiRequest =
       document_version?: string;
       /** 未保存正文快照（`canonicalNotebookJson` 输出）；无选区直接提问时缺省。 */
       snapshot?: string;
+      /** 结构化选区范围（ProseMirror 文档位置）；见 `summon` 同名说明。 */
+      selection_from?: number;
+      selection_to?: number;
       /** 关注文档身份（阶段五 A：后端据此组装关注文档现场材料 + 目录投影 + 检索）。 */
       focus_document_id?: string;
       /** 关注文档所属作品根路径（与 `focus_document_id` 一起透传）。 */

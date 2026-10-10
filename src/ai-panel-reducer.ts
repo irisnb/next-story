@@ -450,6 +450,10 @@ export function reduceAiPanelState(
         kind: "direct_question",
         question: event.question,
         ...(frozenSelection ? { selected_text: frozenSelection.selectedText } : {}),
+        ...(frozenSelection &&
+        (frozenSelection.projectPath !== undefined || frozenSelection.documentVersion !== undefined)
+          ? { selection_from: frozenSelection.from, selection_to: frozenSelection.to }
+          : {}),
         ...(frozenSelection?.bodySnapshot !== undefined
           ? { snapshot: frozenSelection.bodySnapshot }
           : {}),

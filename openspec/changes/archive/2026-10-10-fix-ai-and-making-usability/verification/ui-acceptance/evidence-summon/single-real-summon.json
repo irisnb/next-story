@@ -1,0 +1,222 @@
+{
+  "started": "2026-10-10T13:05:37.173Z",
+  "target": {
+    "id": "3B9F88A463019B13ACB5ECA4063F8CE4",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "fixture": {
+    "p1": "沈一苇说：\"信里写着 C:\\旧站\\第七封。\"",
+    "p2": "她把信折好，放回抽屉，没有回头。",
+    "boldWord": "第七封",
+    "selectionStartMarker": "信里",
+    "selectionEndMarker": "放回"
+  },
+  "stages": [
+    {
+      "name": "project-open",
+      "t": 268,
+      "data": {
+        "current": "CDP几何验收-隔离",
+        "editor": true
+      }
+    },
+    {
+      "name": "typed",
+      "t": 1425,
+      "data": {
+        "pmText": "沈一苇说：\"信里写着 C:\\旧站\\第七封。\"\n\n她把信折好，放回抽屉，没有回头。",
+        "html": "<p>沈一苇说：\"信里写着 C:\\旧站\\第七封。\"</p><p>她把信折好，放回抽屉，没有回头。</p>"
+      }
+    },
+    {
+      "name": "bold",
+      "t": 2063,
+      "data": {
+        "bolded": {
+          "ok": true
+        },
+        "htmlHasStrong": true
+      }
+    },
+    {
+      "name": "selection",
+      "t": 2369,
+      "data": {
+        "selInfo": {
+          "ok": true,
+          "selected": "信里写着 C:\\旧站\\第七封。\"\n\n她把信折好，放回"
+        },
+        "entry": {
+          "visible": true,
+          "triggerRect": {
+            "x": 341,
+            "y": 214,
+            "w": 44,
+            "h": 32
+          }
+        }
+      }
+    },
+    {
+      "name": "summon-clicked",
+      "t": 2434,
+      "data": {
+        "at": 2434
+      }
+    },
+    {
+      "name": "result",
+      "t": 183530,
+      "data": {
+        "status": "unknown",
+        "final": {
+          "t": 18572,
+          "dockOpen": true,
+          "hasWindow": true,
+          "windowClass": "ai-window active ai-discussion-projection",
+          "loading": false,
+          "loadingText": "正在思考…",
+          "response": false,
+          "responseText": "",
+          "error": false,
+          "errorText": "",
+          "config": false,
+          "conversation": true,
+          "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折好\"说明信是纸质实体，且她会保存而非丢弃。 二、可能的解释（仅为假设） 1. 信的内容只有一条路径：这封信的功能像\"指针\"而非\"正文\"，它指向另一处信息（旧站里的第七封）。层层递进的结构感很强——信→路径→文件。 2. \"旧站\"一词的双重可能：可以读作字面的旧车站/旧站点，也可以是旧网站、旧基站、废弃中转站。\"第七封\"暗示存在至少七封信件，前六封的内容成为一个天然的悬念缺口。 3. \"她\"的动作细节：折好、放回，是收敛、谨慎的动作，可能说明这封信对她有保留价值，或她不希望别人看到；也可能只是习惯动作。中断的\"放回\"让读者悬在半空——这可能是刻意的节奏，也可能是原稿未完成。 三、可以继续思考的问题 1. 这封信是谁写的、用什么方式送到她手里的？写信人知道她会去找\"第七封\"吗？ 2. 前六封是否存在？她是否已经读过？如果读过，第七封"
+        }
+      }
+    }
+  ],
+  "samples": [
+    {
+      "t": 2439,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": true,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": false,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 正在思考…"
+    },
+    {
+      "t": 12514,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": false,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": true,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折 正在思考…"
+    },
+    {
+      "t": 14531,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": false,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": true,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折好\"说明信是纸质实体，且她会保存而非丢弃。 二、可能的解释（仅为假设） 1. 信的内容只有一条路径：这封信的功能像\"指针\"而非\"正文\"，它指向另一处信息（旧站里的第七封）。层层递进的结构感很强——信→路径→文件。 2. \"旧站\"一词的双重可能：可以读作字面的旧车站/旧站点，也可以是旧网站、旧基站 正在思考…"
+    },
+    {
+      "t": 16559,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": false,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": true,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折好\"说明信是纸质实体，且她会保存而非丢弃。 二、可能的解释（仅为假设） 1. 信的内容只有一条路径：这封信的功能像\"指针\"而非\"正文\"，它指向另一处信息（旧站里的第七封）。层层递进的结构感很强——信→路径→文件。 2. \"旧站\"一词的双重可能：可以读作字面的旧车站/旧站点，也可以是旧网站、旧基站、废弃中转站。\"第七封\"暗示存在至少七封信件，前六封的内容成为一个天然的悬念缺口。 3. \"她\"的动作细节：折好、放回，是收敛、谨慎的动作，可能说明这封信对她有保留价值，或她不希望别人看到；也可能只是习惯动作。中断的\"放回\"让读者悬在半空——这可能是刻意的节奏，也可能是原稿未完成。 三、可以继续思考的问题 1. 这 正在思考…"
+    },
+    {
+      "t": 18572,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": false,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": true,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折好\"说明信是纸质实体，且她会保存而非丢弃。 二、可能的解释（仅为假设） 1. 信的内容只有一条路径：这封信的功能像\"指针\"而非\"正文\"，它指向另一处信息（旧站里的第七封）。层层递进的结构感很强——信→路径→文件。 2. \"旧站\"一词的双重可能：可以读作字面的旧车站/旧站点，也可以是旧网站、旧基站、废弃中转站。\"第七封\"暗示存在至少七封信件，前六封的内容成为一个天然的悬念缺口。 3. \"她\"的动作细节：折好、放回，是收敛、谨慎的动作，可能说明这封信对她有保留价值，或她不希望别人看到；也可能只是习惯动作。中断的\"放回\"让读者悬在半空——这可能是刻意的节奏，也可能是原稿未完成。 三、可以继续思考的问题 1. 这封信是谁写的、用什么方式送到她手里的？写信人知道她会去找\"第七封\"吗？ 2. 前六封是否存在？她是否已经读过？如果读过，第七封"
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-summon\\summon-selection.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-summon\\summon-result.png"
+  ],
+  "consoleErrors": [],
+  "afterType": {
+    "pmText": "沈一苇说：\"信里写着 C:\\旧站\\第七封。\"\n\n她把信折好，放回抽屉，没有回头。",
+    "html": "<p>沈一苇说：\"信里写着 C:\\旧站\\第七封。\"</p><p>她把信折好，放回抽屉，没有回头。</p>"
+  },
+  "afterBold": {
+    "html": "<p>沈一苇说：\"信里写着 C:\\旧站\\<strong>第七封</strong>。\"</p><p>她把信折好，放回抽屉，没有回头。</p>"
+  },
+  "selectionEntry": {
+    "visible": true,
+    "triggerRect": {
+      "x": 341,
+      "y": 214,
+      "w": 44,
+      "h": 32
+    }
+  },
+  "observationMs": 181120,
+  "result": {
+    "status": "unknown",
+    "final": {
+      "t": 18572,
+      "dockOpen": true,
+      "hasWindow": true,
+      "windowClass": "ai-window active ai-discussion-projection",
+      "loading": false,
+      "loadingText": "正在思考…",
+      "response": false,
+      "responseText": "",
+      "error": false,
+      "errorText": "",
+      "config": false,
+      "conversation": true,
+      "bodyText": "本次选区 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 信里写着 C:\\旧站\\第七封。\" 她把信折好，放回 以下只针对你提供的这段冻结选区，不涉及作品其他部分。 一、从文字里直接看到的 选区只有两句话： 第一句：信里写着 \"C:\\旧站\\第七封\"。这是一个 Windows 风格的本地文件路径，\"旧站\"是文件夹名，\"第七封\"像是一个文件名或标题（后缀未写）。 第二句：她把信折好，放回——句子在\"放回\"之后中断，宾语缺失（放回哪里：信封、抽屉、口袋？）。\"折好\"说明信是纸质实体，且她会保存而非丢弃。 二、可能的解释（仅为假设） 1. 信的内容只有一条路径：这封信的功能像\"指针\"而非\"正文\"，它指向另一处信息（旧站里的第七封）。层层递进的结构感很强——信→路径→文件。 2. \"旧站\"一词的双重可能：可以读作字面的旧车站/旧站点，也可以是旧网站、旧基站、废弃中转站。\"第七封\"暗示存在至少七封信件，前六封的内容成为一个天然的悬念缺口。 3. \"她\"的动作细节：折好、放回，是收敛、谨慎的动作，可能说明这封信对她有保留价值，或她不希望别人看到；也可能只是习惯动作。中断的\"放回\"让读者悬在半空——这可能是刻意的节奏，也可能是原稿未完成。 三、可以继续思考的问题 1. 这封信是谁写的、用什么方式送到她手里的？写信人知道她会去找\"第七封\"吗？ 2. 前六封是否存在？她是否已经读过？如果读过，第七封"
+    }
+  },
+  "finished": "2026-10-10T13:08:40.704Z",
+  "log": [
+    "[+0.3s] project-open",
+    "[+1.4s] typed",
+    "[+2.1s] bold",
+    "[+2.4s] selection",
+    "[+2.4s] summon-clicked",
+    "[+2.4s] state change: loading=true response=false error=false config=false",
+    "[+12.5s] state change: loading=false response=false error=false config=false",
+    "[+14.5s] state change: loading=false response=false error=false config=false",
+    "[+16.6s] state change: loading=false response=false error=false config=false",
+    "[+18.6s] state change: loading=false response=false error=false config=false",
+    "[+183.5s] result"
+  ]
+}

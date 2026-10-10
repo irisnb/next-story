@@ -1,0 +1,564 @@
+{
+  "task": "fix-ai-and-making-usability 6.1 完整卡原文保存全文往返（真机 CDP，无模型请求）",
+  "started": "2026-10-10T14:02:10.467Z",
+  "finished": "2026-10-10T14:04:01.315Z",
+  "target": {
+    "id": "241FEF4D17F06C48A01AA5B58E65EEF8",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "method": [
+    "阶段1 making-draft-roundtrip.mjs：只读复用 9225 隔离制作页既有 turn3 真实草稿（399字），真实 UI 点保存 → 确认对话框展开全文逐字核对 → 用户式确认保存。",
+    "阶段2 making-draft-roundtrip-post.mjs：保存后只读复核查看跟进/active不变/隔离存储第2版逐字/全页完整详情 DOM 首中尾/v1 长卡首中尾对照。"
+  ],
+  "corrections": [
+    {
+      "subject": "save.viewAutoFollowsNewVersion",
+      "original": "阶段1 断言按「版本升序」假设 selectedIndex 应为 1（第2版）；实际版本下拉为「最新在前」，第0项即第2版（最新）。",
+      "resolution": "行为正确（保存后查看对象=第2版最新）；断言口径修正为「选中项文本含第2版」。修正后由阶段2独立复验通过。"
+    },
+    {
+      "subject": "阶段1 fatal（.making-quick-open 不可见）",
+      "original": "阶段1 保存后仍停留在「制作对话」标签，#making-inspector 为 display:none，导致卡片详情挂载位尺寸为 0，鼠标点击失败。",
+      "resolution": "阶段2 先切到「导图」标签（#making-view-map-btn）再打开卡片完整详情，全页详情 DOM 复验全部通过；不影响已落盘的第2版。"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "pre.draftPanelTurn3Present",
+      "pass": true,
+      "detail": {
+        "heading": "卡草稿（1 张）",
+        "badge": "回应要求",
+        "lines": [
+          "卡名：回应要求卡",
+          "何时用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。",
+          "何时不用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。"
+        ],
+        "draftBody": "这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。",
+        "draftBodyLen": 399,
+        "saveBtn": {
+          "text": "保存这版草稿",
+          "disabled": false
+        }
+      }
+    },
+    {
+      "name": "pre.draftBodyIsFull399",
+      "pass": true,
+      "detail": {
+        "domLen": 399,
+        "draftLen": 399
+      }
+    },
+    {
+      "name": "pre.draftBodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true
+      }
+    },
+    {
+      "name": "pre.saveButtonEnabled",
+      "pass": true,
+      "detail": {
+        "text": "保存这版草稿",
+        "disabled": false
+      }
+    },
+    {
+      "name": "pre.versionCount1",
+      "pass": true,
+      "detail": [
+        {
+          "index": 1,
+          "cardCount": 2
+        }
+      ]
+    },
+    {
+      "name": "pre.activeNull",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "confirm.dialogModal",
+      "pass": true,
+      "detail": {
+        "isDialog": true,
+        "open": true,
+        "heading": "确认保存卡草稿",
+        "summary": "把下面卡草稿保存为「CDP长卡验收链」的新版本？\n\n· 卡名「回应要求卡」（要求卡）\n  何时用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n  何时不用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。\n  正文摘要（已截断；可展开完整原文核对）：这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路…\n\n保存后会作为新版本进入链路库，不会自动启用；启用需要在结构检视里显式操作。",
+        "detailsOpenBefore": false,
+        "toggleText": "展开完整原文核对",
+        "preCount": 1,
+        "buttons": [
+          "取消",
+          "确认保存"
+        ]
+      }
+    },
+    {
+      "name": "confirm.summaryIsTruncated",
+      "pass": true,
+      "detail": {
+        "summaryLen": 280
+      }
+    },
+    {
+      "name": "confirm.toggleText",
+      "pass": true,
+      "detail": "展开完整原文核对"
+    },
+    {
+      "name": "confirm.detailsClosedInitially",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "expanded.detailsOpen",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "expanded.singlePre",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "expanded.preFullEqualsExpected",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 523,
+        "wantLen": 523
+      }
+    },
+    {
+      "name": "expanded.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "hasWhen": true,
+        "hasWhenNot": true
+      }
+    },
+    {
+      "name": "expanded.bodyVerbatimIncludingEdges",
+      "pass": true,
+      "detail": {
+        "head": "这张卡管你每次开口之后我怎么接话，分四步",
+        "mid": "用你的词句去追问，不问「你的主题是什么」",
+        "tail": "不往你的文档里写任何内容，稿子一字不动。",
+        "endsWithBody": true
+      }
+    },
+    {
+      "name": "save.dialogClosed",
+      "pass": true,
+      "detail": {
+        "savedOk": true,
+        "dialogGone": true
+      }
+    },
+    {
+      "name": "save.noticeTruthful",
+      "pass": true,
+      "detail": "已保存为「CDP长卡验收链·第2版」草稿；尚未启用，启用请在结构检视里显式操作。"
+    },
+    {
+      "name": "save.appendedVersion2",
+      "pass": true,
+      "detail": [
+        {
+          "index": 1,
+          "cardCount": 2
+        },
+        {
+          "index": 2,
+          "cardCount": 1
+        }
+      ]
+    },
+    {
+      "name": "save.activeNotAutoChanged",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "save.usingStillIdle",
+      "pass": true,
+      "detail": "正在使用：未启用链路，使用日常陪想"
+    },
+    {
+      "name": "save.historyPreserved",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "storage.cardTitleVerbatim",
+      "pass": true,
+      "detail": {
+        "got": "回应要求卡",
+        "want": "回应要求卡"
+      }
+    },
+    {
+      "name": "storage.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 108,
+        "wantLen": 108
+      }
+    },
+    {
+      "name": "storage.bodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 399,
+        "wantLen": 399
+      }
+    },
+    {
+      "name": "storage.slotTypeRequirement",
+      "pass": true,
+      "detail": "requirement"
+    },
+    {
+      "name": "save.viewAutoFollowsNewVersion",
+      "pass": true,
+      "detail": {
+        "viewedIndex": 0,
+        "viewedText": "第2版（最新）",
+        "versionOptions": [
+          "第2版（最新）",
+          "第1版"
+        ],
+        "note": "版本下拉为「最新在前」；选中项第0项即第2版（最新），保存后查看对象自动跟进新版本。"
+      }
+    },
+    {
+      "name": "view.inspectorVisible",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "view.autoFollowsNewVersion",
+      "pass": true,
+      "detail": {
+        "selectedIndex": 0,
+        "selectedText": "第2版（最新）",
+        "options": [
+          "第2版（最新）",
+          "第1版"
+        ]
+      }
+    },
+    {
+      "name": "view.activeNotAutoChanged",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "view.usingStillIdle",
+      "pass": true,
+      "detail": "正在使用：未启用链路，使用日常陪想"
+    },
+    {
+      "name": "storage.v2Index2",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "storage.cardTitleVerbatim",
+      "pass": true,
+      "detail": {
+        "got": "回应要求卡",
+        "want": "回应要求卡"
+      }
+    },
+    {
+      "name": "storage.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true
+      }
+    },
+    {
+      "name": "storage.bodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 399,
+        "wantLen": 399
+      }
+    },
+    {
+      "name": "storage.slotTypeRequirement",
+      "pass": true,
+      "detail": "requirement"
+    },
+    {
+      "name": "storage.v1HistoryPreserved",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "detail.fullModeVisible",
+      "pass": true,
+      "detail": {
+        "fullDetailHidden": false,
+        "cardPanelHidden": false
+      }
+    },
+    {
+      "name": "detail.headings",
+      "pass": true,
+      "detail": [
+        "身份",
+        "何时用",
+        "怎么做",
+        "本版变化",
+        "试问记录"
+      ]
+    },
+    {
+      "name": "detail.whenToUseVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 108,
+        "wantLen": 108
+      }
+    },
+    {
+      "name": "detail.howToVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 399,
+        "wantLen": 399
+      }
+    },
+    {
+      "name": "detail.bodyHeadMidTailPresent",
+      "pass": true,
+      "detail": {
+        "head": "这张卡管你每次开口之后我怎么接话，分四步",
+        "mid": "用你的词句去追问，不问「你的主题是什么」",
+        "tail": "不往你的文档里写任何内容，稿子一字不动。"
+      }
+    },
+    {
+      "name": "detail.overallContainsFullBody",
+      "pass": true,
+      "detail": {
+        "overallLen": 730
+      }
+    },
+    {
+      "name": "detail.notLengthOrStartswithOnly",
+      "pass": true,
+      "detail": {
+        "lengthMatch": true,
+        "fullEqual": true
+      }
+    },
+    {
+      "name": "long.bodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 709,
+        "wantLen": 709
+      }
+    },
+    {
+      "name": "long.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true
+      }
+    },
+    {
+      "name": "long.headMarker",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "long.middleMarker",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "long.tailMarker",
+      "pass": true,
+      "detail": true
+    }
+  ],
+  "stages": [
+    {
+      "name": "pre-save",
+      "data": {
+        "preDom": {
+          "heading": "卡草稿（1 张）",
+          "badge": "回应要求",
+          "lines": [
+            "卡名：回应要求卡",
+            "何时用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。",
+            "何时不用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。"
+          ],
+          "draftBody": "这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。",
+          "draftBodyLen": 399,
+          "saveBtn": {
+            "text": "保存这版草稿",
+            "disabled": false
+          }
+        },
+        "preDiskVersions": [
+          {
+            "index": 1,
+            "cardCount": 2
+          }
+        ],
+        "preActive": null
+      }
+    },
+    {
+      "name": "confirm-open",
+      "data": {
+        "isDialog": true,
+        "open": true,
+        "heading": "确认保存卡草稿",
+        "summary": "把下面卡草稿保存为「CDP长卡验收链」的新版本？\n\n· 卡名「回应要求卡」（要求卡）\n  何时用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n  何时不用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。\n  正文摘要（已截断；可展开完整原文核对）：这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路…\n\n保存后会作为新版本进入链路库，不会自动启用；启用需要在结构检视里显式操作。",
+        "detailsOpenBefore": false,
+        "toggleText": "展开完整原文核对",
+        "preCount": 1,
+        "buttons": [
+          "取消",
+          "确认保存"
+        ]
+      }
+    },
+    {
+      "name": "confirm-expanded",
+      "data": {
+        "detailsOpen": true,
+        "preLen": 523,
+        "preText": "卡名：回应要求卡\n何时用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n何时不用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。\n正文：\n这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。"
+      }
+    },
+    {
+      "name": "post-save",
+      "data": {
+        "afterDom": {
+          "dialogGone": true,
+          "versionOptions": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "viewedIndex": 0,
+          "viewedValue": "chainver-1791640932954121800-1",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "inspectorState": "尚未启用",
+          "notice": "已保存为「CDP长卡验收链·第2版」草稿；尚未启用，启用请在结构检视里显式操作。",
+          "noticeHidden": false,
+          "cardCount": "· 1 张卡",
+          "chainRowText": "CDP长卡验收链正在查看 · 正在制作 · 未启用"
+        },
+        "postDiskVersions": [
+          {
+            "index": 1,
+            "id": "chainver-cdp-long-1",
+            "cardCount": 2
+          },
+          {
+            "index": 2,
+            "id": "chainver-1791640932954121800-1",
+            "cardCount": 1
+          }
+        ],
+        "postActive": null
+      }
+    },
+    {
+      "name": "view-and-storage",
+      "data": {
+        "inspectorVisible": true,
+        "viewState": {
+          "options": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "selectedIndex": 0,
+          "selectedText": "第2版（最新）",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "notice": "已保存为「CDP长卡验收链·第2版」草稿；尚未启用，启用请在结构检视里显式操作。"
+        },
+        "versions": [
+          {
+            "index": 1,
+            "id": "chainver-cdp-long-1",
+            "cardCount": 2
+          },
+          {
+            "index": 2,
+            "id": "chainver-1791640932954121800-1",
+            "cardCount": 1
+          }
+        ],
+        "active": null
+      }
+    },
+    {
+      "name": "detail-new-card",
+      "data": {
+        "fullDetailHidden": false,
+        "cardPanelHidden": false,
+        "headings": [
+          "身份",
+          "何时用",
+          "怎么做",
+          "本版变化",
+          "试问记录"
+        ],
+        "identity": "卡名「回应要求卡」 · 插槽：回应要求 · 所属：CDP长卡验收链·第2版",
+        "whenToUse": "适用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n不适用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。",
+        "howTo": "这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。",
+        "change": "相对上一版：新增「回应要求卡」；移除「长卡首中尾验收卡」「可删除的第二张卡」；变更说明：制作会话保存。",
+        "overall": "回应要求 / 回应要求卡\n\n完整详情\n返回导图 · 快捷详情\n身份\n\n卡名「回应要求卡」 · 插槽：回应要求 · 所属：CDP长卡验收链·第2版\n\n何时用\n\n适用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n不适用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。\n\n怎么做\n\n这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。\n\n本版变化\n\n相对上一版：新增「回应要求卡」；移除「长卡首中尾验收卡」「可删除的第二张卡」；变更说明：制作会话保存。\n\n试问记录\n\n尚无试问记录\n\n这条版本还没有试问记录。\n\n请制作助手修改\n删除卡片\n请制作助手添加回应要求\n\n每个版本至少保留一张卡，不能删除最后一张卡。"
+      }
+    },
+    {
+      "name": "detail-long-card",
+      "data": {
+        "title": "长卡首中尾验收卡",
+        "bodyLen": 709,
+        "headings": [
+          "身份",
+          "何时用",
+          "怎么做",
+          "本版变化",
+          "试问记录"
+        ],
+        "howToLen": 709,
+        "whenToUseLen": 156
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-00-pre-save.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-01-confirm-summary.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-02-confirm-expanded.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-03-post-save.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-04-full-detail.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-05-long-card-detail.png"
+  ],
+  "consoleErrors": [],
+  "summary": {
+    "total": 48,
+    "passed": 48,
+    "failed": []
+  }
+}

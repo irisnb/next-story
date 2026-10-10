@@ -1,0 +1,512 @@
+{
+  "started": "2026-10-10T12:05:19.728Z",
+  "target": {
+    "id": "BAA323DE0689E81DBB5153907CAC683D",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "stages": [
+    {
+      "name": "enable",
+      "data": {
+        "afterEnable": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "using": "正在使用：CDP长卡验收链·第1版",
+          "inspectorState": "当前启用版本",
+          "cardCount": "· 2 张卡",
+          "enable": {
+            "hidden": true,
+            "text": "启用「CDP长卡验收链·第1版」",
+            "disabled": false
+          },
+          "deactivate": {
+            "text": "停用当前链路",
+            "disabled": false
+          }
+        },
+        "disk": {
+          "active": {
+            "chain_id": "chain-cdp-long-acceptance",
+            "version_id": "chainver-cdp-long-1"
+          },
+          "versionCount": 1,
+          "versionCardCounts": [
+            {
+              "index": 1,
+              "cards": 2,
+              "ids": [
+                "card-cdp-long-1",
+                "card-cdp-second-2"
+              ]
+            }
+          ]
+        },
+        "confirm": [
+          "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+        ]
+      }
+    },
+    {
+      "name": "card-delete",
+      "data": {
+        "afterDelete": {
+          "versions": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "viewedIndex": 0,
+          "using": "正在使用：CDP长卡验收链·第1版",
+          "inspectorState": "尚未启用",
+          "cardCount": "· 1 张卡",
+          "enable": {
+            "hidden": false,
+            "text": "启用「CDP长卡验收链·第2版」",
+            "disabled": false
+          },
+          "deactivate": {
+            "text": "停用当前链路",
+            "disabled": false
+          }
+        },
+        "disk": {
+          "active": {
+            "chain_id": "chain-cdp-long-acceptance",
+            "version_id": "chainver-cdp-long-1"
+          },
+          "versionCount": 2,
+          "versionCardCounts": [
+            {
+              "index": 1,
+              "cards": 2,
+              "ids": [
+                "card-cdp-long-1",
+                "card-cdp-second-2"
+              ]
+            },
+            {
+              "index": 2,
+              "cards": 1,
+              "ids": [
+                "card-1791633922778100600-4"
+              ]
+            }
+          ]
+        },
+        "confirm": [
+          "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+        ]
+      }
+    },
+    {
+      "name": "last-card",
+      "data": {
+        "delDisabled": true,
+        "delTitle": "",
+        "notes": [
+          "每个版本至少保留一张卡，不能删除最后一张卡。"
+        ]
+      }
+    },
+    {
+      "name": "deactivate",
+      "data": {
+        "afterDeactivate": {
+          "versions": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "viewedIndex": 0,
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "inspectorState": "尚未启用",
+          "cardCount": "· 1 张卡",
+          "enable": {
+            "hidden": false,
+            "text": "启用「CDP长卡验收链·第2版」",
+            "disabled": false
+          },
+          "deactivate": {
+            "text": "停用当前链路",
+            "disabled": true
+          }
+        },
+        "disk": {
+          "active": null,
+          "versionCount": 2,
+          "versionCardCounts": [
+            {
+              "index": 1,
+              "cards": 2,
+              "ids": [
+                "card-cdp-long-1",
+                "card-cdp-second-2"
+              ]
+            },
+            {
+              "index": 2,
+              "cards": 1,
+              "ids": [
+                "card-1791633922778100600-4"
+              ]
+            }
+          ]
+        },
+        "confirm": [
+          "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+        ]
+      }
+    },
+    {
+      "name": "enable-cancel",
+      "data": {
+        "enableAvailable": true,
+        "beforeCancel": null,
+        "afterCancel": null
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\versions-after-enable.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\versions-after-card-delete.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\last-card-disabled.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\versions-after-deactivate.png"
+  ],
+  "assertions": [
+    {
+      "name": "initial.noActive",
+      "pass": true,
+      "detail": {
+        "disk": null,
+        "state": "尚未启用"
+      }
+    },
+    {
+      "name": "initial.twoCards",
+      "pass": true,
+      "detail": "· 2 张卡"
+    },
+    {
+      "name": "enable.confirmMessageRecorded",
+      "pass": true,
+      "detail": [
+        "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+      ]
+    },
+    {
+      "name": "enable.activeSetSingle",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-cdp-long-1"
+      }
+    },
+    {
+      "name": "enable.usingLabelShown",
+      "pass": true,
+      "detail": "正在使用：CDP长卡验收链·第1版"
+    },
+    {
+      "name": "cardDelete.confirmWording",
+      "pass": true,
+      "detail": [
+        "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "name": "cardDelete.appendsVersion",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 2
+      }
+    },
+    {
+      "name": "cardDelete.historyPreserved",
+      "pass": true,
+      "detail": [
+        {
+          "index": 1,
+          "cards": 2,
+          "ids": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ]
+        },
+        {
+          "index": 2,
+          "cards": 1,
+          "ids": [
+            "card-1791633922778100600-4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cardDelete.newVersionHasOneCard",
+      "pass": true,
+      "detail": [
+        {
+          "index": 1,
+          "cards": 2,
+          "ids": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ]
+        },
+        {
+          "index": 2,
+          "cards": 1,
+          "ids": [
+            "card-1791633922778100600-4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cardDelete.viewFollowsNewVersion",
+      "pass": true,
+      "detail": {
+        "viewedIndex": 0,
+        "versions": [
+          "第2版（最新）",
+          "第1版"
+        ]
+      }
+    },
+    {
+      "name": "cardDelete.activeUnchanged",
+      "pass": true,
+      "detail": {
+        "before": {
+          "chain_id": "chain-cdp-long-acceptance",
+          "version_id": "chainver-cdp-long-1"
+        },
+        "after": {
+          "chain_id": "chain-cdp-long-acceptance",
+          "version_id": "chainver-cdp-long-1"
+        }
+      }
+    },
+    {
+      "name": "cardDelete.usingStillOld",
+      "pass": true,
+      "detail": "正在使用：CDP长卡验收链·第1版"
+    },
+    {
+      "name": "lastCard.deleteDisabledWithNote",
+      "pass": true,
+      "detail": {
+        "delDisabled": true,
+        "delTitle": "",
+        "notes": [
+          "每个版本至少保留一张卡，不能删除最后一张卡。"
+        ]
+      }
+    },
+    {
+      "name": "deactivate.confirmMessageRecorded",
+      "pass": true,
+      "detail": [
+        "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+      ]
+    },
+    {
+      "name": "deactivate.activeCleared",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "deactivate.usingLabelIdle",
+      "pass": true,
+      "detail": "正在使用：未启用链路，使用日常陪想"
+    },
+    {
+      "name": "enable.cancelKeepsPointer",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "confirmMessages": [],
+  "confirmTypeBefore": "function",
+  "initial": {
+    "versions": [
+      "第1版（最新）"
+    ],
+    "viewedIndex": 0,
+    "using": "正在使用：未启用链路，使用日常陪想",
+    "inspectorState": "尚未启用",
+    "cardCount": "· 2 张卡",
+    "enable": {
+      "hidden": false,
+      "text": "启用「CDP长卡验收链·第1版」",
+      "disabled": false
+    },
+    "deactivate": {
+      "text": "停用当前链路",
+      "disabled": true
+    }
+  },
+  "initialDisk": {
+    "active": null,
+    "versionCount": 1,
+    "versionCardCounts": [
+      {
+        "index": 1,
+        "cards": 2,
+        "ids": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ]
+      }
+    ]
+  },
+  "afterEnable": {
+    "versions": [
+      "第1版（最新）"
+    ],
+    "viewedIndex": 0,
+    "using": "正在使用：CDP长卡验收链·第1版",
+    "inspectorState": "当前启用版本",
+    "cardCount": "· 2 张卡",
+    "enable": {
+      "hidden": true,
+      "text": "启用「CDP长卡验收链·第1版」",
+      "disabled": false
+    },
+    "deactivate": {
+      "text": "停用当前链路",
+      "disabled": false
+    }
+  },
+  "afterEnableDisk": {
+    "active": {
+      "chain_id": "chain-cdp-long-acceptance",
+      "version_id": "chainver-cdp-long-1"
+    },
+    "versionCount": 1,
+    "versionCardCounts": [
+      {
+        "index": 1,
+        "cards": 2,
+        "ids": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ]
+      }
+    ]
+  },
+  "deleteBeforeDisk": {
+    "active": {
+      "chain_id": "chain-cdp-long-acceptance",
+      "version_id": "chainver-cdp-long-1"
+    },
+    "versionCount": 1,
+    "versionCardCounts": [
+      {
+        "index": 1,
+        "cards": 2,
+        "ids": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ]
+      }
+    ]
+  },
+  "afterDelete": {
+    "versions": [
+      "第2版（最新）",
+      "第1版"
+    ],
+    "viewedIndex": 0,
+    "using": "正在使用：CDP长卡验收链·第1版",
+    "inspectorState": "尚未启用",
+    "cardCount": "· 1 张卡",
+    "enable": {
+      "hidden": false,
+      "text": "启用「CDP长卡验收链·第2版」",
+      "disabled": false
+    },
+    "deactivate": {
+      "text": "停用当前链路",
+      "disabled": false
+    }
+  },
+  "afterDeleteDisk": {
+    "active": {
+      "chain_id": "chain-cdp-long-acceptance",
+      "version_id": "chainver-cdp-long-1"
+    },
+    "versionCount": 2,
+    "versionCardCounts": [
+      {
+        "index": 1,
+        "cards": 2,
+        "ids": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ]
+      },
+      {
+        "index": 2,
+        "cards": 1,
+        "ids": [
+          "card-1791633922778100600-4"
+        ]
+      }
+    ]
+  },
+  "lastCard": {
+    "delDisabled": true,
+    "delTitle": "",
+    "notes": [
+      "每个版本至少保留一张卡，不能删除最后一张卡。"
+    ]
+  },
+  "afterDeactivate": {
+    "versions": [
+      "第2版（最新）",
+      "第1版"
+    ],
+    "viewedIndex": 0,
+    "using": "正在使用：未启用链路，使用日常陪想",
+    "inspectorState": "尚未启用",
+    "cardCount": "· 1 张卡",
+    "enable": {
+      "hidden": false,
+      "text": "启用「CDP长卡验收链·第2版」",
+      "disabled": false
+    },
+    "deactivate": {
+      "text": "停用当前链路",
+      "disabled": true
+    }
+  },
+  "afterDeactivateDisk": {
+    "active": null,
+    "versionCount": 2,
+    "versionCardCounts": [
+      {
+        "index": 1,
+        "cards": 2,
+        "ids": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ]
+      },
+      {
+        "index": 2,
+        "cards": 1,
+        "ids": [
+          "card-1791633922778100600-4"
+        ]
+      }
+    ]
+  },
+  "finished": "2026-10-10T12:05:27.195Z"
+}

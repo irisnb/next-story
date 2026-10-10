@@ -1,0 +1,569 @@
+{
+  "started": "2026-10-10T14:16:11.530Z",
+  "target": {
+    "id": "241FEF4D17F06C48A01AA5B58E65EEF8",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "chainId": "chain-cdp-long-acceptance",
+  "v1": "chainver-cdp-long-1",
+  "v2": "chainver-1791640932954121800-1",
+  "assertions": [
+    {
+      "name": "sameArea.enableAndDeactivateInVersionOperations",
+      "pass": true,
+      "detail": {
+        "areaExists": true,
+        "enableInside": true,
+        "deactivateInside": true,
+        "areaAria": "版本操作区"
+      }
+    },
+    {
+      "name": "initial.notEnabled",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "cancel.confirmMessageRecorded",
+      "pass": true,
+      "detail": [
+        "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+      ]
+    },
+    {
+      "name": "cancel.pointerUnchanged",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "v1.enableLabelPresent",
+      "pass": true,
+      "detail": {
+        "hidden": false,
+        "text": "启用「CDP长卡验收链·第1版」",
+        "disabled": false
+      }
+    },
+    {
+      "name": "v1.activeSetToV1",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-cdp-long-1"
+      }
+    },
+    {
+      "name": "first.sendEnabled",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "first.inFlightStatusVisible",
+      "pass": true,
+      "detail": {
+        "tSend": 5525,
+        "tInFlight": 5726,
+        "detail": {
+          "statusText": "正在思考…",
+          "directDisabled": true,
+          "inFlight": true
+        }
+      }
+    },
+    {
+      "name": "v2.enableLabelPresent",
+      "pass": true,
+      "detail": {
+        "hidden": false,
+        "text": "启用「CDP长卡验收链·第2版」",
+        "disabled": false
+      }
+    },
+    {
+      "name": "v2.activeSetToV2",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-1791640932954121800-1"
+      }
+    },
+    {
+      "name": "inflight.requestNotCompletedWhenV2Enabled",
+      "pass": true,
+      "detail": {
+        "newConvoId": "mv2h95se-1b8e39209eee4030b3834b2dccf009e3",
+        "firstRoundDoneAtV2": false
+      }
+    },
+    {
+      "name": "first.conversationFileFound",
+      "pass": true,
+      "detail": "mv2h95se-1b8e39209eee4030b3834b2dccf009e3"
+    },
+    {
+      "name": "first.roundCompleted",
+      "pass": true,
+      "detail": {
+        "tFirstDone": 16670
+      }
+    },
+    {
+      "name": "first.boundToV1ByFrozenRecord",
+      "pass": true,
+      "detail": {
+        "turn_index": 0,
+        "chain_id": "chain-cdp-long-acceptance",
+        "chain_name": "CDP长卡验收链",
+        "version_index": 1
+      }
+    },
+    {
+      "name": "first.inflightCompletionAfterV2Enable",
+      "pass": true,
+      "detail": {
+        "tV2": 8053,
+        "tFirstDone": 16670
+      }
+    },
+    {
+      "name": "followup.sendEnabled",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "followup.roundCompleted",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "followup.nextRoundBoundToV2",
+      "pass": true,
+      "detail": {
+        "turn_index": 1,
+        "chain_id": "chain-cdp-long-acceptance",
+        "chain_name": "CDP长卡验收链",
+        "version_index": 2
+      }
+    },
+    {
+      "name": "followup.firstRoundStillV1",
+      "pass": true,
+      "detail": [
+        {
+          "turn_index": 0,
+          "chain_id": "chain-cdp-long-acceptance",
+          "chain_name": "CDP长卡验收链",
+          "version_index": 1
+        },
+        {
+          "turn_index": 1,
+          "chain_id": "chain-cdp-long-acceptance",
+          "chain_name": "CDP长卡验收链",
+          "version_index": 2
+        }
+      ]
+    },
+    {
+      "name": "deactivate.activeCleared",
+      "pass": true,
+      "detail": null
+    }
+  ],
+  "stages": [
+    {
+      "name": "project",
+      "t": 2,
+      "data": {
+        "name": "CDP几何验收-隔离"
+      }
+    },
+    {
+      "name": "v1-enabled",
+      "t": 3258,
+      "data": {
+        "enableState": {
+          "hidden": false,
+          "text": "启用「CDP长卡验收链·第1版」",
+          "disabled": false
+        },
+        "disk": {
+          "active": {
+            "chain_id": "chain-cdp-long-acceptance",
+            "version_id": "chainver-cdp-long-1"
+          },
+          "versions": [
+            {
+              "index": 1,
+              "id": "chainver-cdp-long-1",
+              "cards": 2
+            },
+            {
+              "index": 2,
+              "id": "chainver-1791640932954121800-1",
+              "cards": 1
+            }
+          ]
+        },
+        "ops": {
+          "versions": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "viewedValue": "chainver-cdp-long-1",
+          "using": "正在使用：CDP长卡验收链·第1版",
+          "inspectorState": "当前启用版本"
+        },
+        "confirm": [
+          "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+        ]
+      }
+    },
+    {
+      "name": "first-question-typed",
+      "t": 5525,
+      "data": {
+        "len": 59,
+        "sendReady": true
+      }
+    },
+    {
+      "name": "inflight-first-round",
+      "t": 6606,
+      "data": {
+        "tSend": 5525,
+        "tInFlight": 5726,
+        "stillInFlightBeforeSwitch": true,
+        "inflightSample": {
+          "statusText": "正在思考…",
+          "directDisabled": true,
+          "inFlight": true
+        },
+        "diskAtInflight": {
+          "active": {
+            "chain_id": "chain-cdp-long-acceptance",
+            "version_id": "chainver-cdp-long-1"
+          },
+          "versions": [
+            {
+              "index": 1,
+              "id": "chainver-cdp-long-1",
+              "cards": 2
+            },
+            {
+              "index": 2,
+              "id": "chainver-1791640932954121800-1",
+              "cards": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "v2-enabled-inflight",
+      "t": 8055,
+      "data": {
+        "enableState": {
+          "hidden": false,
+          "text": "启用「CDP长卡验收链·第2版」",
+          "disabled": false
+        },
+        "disk": {
+          "active": {
+            "chain_id": "chain-cdp-long-acceptance",
+            "version_id": "chainver-1791640932954121800-1"
+          },
+          "versions": [
+            {
+              "index": 1,
+              "id": "chainver-cdp-long-1",
+              "cards": 2
+            },
+            {
+              "index": 2,
+              "id": "chainver-1791640932954121800-1",
+              "cards": 1
+            }
+          ]
+        },
+        "ops": {
+          "versions": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "viewedValue": "chainver-1791640932954121800-1",
+          "using": "正在使用：CDP长卡验收链·第2版",
+          "inspectorState": "当前启用版本"
+        },
+        "confirm": [
+          "启用「CDP长卡验收链·第2版」，替换当前「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+        ],
+        "tV2": 8053,
+        "newConvoId": "mv2h95se-1b8e39209eee4030b3834b2dccf009e3",
+        "firstRoundDoneAtV2": false
+      }
+    },
+    {
+      "name": "followup-sent",
+      "t": 17798,
+      "data": {
+        "followInflight": {
+          "statusText": "正在思考…",
+          "directDisabled": true,
+          "inFlight": true
+        }
+      }
+    },
+    {
+      "name": "deactivated",
+      "t": 22404,
+      "data": {
+        "button": {
+          "disabled": false,
+          "text": "停用当前链路"
+        },
+        "disk": {
+          "active": null,
+          "versions": [
+            {
+              "index": 1,
+              "id": "chainver-cdp-long-1",
+              "cards": 2
+            },
+            {
+              "index": 2,
+              "id": "chainver-1791640932954121800-1",
+              "cards": 1
+            }
+          ]
+        },
+        "confirm": [
+          "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-binding\\binding-00-v1-enabled.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-binding\\binding-01-inflight-v1.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-binding\\binding-02-v2-enabled-inflight.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-binding\\binding-03-first-round-done.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-binding\\binding-04-followup-done.png"
+  ],
+  "consoleErrors": [],
+  "confirmMessages": [],
+  "samples": [],
+  "initialDisk": {
+    "active": null,
+    "versions": [
+      {
+        "index": 1,
+        "id": "chainver-cdp-long-1",
+        "cards": 2
+      },
+      {
+        "index": 2,
+        "id": "chainver-1791640932954121800-1",
+        "cards": 1
+      }
+    ]
+  },
+  "cancelConfirmMsg": [
+    "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+  ],
+  "afterCancelDisk": {
+    "active": null,
+    "versions": [
+      {
+        "index": 1,
+        "id": "chainver-cdp-long-1",
+        "cards": 2
+      },
+      {
+        "index": 2,
+        "id": "chainver-1791640932954121800-1",
+        "cards": 1
+      }
+    ]
+  },
+  "v1ConfirmMsg": [
+    "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+  ],
+  "p2": {
+    "enableState": {
+      "hidden": false,
+      "text": "启用「CDP长卡验收链·第1版」",
+      "disabled": false
+    },
+    "disk": {
+      "active": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-cdp-long-1"
+      },
+      "versions": [
+        {
+          "index": 1,
+          "id": "chainver-cdp-long-1",
+          "cards": 2
+        },
+        {
+          "index": 2,
+          "id": "chainver-1791640932954121800-1",
+          "cards": 1
+        }
+      ]
+    },
+    "ops": {
+      "versions": [
+        "第2版（最新）",
+        "第1版"
+      ],
+      "viewedValue": "chainver-cdp-long-1",
+      "using": "正在使用：CDP长卡验收链·第1版",
+      "inspectorState": "当前启用版本"
+    },
+    "confirm": [
+      "启用「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+    ]
+  },
+  "inflight": {
+    "tSend": 5525,
+    "tInFlight": 5726,
+    "stillInFlightBeforeSwitch": true,
+    "inflightSample": {
+      "statusText": "正在思考…",
+      "directDisabled": true,
+      "inFlight": true
+    },
+    "diskAtInflight": {
+      "active": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-cdp-long-1"
+      },
+      "versions": [
+        {
+          "index": 1,
+          "id": "chainver-cdp-long-1",
+          "cards": 2
+        },
+        {
+          "index": 2,
+          "id": "chainver-1791640932954121800-1",
+          "cards": 1
+        }
+      ]
+    }
+  },
+  "v2ConfirmMsg": [
+    "启用「CDP长卡验收链·第2版」，替换当前「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+  ],
+  "p5": {
+    "enableState": {
+      "hidden": false,
+      "text": "启用「CDP长卡验收链·第2版」",
+      "disabled": false
+    },
+    "disk": {
+      "active": {
+        "chain_id": "chain-cdp-long-acceptance",
+        "version_id": "chainver-1791640932954121800-1"
+      },
+      "versions": [
+        {
+          "index": 1,
+          "id": "chainver-cdp-long-1",
+          "cards": 2
+        },
+        {
+          "index": 2,
+          "id": "chainver-1791640932954121800-1",
+          "cards": 1
+        }
+      ]
+    },
+    "ops": {
+      "versions": [
+        "第2版（最新）",
+        "第1版"
+      ],
+      "viewedValue": "chainver-1791640932954121800-1",
+      "using": "正在使用：CDP长卡验收链·第2版",
+      "inspectorState": "当前启用版本"
+    },
+    "confirm": [
+      "启用「CDP长卡验收链·第2版」，替换当前「CDP长卡验收链·第1版」；所有作品的下一轮提问开始使用。"
+    ],
+    "tV2": 8053,
+    "newConvoId": "mv2h95se-1b8e39209eee4030b3834b2dccf009e3",
+    "firstRoundDoneAtV2": false
+  },
+  "afterV2Return": {
+    "stillInFlightAtReturn": true
+  },
+  "firstConvoId": "mv2h95se-1b8e39209eee4030b3834b2dccf009e3",
+  "firstRound": {
+    "chainRounds": [
+      {
+        "turn_index": 0,
+        "chain_id": "chain-cdp-long-acceptance",
+        "chain_name": "CDP长卡验收链",
+        "version_index": 1
+      }
+    ],
+    "assistantDone": 1,
+    "userTurns": 0
+  },
+  "firstChainLines": [
+    "本轮链路：CDP长卡验收链·第1版"
+  ],
+  "followUp": {
+    "chainRounds": [
+      {
+        "turn_index": 0,
+        "chain_id": "chain-cdp-long-acceptance",
+        "chain_name": "CDP长卡验收链",
+        "version_index": 1
+      },
+      {
+        "turn_index": 1,
+        "chain_id": "chain-cdp-long-acceptance",
+        "chain_name": "CDP长卡验收链",
+        "version_index": 2
+      }
+    ],
+    "assistantDone": 2,
+    "userTurns": 1
+  },
+  "secondChainLines": [
+    "本轮链路：CDP长卡验收链·第1版",
+    "本轮链路：CDP长卡验收链·第2版"
+  ],
+  "deactivate": {
+    "button": {
+      "disabled": false,
+      "text": "停用当前链路"
+    },
+    "disk": {
+      "active": null,
+      "versions": [
+        {
+          "index": 1,
+          "id": "chainver-cdp-long-1",
+          "cards": 2
+        },
+        {
+          "index": 2,
+          "id": "chainver-1791640932954121800-1",
+          "cards": 1
+        }
+      ]
+    },
+    "confirm": [
+      "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+    ]
+  },
+  "finished": "2026-10-10T14:16:33.936Z"
+}

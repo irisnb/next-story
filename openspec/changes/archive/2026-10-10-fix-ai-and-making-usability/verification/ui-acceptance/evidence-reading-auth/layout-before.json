@@ -1,0 +1,263 @@
+{
+  "fixture": true,
+  "phase": "before",
+  "measurements": [
+    {
+      "height": 670,
+      "pos": "top",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 194.875,
+        "bottom": 457.875
+      },
+      "body": {
+        "x": 734,
+        "y": 465.875,
+        "w": 281,
+        "h": 24,
+        "bottom": 489.875
+      },
+      "bodyScroll": 0,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 2442.40625,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 2442.40625,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        }
+      ],
+      "contentScrollable": false,
+      "cardOverflow": "auto"
+    },
+    {
+      "height": 670,
+      "pos": "bottom",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 194.875,
+        "bottom": 457.875
+      },
+      "body": {
+        "x": 734,
+        "y": 465.875,
+        "w": 281,
+        "h": 24,
+        "bottom": 489.875
+      },
+      "bodyScroll": 7705,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 2442.40625,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 2442.40625,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        }
+      ],
+      "contentScrollable": false,
+      "cardOverflow": "auto"
+    },
+    {
+      "height": 540,
+      "pos": "top",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 140.265625,
+        "bottom": 403.265625
+      },
+      "body": {
+        "x": 734,
+        "y": 411.265625,
+        "w": 281,
+        "h": 24,
+        "bottom": 435.265625
+      },
+      "bodyScroll": 0,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 2442.40625,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 2442.40625,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        }
+      ],
+      "contentScrollable": false,
+      "cardOverflow": "auto"
+    },
+    {
+      "height": 540,
+      "pos": "bottom",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 140.265625,
+        "bottom": 403.265625
+      },
+      "body": {
+        "x": 734,
+        "y": 411.265625,
+        "w": 281,
+        "h": 24,
+        "bottom": 435.265625
+      },
+      "bodyScroll": 7705,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 2442.40625,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 2442.40625,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 2477.296875
+          },
+          "hit": false
+        }
+      ],
+      "contentScrollable": false,
+      "cardOverflow": "auto"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "670 top buttons hit",
+      "pass": false
+    },
+    {
+      "name": "670 top message area retained",
+      "pass": false
+    },
+    {
+      "name": "670 top only content scrolls",
+      "pass": false
+    },
+    {
+      "name": "670 bottom buttons hit",
+      "pass": false
+    },
+    {
+      "name": "670 bottom message area retained",
+      "pass": false
+    },
+    {
+      "name": "670 bottom only content scrolls",
+      "pass": false
+    },
+    {
+      "name": "670 user click reading-allow",
+      "pass": false
+    },
+    {
+      "name": "670 user click reading-deny",
+      "pass": false
+    },
+    {
+      "name": "540 top buttons hit",
+      "pass": false
+    },
+    {
+      "name": "540 top message area retained",
+      "pass": false
+    },
+    {
+      "name": "540 top only content scrolls",
+      "pass": false
+    },
+    {
+      "name": "540 bottom buttons hit",
+      "pass": false
+    },
+    {
+      "name": "540 bottom message area retained",
+      "pass": false
+    },
+    {
+      "name": "540 bottom only content scrolls",
+      "pass": false
+    },
+    {
+      "name": "540 user click reading-allow",
+      "pass": false
+    },
+    {
+      "name": "540 user click reading-deny",
+      "pass": false
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-before-670-top.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-before-670-bottom.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-before-540-top.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-before-540-bottom.png"
+  ],
+  "consoleErrors": []
+}

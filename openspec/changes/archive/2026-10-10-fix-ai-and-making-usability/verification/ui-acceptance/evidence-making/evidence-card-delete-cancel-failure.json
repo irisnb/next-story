@@ -1,0 +1,543 @@
+{
+  "started": "2026-10-10T14:26:23.880Z",
+  "target": {
+    "id": "241FEF4D17F06C48A01AA5B58E65EEF8",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "isolation": {
+    "appData": "C:/Users/Administrator/AppData/Local/com.nextstory.acceptance",
+    "fixtureChainId": "chain-cdp-long-acceptance",
+    "overrideIdentifier": "com.nextstory.acceptance",
+    "chainRows": [
+      "chain-cdp-long-acceptance"
+    ]
+  },
+  "faultInjections": [
+    {
+      "scenario": "failure",
+      "method": "把隔离 chains.json 置只读，令真实 Rust 原子写（tempfile persist → MoveFileEx）失败",
+      "file": "C:/Users/Administrator/AppData/Local/com.nextstory.acceptance/making-module/chains.json"
+    }
+  ],
+  "fixtureInjections": [
+    {
+      "scenario": "baseline-changed",
+      "method": "直接改写隔离 fixture chains.json：把锁定版本 chainver-cdp-long-1 的删除目标卡 body 追加标记（明确标注的 fixture 注入，非产品路径）"
+    },
+    {
+      "scenario": "baseline-missing",
+      "method": "直接改写隔离 fixture chains.json：确认挂起期间从链路中移除锁定版本 chainver-cdp-long-1（明确标注的 fixture 注入，非产品路径）"
+    }
+  ],
+  "stages": [
+    {
+      "name": "cancel",
+      "data": {
+        "before": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "after": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "domBefore": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "cardCount": "· 2 张卡",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "statusError": null,
+          "fullDetailVisible": true,
+          "deleteBtn": {
+            "disabled": false
+          },
+          "cardRowPresent": true
+        },
+        "dom": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "cardCount": "· 2 张卡",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "statusError": null,
+          "fullDetailVisible": true,
+          "deleteBtn": {
+            "disabled": false
+          },
+          "cardRowPresent": true
+        },
+        "confirm": [
+          "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+        ]
+      }
+    },
+    {
+      "name": "baseline-changed.injection",
+      "data": {
+        "diskAfterInject": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        }
+      }
+    },
+    {
+      "name": "baseline-changed",
+      "data": {
+        "before": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "after": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "dom": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "cardCount": "· 2 张卡",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "statusError": "原确认版本已变化或不存在，删除已取消。请重新查看并确认。",
+          "fullDetailVisible": true,
+          "deleteBtn": {
+            "disabled": false
+          },
+          "cardRowPresent": true
+        },
+        "confirm": [
+          "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+        ]
+      }
+    },
+    {
+      "name": "baseline-missing.injection",
+      "data": {
+        "diskAfterInject": {
+          "active": null,
+          "versionCount": 0,
+          "v1CardIds": null,
+          "v1CardCount": null
+        }
+      }
+    },
+    {
+      "name": "baseline-missing",
+      "data": {
+        "before": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "after": {
+          "active": null,
+          "versionCount": 0,
+          "v1CardIds": null,
+          "v1CardCount": null
+        },
+        "dom": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "cardCount": "· 2 张卡",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "statusError": "原确认版本已变化或不存在，删除已取消。请重新查看并确认。",
+          "fullDetailVisible": true,
+          "deleteBtn": {
+            "disabled": false
+          },
+          "cardRowPresent": true
+        },
+        "confirm": [
+          "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+        ]
+      }
+    },
+    {
+      "name": "failure",
+      "data": {
+        "before": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "after": {
+          "active": null,
+          "versionCount": 1,
+          "v1CardIds": [
+            "card-cdp-long-1",
+            "card-cdp-second-2"
+          ],
+          "v1CardCount": 2
+        },
+        "dom": {
+          "versions": [
+            "第1版（最新）"
+          ],
+          "viewedIndex": 0,
+          "cardCount": "· 2 张卡",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "statusError": "删除卡片失败：链路库写入失败: 拒绝访问。 (os error 5)",
+          "fullDetailVisible": true,
+          "deleteBtn": {
+            "disabled": false
+          },
+          "cardRowPresent": true
+        },
+        "confirm": [
+          "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\card-delete-cancel.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\card-delete-baseline-changed.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\card-delete-baseline-missing.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\card-delete-failure.png"
+  ],
+  "assertions": [
+    {
+      "name": "setup.reopenedIsolatedProject",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "isolation.ownedDevRecordPresent",
+      "pass": true,
+      "detail": {
+        "ownedDev": {
+          "pid": 33604,
+          "port": "9225",
+          "override": "D:/Next Story/openspec/changes/fix-ai-and-making-usability/verification/ui-acceptance/tauri.override.json",
+          "started": "2026-10-10T13:38:30.290Z"
+        },
+        "overrideId": "com.nextstory.acceptance"
+      }
+    },
+    {
+      "name": "isolation.targetIsDevPage",
+      "pass": true,
+      "detail": "http://localhost:1420/"
+    },
+    {
+      "name": "setup.seededOneVersionTwoCards",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "versionCount": 1,
+        "v1CardIds": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ],
+        "v1CardCount": 2
+      }
+    },
+    {
+      "name": "isolation.singleFixtureChain",
+      "pass": true,
+      "detail": [
+        "chain-cdp-long-acceptance"
+      ]
+    },
+    {
+      "name": "initial.twoCards",
+      "pass": true,
+      "detail": {
+        "versions": [
+          "第1版（最新）"
+        ],
+        "viewedIndex": 0,
+        "cardCount": "· 2 张卡",
+        "using": "正在使用：未启用链路，使用日常陪想",
+        "statusError": null,
+        "fullDetailVisible": false,
+        "deleteBtn": null,
+        "cardRowPresent": true
+      }
+    },
+    {
+      "name": "cancel.deleteEnabledWithTwoCards",
+      "pass": true,
+      "detail": {
+        "versions": [
+          "第1版（最新）"
+        ],
+        "viewedIndex": 0,
+        "cardCount": "· 2 张卡",
+        "using": "正在使用：未启用链路，使用日常陪想",
+        "statusError": null,
+        "fullDetailVisible": true,
+        "deleteBtn": {
+          "disabled": false
+        },
+        "cardRowPresent": true
+      }
+    },
+    {
+      "name": "cancel.confirmWordingRecorded",
+      "pass": true,
+      "detail": [
+        "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "name": "cancel.noVersionAppended",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "cancel.activeUnchanged",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "cancel.cardStaysCount2",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "versionCount": 1,
+        "v1CardIds": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ],
+        "v1CardCount": 2
+      }
+    },
+    {
+      "name": "cancel.noNewError",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "baselineChanged.confirmWordingRecorded",
+      "pass": true,
+      "detail": [
+        "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "name": "baselineChanged.cancelledWithReconfirmHint",
+      "pass": true,
+      "detail": "原确认版本已变化或不存在，删除已取消。请重新查看并确认。"
+    },
+    {
+      "name": "baselineChanged.noVersionAppended",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "baselineChanged.activeUnchanged",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "baselineChanged.targetCardKept",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "versionCount": 1,
+        "v1CardIds": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ],
+        "v1CardCount": 2
+      }
+    },
+    {
+      "name": "baselineMissing.confirmWordingRecorded",
+      "pass": true,
+      "detail": [
+        "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "name": "baselineMissing.cancelledWithReconfirmHint",
+      "pass": true,
+      "detail": "原确认版本已变化或不存在，删除已取消。请重新查看并确认。"
+    },
+    {
+      "name": "baselineMissing.noVersionAppended",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 0
+      }
+    },
+    {
+      "name": "baselineMissing.activeUnchanged",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "failure.realRustErrorShown",
+      "pass": true,
+      "detail": "删除卡片失败：链路库写入失败: 拒绝访问。 (os error 5)"
+    },
+    {
+      "name": "failure.noVersionAppended",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "failure.activeUnchanged",
+      "pass": true,
+      "detail": {
+        "before": null,
+        "after": null
+      }
+    },
+    {
+      "name": "failure.targetCardKept",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "versionCount": 1,
+        "v1CardIds": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ],
+        "v1CardCount": 2
+      }
+    },
+    {
+      "name": "restore.seedBaselineRestored",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "versionCount": 1,
+        "v1CardIds": [
+          "card-cdp-long-1",
+          "card-cdp-second-2"
+        ],
+        "v1CardCount": 2
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "confirmMessages": {
+    "cancel": [
+      "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+    ],
+    "baselineChanged": [
+      "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+    ],
+    "baselineMissing": [
+      "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+    ],
+    "failure": [
+      "从「CDP长卡验收链·第1版」删除卡片「可删除的第二张卡」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+    ]
+  },
+  "reopenedEditor": true,
+  "ownedDev": {
+    "pid": 33604,
+    "port": "9225",
+    "override": "D:/Next Story/openspec/changes/fix-ai-and-making-usability/verification/ui-acceptance/tauri.override.json",
+    "started": "2026-10-10T13:38:30.290Z"
+  },
+  "baselineDisk": {
+    "active": null,
+    "versionCount": 1,
+    "v1CardIds": [
+      "card-cdp-long-1",
+      "card-cdp-second-2"
+    ],
+    "v1CardCount": 2
+  },
+  "initialDom": {
+    "versions": [
+      "第1版（最新）"
+    ],
+    "viewedIndex": 0,
+    "cardCount": "· 2 张卡",
+    "using": "正在使用：未启用链路，使用日常陪想",
+    "statusError": null,
+    "fullDetailVisible": false,
+    "deleteBtn": null,
+    "cardRowPresent": true
+  },
+  "deleteReady": {
+    "versions": [
+      "第1版（最新）"
+    ],
+    "viewedIndex": 0,
+    "cardCount": "· 2 张卡",
+    "using": "正在使用：未启用链路，使用日常陪想",
+    "statusError": null,
+    "fullDetailVisible": true,
+    "deleteBtn": {
+      "disabled": false
+    },
+    "cardRowPresent": true
+  },
+  "restoredDisk": {
+    "active": null,
+    "versionCount": 1,
+    "v1CardIds": [
+      "card-cdp-long-1",
+      "card-cdp-second-2"
+    ],
+    "v1CardCount": 2
+  },
+  "finished": "2026-10-10T14:26:38.967Z"
+}

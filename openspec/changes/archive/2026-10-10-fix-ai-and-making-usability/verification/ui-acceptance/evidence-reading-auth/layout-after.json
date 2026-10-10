@@ -1,0 +1,565 @@
+{
+  "fixture": true,
+  "phase": "after",
+  "measurements": [
+    {
+      "height": 670,
+      "pos": "top",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 190,
+        "bottom": 453
+      },
+      "body": {
+        "x": 734,
+        "y": 461,
+        "w": 281,
+        "h": 151,
+        "bottom": 612
+      },
+      "bodyScroll": 0,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 409.109375,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 444
+          },
+          "hit": true
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 409.109375,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 444
+          },
+          "hit": true
+        }
+      ],
+      "window": {
+        "x": 733,
+        "y": 196,
+        "w": 283,
+        "h": 466,
+        "bottom": 662
+      },
+      "title": {
+        "x": 757,
+        "y": 272,
+        "w": 235,
+        "h": 17.859375,
+        "bottom": 289.859375
+      },
+      "content": {
+        "x": 757,
+        "y": 295.859375,
+        "w": 235,
+        "h": 107.25,
+        "bottom": 403.109375
+      },
+      "children": [
+        {
+          "role": "discussion-header",
+          "rect": {
+            "x": 734,
+            "y": 197,
+            "w": 281,
+            "h": 66,
+            "bottom": 263
+          }
+        },
+        {
+          "role": "reading-request",
+          "rect": {
+            "x": 746,
+            "y": 263,
+            "w": 257,
+            "h": 190,
+            "bottom": 453
+          }
+        },
+        {
+          "role": "body",
+          "rect": {
+            "x": 734,
+            "y": 461,
+            "w": 281,
+            "h": 151,
+            "bottom": 612
+          }
+        },
+        {
+          "role": "input",
+          "rect": {
+            "x": 734,
+            "y": 612,
+            "w": 281,
+            "h": 49,
+            "bottom": 661
+          }
+        }
+      ],
+      "contentScrollable": true,
+      "cardOverflow": "hidden"
+    },
+    {
+      "height": 670,
+      "pos": "bottom",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 190,
+        "bottom": 453
+      },
+      "body": {
+        "x": 734,
+        "y": 461,
+        "w": 281,
+        "h": 151,
+        "bottom": 612
+      },
+      "bodyScroll": 7578,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 409.109375,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 444
+          },
+          "hit": true
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 409.109375,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 444
+          },
+          "hit": true
+        }
+      ],
+      "window": {
+        "x": 733,
+        "y": 196,
+        "w": 283,
+        "h": 466,
+        "bottom": 662
+      },
+      "title": {
+        "x": 757,
+        "y": 272,
+        "w": 235,
+        "h": 17.859375,
+        "bottom": 289.859375
+      },
+      "content": {
+        "x": 757,
+        "y": 295.859375,
+        "w": 235,
+        "h": 107.25,
+        "bottom": 403.109375
+      },
+      "children": [
+        {
+          "role": "discussion-header",
+          "rect": {
+            "x": 734,
+            "y": 197,
+            "w": 281,
+            "h": 66,
+            "bottom": 263
+          }
+        },
+        {
+          "role": "reading-request",
+          "rect": {
+            "x": 746,
+            "y": 263,
+            "w": 257,
+            "h": 190,
+            "bottom": 453
+          }
+        },
+        {
+          "role": "body",
+          "rect": {
+            "x": 734,
+            "y": 461,
+            "w": 281,
+            "h": 151,
+            "bottom": 612
+          }
+        },
+        {
+          "role": "input",
+          "rect": {
+            "x": 734,
+            "y": 612,
+            "w": 281,
+            "h": 49,
+            "bottom": 661
+          }
+        }
+      ],
+      "contentScrollable": true,
+      "cardOverflow": "hidden"
+    },
+    {
+      "height": 540,
+      "pos": "top",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 150,
+        "bottom": 413
+      },
+      "body": {
+        "x": 734,
+        "y": 421,
+        "w": 281,
+        "h": 61,
+        "bottom": 482
+      },
+      "bodyScroll": 0,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 369.109375,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 404
+          },
+          "hit": true
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 369.109375,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 404
+          },
+          "hit": true
+        }
+      ],
+      "window": {
+        "x": 733,
+        "y": 196,
+        "w": 283,
+        "h": 336,
+        "bottom": 532
+      },
+      "title": {
+        "x": 757,
+        "y": 272,
+        "w": 235,
+        "h": 17.859375,
+        "bottom": 289.859375
+      },
+      "content": {
+        "x": 757,
+        "y": 295.859375,
+        "w": 235,
+        "h": 67.25,
+        "bottom": 363.109375
+      },
+      "children": [
+        {
+          "role": "discussion-header",
+          "rect": {
+            "x": 734,
+            "y": 197,
+            "w": 281,
+            "h": 66,
+            "bottom": 263
+          }
+        },
+        {
+          "role": "reading-request",
+          "rect": {
+            "x": 746,
+            "y": 263,
+            "w": 257,
+            "h": 150,
+            "bottom": 413
+          }
+        },
+        {
+          "role": "body",
+          "rect": {
+            "x": 734,
+            "y": 421,
+            "w": 281,
+            "h": 61,
+            "bottom": 482
+          }
+        },
+        {
+          "role": "input",
+          "rect": {
+            "x": 734,
+            "y": 482,
+            "w": 281,
+            "h": 49,
+            "bottom": 531
+          }
+        }
+      ],
+      "contentScrollable": true,
+      "cardOverflow": "hidden"
+    },
+    {
+      "height": 540,
+      "pos": "bottom",
+      "panelWidth": 300,
+      "card": {
+        "x": 746,
+        "y": 263,
+        "w": 257,
+        "h": 150,
+        "bottom": 413
+      },
+      "body": {
+        "x": 734,
+        "y": 421,
+        "w": 281,
+        "h": 61,
+        "bottom": 482
+      },
+      "bodyScroll": 7668,
+      "buttons": [
+        {
+          "role": "reading-allow",
+          "rect": {
+            "x": 757,
+            "y": 369.109375,
+            "w": 55.203125,
+            "h": 34.890625,
+            "bottom": 404
+          },
+          "hit": true
+        },
+        {
+          "role": "reading-deny",
+          "rect": {
+            "x": 819.203125,
+            "y": 369.109375,
+            "w": 93,
+            "h": 34.890625,
+            "bottom": 404
+          },
+          "hit": true
+        }
+      ],
+      "window": {
+        "x": 733,
+        "y": 196,
+        "w": 283,
+        "h": 336,
+        "bottom": 532
+      },
+      "title": {
+        "x": 757,
+        "y": 272,
+        "w": 235,
+        "h": 17.859375,
+        "bottom": 289.859375
+      },
+      "content": {
+        "x": 757,
+        "y": 295.859375,
+        "w": 235,
+        "h": 67.25,
+        "bottom": 363.109375
+      },
+      "children": [
+        {
+          "role": "discussion-header",
+          "rect": {
+            "x": 734,
+            "y": 197,
+            "w": 281,
+            "h": 66,
+            "bottom": 263
+          }
+        },
+        {
+          "role": "reading-request",
+          "rect": {
+            "x": 746,
+            "y": 263,
+            "w": 257,
+            "h": 150,
+            "bottom": 413
+          }
+        },
+        {
+          "role": "body",
+          "rect": {
+            "x": 734,
+            "y": 421,
+            "w": 281,
+            "h": 61,
+            "bottom": 482
+          }
+        },
+        {
+          "role": "input",
+          "rect": {
+            "x": 734,
+            "y": 482,
+            "w": 281,
+            "h": 49,
+            "bottom": 531
+          }
+        }
+      ],
+      "contentScrollable": true,
+      "cardOverflow": "hidden"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "670 top buttons hit",
+      "pass": true
+    },
+    {
+      "name": "670 top message area retained",
+      "pass": true
+    },
+    {
+      "name": "670 top only content scrolls",
+      "pass": true
+    },
+    {
+      "name": "670 top title retained",
+      "pass": true
+    },
+    {
+      "name": "670 top input inside window",
+      "pass": true
+    },
+    {
+      "name": "670 bottom buttons hit",
+      "pass": true
+    },
+    {
+      "name": "670 bottom message area retained",
+      "pass": true
+    },
+    {
+      "name": "670 bottom only content scrolls",
+      "pass": true
+    },
+    {
+      "name": "670 bottom title retained",
+      "pass": true
+    },
+    {
+      "name": "670 bottom input inside window",
+      "pass": true
+    },
+    {
+      "name": "670 reason scroll reaches boundary notes",
+      "pass": true
+    },
+    {
+      "name": "670 buttons retained after reason scroll",
+      "pass": true
+    },
+    {
+      "name": "670 user click reading-allow",
+      "pass": true
+    },
+    {
+      "name": "670 user click reading-deny",
+      "pass": true
+    },
+    {
+      "name": "540 top buttons hit",
+      "pass": true
+    },
+    {
+      "name": "540 top message area retained",
+      "pass": true
+    },
+    {
+      "name": "540 top only content scrolls",
+      "pass": true
+    },
+    {
+      "name": "540 top title retained",
+      "pass": true
+    },
+    {
+      "name": "540 top input inside window",
+      "pass": true
+    },
+    {
+      "name": "540 bottom buttons hit",
+      "pass": true
+    },
+    {
+      "name": "540 bottom message area retained",
+      "pass": true
+    },
+    {
+      "name": "540 bottom only content scrolls",
+      "pass": true
+    },
+    {
+      "name": "540 bottom title retained",
+      "pass": true
+    },
+    {
+      "name": "540 bottom input inside window",
+      "pass": true
+    },
+    {
+      "name": "540 reason scroll reaches boundary notes",
+      "pass": true
+    },
+    {
+      "name": "540 buttons retained after reason scroll",
+      "pass": true
+    },
+    {
+      "name": "540 user click reading-allow",
+      "pass": true
+    },
+    {
+      "name": "540 user click reading-deny",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-670-top.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-670-bottom.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-670-reason-bottom.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-540-top.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-540-bottom.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-reading-auth\\layout-after-540-reason-bottom.png"
+  ],
+  "consoleErrors": []
+}

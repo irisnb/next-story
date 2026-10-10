@@ -1,0 +1,1434 @@
+{
+  "started": "2026-10-10T12:06:38.360Z",
+  "target": {
+    "id": "BAA323DE0689E81DBB5153907CAC683D",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "viewport": [
+    1024,
+    670
+  ],
+  "dpr": 1,
+  "stages": [
+    {
+      "name": "head-default",
+      "data": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 734,
+          "y": 197,
+          "w": 281,
+          "h": 66,
+          "right": 1015,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 754,
+          "y": 220.13,
+          "w": 32,
+          "h": 18.75,
+          "right": 786,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "doc": {
+          "role": "doc",
+          "id": null,
+          "cls": "ai-window-doc",
+          "x": 790,
+          "y": 221.25,
+          "w": 55,
+          "h": 16.5,
+          "right": 845,
+          "bottom": 237.75,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actionChildren": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 849,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 877,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 879,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 907,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 909,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 947,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 949,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 977,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 979,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 1007,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ],
+        "actionChildRoles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "maxCenterDelta": 0.0049999999999954525,
+        "overlapPairs": [],
+        "actionsInsideHead": true,
+        "titleActionsNoOverlap": true,
+        "titleTruncated": true,
+        "titleClientWidth": 32,
+        "titleScrollWidth": 512,
+        "actionsWrap": "nowrap",
+        "actionsWhiteSpace": "nowrap",
+        "headText": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申… 未命名文档 停止"
+      }
+    },
+    {
+      "name": "head-narrow",
+      "panelWidth": 300,
+      "data": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 734,
+          "y": 197,
+          "w": 281,
+          "h": 66,
+          "right": 1015,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 754,
+          "y": 220.13,
+          "w": 32,
+          "h": 18.75,
+          "right": 786,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "doc": {
+          "role": "doc",
+          "id": null,
+          "cls": "ai-window-doc",
+          "x": 790,
+          "y": 221.25,
+          "w": 55,
+          "h": 16.5,
+          "right": 845,
+          "bottom": 237.75,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actionChildren": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 849,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 877,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 879,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 907,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 909,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 947,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 949,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 977,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 979,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 1007,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ],
+        "actionChildRoles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "maxCenterDelta": 0.0049999999999954525,
+        "overlapPairs": [],
+        "actionsInsideHead": true,
+        "titleActionsNoOverlap": true,
+        "titleTruncated": true,
+        "titleClientWidth": 32,
+        "titleScrollWidth": 512,
+        "actionsWrap": "nowrap",
+        "actionsWhiteSpace": "nowrap",
+        "headText": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申… 未命名文档 停止"
+      }
+    },
+    {
+      "name": "head-maximized",
+      "data": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 132.5,
+          "y": 197,
+          "w": 760,
+          "h": 66,
+          "right": 892.5,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 385.5,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 543.5,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 152.5,
+          "y": 220.13,
+          "w": 170,
+          "h": 18.75,
+          "right": 322.5,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "doc": {
+          "role": "doc",
+          "id": null,
+          "cls": "ai-window-doc",
+          "x": 326.5,
+          "y": 221.25,
+          "w": 55,
+          "h": 16.5,
+          "right": 381.5,
+          "bottom": 237.75,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actionChildren": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 385.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 413.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 415.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 443.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 445.5,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 483.5,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 485.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 513.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 515.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 543.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ],
+        "actionChildRoles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "maxCenterDelta": 0.0049999999999954525,
+        "overlapPairs": [],
+        "actionsInsideHead": true,
+        "titleActionsNoOverlap": true,
+        "titleTruncated": true,
+        "titleClientWidth": 170,
+        "titleScrollWidth": 512,
+        "actionsWrap": "nowrap",
+        "actionsWhiteSpace": "nowrap",
+        "headText": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申… 未命名文档 停止"
+      }
+    },
+    {
+      "name": "list-open",
+      "data": {
+        "header": {
+          "role": null,
+          "id": null,
+          "cls": "ai-dock-header",
+          "x": 725,
+          "y": 132,
+          "w": 299,
+          "h": 56,
+          "right": 1024,
+          "bottom": 188,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "list": {
+          "role": null,
+          "id": "ai-conversation-list",
+          "cls": "ai-conversation-list",
+          "x": 737,
+          "y": 188,
+          "w": 275,
+          "h": 470,
+          "right": 1012,
+          "bottom": 658,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "absolute"
+        },
+        "dock": {
+          "role": null,
+          "id": "ai-dock",
+          "cls": "ai-dock",
+          "x": 724,
+          "y": 132,
+          "w": 300,
+          "h": 538,
+          "right": 1024,
+          "bottom": 670,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "listVisible": true,
+        "topEqualsHeaderHeight": true,
+        "listBelowHeader": true,
+        "gap": 0
+      }
+    },
+    {
+      "name": "row-hover",
+      "data": {
+        "actionsPresent": true,
+        "actionsVisible": true,
+        "confirmVisible": false,
+        "actionsRect": {
+          "role": null,
+          "id": null,
+          "cls": "ai-cl-actions",
+          "x": 905,
+          "y": 331.23,
+          "w": 94,
+          "h": 24,
+          "right": 999,
+          "bottom": 355.23,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "absolute"
+        },
+        "confirmRect": null,
+        "confirming": false
+      }
+    },
+    {
+      "name": "delete-confirm-mouse",
+      "data": {
+        "confirming": true,
+        "confirmVisible": true,
+        "confirmRect": {
+          "role": null,
+          "id": null,
+          "cls": "ai-cl-confirm",
+          "x": 770,
+          "y": 374.17,
+          "w": 171.08,
+          "h": 48.22,
+          "right": 941.08,
+          "bottom": 422.39,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actionsPresent": false,
+        "actionsVisible": false,
+        "actionsDisplay": null,
+        "overlapConfirmActions": 0
+      }
+    },
+    {
+      "name": "delete-cancel",
+      "data": {
+        "confirming": false,
+        "actionsPresent": true,
+        "confirmPresent": false
+      }
+    },
+    {
+      "name": "delete-confirm-keyboard",
+      "data": {
+        "confirming": true,
+        "confirmVisible": true,
+        "actionsVisible": false,
+        "delFocused": true,
+        "activeLabel": "删除"
+      }
+    },
+    {
+      "name": "delete-keyboard-executed",
+      "data": {
+        "rows": 0,
+        "confirming": false
+      }
+    },
+    {
+      "name": "delete-undo-notice",
+      "data": {
+        "noticeVisible": true,
+        "noticeRect": {
+          "role": null,
+          "id": "ai-dock-notice",
+          "cls": "ai-dock-notice ok",
+          "x": 745,
+          "y": 605,
+          "w": 259,
+          "h": 45,
+          "right": 1004,
+          "bottom": 650,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "absolute"
+        },
+        "undoPresent": true,
+        "undoRect": {
+          "role": null,
+          "id": null,
+          "cls": "ai-dock-notice-undo",
+          "x": 946,
+          "y": 611,
+          "w": 48,
+          "h": 32,
+          "right": 994,
+          "bottom": 643,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "undoDisabled": false,
+        "hitIsUndo": true,
+        "hitRole": "ai-dock-notice-undo",
+        "listVisible": true,
+        "noticeZ": "31",
+        "listZ": "30"
+      }
+    },
+    {
+      "name": "delete-undo-applied",
+      "data": {
+        "noticeHidden": true,
+        "rows": 1
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\head-default.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\head-narrow.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\head-maximized.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\list-open.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\delete-confirm-mouse.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\delete-confirm-keyboard-focus.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\delete-undo-notice.png"
+  ],
+  "assertions": [
+    {
+      "name": "head.default.actionsInsideHead",
+      "pass": true,
+      "detail": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 734,
+          "y": 197,
+          "w": 281,
+          "h": 66,
+          "right": 1015,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.default.actionChildrenNoOverlap",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "head.default.singleRow",
+      "pass": true,
+      "detail": {
+        "maxCenterDelta": 0.0049999999999954525,
+        "roles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "children": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 849,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 877,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 879,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 907,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 909,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 947,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 949,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 977,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 979,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 1007,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ]
+      }
+    },
+    {
+      "name": "head.default.titleActionsNoOverlap",
+      "pass": true,
+      "detail": {
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 754,
+          "y": 220.13,
+          "w": 32,
+          "h": 18.75,
+          "right": 786,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.default.actionsNotWrap",
+      "pass": true,
+      "detail": {
+        "flexWrap": "nowrap",
+        "whiteSpace": "nowrap"
+      }
+    },
+    {
+      "name": "head.narrow.actionsInsideHead",
+      "pass": true,
+      "detail": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 734,
+          "y": 197,
+          "w": 281,
+          "h": 66,
+          "right": 1015,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.narrow.actionChildrenNoOverlap",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "head.narrow.singleRow",
+      "pass": true,
+      "detail": {
+        "maxCenterDelta": 0.0049999999999954525,
+        "roles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "children": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 849,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 877,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 879,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 907,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 909,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 947,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 949,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 977,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 979,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 1007,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ]
+      }
+    },
+    {
+      "name": "head.narrow.titleActionsNoOverlap",
+      "pass": true,
+      "detail": {
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 754,
+          "y": 220.13,
+          "w": 32,
+          "h": 18.75,
+          "right": 786,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 849,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 1007,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.narrow.actionsNotWrap",
+      "pass": true,
+      "detail": {
+        "flexWrap": "nowrap",
+        "whiteSpace": "nowrap"
+      }
+    },
+    {
+      "name": "head.maximized.actionsInsideHead",
+      "pass": true,
+      "detail": {
+        "head": {
+          "role": "discussion-header",
+          "id": null,
+          "cls": "ai-window-head",
+          "x": 132.5,
+          "y": 197,
+          "w": 760,
+          "h": 66,
+          "right": 892.5,
+          "bottom": 263,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "relative"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 385.5,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 543.5,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.maximized.actionChildrenNoOverlap",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "head.maximized.singleRow",
+      "pass": true,
+      "detail": {
+        "maxCenterDelta": 0.0049999999999954525,
+        "roles": [
+          "focus-switch",
+          "materials-toggle",
+          "stop",
+          "more",
+          "close"
+        ],
+        "children": [
+          {
+            "role": "focus-switch",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 385.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 413.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "materials-toggle",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 415.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 443.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "stop",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-stop",
+            "x": 445.5,
+            "y": 218.8,
+            "w": 38,
+            "h": 21.39,
+            "right": 483.5,
+            "bottom": 240.19,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "static"
+          },
+          {
+            "role": "more",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-icon",
+            "x": 485.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 513.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          },
+          {
+            "role": "close",
+            "id": null,
+            "cls": "ai-win-btn ai-win-btn-close",
+            "x": 515.5,
+            "y": 217.5,
+            "w": 28,
+            "h": 24,
+            "right": 543.5,
+            "bottom": 241.5,
+            "display": "flex",
+            "visibility": "visible",
+            "whiteSpace": "nowrap",
+            "flexWrap": "nowrap",
+            "position": "relative"
+          }
+        ]
+      }
+    },
+    {
+      "name": "head.maximized.titleActionsNoOverlap",
+      "pass": true,
+      "detail": {
+        "title": {
+          "role": "title",
+          "id": null,
+          "cls": "ai-window-title",
+          "x": 152.5,
+          "y": 220.13,
+          "w": 170,
+          "h": 18.75,
+          "right": 322.5,
+          "bottom": 238.88,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "actions": {
+          "role": null,
+          "id": null,
+          "cls": "ai-window-actions",
+          "x": 385.5,
+          "y": 217.5,
+          "w": 158,
+          "h": 24,
+          "right": 543.5,
+          "bottom": 241.5,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        }
+      }
+    },
+    {
+      "name": "head.maximized.actionsNotWrap",
+      "pass": true,
+      "detail": {
+        "flexWrap": "nowrap",
+        "whiteSpace": "nowrap"
+      }
+    },
+    {
+      "name": "head.longTitle.present",
+      "pass": true,
+      "detail": {
+        "title": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…"
+      }
+    },
+    {
+      "name": "head.narrow.titleTruncated",
+      "pass": true,
+      "detail": {
+        "client": 32,
+        "scroll": 512
+      }
+    },
+    {
+      "name": "list.visible",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "list.topEqualsHeaderHeight",
+      "pass": true,
+      "detail": {
+        "headerH": 56,
+        "listTopRelDock": 56
+      }
+    },
+    {
+      "name": "list.notPressingHeader",
+      "pass": true,
+      "detail": {
+        "gap": 0,
+        "headerBottom": 188,
+        "listTop": 188
+      }
+    },
+    {
+      "name": "delete.hoverShowsActions",
+      "pass": true,
+      "detail": {
+        "actionsVisible": true,
+        "confirmVisible": false
+      }
+    },
+    {
+      "name": "delete.confirmShown",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "delete.confirmActionsYielded",
+      "pass": true,
+      "detail": {
+        "actionsVisible": false,
+        "display": null,
+        "overlap": 0
+      }
+    },
+    {
+      "name": "delete.cancelRestoresActions",
+      "pass": true,
+      "detail": {
+        "confirming": false,
+        "actionsPresent": true,
+        "confirmPresent": false
+      }
+    },
+    {
+      "name": "delete.keyboardConfirmShown",
+      "pass": true,
+      "detail": {
+        "confirming": true,
+        "confirmVisible": true,
+        "actionsVisible": false,
+        "delFocused": true,
+        "activeLabel": "删除"
+      }
+    },
+    {
+      "name": "delete.keyboardActivatesDelete",
+      "pass": true,
+      "detail": {
+        "rows": 0,
+        "confirming": false
+      }
+    },
+    {
+      "name": "undo.noticeVisible",
+      "pass": true,
+      "detail": {
+        "rect": {
+          "role": null,
+          "id": "ai-dock-notice",
+          "cls": "ai-dock-notice ok",
+          "x": 745,
+          "y": 605,
+          "w": 259,
+          "h": 45,
+          "right": 1004,
+          "bottom": 650,
+          "display": "flex",
+          "visibility": "visible",
+          "whiteSpace": "normal",
+          "flexWrap": "nowrap",
+          "position": "absolute"
+        }
+      }
+    },
+    {
+      "name": "undo.buttonVisibleClickable",
+      "pass": true,
+      "detail": {
+        "undoRect": {
+          "role": null,
+          "id": null,
+          "cls": "ai-dock-notice-undo",
+          "x": 946,
+          "y": 611,
+          "w": 48,
+          "h": 32,
+          "right": 994,
+          "bottom": 643,
+          "display": "block",
+          "visibility": "visible",
+          "whiteSpace": "nowrap",
+          "flexWrap": "nowrap",
+          "position": "static"
+        },
+        "hitIsUndo": true,
+        "hitRole": "ai-dock-notice-undo",
+        "noticeZ": "31",
+        "listZ": "30"
+      }
+    },
+    {
+      "name": "undo.restoresList",
+      "pass": true,
+      "detail": {
+        "noticeHidden": true,
+        "rows": 1
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "discussionContext": {
+    "title": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…",
+    "visibleRoles": [
+      "status-dot",
+      "title",
+      "doc",
+      "focus-switch",
+      "materials-toggle",
+      "stop",
+      "more",
+      "close"
+    ],
+    "hasStop": true,
+    "hasMaterials": true
+  },
+  "listRows": 1,
+  "finished": "2026-10-10T12:06:43.252Z"
+}

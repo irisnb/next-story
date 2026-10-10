@@ -1,0 +1,194 @@
+{
+  "started": "2026-10-10T12:06:43.545Z",
+  "target": {
+    "id": "BAA323DE0689E81DBB5153907CAC683D",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "stages": [
+    {
+      "name": "version-operations",
+      "data": {
+        "regionRect": {
+          "x": 182,
+          "y": 260.7,
+          "w": 803,
+          "h": 118.8,
+          "right": 985,
+          "bottom": 379.5
+        },
+        "items": {
+          "versionSelect": {
+            "x": 294,
+            "y": 297.5,
+            "w": 137,
+            "h": 39,
+            "right": 431,
+            "bottom": 336.5
+          },
+          "enableBtn": {
+            "x": 439,
+            "y": 301,
+            "w": 198.3,
+            "h": 32,
+            "right": 637.3,
+            "bottom": 333
+          },
+          "deactivateBtn": {
+            "x": 645.3,
+            "y": 301,
+            "w": 96,
+            "h": 32,
+            "right": 741.3,
+            "bottom": 333
+          },
+          "using": {
+            "x": 182,
+            "y": 344.5,
+            "w": 803,
+            "h": 18,
+            "right": 985,
+            "bottom": 362.5
+          },
+          "deleteChainBtn": {
+            "x": 749.3,
+            "y": 301,
+            "w": 70,
+            "h": 32,
+            "right": 819.3,
+            "bottom": 333
+          }
+        },
+        "allInside": {
+          "versionSelect": true,
+          "enableBtn": true,
+          "deactivateBtn": true,
+          "using": true,
+          "deleteChainBtn": true
+        },
+        "usingText": "正在使用：未启用链路，使用日常陪想",
+        "versionOptions": [
+          "第2版（最新）",
+          "第1版"
+        ],
+        "regionText": "正在查看：CDP长卡验收链·第2版 尚未启用 版本 第2版（最新） 第1版 启用「CDP长卡验收链·第2版」 停用当前链路 删除链路 正在使用：未启用链路，使用日常陪想"
+      }
+    },
+    {
+      "name": "full-detail",
+      "data": {
+        "visible": true,
+        "panelChars": 1048,
+        "sectionHeadings": [
+          "身份",
+          "何时用",
+          "怎么做",
+          "本版变化",
+          "试问记录"
+        ],
+        "sectionLengths": [
+          40,
+          156,
+          709,
+          39,
+          6
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-chain-library.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-card-quick.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-card-full-detail.png"
+  ],
+  "assertions": [
+    {
+      "name": "versionOps.regionPresent",
+      "pass": true,
+      "detail": {
+        "regionText": "正在查看：CDP长卡验收链·第2版 尚未启用 版本 第2版（最新） 第1版 启用「CDP长卡验收链·第2版」 停用当前链路 删除链路 正在使用：未启用链路，使用日常陪想"
+      }
+    },
+    {
+      "name": "versionOps.enableDeactivateSameRegion",
+      "pass": true,
+      "detail": {
+        "versionSelect": true,
+        "enableBtn": true,
+        "deactivateBtn": true,
+        "using": true,
+        "deleteChainBtn": true
+      }
+    },
+    {
+      "name": "versionOps.versionsListed",
+      "pass": true,
+      "detail": {
+        "options": [
+          "第2版（最新）",
+          "第1版"
+        ]
+      }
+    },
+    {
+      "name": "card.fullDetailVisible",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "card.bodyContains(【正文开头】)",
+      "pass": true,
+      "detail": {
+        "marker": "【正文开头】"
+      }
+    },
+    {
+      "name": "card.bodyContains(【正文中段】)",
+      "pass": true,
+      "detail": {
+        "marker": "【正文中段】"
+      }
+    },
+    {
+      "name": "card.bodyContains(【正文结尾】)",
+      "pass": true,
+      "detail": {
+        "marker": "【正文结尾】"
+      }
+    },
+    {
+      "name": "card.triggerContains(【触发开头】)",
+      "pass": true,
+      "detail": {
+        "marker": "【触发开头】"
+      }
+    },
+    {
+      "name": "card.triggerContains(【触发结尾】)",
+      "pass": true,
+      "detail": {
+        "marker": "【触发结尾】"
+      }
+    },
+    {
+      "name": "card.howToFullLength",
+      "pass": true,
+      "detail": {
+        "len": 709
+      }
+    },
+    {
+      "name": "card.whenToUseFullLength",
+      "pass": true,
+      "detail": {
+        "len": 156
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "chainRows": 1,
+  "chainSelected": true,
+  "cardRowOpened": true,
+  "openedFullDetail": true,
+  "finished": "2026-10-10T12:06:45.139Z"
+}

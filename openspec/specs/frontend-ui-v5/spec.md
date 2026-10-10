@@ -27,7 +27,7 @@ TBD - created by archiving change update-frontend-ui-v5. Update Purpose after ar
 - **THEN** 布局按实际客户区适应，发送/停止/菜单/正文仍可操作，无整页缩放
 
 ### Requirement: 提示和面板头部稳定
-图标按钮 SHALL 有中文可访问名称及hover/focus提示；同一触发路径 MUST NOT 并存原生title与自定义提示，长名称完整名title SHALL 保留。AI头动作 SHALL 为讨论、最大化/恢复、关闭，最大化按钮108px，切换边栏/全宽后三个按钮几何边界变化 SHALL 不超过1 CSS px。
+图标按钮 SHALL 有中文可访问名称及hover/focus提示；同一触发路径 MUST NOT 并存原生title与自定义提示，长名称完整名title SHALL 保留。AI头动作 SHALL 为讨论、最大化/恢复、关闭，最大化按钮108px，切换边栏/全宽后三个按钮几何边界变化 SHALL 不超过1 CSS px。讨论窗口头部（`ai-window-head`）的右侧动作（「本次参考了什么」、停止、更多、收起）SHALL 归入一个不拆散的动作组：在窄窗、长标题、最大化/恢复切换及材料入口出现/隐藏时，动作组 MUST NOT 换行错排或与标题错位，标题 SHALL 截断让位。此几何合同 SHALL 由针对讨论窗口头部本身的断言保证，MUST NOT 仅以停靠区头部（`ai-dock-header`）的几何断言替代。
 
 #### Scenario: 切换最大化
 - **WHEN** 面板在边栏与全宽之间切换
@@ -36,6 +36,14 @@ TBD - created by archiving change update-frontend-ui-v5. Update Purpose after ar
 #### Scenario: 单一中文提示
 - **WHEN** 用户悬停或键盘聚焦按钮
 - **THEN** 仅显示一个中文提示，隐藏元素/切页/关闭浮层后提示清除
+
+#### Scenario: 讨论窗口头动作不拆散
+- **WHEN** 讨论窗口头部在窄窗或长标题下渲染，且逐步出现/隐藏「本次参考了什么」等动作
+- **THEN** 右侧动作保持同组同序、不换行错排，标题截断让位，动作组几何稳定
+
+#### Scenario: 讨论窗口头几何由自身断言
+- **WHEN** 验收面板头部几何
+- **THEN** 断言对象为讨论窗口头部及其动作组，不以下游停靠区头部几何断言替代
 
 ### Requirement: 发送彩蛋和应用图标各用定案真源
 发送按钮 SHALL 使用指定user-mark.png，保持SHA256 `B8296FA14DC2F9C3E889E9DCD9D8677BE1FC9ADA57B1F46EDFEA2ED7DD8A9D96`、alpha与几何，黑底72×32px、图案宽28px高自动，仅按钮内浅显示；MUST NOT 描摹裁切拉伸。应用图标 SHALL 仅由v3的04-aperture标准/小稿及256PNG生成所需WindowsICO/PNG并接入Tauri及安装包，两者 MUST NOT 互替。

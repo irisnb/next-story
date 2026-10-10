@@ -1,0 +1,167 @@
+{
+  "target": {
+    "id": "BAA323DE0689E81DBB5153907CAC683D",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "assertions": [
+    {
+      "name": "isolated project open",
+      "pass": true
+    },
+    {
+      "name": "actual panel width 300px",
+      "pass": true
+    },
+    {
+      "name": "long title fixture present",
+      "pass": true
+    },
+    {
+      "name": "mouse: button not shrinking and single line",
+      "pass": true
+    },
+    {
+      "name": "mouse: title ellipsis without overlap",
+      "pass": true
+    },
+    {
+      "name": "mouse: short copy and complete title tooltip",
+      "pass": true
+    },
+    {
+      "name": "mouse: list open and undo hit unobscured",
+      "pass": true
+    },
+    {
+      "name": "mouse: undo restores discussion and clears notice",
+      "pass": true
+    },
+    {
+      "name": "keyboard: button not shrinking and single line",
+      "pass": true
+    },
+    {
+      "name": "keyboard: title ellipsis without overlap",
+      "pass": true
+    },
+    {
+      "name": "keyboard: short copy and complete title tooltip",
+      "pass": true
+    },
+    {
+      "name": "keyboard: list open and undo hit unobscured",
+      "pass": true
+    },
+    {
+      "name": "keyboard: undo restores discussion and clears notice",
+      "pass": true
+    },
+    {
+      "name": "no console errors",
+      "pass": true
+    }
+  ],
+  "measurements": [
+    {
+      "mode": "mouse",
+      "notice": {
+        "x": 745,
+        "y": 605,
+        "width": 259,
+        "height": 45,
+        "right": 1004,
+        "bottom": 650
+      },
+      "text": {
+        "x": 758,
+        "y": 619.125,
+        "width": 180,
+        "height": 15.75,
+        "right": 938,
+        "bottom": 634.875
+      },
+      "button": {
+        "x": 946,
+        "y": 611,
+        "width": 48,
+        "height": 32,
+        "right": 994,
+        "bottom": 643
+      },
+      "buttonText": "撤销",
+      "copy": "已删除：撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…",
+      "title": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…",
+      "flexShrink": "0",
+      "whiteSpace": "nowrap",
+      "lineRects": [
+        {
+          "y": 619.125,
+          "height": 14,
+          "width": 21
+        }
+      ],
+      "textOverflow": "ellipsis",
+      "truncated": true,
+      "hitIsUndo": true,
+      "noOverlap": true,
+      "inside": true,
+      "listVisible": true
+    },
+    {
+      "mode": "keyboard",
+      "notice": {
+        "x": 745,
+        "y": 605,
+        "width": 259,
+        "height": 45,
+        "right": 1004,
+        "bottom": 650
+      },
+      "text": {
+        "x": 758,
+        "y": 619.125,
+        "width": 180,
+        "height": 15.75,
+        "right": 938,
+        "bottom": 634.875
+      },
+      "button": {
+        "x": 946,
+        "y": 611,
+        "width": 48,
+        "height": 32,
+        "right": 994,
+        "bottom": 643
+      },
+      "buttonText": "撤销",
+      "copy": "已删除：撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…",
+      "title": "撤销提示真实验收长标题一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申…",
+      "flexShrink": "0",
+      "whiteSpace": "nowrap",
+      "lineRects": [
+        {
+          "y": 619.125,
+          "height": 14,
+          "width": 21
+        }
+      ],
+      "textOverflow": "ellipsis",
+      "truncated": true,
+      "hitIsUndo": true,
+      "noOverlap": true,
+      "inside": true,
+      "listVisible": true
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\undo-notice-300-mouse.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-ai\\undo-notice-300-keyboard.png"
+  ],
+  "panel": {
+    "width": 300,
+    "value": "300",
+    "cls": "ai-dock"
+  },
+  "consoleErrors": []
+}

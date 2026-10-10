@@ -1,0 +1,241 @@
+{
+  "started": "2026-10-10T14:03:58.101Z",
+  "target": {
+    "id": "241FEF4D17F06C48A01AA5B58E65EEF8",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "phase": "post-save-verify",
+  "assertions": [
+    {
+      "name": "view.inspectorVisible",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "view.autoFollowsNewVersion",
+      "pass": true,
+      "detail": {
+        "selectedIndex": 0,
+        "selectedText": "第2版（最新）",
+        "options": [
+          "第2版（最新）",
+          "第1版"
+        ]
+      }
+    },
+    {
+      "name": "view.activeNotAutoChanged",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "view.usingStillIdle",
+      "pass": true,
+      "detail": "正在使用：未启用链路，使用日常陪想"
+    },
+    {
+      "name": "storage.v2Index2",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "storage.cardTitleVerbatim",
+      "pass": true,
+      "detail": {
+        "got": "回应要求卡",
+        "want": "回应要求卡"
+      }
+    },
+    {
+      "name": "storage.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true
+      }
+    },
+    {
+      "name": "storage.bodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 399,
+        "wantLen": 399
+      }
+    },
+    {
+      "name": "storage.slotTypeRequirement",
+      "pass": true,
+      "detail": "requirement"
+    },
+    {
+      "name": "storage.v1HistoryPreserved",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "name": "detail.fullModeVisible",
+      "pass": true,
+      "detail": {
+        "fullDetailHidden": false,
+        "cardPanelHidden": false
+      }
+    },
+    {
+      "name": "detail.headings",
+      "pass": true,
+      "detail": [
+        "身份",
+        "何时用",
+        "怎么做",
+        "本版变化",
+        "试问记录"
+      ]
+    },
+    {
+      "name": "detail.whenToUseVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 108,
+        "wantLen": 108
+      }
+    },
+    {
+      "name": "detail.howToVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 399,
+        "wantLen": 399
+      }
+    },
+    {
+      "name": "detail.bodyHeadMidTailPresent",
+      "pass": true,
+      "detail": {
+        "head": "这张卡管你每次开口之后我怎么接话，分四步",
+        "mid": "用你的词句去追问，不问「你的主题是什么」",
+        "tail": "不往你的文档里写任何内容，稿子一字不动。"
+      }
+    },
+    {
+      "name": "detail.overallContainsFullBody",
+      "pass": true,
+      "detail": {
+        "overallLen": 730
+      }
+    },
+    {
+      "name": "detail.notLengthOrStartswithOnly",
+      "pass": true,
+      "detail": {
+        "lengthMatch": true,
+        "fullEqual": true
+      }
+    },
+    {
+      "name": "long.bodyVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true,
+        "gotLen": 709,
+        "wantLen": 709
+      }
+    },
+    {
+      "name": "long.triggerVerbatim",
+      "pass": true,
+      "detail": {
+        "equal": true
+      }
+    },
+    {
+      "name": "long.headMarker",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "long.middleMarker",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "long.tailMarker",
+      "pass": true,
+      "detail": true
+    }
+  ],
+  "stages": [
+    {
+      "name": "view-and-storage",
+      "data": {
+        "inspectorVisible": true,
+        "viewState": {
+          "options": [
+            "第2版（最新）",
+            "第1版"
+          ],
+          "selectedIndex": 0,
+          "selectedText": "第2版（最新）",
+          "using": "正在使用：未启用链路，使用日常陪想",
+          "notice": "已保存为「CDP长卡验收链·第2版」草稿；尚未启用，启用请在结构检视里显式操作。"
+        },
+        "versions": [
+          {
+            "index": 1,
+            "id": "chainver-cdp-long-1",
+            "cardCount": 2
+          },
+          {
+            "index": 2,
+            "id": "chainver-1791640932954121800-1",
+            "cardCount": 1
+          }
+        ],
+        "active": null
+      }
+    },
+    {
+      "name": "detail-new-card",
+      "data": {
+        "fullDetailHidden": false,
+        "cardPanelHidden": false,
+        "headings": [
+          "身份",
+          "何时用",
+          "怎么做",
+          "本版变化",
+          "试问记录"
+        ],
+        "identity": "卡名「回应要求卡」 · 插槽：回应要求 · 所属：CDP长卡验收链·第2版",
+        "whenToUse": "适用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n不适用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。",
+        "howTo": "这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。",
+        "change": "相对上一版：新增「回应要求卡」；移除「长卡首中尾验收卡」「可删除的第二张卡」；变更说明：制作会话保存。",
+        "overall": "回应要求 / 回应要求卡\n\n完整详情\n返回导图 · 快捷详情\n身份\n\n卡名「回应要求卡」 · 插槽：回应要求 · 所属：CDP长卡验收链·第2版\n\n何时用\n\n适用：日常陪想里，每次用户说完一句话要回应时使用：先分清这句是问事实、问感受，还是只想把思路摊开，再按首中尾的固定顺序接话。\n不适用：用户明确要求换一种回应方式、或只是闲聊无关剧本内容时不套用这套流程，照常对话即可。\n\n怎么做\n\n这张卡管你每次开口之后我怎么接话，分四步走。\n\n第一步，分清你这句话的性质：你是在问一个事实、问我的感受，还是只想把思路摊开给我看。你只给了片段、没说全的时候，我不硬猜，先把你原话里能确定的事实和拿不准的猜测分开摆出来，并标明我依据的是你用过的哪几个词，让你一眼看到哪些是你说的、哪些是我猜的。\n\n第二步，围绕你给的这段材料，递两三个具体问题。问题必须贴着你的原话问，比如直接引用你的词句去追问，不问「你的主题是什么」这种泛泛的空话。\n\n第三步，如果我看出几种可能的方向，就并列写清楚每种方向的依据各是什么，摆在一起给你看，不只挑一个替你决定，也不暗示哪个更对。\n\n第四步，收尾时给一句你接下来可以自己动手做的小事，比如「回去看看某段里某个词出现了几次」，把结论留给你自己下。\n\n底线：我只给有依据的观察、问题和可能走向，不替你判断这个故事好不好、对不对，也不往你的文档里写任何内容，稿子一字不动。\n\n本版变化\n\n相对上一版：新增「回应要求卡」；移除「长卡首中尾验收卡」「可删除的第二张卡」；变更说明：制作会话保存。\n\n试问记录\n\n尚无试问记录\n\n这条版本还没有试问记录。\n\n请制作助手修改\n删除卡片\n请制作助手添加回应要求\n\n每个版本至少保留一张卡，不能删除最后一张卡。"
+      }
+    },
+    {
+      "name": "detail-long-card",
+      "data": {
+        "title": "长卡首中尾验收卡",
+        "bodyLen": 709,
+        "headings": [
+          "身份",
+          "何时用",
+          "怎么做",
+          "本版变化",
+          "试问记录"
+        ],
+        "howToLen": 709,
+        "whenToUseLen": 156
+      }
+    }
+  ],
+  "screenshots": [
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-04-full-detail.png",
+    "D:\\Next Story\\openspec\\changes\\fix-ai-and-making-usability\\verification\\ui-acceptance\\evidence-making\\making-draft-rt-05-long-card-detail.png"
+  ],
+  "consoleErrors": [],
+  "finished": "2026-10-10T14:04:01.315Z"
+}

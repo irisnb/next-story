@@ -271,7 +271,7 @@ impl std::fmt::Display for ConversationStoreError {
         match self {
             ConversationStoreError::TooLarge => write!(
                 f,
-                "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。"
+                "讨论内容过长（超过 8 MiB 上限），无法保存；请新建讨论继续。"
             ),
             ConversationStoreError::InvalidConversationId(msg) => {
                 write!(f, "讨论标识无效: {msg}")
@@ -1212,7 +1212,7 @@ mod tests {
         assert_eq!(error, ConversationStoreError::TooLarge);
         assert_eq!(
             error.to_string(),
-            "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。"
+            "讨论内容过长（超过 8 MiB 上限），无法保存；请新建讨论继续。"
         );
         assert_eq!(fs::read(body_path).expect("body"), old_body);
         assert_eq!(fs::read(meta_path).expect("meta"), old_meta);

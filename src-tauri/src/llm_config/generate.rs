@@ -470,7 +470,7 @@ pub async fn ai_cancel_message_in_dir(session_id: String, message_id: String) ->
     }
 }
 
-/// 常驻会话：结束会话（新建对话 / 切换作品）。进程未启动时为无操作（幂等）。
+/// 常驻会话：结束会话（新建讨论 / 切换作品）。进程未启动时为无操作（幂等）。
 pub async fn ai_end_session_in_dir(session_id: String) -> GenerateAiResult {
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::dsh_driver::global_driver_manager().end_session(&session_id)

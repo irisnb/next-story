@@ -33,7 +33,7 @@ pub(crate) async fn ai_cancel_message(
     Ok(llm_config::ai_cancel_message_in_dir(session_id, message_id).await)
 }
 
-/// 常驻会话：结束会话（新建对话 / 切换作品；幂等）。
+/// 常驻会话：结束会话（新建讨论 / 切换作品；幂等）。
 #[tauri::command]
 pub(crate) async fn ai_end_session(session_id: String) -> Result<GenerateAiResult, String> {
     // 会话身份失效：工具路由与待决授权一并失败关闭（add-agent-on-demand-reading

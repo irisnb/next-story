@@ -289,7 +289,7 @@ pub fn map_driver_failure(code: &str, _raw_message: &str) -> GenerateAiError {
     {
         (
             GenerateAiErrorCode::RequestTooLarge,
-            "对话内容过长，请新建对话后重试",
+            "对话内容过长，请新建讨论后重试",
         )
     } else if upper.contains("TRANSPORT")
         || upper.contains("NETWORK")
@@ -1458,7 +1458,7 @@ impl DshDriverManager {
         })
     }
 
-    /// 结束会话（新建对话 / 切换作品）。进程未启动时为无操作（幂等）。
+    /// 结束会话（新建讨论 / 切换作品）。进程未启动时为无操作（幂等）。
     pub fn end_session(&self, session_id: &str) -> Result<(), GenerateAiError> {
         {
             let lifecycle = lock_recover(&self.inner.lifecycle);

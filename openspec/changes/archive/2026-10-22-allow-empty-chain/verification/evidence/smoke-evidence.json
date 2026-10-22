@@ -1,0 +1,582 @@
+{
+  "startedAt": "2026-10-22T13:27:00.060Z",
+  "target": {
+    "id": "BB7A339DF4CF80F20740724972F0B9EB",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "chainName": "零卡冒烟-allow-empty-chain",
+  "assertions": [
+    {
+      "name": "P0.最近项目列表非空",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "name": "P0.已进入既有项目",
+      "pass": true,
+      "detail": "8b 验证作品"
+    },
+    {
+      "name": "S1.导图显示第1版",
+      "pass": true,
+      "detail": "正在查看：零卡冒烟-allow-empty-chain·第1版"
+    },
+    {
+      "name": "S1.版本下拉仅第1版(最新)",
+      "pass": true,
+      "detail": [
+        "第1版（最新）"
+      ]
+    },
+    {
+      "name": "S1.自定义分区无卡行",
+      "pass": true,
+      "detail": {
+        "req": 0,
+        "posture": 0
+      }
+    },
+    {
+      "name": "S1.两个常驻添加入口在场",
+      "pass": true,
+      "detail": {
+        "req": true,
+        "posture": true
+      }
+    },
+    {
+      "name": "S1.两组计数如实为0",
+      "pass": true,
+      "detail": {
+        "req": "· 0 张卡",
+        "posture": "· 0 张卡"
+      }
+    },
+    {
+      "name": "S1.磁盘:诞生即含第1版零卡",
+      "pass": true,
+      "detail": [
+        {
+          "id": "chainver-1792675623309154500-7",
+          "index": 1,
+          "cards": 0,
+          "changeNote": "新建链路"
+        }
+      ]
+    },
+    {
+      "name": "S1.磁盘:第1版变更说明=新建链路",
+      "pass": true,
+      "detail": "新建链路"
+    },
+    {
+      "name": "S2.零卡版本启用入口在场",
+      "pass": true,
+      "detail": {
+        "enableHidden": false,
+        "enableText": "启用「零卡冒烟-allow-empty-chain·第1版」"
+      }
+    },
+    {
+      "name": "S2.确认文案含零卡说明",
+      "pass": true,
+      "detail": "启用「零卡冒烟-allow-empty-chain·第1版」，替换当前「傲娇搭档验证链·第1版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。"
+    },
+    {
+      "name": "S2.状态条零卡后缀",
+      "pass": true,
+      "detail": "当前链路：零卡冒烟-allow-empty-chain·第1版（未附加自定义）"
+    },
+    {
+      "name": "S2.using行同步零卡后缀",
+      "pass": true,
+      "detail": "正在使用：零卡冒烟-allow-empty-chain·第1版（未附加自定义）"
+    },
+    {
+      "name": "S3.已进入既有项目（P0 打开）",
+      "pass": true,
+      "detail": "8b 验证作品"
+    },
+    {
+      "name": "S3.真实回包完成（文本非空）",
+      "pass": true,
+      "detail": {
+        "replyLen": 145
+      }
+    },
+    {
+      "name": "S3.关注文档已绑定",
+      "pass": true,
+      "detail": "主角篇"
+    },
+    {
+      "name": "S3.讨论档案已落盘",
+      "pass": true,
+      "detail": "mvjks5sr-92862f0be5d04fb4874860abd07d5729"
+    },
+    {
+      "name": "S4.零卡轮无「本轮链路」行",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "S4.档案链路记录在场（零卡轮仍如实记录）",
+      "pass": true,
+      "detail": {
+        "turn_index": 0,
+        "chain_id": "chain-1792675623309152700-6",
+        "chain_name": "零卡冒烟-allow-empty-chain",
+        "version_index": 1,
+        "has_cards": false
+      }
+    },
+    {
+      "name": "S4.档案 has_cards=false（接口缝）",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "S5.注入通道可用(__TAURI_INTERNALS__.invoke)",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "S5.第2版含一张卡",
+      "pass": true,
+      "detail": {
+        "id": "chainver-1792675642015013000-8",
+        "index": 2,
+        "cards": 1,
+        "changeNote": "真机冒烟注入（任务 5.2 允许的驱动侧保存路径）"
+      }
+    },
+    {
+      "name": "S5.注入未动启用指针（仍指第1版）",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-1792675623309152700-6",
+        "version_id": "chainver-1792675623309154500-7"
+      }
+    },
+    {
+      "name": "S5.第2版启用入口在场",
+      "pass": true,
+      "detail": {
+        "enableHidden": false,
+        "enableText": "启用「零卡冒烟-allow-empty-chain·第2版」"
+      }
+    },
+    {
+      "name": "S5.第2版确认文案无零卡说明（有卡版本）",
+      "pass": true,
+      "detail": "启用「零卡冒烟-allow-empty-chain·第2版」，替换当前「零卡冒烟-allow-empty-chain·第1版」；所有作品的下一轮提问开始使用。"
+    },
+    {
+      "name": "S5.状态条无「（未附加自定义）」后缀",
+      "pass": true,
+      "detail": "当前链路：零卡冒烟-allow-empty-chain·第2版"
+    },
+    {
+      "name": "S6.有卡轮恢复「本轮链路」行",
+      "pass": true,
+      "detail": [
+        "本轮链路：零卡冒烟-allow-empty-chain·第2版"
+      ]
+    },
+    {
+      "name": "S6.首轮链路行仍不显示（零卡轮历史一致）",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "S6.档案追问轮 has_cards 契约（true 或缺省=有卡）",
+      "pass": true,
+      "detail": {
+        "turn_index": 1,
+        "chain_id": "chain-1792675623309152700-6",
+        "chain_name": "零卡冒烟-allow-empty-chain",
+        "version_index": 2,
+        "has_cards": true
+      }
+    },
+    {
+      "name": "S6.追问真实回包完成",
+      "pass": true,
+      "detail": {
+        "replyLen": 284
+      }
+    },
+    {
+      "name": "S7.第2版在场且有一张卡行",
+      "pass": true,
+      "detail": {
+        "viewed": "chainver-1792675642015013000-8",
+        "rows": 1
+      }
+    },
+    {
+      "name": "S7.最后一张卡删除按钮可点（不再禁用）",
+      "pass": true,
+      "detail": {
+        "found": true,
+        "disabled": false
+      }
+    },
+    {
+      "name": "S7.确认文案明示零卡新版本",
+      "pass": true,
+      "detail": "从「零卡冒烟-allow-empty-chain·第2版」删除卡片「冒烟测试卡-多给可能」？这是该版本最后一张卡，删除后将产生一个不含任何卡的新版本；将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+    },
+    {
+      "name": "S7.产生零卡第3版",
+      "pass": true,
+      "detail": {
+        "id": "chainver-1792675655952409800-10",
+        "index": 3,
+        "cards": 0,
+        "changeNote": "删除卡片「冒烟测试卡-多给可能」"
+      }
+    },
+    {
+      "name": "S7.启用指针仍指第2版",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-1792675623309152700-6",
+        "version_id": "chainver-1792675642015013000-8"
+      }
+    },
+    {
+      "name": "S7.状态条仍第2版（无零卡后缀）",
+      "pass": true,
+      "detail": "当前链路：零卡冒烟-allow-empty-chain·第2版"
+    },
+    {
+      "name": "S7.第3版导图无卡行",
+      "pass": true,
+      "detail": {
+        "req": 0,
+        "posture": 0
+      }
+    },
+    {
+      "name": "S8.冒烟链路已删除",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "chainFound": false,
+        "chainId": null,
+        "versions": []
+      }
+    },
+    {
+      "name": "S9.全程控制台零错误（error/exception）",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "stages": [
+    {
+      "name": "P0 项目就绪",
+      "t": 2028,
+      "data": {
+        "projectName": "8b 验证作品",
+        "currentDoc": "主角篇",
+        "viaWelcome": true,
+        "recentFirst": "8b 验证作品"
+      }
+    },
+    {
+      "name": "S1 UI",
+      "t": 3438,
+      "data": {
+        "inspectorTitle": "正在查看：零卡冒烟-allow-empty-chain·第1版",
+        "versionOptions": [
+          "第1版（最新）"
+        ],
+        "requirementCardRows": 0,
+        "postureCardRows": 0
+      }
+    },
+    {
+      "name": "S1 磁盘",
+      "t": 3439,
+      "data": {
+        "active": {
+          "chain_id": "chain-1791378014941277900-1",
+          "version_id": "chainver-1791378304564218000-2"
+        },
+        "chainFound": true,
+        "chainId": "chain-1792675623309152700-6",
+        "versions": [
+          {
+            "id": "chainver-1792675623309154500-7",
+            "index": 1,
+            "cards": 0,
+            "changeNote": "新建链路"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S2 确认文案",
+      "t": 4306,
+      "data": [
+        "启用「零卡冒烟-allow-empty-chain·第1版」，替换当前「傲娇搭档验证链·第1版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。"
+      ]
+    },
+    {
+      "name": "S2 UI",
+      "t": 4308,
+      "data": {
+        "statusText": "当前链路：零卡冒烟-allow-empty-chain·第1版（未附加自定义）",
+        "usingLabel": "正在使用：零卡冒烟-allow-empty-chain·第1版（未附加自定义）"
+      }
+    },
+    {
+      "name": "S3 已发送",
+      "t": 7274,
+      "data": {
+        "question": "用一句话说说你看这段开头的方式。"
+      }
+    },
+    {
+      "name": "S3 完成",
+      "t": 21837,
+      "data": {
+        "doc": "主角篇",
+        "replyLen": 145,
+        "replyPreview": "用一句话说说你看这段开头的方式。\n一句话：这个开头像一封未拆完的信——它先给了一个安静的遗物场景，再连续抛出三个悬而未决的东西（空白收件人、停了的钟、只出现在回忆里的一句话），让「去南边旧城」这个决定本身成了读者想追问的问题。\n\n（以上只基于你选中的《主角篇》开头片段，其余文档我未读取。）"
+      }
+    },
+    {
+      "name": "S4 材料面板",
+      "t": 21893,
+      "data": {
+        "chainLines": [],
+        "materialsVisible": true
+      }
+    },
+    {
+      "name": "S4 档案 chain_rounds[0]",
+      "t": 21894,
+      "data": {
+        "turn_index": 0,
+        "chain_id": "chain-1792675623309152700-6",
+        "chain_name": "零卡冒烟-allow-empty-chain",
+        "version_index": 1,
+        "has_cards": false
+      }
+    },
+    {
+      "name": "S5 注入落库",
+      "t": 23790,
+      "data": {
+        "saved": {
+          "id": "chainver-1792675642015013000-8",
+          "index": 2,
+          "cards": 1
+        },
+        "versions": [
+          {
+            "id": "chainver-1792675623309154500-7",
+            "index": 1,
+            "cards": 0,
+            "changeNote": "新建链路"
+          },
+          {
+            "id": "chainver-1792675642015013000-8",
+            "index": 2,
+            "cards": 1,
+            "changeNote": "真机冒烟注入（任务 5.2 允许的驱动侧保存路径）"
+          }
+        ],
+        "active": {
+          "chain_id": "chain-1792675623309152700-6",
+          "version_id": "chainver-1792675623309154500-7"
+        }
+      }
+    },
+    {
+      "name": "S5 确认文案",
+      "t": 24504,
+      "data": [
+        "启用「零卡冒烟-allow-empty-chain·第2版」，替换当前「零卡冒烟-allow-empty-chain·第1版」；所有作品的下一轮提问开始使用。"
+      ]
+    },
+    {
+      "name": "S5 UI",
+      "t": 24505,
+      "data": {
+        "statusText": "当前链路：零卡冒烟-allow-empty-chain·第2版",
+        "usingLabel": "正在使用：零卡冒烟-allow-empty-chain·第2版"
+      }
+    },
+    {
+      "name": "S6 已发送追问",
+      "t": 25554,
+      "data": {
+        "question": "再一句话说说：这段开头里最先让你注意到的是什么？"
+      }
+    },
+    {
+      "name": "S6 材料面板",
+      "t": 34103,
+      "data": {
+        "chainLines": [
+          "本轮链路：零卡冒烟-allow-empty-chain·第2版"
+        ]
+      }
+    },
+    {
+      "name": "S6 档案 chain_rounds[1]",
+      "t": 34104,
+      "data": {
+        "turn_index": 1,
+        "chain_id": "chain-1792675623309152700-6",
+        "chain_name": "零卡冒烟-allow-empty-chain",
+        "version_index": 2,
+        "has_cards": true
+      }
+    },
+    {
+      "name": "S7 确认文案",
+      "t": 35884,
+      "data": [
+        "从「零卡冒烟-allow-empty-chain·第2版」删除卡片「冒烟测试卡-多给可能」？这是该版本最后一张卡，删除后将产生一个不含任何卡的新版本；将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "name": "S7 完成",
+      "t": 36396,
+      "data": {
+        "inspectorTitle": "正在查看：零卡冒烟-allow-empty-chain·第3版（草稿）",
+        "versions": [
+          {
+            "id": "chainver-1792675623309154500-7",
+            "index": 1,
+            "cards": 0,
+            "changeNote": "新建链路"
+          },
+          {
+            "id": "chainver-1792675642015013000-8",
+            "index": 2,
+            "cards": 1,
+            "changeNote": "真机冒烟注入（任务 5.2 允许的驱动侧保存路径）"
+          },
+          {
+            "id": "chainver-1792675655952409800-10",
+            "index": 3,
+            "cards": 0,
+            "changeNote": "删除卡片「冒烟测试卡-多给可能」"
+          }
+        ],
+        "active": {
+          "chain_id": "chain-1792675623309152700-6",
+          "version_id": "chainver-1792675642015013000-8"
+        },
+        "statusText": "当前链路：零卡冒烟-allow-empty-chain·第2版",
+        "requirementCardRows": 0
+      }
+    },
+    {
+      "name": "S8 清理",
+      "t": 38863,
+      "data": {
+        "confirm": [
+          "删除链路「零卡冒烟-allow-empty-chain」？其 3 个版本与全部试问证据将被删除，不可恢复；作品正文与日常讨论不受影响。"
+        ],
+        "active": null,
+        "remaining": 4
+      }
+    }
+  ],
+  "screenshots": [
+    "S1-新建零卡链路.png",
+    "S2-启用零卡第1版.png",
+    "S3-零卡轮真实回包.png",
+    "S4-零卡轮无链路行.png",
+    "S5-加卡启用第2版.png",
+    "S6-有卡轮链路行恢复.png",
+    "S7-删至零出新版本.png",
+    "S8-清理完成.png"
+  ],
+  "consoleErrors": [],
+  "confirmMessages": [
+    {
+      "step": "S2-启用第1版",
+      "messages": [
+        "启用「零卡冒烟-allow-empty-chain·第1版」，替换当前「傲娇搭档验证链·第1版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。"
+      ]
+    },
+    {
+      "step": "S5-启用第2版",
+      "messages": [
+        "启用「零卡冒烟-allow-empty-chain·第2版」，替换当前「零卡冒烟-allow-empty-chain·第1版」；所有作品的下一轮提问开始使用。"
+      ]
+    },
+    {
+      "step": "S7-删最后一张卡",
+      "messages": [
+        "从「零卡冒烟-allow-empty-chain·第2版」删除卡片「冒烟测试卡-多给可能」？这是该版本最后一张卡，删除后将产生一个不含任何卡的新版本；将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。"
+      ]
+    },
+    {
+      "step": "S8-删除冒烟链路",
+      "messages": [
+        "删除链路「零卡冒烟-allow-empty-chain」？其 3 个版本与全部试问证据将被删除，不可恢复；作品正文与日常讨论不受影响。"
+      ]
+    }
+  ],
+  "captured": {
+    "recentFirst": "8b 验证作品",
+    "projectName": "8b 验证作品",
+    "currentDoc": "主角篇",
+    "q1ReplyLen": 145,
+    "q1Doc": "主角篇",
+    "readingAllowed": false,
+    "smokeConvoId": "mvjks5sr-92862f0be5d04fb4874860abd07d5729",
+    "s4ArchiveChainRound": {
+      "turn_index": 0,
+      "chain_id": "chain-1792675623309152700-6",
+      "chain_name": "零卡冒烟-allow-empty-chain",
+      "version_index": 1,
+      "has_cards": false
+    },
+    "s5Injection": {
+      "via": "__TAURI_INTERNALS__.invoke(\"chain_save_version\")",
+      "args": {
+        "chainId": "chain-1792675623309152700-6",
+        "cards": [
+          {
+            "title": "冒烟测试卡-多给可能",
+            "trigger_desc": "适用：讨论情节走向时\n不适用：只聊单句台词时",
+            "body": "回应里至少给出两种不同可能，说明各自的依据与代价，不替用户拍板。",
+            "slot_type": "requirement"
+          }
+        ],
+        "changeNote": "真机冒烟注入（任务 5.2 允许的驱动侧保存路径）"
+      }
+    },
+    "s5SavedVersion": {
+      "id": "chainver-1792675642015013000-8",
+      "index": 2,
+      "cards": 1
+    },
+    "s6ArchiveChainRound": {
+      "turn_index": 1,
+      "chain_id": "chain-1792675623309152700-6",
+      "chain_name": "零卡冒烟-allow-empty-chain",
+      "version_index": 2,
+      "has_cards": true
+    },
+    "q2ReplyLen": 284,
+    "activeAfterCleanup": null
+  },
+  "fatal": null,
+  "environmentNotes": [],
+  "finishedAt": "2026-10-22T13:27:38.960Z",
+  "elapsedMs": 38898,
+  "failedAssertions": [],
+  "passedCount": 39
+}

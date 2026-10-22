@@ -1,0 +1,86 @@
+{
+  "startedAt": "2026-10-22T16:28:30.466Z",
+  "assertions": [
+    {
+      "name": "A1.已进入既有项目",
+      "pass": true,
+      "detail": {
+        "project": "8b 验证作品",
+        "doc": "主角篇"
+      }
+    },
+    {
+      "name": "A2.真实流式回包完成（回文非空）",
+      "pass": true,
+      "detail": {
+        "replyLen": 50,
+        "replyMs": 7039,
+        "sawInFlight": true
+      }
+    },
+    {
+      "name": "A2.回文与问题不雷同（模型生成非回显）",
+      "pass": true,
+      "detail": "用一句话打个招呼，确认你还在线。\n在的，我在线，随时可以继续聊《主角篇》里雾岭车站那第七封信的进展。"
+    },
+    {
+      "name": "A3.新讨论档案已落盘",
+      "pass": true,
+      "detail": {
+        "id": "mvjr9gm5-c1e4e989f5a249648a376f8fcba4255d",
+        "before": 17,
+        "after": 18
+      }
+    },
+    {
+      "name": "A3.档案正文含回文片段",
+      "pass": true,
+      "detail": {
+        "probe": "篇》里雾岭车站那第七封信的进展。",
+        "archiveLen": 33
+      }
+    },
+    {
+      "name": "A3.档案含用户问题（first_round_material）",
+      "pass": true,
+      "detail": {
+        "kind": "direct_question",
+        "question": "用一句话打个招呼，确认你还在线。"
+      }
+    },
+    {
+      "name": "A4.全程控制台零错误（error/exception）",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "captured": {
+    "projectName": "8b 验证作品",
+    "currentDoc": "主角篇",
+    "convoCountBefore": 17,
+    "sawInFlight": true,
+    "replyText": "用一句话打个招呼，确认你还在线。\n在的，我在线，随时可以继续聊《主角篇》里雾岭车站那第七封信的进展。",
+    "replyMs": 7039,
+    "newConvoId": "mvjr9gm5-c1e4e989f5a249648a376f8fcba4255d",
+    "archiveTurns": [
+      {
+        "role": "assistant",
+        "status": "done",
+        "len": 33
+      }
+    ]
+  },
+  "consoleErrors": [],
+  "fatal": null,
+  "target": {
+    "id": "942360B3A24079A3DEFACF826321D6A9",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "screenshots": [
+    "A2-真实回包.png"
+  ],
+  "finishedAt": "2026-10-22T16:28:39.242Z",
+  "failedAssertions": [],
+  "passedCount": 7
+}

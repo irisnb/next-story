@@ -18,7 +18,12 @@
 //
 // system_prompt 为空（旧宿主兼容）时不注册任何段，默认 persona 维持现状。
 // 本模块纯内存、无 IO；不使用 complete:true（会压掉其余全部段落与动态 context）。
-import { PERSONA_ORDER, PERSONA_SECTION } from "@deepseek-ai/dsh-system-prompt";
+// dsh 0.1.2 起 dsh-system-prompt 不再导出 PERSONA_ORDER（内部 SECTION_ORDERS
+// .DEPLOYMENT_PERSONA 仍为 0）；本地常量钉住同位遮蔽，值与 0.1.0-rc.7 官方
+// 导出一致，次序不变式由 system-prompt-layering / chain-cards-mount 契约测试钉死。
+import { PERSONA_SECTION } from "@deepseek-ai/dsh-system-prompt";
+
+const PERSONA_ORDER = 0;
 
 export const POSTURE_SECTION = "nextstory:posture";
 export const POSTURE_ORDER = 5;

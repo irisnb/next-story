@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "DSH headless sidecar for Next Story (spike)",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.7"
+    "@deepseek-ai/dsh": "0.1.2-rc.1"
   },
   "overrides": {
     "fast-uri": "^3.1.6",
@@ -12,6 +12,8 @@
     "sharp": "^0.35.4",
     "hono": "^4.13.5",
     "qs": "^6.16.0",
-    "ip-address": "^10.5.1"
+    "ip-address": "^10.5.1",
+    "fflate": "^0.8.3",
+    "@modelcontextprotocol/client": "^2.3.0"
   }
 }

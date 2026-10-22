@@ -369,7 +369,10 @@ function buildSeedEvents(turns) {
 function runTurn(session, messageId, text) {
   const agent = session.agent;
   const firstSeq = agent.session.seq;
-  let cursor = agent.session.events.length;
+  // DSH 0.1.2 起公开 events getter 收私有，改为 snapshotEvents()；无参调用与旧
+  // events 数组是同一段实现（同一 eventsSnapshot 缓存、Object.freeze([...log])
+  // 全量快照、seq=log.length 连续契约不变），值/序/含 fork 前缀逐字一致。
+  let cursor = agent.session.snapshotEvents().length;
   let folded = "";
   let sentEmitted = false;
   session.busy = true;
@@ -391,7 +394,9 @@ function runTurn(session, messageId, text) {
 
   const poll = setInterval(() => {
     try {
-      const evs = agent.session.events;
+      // 每次轮询重新取当刻全量快照（与旧 events 活引用读法等价：snapshotEvents
+      // 物化自同一 log，append-only 之下快照只增，游标扫描增量语义不变）。
+      const evs = agent.session.snapshotEvents();
       for (; cursor < evs.length; cursor++) {
         const e = evs[cursor];
         maybeEmitSent(e);
@@ -417,7 +422,8 @@ function runTurn(session, messageId, text) {
 
   agent.followup(createUserMessage({ content: [{ type: "text", text }], source: { kind: "user" } }));
   agent.whenIdle().then(() => {
-    const evs = agent.session.events;
+    // 终态全量快照（snapshotEvents 无参＝旧 events 同一实现，见 runTurn 头注释）。
+    const evs = agent.session.snapshotEvents();
     // 兜底扫描：轮询间隙到达的 provider 侧证据也必须在终态前发出 message_sent。
     for (; cursor < evs.length; cursor++) maybeEmitSent(evs[cursor]);
     const turnEnd = [...evs].reverse().find((e) => e.seq >= firstSeq && e.type === "turn/end");

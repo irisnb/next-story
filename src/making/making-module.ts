@@ -462,8 +462,8 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       for (const action of model.actions) {
         footer.append(detailActionButton(action));
       }
-      if (model.actions.some((action) => action.action === "delete") && (findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId)?.cards.length ?? 0) <= 1) {
-        appendPara(footer, "每个版本至少保留一张卡，不能删除最后一张卡。", "making-readonly-note");
+      if (model.actions.some((action) => action.action === "delete")) {
+        appendPara(footer, "删除后基于当前版本保存一个少该卡的新版本。", "making-readonly-note");
       }
       windowEl.append(footer);
     }
@@ -500,9 +500,7 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     button.className = "making-mini-btn";
     button.textContent = action.label;
     if (action.action === "delete") {
-      const version = findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId);
-      button.disabled = (version?.cards.length ?? 0) <= 1;
-      if (button.disabled) button.title = "每个版本至少保留一张卡，不能删除最后一张卡";
+      // allow-empty-chain：最后一张卡同样可删（删至零产生零卡新版本），不再禁用。
       button.addEventListener("click", () => { void deleteViewedCard(); });
     } else {
       button.addEventListener("click", () => { transferToConversation(action); });
@@ -518,9 +516,14 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const chain = findChain(chainId);
     const baseline = chain?.versions.find((v) => v.id === versionId);
     const card = baseline?.cards.find((c) => c.id === cardId);
-    if (!baseline || !card || baseline.cards.length <= 1) return;
+    // allow-empty-chain：删至零合法——不再拦截最后一张卡，零卡新版本照常保存。
+    if (!baseline || !card) return;
     const cards = structuredClone(baseline.cards);
-    if (!await confirm(`从「${chain!.name}·第${baseline.index}版」删除卡片「${card.title}」？将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。`)) return;
+    // 删除的是基线版本最后一张卡时，确认文案明示将产生零卡新版本（语义必须到）。
+    const lastCardNote = baseline.cards.length === 1
+      ? "这是该版本最后一张卡，删除后将产生一个不含任何卡的新版本；"
+      : "";
+    if (!await confirm(`从「${chain!.name}·第${baseline.index}版」删除卡片「${card.title}」？${lastCardNote}将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。`)) return;
     try {
       const current = await chainLibraryLoad(call);
       const locked = current.chains.find((c) => c.id === chainId)?.versions.find((v) => v.id === versionId);
@@ -548,8 +551,8 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       for (const action of actions) {
         footer.append(detailActionButton(action));
       }
-      if (actions.some((action) => action.action === "delete") && (findChain(viewChainId)?.versions.find((v) => v.id === viewVersionId)?.cards.length ?? 0) <= 1) {
-        appendPara(footer, "每个版本至少保留一张卡，不能删除最后一张卡。", "making-readonly-note");
+      if (actions.some((action) => action.action === "delete")) {
+        appendPara(footer, "删除后基于当前版本保存一个少该卡的新版本。", "making-readonly-note");
       }
     }
     return footer;

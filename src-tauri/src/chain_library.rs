@@ -413,19 +413,15 @@ fn new_id(prefix: &str) -> String {
 
 // ========== 卡校验（design D2 / 任务 1.3；add-posture-slot 任务 2.2 类型规则） ==========
 
-/// 校验一批入参卡：非空（任一类型即可，纯姿态版本允许）、每卡有标题与触发
-/// 描述、卡类型取值合法、三类长度上限（触发描述 ≤400、单卡正文 ≤2000、版本
-/// 合计 ≤6000——两类卡合计，按 `chars().count()` 计；多张姿态卡自然受此约束，
-/// 2026-10-07 修订：姿态卡每版本可多张，不做数量限制与冲突调和）。
+/// 校验一批入参卡：允许零张卡（零卡版本合法——allow-empty-chain，2026-10-22
+/// 用户拍板：链路空着也能用；空清单即合法的完整卡清单，合计自然为 0）、
+/// 含卡时任一类型即可（纯姿态版本允许）、每卡有标题与触发描述、卡类型取值
+/// 合法、三类长度上限（触发描述 ≤400、单卡正文 ≤2000、版本合计 ≤6000——
+/// 两类卡合计，按 `chars().count()` 计；多张姿态卡自然受此约束，2026-10-07
+/// 修订：姿态卡每版本可多张，不做数量限制与冲突调和）。
 /// 超限或缺项返回带实际数值的中文错误，不静默截断。
 pub fn validate_cards(cards: &[CardInput]) -> Result<(), ChainLibraryError> {
     let invalid = |reason: String| ChainLibraryError::InvalidCard { reason };
-
-    if cards.is_empty() {
-        return Err(invalid(
-            "至少需要一张卡（要求卡或姿态卡，任一类型均可）".to_string(),
-        ));
-    }
 
     let mut total_chars = 0usize;
     for (position, card) in cards.iter().enumerate() {
@@ -506,6 +502,19 @@ fn load_library_from_dir(module_dir: &Path) -> Result<ChainLibrary, ChainLibrary
     // 绝不落回盘。
     let mut library = library;
     library.format_version = CHAIN_LIBRARY_FORMAT_VERSION;
+    // 存量零版本链路读取规范化（allow-empty-chain design D1）：本变更前
+    // `create_chain` 建出的零版本链路，读取时补入与新建同规格的零卡第 1 版
+    // （不变式「每条链路自诞生起至少一个版本」由读取层对存量数据补齐，启用
+    // 指针从此永远有可指目标）。补版只在内存、不在此落盘：随链路库下一次
+    // 写入自然持久化；不改动任何既有版本编号与 active 指针（零版本链路本来
+    // 没有版本，补版不产生编号冲突）。
+    for chain in library.chains.iter_mut() {
+        if chain.versions.is_empty() {
+            chain
+                .versions
+                .push(zero_card_first_version(chain.created_at));
+        }
+    }
     Ok(library)
 }
 
@@ -636,7 +645,9 @@ pub fn trial_record_exists(trials_dir: &Path, trial_id: &str) -> bool {
 
 // ========== 库操作实现（模块内私有；单例方法在锁内调用） ==========
 
-/// 新建链路（只有名称，尚无版本；首版本由用户确认保存产生）。
+/// 新建链路（起名即建）：诞生即含零卡第 1 版（allow-empty-chain design D1，
+/// 变更说明「新建链路」、创建时刻同链路创建时刻），无需先保存任何卡草稿，
+/// 可直接启用；不改变当前启用状态。
 fn create_chain_in_dir(module_dir: &Path, name: &str) -> Result<Chain, ChainLibraryError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -645,11 +656,12 @@ fn create_chain_in_dir(module_dir: &Path, name: &str) -> Result<Chain, ChainLibr
         });
     }
     let mut library = load_library_from_dir(module_dir)?;
+    let created_at = Utc::now();
     let chain = Chain {
         id: new_id("chain"),
         name: trimmed.to_string(),
-        created_at: Utc::now(),
-        versions: Vec::new(),
+        created_at,
+        versions: vec![zero_card_first_version(created_at)],
     };
     library.chains.push(chain.clone());
     save_library_to_dir(module_dir, &library)?;
@@ -698,6 +710,20 @@ fn save_version_in_dir(
     chain.versions.push(version.clone());
     save_library_to_dir(module_dir, &library)?;
     Ok(version)
+}
+
+/// 链路诞生自带的零卡第 1 版（allow-empty-chain design D1）：卡清单为空、
+/// 变更说明固定「新建链路」、创建时刻取链路创建时刻。新建链路与存量零版本
+/// 链路读取规范化（[`load_library_from_dir`]）共用同一规格。
+fn zero_card_first_version(created_at: DateTime<Utc>) -> ChainVersion {
+    ChainVersion {
+        id: new_id("chainver"),
+        index: 1,
+        created_at,
+        cards: Vec::new(),
+        change_note: "新建链路".to_string(),
+        trials: Vec::new(),
+    }
 }
 
 /// 由卡输入构造链路的首版本（序号 1；卡 id 由后端生成）。
@@ -756,7 +782,9 @@ fn ensure_chain_with_first_version_in_dir(
     let mut library = load_library_from_dir(module_dir)?;
     if let Some(existing) = library.chains.iter_mut().find(|chain| chain.id == chain_id) {
         if existing.versions.is_empty() {
-            // 前次部分失败：链路已建、首版本缺失 → 补写首版本。
+            // 防御路径（allow-empty-chain 后读取层已对零版本链路补零卡第 1 版，
+            // 正常流程经不到这里，保留兜底）：链路已建、尚无任何版本 → 直接以
+            // 传入卡补写首版本。
             existing
                 .versions
                 .push(first_version_from_inputs(cards, change_note));
@@ -1034,7 +1062,7 @@ impl ChainLibraryStore {
         self.with_library(load_library_from_dir)
     }
 
-    /// 新建链路（名称）。
+    /// 新建链路（名称）：诞生即含零卡第 1 版（allow-empty-chain design D1）。
     pub fn create_chain(&self, name: &str) -> Result<Chain, ChainLibraryError> {
         self.with_library(|dir| create_chain_in_dir(dir, name))
     }
@@ -1130,7 +1158,8 @@ pub async fn chain_library_load(app: tauri::AppHandle) -> Result<ChainLibrary, S
         .map_err(|e| e.to_string())
 }
 
-/// 新建链路（名称）；新链路尚无版本，也不改变当前启用状态。
+/// 新建链路（名称）：诞生即含零卡第 1 版（变更说明「新建链路」，allow-empty-chain
+/// design D1），无需先保存任何卡草稿、可直接启用；不改变当前启用状态。
 #[tauri::command]
 pub async fn chain_create(app: tauri::AppHandle, name: String) -> Result<Chain, String> {
     let store = store_from_app(&app);
@@ -1365,26 +1394,53 @@ mod tests {
         assert_eq!(appended.index, 2);
     }
 
-    /// 前次部分失败（链路已建、尚无版本）：补写首版本，不重复建链路。
+    /// 存量零版本链路（本变更前 `create_chain` 建出的本地数据形态）经制作
+    /// 对话首保存（allow-empty-chain）：读取规范化已补零卡第 1 版，ensure 不
+    /// 走「补写首版」分支——传入卡与既有（零卡）版本内容不同视为明确冲突，
+    /// 不追加、不谎称成功；恢复绑定后由普通保存追加为第 2 版（design D1：
+    /// 制作对话不经诞生路径，无需适配）。
     #[test]
-    fn ensure_chain_with_first_version_repairs_chain_without_versions() {
+    fn ensure_chain_on_legacy_zero_version_chain_normalizes_then_conflicts() {
         let base = tempfile::tempdir().expect("创建应用数据目录");
+        let module_dir = module_dir_of(&base);
+        fs::create_dir_all(&module_dir).expect("建目录");
+        // 手写存量零版本链路（旧版 create_chain 的产物形态）。
+        fs::write(
+            chains_file_in(&module_dir),
+            r#"{
+  "format_version": 2,
+  "chains": [
+    {"id": "chain-mc-2", "name": "半成品", "created_at": "2026-10-01T00:00:00Z", "versions": []}
+  ],
+  "active": null
+}"#,
+        )
+        .expect("写存量零版本链路");
         let store = store_in(&base);
-        store.create_chain("半成品").expect("建空链路（无版本）");
-        // 改写为确定性 id，模拟「链路已建、但首版本尚未写入」的部分成功状态。
-        let dir = module_dir_of(&base);
-        let mut library = load_library_from_dir(&dir).expect("读库");
-        library.chains[0].id = "chain-mc-2".to_string();
-        save_library_to_dir(&dir, &library).expect("改写库");
 
-        let chain = store
+        let result = store
             .ensure_chain_with_first_version("mc-2", "半成品", &sample_cards(), "补首版")
-            .expect("补首版");
-        assert_eq!(chain.action, EnsureChainAction::Repaired);
-        assert_eq!(chain.chain.id, "chain-mc-2");
-        assert_eq!(chain.chain.versions.len(), 1, "补写首版本");
+            .expect("明确冲突返回（不报错、不谎称成功）");
+        assert_eq!(result.action, EnsureChainAction::Conflict);
+        assert_eq!(result.chain.id, "chain-mc-2");
         assert_eq!(
-            load_library_from_dir(&dir).expect("读库").chains.len(),
+            result.chain.versions.len(),
+            1,
+            "读取规范化已补零卡第 1 版（每链路至少一版）"
+        );
+        assert!(result.chain.versions[0].cards.is_empty());
+        assert_eq!(result.chain.versions[0].change_note, "新建链路");
+
+        // 冲突后（会话已绑定该链路）普通保存追加为第 2 版。
+        let appended = store
+            .save_version("chain-mc-2", &sample_cards(), "改稿")
+            .expect("追加新版本");
+        assert_eq!(appended.index, 2);
+        assert_eq!(
+            load_library_from_dir(&module_dir)
+                .expect("读库")
+                .chains
+                .len(),
             1,
             "不重复建链路"
         );
@@ -1438,19 +1494,25 @@ mod tests {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
+        assert_eq!(
+            chain.versions.len(),
+            1,
+            "新建链路自带零卡第 1 版（allow-empty-chain D1）"
+        );
 
-        let v1 = store
+        let first = store
             .save_version(&chain.id, &sample_cards(), "初稿")
-            .expect("存第 1 版");
+            .expect("存第 2 版");
         let mut changed = sample_cards();
         changed[0].body = "改写后的正文，与初稿不同。".to_string();
-        let v2 = store
+        let second = store
             .save_version(&chain.id, &changed, "改卡")
-            .expect("存第 2 版");
+            .expect("存第 3 版");
 
-        assert_eq!(v1.index, 1, "首版本序号为 1");
-        assert_eq!(v2.index, 2, "新版本序号链内递增");
-        assert_ne!(v1.id, v2.id);
+        assert_eq!(chain.versions[0].index, 1, "新建自带的第 1 版序号为 1");
+        assert_eq!(first.index, 2, "首次保存接第 1 版之后递增");
+        assert_eq!(second.index, 3, "新版本序号链内递增");
+        assert_ne!(first.id, second.id);
 
         let library = store.load().expect("读库");
         let stored = library
@@ -1458,12 +1520,16 @@ mod tests {
             .iter()
             .find(|c| c.id == chain.id)
             .expect("链路仍在");
-        assert_eq!(stored.versions.len(), 2, "两个版本并存");
+        assert_eq!(stored.versions.len(), 3, "三个版本并存");
         assert_eq!(
-            stored.versions[0].cards, v1.cards,
+            stored.versions[1].cards, first.cards,
             "旧版本内容保持不变（不可变）"
         );
-        assert_eq!(stored.versions[0].id, v1.id);
+        assert_eq!(stored.versions[1].id, first.id);
+        assert!(
+            stored.versions[0].cards.is_empty() && stored.versions[0].change_note == "新建链路",
+            "新建自带的零卡第 1 版原样保留"
+        );
         // 保存新版本不是启用：active 不因保存而改变。
         assert!(
             library.active.is_none(),
@@ -1476,32 +1542,33 @@ mod tests {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
-        let v1 = store
-            .save_version(&chain.id, &sample_cards(), "v1")
-            .expect("v1");
-        let v2 = store
+        // 新建自带零卡第 1 版（位次 0），保存的版本依次为第 2、3、4 版。
+        let second = store
             .save_version(&chain.id, &sample_cards(), "v2")
             .expect("v2");
-        let v3 = store
+        let third = store
             .save_version(&chain.id, &sample_cards(), "v3")
             .expect("v3");
-        store.set_active(&chain.id, &v3.id).expect("启用 v3");
-        inject_trial_ref(&base, 0, 2, "trial-v3");
+        let fourth = store
+            .save_version(&chain.id, &sample_cards(), "v4")
+            .expect("v4");
+        store.set_active(&chain.id, &fourth.id).expect("启用 v4");
+        inject_trial_ref(&base, 0, 3, "trial-v4");
 
-        store.rollback(&chain.id, &v2.id).expect("回退到 v2");
+        store.rollback(&chain.id, &third.id).expect("回退到 v3");
 
         let library = store.load().expect("读库");
         let active = library.active.as_ref().expect("回退后仍启用");
         assert_eq!(active.chain_id, chain.id);
-        assert_eq!(active.version_id, v2.id, "指针指向旧版本");
+        assert_eq!(active.version_id, third.id, "指针指向旧版本");
         let stored = &library.chains[0];
-        assert_eq!(stored.versions.len(), 3, "回退不删除较新版本");
-        assert!(stored.versions.iter().any(|v| v.id == v1.id));
-        assert!(stored.versions.iter().any(|v| v.id == v3.id));
+        assert_eq!(stored.versions.len(), 4, "回退不删除较新版本");
+        assert!(stored.versions.iter().any(|v| v.id == second.id));
+        assert!(stored.versions.iter().any(|v| v.id == fourth.id));
         assert_eq!(
-            stored.versions[2].trials.len(),
+            stored.versions[3].trials.len(),
             1,
-            "v3 的试问证据引用完整保留"
+            "v4 的试问证据引用完整保留"
         );
     }
 
@@ -1510,32 +1577,40 @@ mod tests {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
-        let v1 = store
+        assert!(chain.versions[0].cards.is_empty(), "新建自带零卡第 1 版");
+        let second = store
             .save_version(&chain.id, &sample_cards(), "初稿")
             .expect("存版本");
-        store.set_active(&chain.id, &v1.id).expect("启用");
+        store.set_active(&chain.id, &second.id).expect("启用");
 
         let frozen = store.snapshot_active().expect("冻结快照").expect("已启用");
         assert_eq!(frozen.chain_id, chain.id);
         assert_eq!(frozen.chain_name, "链路甲");
-        assert_eq!(frozen.version_id, v1.id);
-        assert_eq!(frozen.version_index, 1);
-        assert_eq!(frozen.cards, v1.cards, "快照携带冻结的卡数据");
+        assert_eq!(frozen.version_id, second.id);
+        assert_eq!(frozen.version_index, 2);
+        assert_eq!(frozen.cards, second.cards, "快照携带冻结的卡数据");
 
         store.deactivate().expect("停用");
 
         let library = store.load().expect("读库");
         assert!(library.active.is_none(), "停用后指针置空");
         assert_eq!(library.chains.len(), 1, "链路保留");
-        assert_eq!(library.chains[0].versions.len(), 1, "版本保留");
-        assert_eq!(library.chains[0].versions[0].cards, v1.cards, "卡内容保留");
+        assert_eq!(
+            library.chains[0].versions.len(),
+            2,
+            "版本保留（新建 v1＋保存 v2）"
+        );
+        assert_eq!(
+            library.chains[0].versions[1].cards, second.cards,
+            "卡内容保留"
+        );
         assert!(
             store.snapshot_active().expect("冻结快照").is_none(),
             "停用后快照为空（下一轮回到日常陪想）"
         );
 
         // 停用是轻量动作：可再次启用。
-        store.set_active(&chain.id, &v1.id).expect("再次启用");
+        store.set_active(&chain.id, &second.id).expect("再次启用");
         assert!(store.snapshot_active().expect("冻结快照").is_some());
     }
 
@@ -1555,19 +1630,20 @@ mod tests {
         assert_ne!(va.id, vb.id, "不同链路的版本相互独立");
         store.set_active(&chain_a.id, &va.id).expect("启用甲");
 
-        // 删除乙不影响甲的版本、指针与试问证据。
-        inject_trial_ref(&base, 0, 0, "trial-a");
+        // 删除乙不影响甲的版本、指针与试问证据（甲的保存版本在位次 1，
+        // 位次 0 是新建自带的零卡第 1 版）。
+        inject_trial_ref(&base, 0, 1, "trial-a");
         store.delete_chain(&chain_b.id).expect("删除乙");
 
         let library = store.load().expect("读库");
         assert_eq!(library.chains.len(), 1, "只剩甲");
         assert_eq!(library.chains[0].id, chain_a.id);
-        assert_eq!(library.chains[0].versions.len(), 1, "甲版本不受影响");
+        assert_eq!(library.chains[0].versions.len(), 2, "甲版本不受影响");
         let active = library.active.as_ref().expect("指针不受影响");
         assert_eq!(active.chain_id, chain_a.id);
         assert_eq!(active.version_id, va.id);
         assert_eq!(
-            library.chains[0].versions[0].trials.len(),
+            library.chains[0].versions[1].trials.len(),
             1,
             "甲的试问证据引用不受影响"
         );
@@ -1588,12 +1664,13 @@ mod tests {
         store.set_active(&chain_a.id, &va.id).expect("启用甲");
 
         // 两条试问证据占位文件各归其链路（写入逻辑属后续任务组，这里手动落文件）。
+        // 两条链路的保存版本都在位次 1（位次 0 是新建自带的零卡第 1 版）。
         let trials_dir = trials_dir_in(&module_dir_of(&base));
         fs::create_dir_all(&trials_dir).expect("建试问目录");
         fs::write(trials_dir.join("trial-a.json"), "{}").expect("写甲证据");
         fs::write(trials_dir.join("trial-b.json"), "{}").expect("写乙证据");
-        inject_trial_ref(&base, 0, 0, "trial-a");
-        inject_trial_ref(&base, 1, 0, "trial-b");
+        inject_trial_ref(&base, 0, 1, "trial-a");
+        inject_trial_ref(&base, 1, 1, "trial-b");
 
         store.delete_chain(&chain_a.id).expect("删除甲");
 
@@ -1652,16 +1729,19 @@ mod tests {
         assert!(message.contains("合计"), "{message}");
         assert!(message.contains("6003"), "报错带实际合计: {message}");
 
-        // 三次失败后库中不产生任何版本（未写入）。
+        // 三次失败后库中不新增任何版本（仅新建自带的零卡第 1 版，被拒保存不落盘）。
         let library = store.load().expect("读库");
-        assert!(
-            library.chains[0].versions.is_empty(),
-            "被拒绝的保存不落任何版本"
+        assert_eq!(
+            library.chains[0].versions.len(),
+            1,
+            "被拒绝的保存不落任何版本（仅新建自带的第 1 版）"
         );
     }
 
+    /// 卡校验（allow-empty-chain 后仅放宽空清单，其余缺项照常拒绝）：
+    /// 缺触发描述拒绝；空白链路名称拒绝。
     #[test]
-    fn missing_trigger_description_and_empty_cards_are_rejected() {
+    fn missing_trigger_description_and_blank_chain_name_are_rejected() {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
@@ -1677,21 +1757,206 @@ mod tests {
             error.to_string()
         );
 
-        let error = store
-            .save_version(&chain.id, &[], "")
-            .expect_err("空卡列表必须拒绝");
-        assert!(
-            error.to_string().contains("至少需要一张卡"),
-            "{}",
-            error.to_string()
-        );
-
         // 链路名称同理：空白名称拒绝。
         let error = store.create_chain("   ").expect_err("空白名称必须拒绝");
         assert!(
             error.to_string().contains("链路名称不能为空"),
             "{}",
             error.to_string()
+        );
+    }
+
+    /// 零卡清单保存成功（allow-empty-chain 任务 1.1，2026-10-22 用户拍板）：
+    /// 空清单即合法的完整卡清单，校验不再因「至少一张卡」拒绝，产生合法的
+    /// 零卡版本；保存同样不启用（存草稿不等于生效）。
+    #[test]
+    fn empty_cards_list_saves_zero_card_version() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let chain = store.create_chain("链路甲").expect("建链路");
+
+        let zero = store
+            .save_version(&chain.id, &[], "清空")
+            .expect("零卡清单必须允许保存");
+        assert!(zero.cards.is_empty(), "零卡版本不含任何卡");
+        assert_eq!(zero.change_note, "清空");
+
+        let library = store.load().expect("读库");
+        let stored = &library.chains[0];
+        assert_eq!(
+            stored.versions.len(),
+            2,
+            "零卡版本落库（新建自带 v1＋零卡保存 v2）"
+        );
+        assert!(stored.versions[1].cards.is_empty());
+        assert!(
+            library.active.is_none(),
+            "零卡版本保存同样不启用（保存不动指针）"
+        );
+    }
+
+    /// 新建链路诞生即含零卡第 1 版（allow-empty-chain 任务 1.2，design D1）：
+    /// 卡清单为空、变更说明「新建链路」、创建时刻同链路创建时刻；该版本可被
+    /// 直接启用（启用指针永远有可指目标），并经落盘往返保留。
+    #[test]
+    fn creating_chain_comes_with_zero_card_first_version_and_is_activatable() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let chain = store.create_chain("空链路").expect("建链路");
+
+        assert_eq!(chain.versions.len(), 1, "诞生即含第 1 版");
+        let first = &chain.versions[0];
+        assert_eq!(first.index, 1);
+        assert!(first.cards.is_empty(), "第 1 版为零卡");
+        assert_eq!(first.change_note, "新建链路");
+        assert_eq!(
+            first.created_at, chain.created_at,
+            "第 1 版创建时刻同链路创建时刻"
+        );
+
+        // 新建自带的第 1 版可直接启用（无需先保存任何卡草稿）。
+        store
+            .set_active(&chain.id, &first.id)
+            .expect("新建链路第 1 版可直接启用");
+        let frozen = store.snapshot_active().expect("冻结快照").expect("已启用");
+        assert_eq!(frozen.version_index, 1);
+        assert!(frozen.cards.is_empty(), "启用零卡版本冻结到空卡清单");
+
+        // 落盘往返：换实例重读，第 1 版仍在。
+        let store2 = ChainLibraryStore::new(Some(base.path().to_path_buf()));
+        let reloaded = store2.load().expect("重读");
+        assert_eq!(reloaded.chains[0].versions.len(), 1);
+        assert_eq!(reloaded.chains[0].versions[0].change_note, "新建链路");
+    }
+
+    /// 存量零版本链路读取规范化（allow-empty-chain 任务 1.3，design D1）：
+    /// 读取结果补入零卡第 1 版（同新建规格、不改动既有链路与启用指针），
+    /// 补版只在内存、随链路库下一次写入落盘。
+    #[test]
+    fn legacy_zero_version_chain_gets_first_version_on_load_and_next_write() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let module_dir = module_dir_of(&base);
+        fs::create_dir_all(&module_dir).expect("建目录");
+        // 手写存量主文件：链路乙为本变更前 create_chain 建出的零版本形态；
+        // 链路甲含一个正常版本，用作「其余数据不变」对照。
+        fs::write(
+            chains_file_in(&module_dir),
+            r#"{
+  "format_version": 2,
+  "chains": [
+    {
+      "id": "chain-a",
+      "name": "正常链路",
+      "created_at": "2026-09-01T00:00:00Z",
+      "versions": [
+        {
+          "id": "chainver-a1",
+          "index": 1,
+          "created_at": "2026-09-01T00:00:00Z",
+          "cards": [],
+          "change_note": "既有说明",
+          "trials": []
+        }
+      ]
+    },
+    {
+      "id": "chain-b",
+      "name": "存量空链路",
+      "created_at": "2026-09-02T00:00:00Z",
+      "versions": []
+    }
+  ],
+  "active": null
+}"#,
+        )
+        .expect("写存量主文件");
+
+        let store = store_in(&base);
+        let library = store.load().expect("读取");
+        let legacy = library
+            .chains
+            .iter()
+            .find(|chain| chain.id == "chain-b")
+            .expect("存量链路在场");
+        assert_eq!(legacy.versions.len(), 1, "读取即补入第 1 版");
+        let patched = &legacy.versions[0];
+        assert_eq!(patched.index, 1);
+        assert!(patched.cards.is_empty());
+        assert_eq!(patched.change_note, "新建链路");
+        assert_eq!(
+            patched.created_at, legacy.created_at,
+            "补版创建时刻取链路创建时刻"
+        );
+        // 其余链路与其既有版本不变（含既有零卡版本原样读取）。
+        let normal = library
+            .chains
+            .iter()
+            .find(|chain| chain.id == "chain-a")
+            .expect("对照链路在场");
+        assert_eq!(normal.versions.len(), 1);
+        assert_eq!(normal.versions[0].change_note, "既有说明");
+        assert!(library.active.is_none(), "启用指针不变");
+
+        // 触发一次链路库写入（重命名）：补版随写入落盘。
+        store
+            .rename_chain("chain-b", "存量空链路改名")
+            .expect("重写入");
+        let on_disk = fs::read_to_string(chains_file_in(&module_dir)).expect("读主文件");
+        let on_disk: serde_json::Value = serde_json::from_str(&on_disk).expect("主文件 JSON");
+        let disk_b = on_disk["chains"]
+            .as_array()
+            .expect("chains")
+            .iter()
+            .find(|chain| chain["id"] == "chain-b")
+            .expect("存量链路在场");
+        assert_eq!(
+            disk_b["versions"].as_array().expect("版本数组").len(),
+            1,
+            "补版已随链路库写入落盘"
+        );
+        assert_eq!(disk_b["versions"][0]["change_note"], "新建链路");
+        assert_eq!(
+            disk_b["versions"][0]["cards"]
+                .as_array()
+                .expect("卡数组")
+                .len(),
+            0
+        );
+    }
+
+    /// 删卡删至零走既有保存路径（allow-empty-chain 任务 1.4，spec「删至零出新版」）：
+    /// 基线版本只剩一张卡、删后清单为空时，同样以「保存一个零卡的新版本」
+    /// 实现——版本不可变（被删卡仍在旧版本可见）、不改启用指针、不自动启用。
+    #[test]
+    fn deleting_to_zero_appends_zero_card_version_and_keeps_active_pointer() {
+        let base = tempfile::tempdir().expect("创建应用数据目录");
+        let store = store_in(&base);
+        let chain = store.create_chain("链路甲").expect("建链路");
+        let with_cards = store
+            .save_version(&chain.id, &sample_cards(), "一卡")
+            .expect("存含卡版本");
+        store
+            .set_active(&chain.id, &with_cards.id)
+            .expect("启用含卡版本");
+
+        // 剩最后一张卡也删除：以空清单保存 → 追加零卡新版本（不要求保留至少一张）。
+        let zero = store
+            .save_version(&chain.id, &[], "删除最后一张卡")
+            .expect("删至零必须出新版本");
+        assert!(zero.cards.is_empty());
+        assert_eq!(zero.index, with_cards.index + 1, "零卡版本序号接续递增");
+
+        let library = store.load().expect("读库");
+        let stored = &library.chains[0];
+        assert_eq!(stored.versions.len(), 3, "新建 v1＋含卡 v2＋零卡 v3");
+        assert_eq!(
+            stored.versions[1].cards, with_cards.cards,
+            "被删卡仍在旧版本可见（版本不可变）"
+        );
+        let active = library.active.as_ref().expect("启用指针仍在");
+        assert_eq!(
+            active.version_id, with_cards.id,
+            "删除不改启用指针、不自动启用新版本"
         );
     }
 
@@ -1777,12 +2042,13 @@ mod tests {
             "三张姿态卡全部落版本（不做冲突调和、组合权在用户）"
         );
 
-        // 版本计数：全部成功保存均落版本（两姿态＝第 1 版、纯姿态＝第 2 版、
-        // 混合＝第 3 版、三姿态＝第 4 版，共四版；唯一被拒的是无效类型）。
+        // 版本计数：全部成功保存均落版本（两姿态＝第 2 版、纯姿态＝第 3 版、
+        // 混合＝第 4 版、三姿态＝第 5 版，共五版——第 1 版为新建自带的零卡版；
+        // 唯一被拒的是无效类型）。
         let library = store.load().expect("读库");
         assert_eq!(
             library.chains[0].versions.len(),
-            4,
+            5,
             "被拒绝的保存不落版本，成功保存全部落版本"
         );
 
@@ -1986,10 +2252,11 @@ mod tests {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
-        let v1 = store
+        assert_eq!(chain.versions[0].change_note, "新建链路");
+        let second = store
             .save_version(&chain.id, &sample_cards(), "初稿")
             .expect("存版本");
-        store.set_active(&chain.id, &v1.id).expect("启用");
+        store.set_active(&chain.id, &second.id).expect("启用");
 
         // 换一个单例实例（模拟重启后重新读盘）。
         let store2 = ChainLibraryStore::new(Some(base.path().to_path_buf()));
@@ -1998,12 +2265,16 @@ mod tests {
         assert_eq!(library.chains.len(), 1);
         assert_eq!(library.chains[0].name, "链路甲");
         assert_eq!(library.chains[0].id, chain.id);
-        assert_eq!(library.chains[0].versions.len(), 1);
-        assert_eq!(library.chains[0].versions[0].cards, v1.cards);
-        assert_eq!(library.chains[0].versions[0].change_note, "初稿");
+        assert_eq!(library.chains[0].versions.len(), 2);
+        assert!(
+            library.chains[0].versions[0].cards.is_empty(),
+            "新建自带的零卡第 1 版经落盘往返保留"
+        );
+        assert_eq!(library.chains[0].versions[1].cards, second.cards);
+        assert_eq!(library.chains[0].versions[1].change_note, "初稿");
         let active = library.active.clone().expect("指针经落盘保留");
         assert_eq!(active.chain_id, chain.id);
-        assert_eq!(active.version_id, v1.id);
+        assert_eq!(active.version_id, second.id);
 
         // 惰性目录布局在首次写入后就位（写入逻辑属后续任务组）。
         assert!(conversations_dir_in(&module_dir_of(&base)).is_dir());
@@ -2014,10 +2285,10 @@ mod tests {
         assert!(json.get("format_version").is_some());
         assert!(json.get("chains").is_some());
         assert!(json.get("active").is_some());
-        assert!(json["chains"][0]["versions"][0]
+        assert!(json["chains"][0]["versions"][1]
             .get("change_note")
             .is_some());
-        assert!(json["chains"][0]["versions"][0]["cards"][0]
+        assert!(json["chains"][0]["versions"][1]["cards"][0]
             .get("trigger_desc")
             .is_some());
     }
@@ -2069,10 +2340,10 @@ mod tests {
         let base = tempfile::tempdir().expect("创建应用数据目录");
         let store = store_in(&base);
         let chain = store.create_chain("链路甲").expect("建链路");
-        let v1 = store
+        let second = store
             .save_version(&chain.id, &sample_cards(), "初稿")
             .expect("存版本");
-        store.set_active(&chain.id, &v1.id).expect("启用");
+        store.set_active(&chain.id, &second.id).expect("启用");
 
         store
             .rename_chain(&chain.id, " 重命名为链路乙 ")
@@ -2080,7 +2351,7 @@ mod tests {
 
         let library = store.load().expect("读库");
         assert_eq!(library.chains[0].name, "重命名为链路乙", "名称更新并去空白");
-        assert_eq!(library.chains[0].versions.len(), 1, "版本不动");
+        assert_eq!(library.chains[0].versions.len(), 2, "版本不动");
         assert!(
             library.active.is_some(),
             "启用指针不动（仍指向同一链路与版本）"
@@ -2228,8 +2499,8 @@ mod tests {
             .iter()
             .find(|c| c.id == chain.id)
             .expect("链路在场");
-        assert_eq!(stored.versions[0].trials.len(), 1);
-        assert_eq!(stored.versions[0].trials[0].trial_id, "trial-1");
+        assert_eq!(stored.versions[1].trials.len(), 1);
+        assert_eq!(stored.versions[1].trials[0].trial_id, "trial-1");
         // 试问不切全局链路：指针仍指向乙。
         let active = library.active.expect("指针在场");
         assert_eq!(active.chain_id, other.id);
@@ -2252,8 +2523,8 @@ mod tests {
             .iter()
             .find(|c| c.id == chain.id)
             .expect("链路在场");
-        assert_eq!(stored.versions[0].trials.len(), 1, "同 id 不得重复");
-        assert!(!stored.versions[0].trials[0].with_card);
+        assert_eq!(stored.versions[1].trials.len(), 1, "同 id 不得重复");
+        assert!(!stored.versions[1].trials[0].with_card);
 
         // 未知链路 / 版本：明确报错。
         let error = store

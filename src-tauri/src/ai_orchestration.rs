@@ -682,6 +682,9 @@ pub(crate) async fn ai_send_message(
                     chain_id: chain.chain_id.clone(),
                     chain_name: chain.chain_name.clone(),
                     version_index: chain.version_index,
+                    // 零卡启用轮次仍落档链路与版本（历史诚实），显示层据此
+                    // 过滤链路行（allow-empty-chain 任务 2.1）。
+                    has_cards: chain.has_cards,
                 };
                 result.chain_round = Some(round.clone());
                 record_chain_round(project_path, conversation_id, round).await;
@@ -764,6 +767,11 @@ struct FrozenChainRound {
     /// `None`＝本版本无姿态卡（发送路径省略 `posture` 字段）。
     /// 与 `cards_text` 同一次冻结产出（同源）。
     posture_text: Option<String>,
+    /// 该轮冻结的链路版本是否含卡（allow-empty-chain 任务 2.1，2026-10-22）：
+    /// 零卡启用轮次的 `cards_text` 为空串、`posture_text` 为 `None`（协议两
+    /// 字段省略，与未启用轮次信封一致），但轮次档案仍如实记录链路与版本
+    /// （`has_cards=false` 供显示层过滤链路行）。与卡文本同一次冻结产出（同源）。
+    has_cards: bool,
     /// 本轮序号（首轮为 0，与 `MaterialProvenance::turn_index` 同一约定）；
     /// `None` 表示无讨论身份（该轮不落档，卡仍照常下发）。
     turn_index: Option<u32>,
@@ -817,6 +825,10 @@ fn freeze_chain_round_blocking(
         cards_text: llm_config::generate::assemble_chain_cards(&requirement_cards),
         posture_text: (!posture_cards.is_empty())
             .then(|| llm_config::generate::assemble_posture(&posture_cards)),
+        // 零卡版本（allow-empty-chain）：两字段天然为空串/None（发送路径省略
+        // 协议字段），但轮次档案仍如实记录链路与版本——has_cards 从冻结的
+        // 完整卡清单判定（与卡文本同源）。
+        has_cards: !active.cards.is_empty(),
         chain_id: active.chain_id,
         chain_name: active.chain_name,
         version_index: active.version_index,
@@ -1761,26 +1773,27 @@ mod tests {
         let base = tempfile::tempdir().expect("temp dir");
         let store = chain_store_in(&base);
         let chain = store.create_chain("链路甲").expect("create");
-        let v1 = store
-            .save_version(&chain.id, &chain_cards_input("一"), "v1")
-            .expect("v1");
+        // 新建自带零卡第 1 版（allow-empty-chain D1），保存的两版为第 2、3 版。
         let v2 = store
-            .save_version(&chain.id, &chain_cards_input("二"), "v2")
+            .save_version(&chain.id, &chain_cards_input("一"), "v2")
             .expect("v2");
-        store.set_active(&chain.id, &v1.id).expect("activate v1");
+        let v3 = store
+            .save_version(&chain.id, &chain_cards_input("二"), "v3")
+            .expect("v3");
+        store.set_active(&chain.id, &v2.id).expect("activate v2");
 
-        // 第一轮按 v1 冻结。
+        // 第一轮按 v2 冻结。
         let round_one =
             super::freeze_chain_round_blocking(&store, AiMessageKind::First, Some("conv-x"), None)
                 .expect("freeze")
                 .expect("frozen");
-        assert_eq!(round_one.version_index, 1);
+        assert_eq!(round_one.version_index, 2);
         assert!(round_one.cards_text.contains("按一的正文行事。"));
 
-        // 生成中切换到 v2：在途轮（round_one 已冻结）不受打扰；下一轮按 v2。
-        store.set_active(&chain.id, &v2.id).expect("switch to v2");
+        // 生成中切换到 v3：在途轮（round_one 已冻结）不受打扰；下一轮按 v3。
+        store.set_active(&chain.id, &v3.id).expect("switch to v3");
         assert_eq!(
-            round_one.version_index, 1,
+            round_one.version_index, 2,
             "已冻结的值不因切换改变（在途轮沿用发起时版本）"
         );
         assert!(round_one.cards_text.contains("按一的正文行事。"));
@@ -1793,7 +1806,7 @@ mod tests {
         )
         .expect("freeze")
         .expect("frozen");
-        assert_eq!(round_two.version_index, 2, "切换下一轮生效");
+        assert_eq!(round_two.version_index, 3, "切换下一轮生效");
         assert!(round_two.cards_text.contains("按二的正文行事。"));
         assert!(
             !round_two.cards_text.contains("按一的正文行事。"),
@@ -1814,6 +1827,60 @@ mod tests {
             .is_none(),
             "停用下一轮生效：新发起轮次不带卡"
         );
+    }
+
+    /// 零卡启用轮次（allow-empty-chain 任务 2.1，design D3／spec chain-assembly
+    /// 「零卡启用轮次空挂载」）：启用零卡版本后冻结为 Some（链路在岗），
+    /// `cards_text` 为空串、`posture_text` 为 `None`——发送路径的省略分流
+    /// （cards_text 空串省略 `chain_cards`、posture None 省略 `posture`）对
+    /// 零卡冻结与未启用（冻结 None）产出同样的「不携带」，信封与 user 层与
+    /// 未启用轮次一致；落档记录仍如实携带链路名称与版本序号，`has_cards=false`
+    /// 供显示层过滤链路行；有卡轮次 `has_cards=true`。
+    #[test]
+    fn zero_card_active_round_omits_protocol_fields_and_marks_record_without_cards() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let store = chain_store_in(&base);
+        // 新建链路自带零卡第 1 版（allow-empty-chain D1），直接启用。
+        let chain = store.create_chain("空链路").expect("create");
+        assert_eq!(chain.versions.len(), 1);
+        store
+            .set_active(&chain.id, &chain.versions[0].id)
+            .expect("activate zero-card v1");
+
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("零卡启用轮次冻结为 Some（链路在岗，区别于未启用的 None）");
+        assert!(frozen.cards_text.is_empty(), "零卡轮次 cards_text 为空串");
+        assert!(frozen.posture_text.is_none(), "零卡轮次无姿态段");
+        assert!(!frozen.has_cards, "零卡轮次落档 has_cards=false");
+        assert_eq!(frozen.chain_name, "空链路");
+        assert_eq!(frozen.version_index, 1, "轮次档案仍如实记录版本序号");
+        // 信封与未启用轮次一致：按发送路径的省略分流重演，两协议字段同样缺省
+        // （未启用轮次 frozen_chain 为 None，两个 and_then 分支同样产出 None）。
+        let wire_cards = (!frozen.cards_text.is_empty()).then_some(frozen.cards_text.as_str());
+        let wire_posture = frozen.posture_text.as_deref();
+        assert_eq!(
+            wire_cards, None,
+            "chain_cards 协议字段省略（与未启用轮次一致）"
+        );
+        assert_eq!(
+            wire_posture, None,
+            "posture 协议字段省略（与未启用轮次一致）"
+        );
+
+        // 对照：同链路保存含卡版本并启用 → has_cards=true（显示层显示链路行
+        // 的判据），卡文本照常组装。
+        let with_cards = store
+            .save_version(&chain.id, &chain_cards_input("甲"), "加一张卡")
+            .expect("save cards");
+        store
+            .set_active(&chain.id, &with_cards.id)
+            .expect("activate cards version");
+        let frozen = super::freeze_chain_round_blocking(&store, AiMessageKind::First, None, None)
+            .expect("freeze")
+            .expect("frozen");
+        assert!(frozen.has_cards, "有卡轮次 has_cards=true");
+        assert!(frozen.cards_text.contains("【测试卡甲】"));
     }
 
     /// add-posture-slot 任务 2.3/2.6（2026-10-07 修订 7.2）：冻结按 slot_type

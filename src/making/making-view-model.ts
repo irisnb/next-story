@@ -128,7 +128,7 @@ export function resolveActive(
   return { chain, version };
 }
 
-/** 状态条文字：启用→「当前链路：名·第N版」；未启用→日常陪想提示；读库失败→错误。 */
+/** 状态条文字：启用→「当前链路：名·第N版」（零卡版本追加「（未附加自定义）」）；未启用→日常陪想提示；读库失败→错误。 */
 export function buildMakingStatusView(
   library: ChainLibrary | null,
   loadError: string | null,
@@ -143,9 +143,12 @@ export function buildMakingStatusView(
   if (resolved === null) {
     return { kind: "idle", label: MAKING_STATUS_IDLE_TEXT };
   }
+  // 零卡启用版本明示「（未附加自定义）」（allow-empty-chain）：链路在岗、当前零自定义，
+  // 一句话与停用态的「使用日常陪想」分清；「｜所有项目共用」为状态条静态后缀（index.html）。
+  const zeroCardSuffix = resolved.version.cards.length === 0 ? "（未附加自定义）" : "";
   return {
     kind: "active",
-    label: `当前链路：${resolved.chain.name}·第${resolved.version.index}版`,
+    label: `当前链路：${resolved.chain.name}·第${resolved.version.index}版${zeroCardSuffix}`,
     timingNote: MAKING_STATUS_TIMING_NOTE,
   };
 }
@@ -330,18 +333,21 @@ export function buildMakingMapView(
       ? version.index > resolvedActive.version.index ? "（草稿）" : "（历史版本）"
       : "";
 
+  // 零卡版本启用/回退：确认文字补一句零卡效果（allow-empty-chain，与状态条
+  // 「（未附加自定义）」口径一致）；有卡版本不携带，既有措辞不变。
+  const zeroCardNote = version.cards.length === 0 ? "该版本不含任何卡，启用后不附加自定义内容。" : "";
   let enableLabel: string | null = null;
   let enableConfirm: string | null = null;
   let rollbackConfirm: string | null = null;
   if (!isActiveVersion && rollback === null) {
     enableLabel = `启用「${chain.name}·第${version.index}版」`;
-    enableConfirm = resolvedActive !== null
+    enableConfirm = (resolvedActive !== null
       ? `启用「${chain.name}·第${version.index}版」，替换当前「${resolvedActive.chain.name}·第${resolvedActive.version.index}版」；所有作品的下一轮提问开始使用。`
-      : `启用「${chain.name}·第${version.index}版」；所有作品的下一轮提问开始使用。`;
+      : `启用「${chain.name}·第${version.index}版」；所有作品的下一轮提问开始使用。`) + zeroCardNote;
   } else if (rollback !== null) {
     enableLabel = `回退到「${chain.name}·第${version.index}版」`;
     rollbackConfirm =
-      `回退到「${chain.name}·第${version.index}版」，替换当前第${rollback.activeIndex}版；较新版本及试问证据保留，所有作品的下一轮提问开始使用回退后的版本。`;
+      `回退到「${chain.name}·第${version.index}版」，替换当前第${rollback.activeIndex}版；较新版本及试问证据保留，所有作品的下一轮提问开始使用回退后的版本。` + zeroCardNote;
   }
 
   const requirementCards = version.cards.filter((card) => slotTypeOf(card) === "requirement");

@@ -854,6 +854,8 @@ mod tests {
             chain_id: "chain-1".to_string(),
             chain_name: "链路甲".to_string(),
             version_index: 2,
+            // allow-empty-chain 任务 2.1 新增字段（编译所需的字面量补齐）。
+            has_cards: true,
         });
         let json = serde_json::to_value(&with_chain).expect("serialize");
         let round = json.get("chain_round").expect("成功且有链路时字段在场");

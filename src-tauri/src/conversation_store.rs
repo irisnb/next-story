@@ -151,6 +151,19 @@ pub struct ChainRoundRecord {
     pub chain_name: String,
     /// 版本序号（「第 N 版」显示用）。
     pub version_index: u32,
+    /// 该轮冻结的链路版本是否含卡（allow-empty-chain 任务 2.1，2026-10-22）：
+    /// 零卡启用轮次仍如实落档链路与版本（历史诚实），显示层据此在零卡轮次
+    /// 不显示链路行（链路未附加任何内容，显示反成误导）。
+    /// 旧档案无此字段按 `true` 读（allow-empty-chain 之前的轮次全部有卡，
+    /// 保持旧行为：链路行照常显示）。
+    #[serde(default = "default_true")]
+    pub has_cards: bool,
+}
+
+/// [`ChainRoundRecord::has_cards`] 的 serde 缺省：旧档案无该字段按有卡读
+/// （既有轮次全部有卡，显示行为不变）。
+fn default_true() -> bool {
+    true
 }
 
 /// 一份完整的讨论档案。为阶段 5/6 预留 `materials`/`tool_events` 扩展位，当前不实填。
@@ -3203,10 +3216,12 @@ mod tests {
             chain_id: chain_id.to_string(),
             chain_name: name.to_string(),
             version_index: version,
+            has_cards: true,
         }
     }
 
-    /// 序列化契约（前端车道并行开发依据）：条目恰为四个字段，名称不可再变。
+    /// 序列化契约（前端车道并行开发依据）：条目恰为五个字段，名称不可再变
+    /// （has_cards 为 allow-empty-chain 任务 2.1 新增，旧档案缺省 true）。
     #[test]
     fn chain_round_entry_serializes_to_exact_contract_shape() {
         let value =
@@ -3218,8 +3233,54 @@ mod tests {
                 "chain_id": "chain-x",
                 "chain_name": "链路甲",
                 "version_index": 3,
+                "has_cards": true,
             }),
             "chain_rounds 条目形状必须逐字稳定"
+        );
+    }
+
+    /// has_cards 契约（allow-empty-chain 任务 2.1）：零卡轮次落档 false 且经
+    /// 窄更新完整往返；旧档案（无该字段）反序列化按 true 读——旧行为不变
+    /// （链路行照常显示），有卡轮次缺省即 true。
+    #[test]
+    fn chain_round_has_cards_defaults_true_for_legacy_archives() {
+        // 零卡轮次记录：序列化为 false，往返保留。
+        let mut zero = chain_round(0, "chain-z", "零卡链路", 1);
+        zero.has_cards = false;
+        let value = serde_json::to_value(&zero).expect("serialize");
+        assert_eq!(value["has_cards"], false, "零卡轮次序列化为 false");
+        let back: ChainRoundRecord = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(back, zero, "零卡标记经序列化往返保留");
+
+        // 旧档案形状（无 has_cards 字段）：按 true 读，不视为损坏。
+        let legacy = serde_json::json!({
+            "turn_index": 0,
+            "chain_id": "chain-1",
+            "chain_name": "旧链路",
+            "version_index": 2,
+        });
+        let parsed: ChainRoundRecord =
+            serde_json::from_value(legacy).expect("旧档案必须兼容读取（serde default）");
+        assert!(parsed.has_cards, "旧档案无字段视为有卡（旧行为不变）");
+
+        // 有卡轮次：缺省值即 true。
+        assert!(chain_round(0, "chain-a", "链路甲", 1).has_cards);
+
+        // 经窄更新落档：零卡轮次记录在场且 has_cards=false 完整往返。
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let rec = record(
+            "conv-zero-card",
+            None,
+            None,
+            vec![turn("assistant", "回应", "done")],
+        );
+        save_conversation(temp.path(), &rec).expect("save");
+        upsert_chain_round(temp.path(), "conv-zero-card", zero.clone()).expect("upsert");
+        let loaded = read_conversation(temp.path(), "conv-zero-card").expect("read");
+        assert_eq!(
+            loaded.chain_rounds,
+            Some(vec![zero]),
+            "零卡轮次记录在场且 has_cards=false 完整往返"
         );
     }
 

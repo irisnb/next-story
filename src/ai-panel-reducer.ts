@@ -1022,7 +1022,8 @@ export function reduceAiPanelState(
         candidate.turn_index === entry.turn_index &&
         candidate.chain_id === entry.chain_id &&
         candidate.chain_name === entry.chain_name &&
-        candidate.version_index === entry.version_index;
+        candidate.version_index === entry.version_index &&
+        candidate.has_cards === entry.has_cards;
       if (existing.some(sameRecord)) return state;
       const merged = [
         ...existing.filter((candidate) => candidate.turn_index !== entry.turn_index),

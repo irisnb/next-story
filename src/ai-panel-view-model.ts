@@ -72,7 +72,8 @@ export interface MaterialRoundView {
   /**
    * 本轮链路只读行（add-making-module-core 任务 7.7）：「本轮链路：名·第N版」。
    * 讨论档案缺失记录级 `chain_rounds` 字段（旧档案／未启用链路）时为 null，
-   * 降级不显示；无任何切换按钮。
+   * 降级不显示；无任何切换按钮。零卡轮次（`has_cards === false`，allow-empty-chain）
+   * 同样为 null——链路未附加任何内容，显示反成误导；`undefined`／`true` 照常显示。
    */
   readonly chainLabel: string | null;
 }
@@ -287,7 +288,7 @@ export function buildMaterialView(
       sendStateLabel: sentConfirmed
         ? "发送状态：已确认送达模型服务（已观测到模型回应）"
         : "发送状态：已组装进请求，送达未确认（未观测到模型回应）",
-      chainLabel: chainEntry
+      chainLabel: chainEntry && chainEntry.has_cards !== false
         ? `本轮链路：${chainEntry.chain_name}·第${chainEntry.version_index}版`
         : null,
     });

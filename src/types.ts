@@ -284,6 +284,12 @@ export interface ChainRoundRef {
   chain_name: string;
   /** 版本序号（「第 N 版」显示用）。 */
   version_index: number;
+  /**
+   * 该轮冻结的链路版本是否含卡（allow-empty-chain）：仅 `false` 表示零卡轮次，
+   * 显示层据此不显示「本轮链路」行；`undefined`／`true` 一律按有卡处理
+   * （旧档案无字段＝有卡，与后端 serde default=true 对齐）。
+   */
+  has_cards?: boolean;
 }
 
 /**

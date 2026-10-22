@@ -122,7 +122,7 @@ test("card deletion saves a new viewed version and protects active history", asy
   } finally { await flushPromises(40); fixture.restore(); }
 });
 
-test("last card deletion is disabled with a visible explanation", async () => {
+test("last card deletion stays available, states the zero-card outcome, and saves an empty version", async () => {
   const c = chain("最后卡", [version(1, [{ title: "唯一", trigger: "适用：a" }])]);
   const fixture = await makingFixture(library([c]));
   try {
@@ -130,9 +130,50 @@ test("last card deletion is disabled with a visible explanation", async () => {
     fixture.document.querySelector<HTMLButtonElement>(`[data-card-id="${c.versions[0].cards[0].id}"]`)!.click();
     const del = [...fixture.document.querySelectorAll<HTMLButtonElement>(".making-quick-actions button")].find((b) => b.textContent === "删除卡片");
     assert.ok(del);
-    assert.equal(del.disabled, true);
-    assert.match(makingElement(fixture, "making-quick-panel").textContent!, /至少保留一张卡/);
+    // allow-empty-chain：最后一张卡的删除入口不再禁用（「至少保留一张」规则整体移除）。
+    assert.equal(del.disabled, false, "最后一张卡的删除按钮可点");
+    assert.doesNotMatch(makingElement(fixture, "making-quick-panel").textContent!, /至少保留一张卡/, "不再出现旧禁用提示");
+    assert.match(makingElement(fixture, "making-quick-panel").textContent!, /删除后基于当前版本保存一个少该卡的新版本/);
+    // 拒绝确认：不产生任何写入。
+    fixture.confirmResult = false;
+    del.click();
+    await flushPromises(40);
+    assert.equal(fixture.store.calls.filter((call) => call.cmd === "chain_save_version").length, 0);
+    // 同意确认：确认文案明示将产生不含任何卡的新版本，保存的版本卡清单为空。
+    fixture.confirmResult = true;
+    del.click();
+    await flushPromises(40);
+    assert.match(fixture.confirms[fixture.confirms.length - 1]!, /不含任何卡的新版本/);
+    assert.equal(fixture.store.data.chains[0]!.versions.length, 2);
+    assert.deepEqual(fixture.store.data.chains[0]!.versions[1]!.cards, [], "删至零产生零卡新版本");
+    assert.equal(fixture.store.data.active, null, "启用指针不动");
+    assert.equal(fixture.controller.view.versionId, fixture.store.data.chains[0]!.versions[1]!.id, "删除后查看新版本");
   } finally { await flushPromises(40); fixture.restore(); }
+});
+
+test("status view distinguishes enabled with cards, zero-card enabled, and idle", () => {
+  // 口径一：启用有卡版本——无后缀（既有行为不变）。
+  const withCards = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
+  const active = buildMakingStatusView(
+    library([withCards], { chainId: withCards.id, versionId: withCards.versions[0].id }),
+    null,
+  );
+  assert.equal(active.kind, "active");
+  assert.equal((active as { label: string }).label, "当前链路：情节探索·第1版");
+
+  // 口径二：启用零卡版本——明示「（未附加自定义）」，不与停用态混淆。
+  const empty = chain("空链路", [version(1, [])]);
+  const zeroCard = buildMakingStatusView(
+    library([empty], { chainId: empty.id, versionId: empty.versions[0].id }),
+    null,
+  );
+  assert.equal(zeroCard.kind, "active");
+  assert.equal((zeroCard as { label: string }).label, "当前链路：空链路·第1版（未附加自定义）");
+
+  // 口径三：未启用——文案不变。
+  const idle = buildMakingStatusView(library([empty]), null);
+  assert.equal(idle.kind, "idle");
+  assert.equal((idle as { label: string }).label, "当前未启用链路，使用日常陪想");
 });
 
 test("version controls share one region outside the read-only status bar", () => {
@@ -382,6 +423,52 @@ test("enable wording states first-time activation without a replacement target",
   assert.equal(
     view.enableConfirm,
     "启用「对话打磨·第1版」；所有作品的下一轮提问开始使用。",
+  );
+});
+
+test("zero-card versions keep enable and rollback entries with zero-card effect wording", () => {
+  // 查看零卡草稿（第2版，启用第1版有卡版本）：启用入口照常在场，
+  // 确认文字补零卡效果说明（与状态条「（未附加自定义）」口径一致）。
+  const c = chain("空链路", [
+    version(1, [{ title: "卡", trigger: "适用：x" }]),
+    version(2, []),
+  ]);
+  const data = library([c], { chainId: c.id, versionId: c.versions[0].id });
+  const view = buildMakingMapView(data, c.id, c.versions[1].id)!;
+  assert.equal(view.enableLabel, "启用「空链路·第2版」");
+  assert.equal(
+    view.enableConfirm,
+    "启用「空链路·第2版」，替换当前「空链路·第1版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。",
+  );
+  assert.equal(view.isRollback, false);
+
+  // 回退到零卡版本（启用第2版有卡版本，查看第1版零卡）：同样补零卡效果说明。
+  const rolled = chain("回退空", [
+    version(1, []),
+    version(2, [{ title: "卡", trigger: "适用：x" }]),
+  ]);
+  const rollbackView = buildMakingMapView(
+    library([rolled], { chainId: rolled.id, versionId: rolled.versions[1].id }),
+    rolled.id,
+    rolled.versions[0].id,
+  )!;
+  assert.equal(rollbackView.enableLabel, "回退到「回退空·第1版」");
+  assert.match(rollbackView.rollbackConfirm!, /较新版本及试问证据保留/);
+  assert.match(rollbackView.rollbackConfirm!, /该版本不含任何卡，启用后不附加自定义内容/);
+
+  // 有卡版本的启用确认不携带零卡说明（既有措辞逐字不变）。
+  const withCards = chain("有卡", [
+    version(1, [{ title: "卡", trigger: "适用：x" }]),
+    version(2, [{ title: "卡二", trigger: "适用：y" }]),
+  ]);
+  const plain = buildMakingMapView(
+    library([withCards], { chainId: withCards.id, versionId: withCards.versions[0].id }),
+    withCards.id,
+    withCards.versions[1].id,
+  )!;
+  assert.equal(
+    plain.enableConfirm,
+    "启用「有卡·第2版」，替换当前「有卡·第1版」；所有作品的下一轮提问开始使用。",
   );
 });
 
@@ -663,6 +750,25 @@ test("material view keeps a chain-only round visible without inventing sources",
   assert.equal(chainOnly.sources.length, 0, "不虚构材料出处");
 });
 
+test("material view hides the chain line for zero-card rounds (has_cards === false)", () => {
+  // 零卡轮次：不显示链路行，与无记录同路径、不报错（该轮记录仅作历史如实留存）。
+  const view = buildMaterialView(conversationWithChainRounds([
+    { turn_index: 0, chain_id: "chain-1", chain_name: "情节探索", version_index: 3, has_cards: false },
+  ]))!;
+  assert.equal(view.rounds[0].chainLabel, null);
+  assert.equal(view.rounds[0].sources.length, 1, "材料出处行不受链路行隐藏影响");
+});
+
+test("material view treats missing or true has_cards as with-cards (legacy archives)", () => {
+  // 旧档案缺字段（undefined）与显式 true：一律按有卡处理，显示行为与本变更前一致。
+  const view = buildMaterialView(conversationWithChainRounds([
+    { turn_index: 0, chain_id: "chain-1", chain_name: "情节探索", version_index: 3 },
+    { turn_index: 1, chain_id: "chain-1", chain_name: "情节探索", version_index: 4, has_cards: true },
+  ]))!;
+  assert.equal(view.rounds[0].chainLabel, "本轮链路：情节探索·第3版");
+  assert.equal(view.rounds[1].chainLabel, "本轮链路：情节探索·第4版");
+});
+
 // ========== DOM 契约（真实 index.html） ==========
 
 const htmlSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -926,6 +1032,68 @@ test("status bar tracks the global active chain and ignores browsing", async () 
     assert.match(fixture.document.querySelector(`[data-chain-id="${chainA.id}"]`)?.textContent ?? "", /正在制作.*已启用/);
     assert.match(makingElement(fixture, "making-status-text").textContent ?? "", /当前链路：情节探索·第3版/);
   } finally {
+    fixture.restore();
+  }
+});
+
+test("zero-card active version shows the honest suffix in status bar and using line", async () => {
+  const empty = chain("空链路", [version(1, [])]);
+  const fixture = await makingFixture(library([empty], { chainId: empty.id, versionId: empty.versions[0].id }));
+  try {
+    await browseChain(fixture, empty.id);
+    // 状态条（任务 3.1）：启用零卡版本明示「（未附加自定义）」，不与停用态混淆。
+    assert.equal(makingElement(fixture, "making-status-active").classList.contains("hidden"), false);
+    assert.equal(makingElement(fixture, "making-status-text").textContent, "当前链路：空链路·第1版（未附加自定义）");
+    // 消费端 using 行：只剥「当前链路：」前缀换「正在使用：」，后缀既不剥也不重复加。
+    const usingLabel = fixture.document.querySelector<HTMLElement>(".making-version-using");
+    assert.equal(usingLabel?.textContent, "正在使用：空链路·第1版（未附加自定义）");
+
+    // 导图零卡空态（任务 3.3）：两组标题与两个常驻添加入口在场，无卡行、无占位假卡。
+    const zone = makingElement(fixture, "making-zone-custom");
+    assert.match(zone.textContent ?? "", /回应要求/);
+    assert.match(zone.textContent ?? "", /回应风格/);
+    assert.equal((makingElement(fixture, "making-add-card-btn") as HTMLButtonElement).hidden, false);
+    assert.equal((makingElement(fixture, "making-add-posture-btn") as HTMLButtonElement).hidden, false);
+    assert.equal(fixture.document.querySelectorAll("#making-card-list .making-card-row").length, 0, "要求组无卡行");
+    assert.equal(fixture.document.querySelectorAll("#making-posture-card-list .making-card-row").length, 0, "姿态组无卡行");
+    assert.equal(makingElement(fixture, "making-posture-card-list").children.length, 0, "无占位假卡");
+    assert.match(makingElement(fixture, "making-card-count").textContent ?? "", /· 0 张卡/);
+    assert.match(makingElement(fixture, "making-posture-card-count").textContent ?? "", /· 0 张卡/);
+
+    // 查看版本即启用版本（零卡）：无启用入口（启用判定逻辑对零卡版本无特判）。
+    assert.equal((makingElement(fixture, "making-enable-btn") as HTMLButtonElement).hidden, true);
+  } finally {
+    await flushPromises(40);
+    fixture.restore();
+  }
+});
+
+test("zero-card draft version keeps the enable entry available", async () => {
+  // 任务 3.4：查看版本≠启用版本即可用——零卡草稿照常出现启用入口。
+  const c = chain("空链路", [
+    version(1, [{ title: "卡", trigger: "适用：x" }]),
+    version(2, []),
+  ]);
+  const fixture = await makingFixture(library([c], { chainId: c.id, versionId: c.versions[0].id }));
+  try {
+    await browseChain(fixture, c.id);
+    const select = makingElement(fixture, "making-version-select") as HTMLSelectElement;
+    select.value = c.versions[1].id;
+    dispatchEvent(fixture.page, select, "change");
+    await flushPromises();
+    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
+    assert.equal(enable.hidden, false, "零卡版本出现启用入口");
+    assert.match(enable.textContent ?? "", /启用「空链路·第2版」/);
+    fixture.confirmResult = true;
+    enable.click();
+    await flushPromises();
+    const setActive = fixture.store.calls.find((call) => call.cmd === "chain_set_active");
+    assert.ok(setActive, "chain_set_active 已调用");
+    assert.equal(setActive!.args?.versionId, c.versions[1].id);
+    assert.match(fixture.confirms[0]!, /该版本不含任何卡，启用后不附加自定义内容/);
+    assert.equal(makingElement(fixture, "making-status-text").textContent, "当前链路：空链路·第2版（未附加自定义）");
+  } finally {
+    await flushPromises(40);
     fixture.restore();
   }
 });
@@ -1663,6 +1831,37 @@ test("record_round_chain merges by turn, replaces same turn, and dedupes identic
     entry: chainRoundOf(0, 3),
   });
   assert.equal(missing, secondTurn);
+});
+
+test("record_round_chain carries has_cards through the live discussion without dropping it", () => {
+  // allow-empty-chain：零卡轮次引用的 has_cards 字段经活显示通道全程透传（任务 2.2）。
+  const base = initialAiPanelCoreState();
+  const withDiscussion = reduceAiPanelState(base, {
+    type: "begin_direct_question",
+    question: "问",
+    selection: null,
+    conversationId: "c-1",
+    createdAt: "t0",
+    focusDocumentId: null,
+    focusDocumentTitle: null,
+  });
+  const loading = reduceAiPanelState(withDiscussion, {
+    type: "succeed_direct_question",
+    response: "答",
+    conversationId: "c-1",
+  });
+  const recorded = reduceAiPanelState(loading, {
+    type: "record_round_chain",
+    conversationId: "c-1",
+    entry: { ...chainRoundOf(0, 3), has_cards: false },
+  });
+  const conversation = recorded.discussions.get("c-1")!.conversation!;
+  assert.deepEqual(conversation.chain_rounds, [{ ...chainRoundOf(0, 3), has_cards: false }]);
+
+  // 冻结只读视图同样携带（显示层据此判定零卡轮次不显示链路行——显示行为由
+  // 上面的 material view 用例单独覆盖）。
+  const view = readonlyConversationView(conversation)!;
+  assert.equal(view.chain_rounds![0]!.has_cards, false);
 });
 
 /** 网关测试用的最小上下文桩：只实现直接提问路径实际触及的访问器。 */

@@ -585,6 +585,9 @@ pub(crate) fn run_trial_round_blocking(
                     chain_id: input.chain_id.clone(),
                     chain_name: resolved.chain_name,
                     version_index: resolved.version_index,
+                    // 所试版本卡清单是否为空（allow-empty-chain：零卡版本试问
+                    // 天然等同裸问，但轮次快照仍如实记录链路与版本）。
+                    has_cards: !resolved.cards.is_empty(),
                 });
             }
             result
@@ -1204,14 +1207,15 @@ setInterval(() => {}, 1000);
             "驱动会话 id 必须带试问车道保留前缀"
         );
 
-        // 卡文本＝所试版本的组装文本（不走 active 指针）。
+        // 卡文本＝所试版本的组装文本（不走 active 指针）。新建链路自带零卡
+        // 第 1 版（allow-empty-chain D1），chain_setup 保存的版本按 id 定位。
         let library = store.load().expect("读库");
-        let version = &library
+        let version = library
             .chains
             .iter()
-            .find(|c| c.id == chain_id)
-            .expect("链路")
-            .versions[0];
+            .flat_map(|chain| chain.versions.iter())
+            .find(|version| version.id == version_id)
+            .expect("所试版本");
         assert_eq!(
             observed["chainCards"],
             crate::llm_config::generate::assemble_chain_cards(&version.cards),
@@ -1236,19 +1240,23 @@ setInterval(() => {}, 1000);
         assert_eq!(record.status, TrialStatus::Success);
         assert_eq!(record.reply_text, result.content.clone().expect("全文"));
         assert_eq!(record.chain_name, "链路甲");
-        assert_eq!(record.version_index, 1);
+        assert_eq!(
+            record.version_index, 2,
+            "所试版本为第 2 版（第 1 版为新建自带零卡版）"
+        );
         assert!(record.with_card);
         assert_eq!(record.work_title, "试问作品");
         assert_eq!(record.focus_document_id.as_deref(), Some(doc_id.as_str()));
         assert!(record.feedback.is_none());
         let library = store.load().expect("读库");
+        // 保存版本在位次 1（位次 0 是新建自带的零卡第 1 版）。
         assert_eq!(
-            library.chains[0].versions[0].trials.len(),
+            library.chains[0].versions[1].trials.len(),
             1,
             "版本必须存证据引用"
         );
         assert_eq!(
-            library.chains[0].versions[0].trials[0].trial_id,
+            library.chains[0].versions[1].trials[0].trial_id,
             "trial-run-1"
         );
 
@@ -1266,8 +1274,12 @@ setInterval(() => {}, 1000);
         let chain_round = result.chain_round.expect("带卡轮携带链路快照");
         assert_eq!(chain_round.chain_id, chain_id);
         assert_eq!(chain_round.chain_name, "链路甲");
-        assert_eq!(chain_round.version_index, 1);
+        assert_eq!(
+            chain_round.version_index, 2,
+            "所试版本为第 2 版（新建自带 v1）"
+        );
         assert_eq!(chain_round.turn_index, 0);
+        assert!(chain_round.has_cards, "带卡试问的所试版本含卡");
 
         manager.shutdown_best_effort();
     }
@@ -1338,11 +1350,11 @@ setInterval(() => {}, 1000);
         assert_eq!(active.chain_id, other.id, "试问不得切全局链路");
         assert_eq!(active.version_id, other_version.id);
         assert_eq!(
-            store.load().expect("读库").chains[0].versions[0]
+            store.load().expect("读库").chains[0].versions[1]
                 .trials
                 .len(),
             1,
-            "一次发起只产生一份证据（对照为显式动作）"
+            "一次发起只产生一份证据（对照为显式动作；位次 0 是新建自带零卡 v1）"
         );
 
         manager.shutdown_best_effort();

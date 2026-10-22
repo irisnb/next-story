@@ -589,7 +589,7 @@ export function reduceAiPanelState(
         ...discussion,
         request: firstErrorRequest(discussion.request.snapshot, {
           code: "service",
-          message: "对话恢复失败，请点击新建对话开始新对话",
+          message: "对话恢复失败，请点击新建讨论开始新讨论",
         }, { conversationId: discussion.request.conversationId }),
       });
     }

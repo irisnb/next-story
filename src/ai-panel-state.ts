@@ -48,7 +48,7 @@ export type {
  * 约束在 reducer 里是可见的分支，而不是散落在各方法里的隐式布尔判断。
  *
  * 讨论集合模型：面板一次显示一个当前讨论（聚焦窗口的讨论），其余讨论保留为档案；
- * 新召唤 / 直接提问首轮 / 新建对话开启新讨论并保留旧讨论。结果按 `conversationId` 路由，
+ * 新召唤 / 直接提问首轮 / 新建讨论开启新讨论并保留旧讨论。结果按 `conversationId` 路由，
  * 迟到结果若所属讨论已删除或已切换作品则被丢弃。窗口结构状态（打开窗口 + 聚焦窗口）
  * 作为唯一事实源的一部分随迁移更新；窗口几何留在窗口层，不进状态、不持久化。
  */
@@ -399,7 +399,7 @@ export class AiPanelState {
   }
 
   /**
-   * 用户主动“新建对话”：开启一个新讨论并保留旧讨论为档案，面板保持展开。
+   * 用户主动“新建讨论”：开启一个新讨论并保留旧讨论为档案，面板保持展开。
    *
    * 仅当存在可归档的内容（任一讨论有对话或进行中请求）时有效；纯空状态原样返回 false。
    */
@@ -673,7 +673,7 @@ export class AiPanelState {
     return this.dispatch({ type: "complete_recovery", conversationId });
   }
 
-  /** 对话重放失败：进入错误态并引导新建对话。 */
+  /** 对话重放失败：进入错误态并引导新建讨论。 */
   failRecovery(conversationId: string): boolean {
     return this.dispatch({ type: "fail_recovery", conversationId });
   }

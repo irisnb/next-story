@@ -161,20 +161,8 @@ button:active:not(:disabled) { transform: none; }
 .file-row-menu .file-action-btn:hover { background: var(--color-surface-hover); }
 .file-manager-footer { padding: 16px 0; border: 0; }
 #module-files:has(#fm-recycle-bin:not(.hidden)) > .file-manager:not(#fm-recycle-bin) { display: none; }
-.settings-advanced { margin: 24px 0; max-width: 520px; }
-.settings-advanced summary { cursor: pointer; font-size: 13px; margin-bottom: 16px; }
 .recycle-bin-header { display: flex; align-items: center; gap: 20px; padding-bottom: 24px; }
 .recycle-bin-title { font-size: 25px; font-weight: 600; }
-#module-settings { overflow-y: auto; }
-#module-settings .form-container { max-width: 960px; margin: 0 auto; border: 0; box-shadow: none; padding: 38px 40px; }
-#module-settings .form-title { font-size: 25px; }
-.settings-section-title { font-size: 17px; border-top: var(--border-hairline); padding-top: 24px; margin: 24px 0; }
-#module-settings .form-input { max-width: 520px; font-size: 14px; }
-#module-settings .config-warning { color: var(--color-muted); border: 0; background: #f6f6f6; padding: 12px 16px; font-size: 12px; }
-.display-preferences { margin-top: 32px; }
-.display-preferences-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
-.display-preferences-grid label { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
-.display-preferences-grid button, .display-preferences-grid select { min-height: 36px; border: var(--border-control); border-radius: var(--radius-sm); background: white; font: inherit; }
 .page-eyebrow { display: block; font-size: 11px; color: var(--color-muted); margin-bottom: 8px; }
 .file-page-heading { margin-right: auto; }
 .file-structure-head { height: 57px; display: flex; align-items: center; justify-content: space-between; border-top: var(--border-hairline); font-size: 14px; }
@@ -186,17 +174,80 @@ button:active:not(:disabled) { transform: none; }
 .file-row-menu { grid-column: 1 / -1; }
 .file-row { padding-right: 12px; }
 .file-manager-footer { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-muted); }
-.settings-page-heading { padding-bottom: 26px; }
-#module-settings .setting-section { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 50px; padding: 26px 0 30px; border-top: var(--border-hairline); margin: 0; }
-.setting-intro h3 { font-size: 17px; margin: 0; }
-.setting-intro p { margin-top: 10px; color: var(--color-muted); font-size: 12px; line-height: 1.8; }
-.setting-fields { display: flex; flex-direction: column; gap: 17px; max-width: 520px; min-width: 0; }
-#module-settings .setting-fields .form-group { margin: 0; }
-#module-settings .setting-fields .form-actions { margin: 0; justify-content: flex-start; }
-.settings-data-note { font-size: 12px; color: var(--color-muted); line-height: 1.8; }
-.settings-data-note summary { cursor: pointer; }
-.display-preferences-grid > .form-help { grid-column: 1 / -1; }
-@media (max-width: 1199px) { #module-settings .setting-section { grid-template-columns: 210px minmax(0, 1fr); gap: 32px; } }
+/* 设置：紧凑版心、灰底白卡；标签与控件按统一列线排列。 */
+#module-settings { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overflow-anchor: none; background: var(--color-surface-subtle); }
+#module-settings .form-container {
+  max-width: 760px; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8);
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-3);
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+/* 仅三个主抽屉全部收起时居中；隐藏的嵌套折叠状态不影响判断。
+   自动外边距只分配模块内剩余高度；空间不足时归零，内容仍可完整滚动。 */
+#module-settings:not(:has(> .form-container > .setting-section > .settings-drawer[open])) > .form-container { margin-block: auto; padding-block: var(--space-6); }
+#module-settings .setting-section { display: block; margin: 0; padding: 0; border: 0; min-width: 0; }
+#module-settings .settings-drawer { min-width: 0; border: var(--border-control); border-radius: var(--radius-md); background: var(--color-surface); }
+#module-settings summary { display: block; cursor: pointer; color: var(--color-text); transition: background-color .15s ease, color .15s ease; }
+#module-settings summary::-webkit-details-marker { display: none; }
+#module-settings summary::marker { content: ""; }
+#module-settings summary::before, #module-settings summary::after { content: none; }
+#module-settings summary:hover { background: var(--color-surface-hover); color: var(--color-primary-hover); }
+#module-settings summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -3px; }
+#module-settings .settings-drawer > summary {
+  display: flex; flex-direction: column; justify-content: center; gap: var(--space-2);
+  min-height: 96px; padding: var(--space-4) var(--space-6); border-radius: var(--radius-md);
+}
+#module-settings .setting-intro h3 { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.5; color: inherit; }
+#module-settings .settings-description { font-size: 12px; line-height: 1.8; color: var(--color-muted); overflow-wrap: anywhere; }
+#module-settings .settings-drawer[open] > summary { background: var(--color-surface-subtle); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+#module-settings .settings-drawer[open] > summary:hover { background: var(--color-surface-hover); }
+#module-settings .settings-drawer-body { min-width: 0; max-width: none; margin: 0; padding: var(--space-4) var(--space-6) var(--space-6); border-top: var(--border-hairline); }
+#module-settings .setting-fields, #module-settings .help-section-body { display: flex; flex-direction: column; gap: var(--space-4); }
+#module-settings .form-group { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 0 var(--space-4); align-items: start; margin: 0; }
+#module-settings .setting-fields > .form-group + .form-group { padding-top: var(--space-4); border-top: var(--border-hairline); }
+#module-settings .form-label { grid-column: 1; grid-row: 1; margin: 0; padding-top: var(--space-2); font-size: 13px; font-weight: 500; }
+#module-settings .form-input { grid-column: 2; grid-row: 1; width: 100%; min-width: 0; max-width: none; min-height: 40px; padding: var(--space-2) var(--space-3); font-size: 14px; }
+#module-settings .form-group > :is(.form-help, .error-message) { grid-column: 2; }
+#module-settings .form-help { margin: var(--space-2) 0 0; font-size: 12px; line-height: 1.8; color: var(--color-muted); }
+#module-settings :is(.settings-advanced, .settings-data-note) { margin: 0; max-width: none; border: var(--border-hairline); border-radius: var(--radius-sm); font-size: 13px; line-height: 1.8; }
+#module-settings :is(.settings-advanced, .settings-data-note) > summary { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); }
+#module-settings :is(.settings-advanced, .settings-data-note)[open] > summary { background: var(--color-surface-subtle); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+#module-settings :is(.settings-advanced, .settings-data-note)[open] > summary:hover { background: var(--color-surface-hover); }
+#module-settings .settings-advanced > .form-group { grid-template-columns: calc(140px - var(--space-4)) minmax(0, 1fr); padding: var(--space-4); border-top: var(--border-hairline); }
+#module-settings .settings-data-note > p { margin: 0; padding: var(--space-4); border-top: var(--border-hairline); color: var(--color-muted); font-size: 12px; line-height: 1.9; }
+#module-settings .save-status { margin: 0; padding-top: var(--space-4); border-top: var(--border-hairline); font-size: 12px; }
+#module-settings .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+#module-settings :is(.btn-primary, .btn-secondary) { flex: none; min-height: 36px; padding: var(--space-2) var(--space-4); font-size: 13px; }
+#module-settings #btn-back-config { margin-right: auto; }
+#module-settings .display-preferences-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+#module-settings .display-preferences-grid label { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: center; gap: var(--space-4); min-width: 0; font-size: 13px; }
+#module-settings .display-preferences-grid label + label { padding-top: var(--space-4); border-top: var(--border-hairline); }
+#module-settings .display-preferences-grid :is(button, select) { width: 100%; min-height: 40px; padding: var(--space-2) var(--space-3); border: var(--border-control); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; }
+#module-settings .display-preferences-grid button:hover { background: var(--color-surface-hover); }
+#module-settings .display-preferences-grid > .form-help { grid-column: 1 / -1; margin: 0; padding-top: var(--space-4); border-top: var(--border-hairline); }
+#module-settings .help-replay { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-surface-subtle); border-radius: var(--radius-sm); }
+#module-settings .help-replay .form-help { flex: 1 1 240px; margin: 0; }
+#module-settings .help-faq-list { display: flex; flex-direction: column; border: var(--border-hairline); border-radius: var(--radius-sm); }
+#module-settings .help-faq-list:empty { display: none; }
+#module-settings .help-faq-item { padding: 0; border: 0; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+#module-settings .help-faq-item + .help-faq-item { border-top: var(--border-hairline); }
+#module-settings .help-faq-item > summary { padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); }
+#module-settings .help-faq-item[open] > summary { font-weight: 600; background: var(--color-surface-subtle); }
+#module-settings .help-faq-item[open] > summary:hover { background: var(--color-surface-hover); }
+#module-settings .help-faq-answer { margin: 0; padding: var(--space-3) var(--space-4) var(--space-4); color: var(--color-text-body); line-height: 1.9; white-space: pre-line; }
+#module-settings .help-faq-answer p + p { margin-top: var(--space-2); }
+#module-settings .help-faq-links { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+#module-settings .help-faq-link { width: fit-content; color: var(--color-primary-hover); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
+#module-settings .help-faq-link:hover { color: var(--color-text); }
+@media (max-width: 560px) {
+  #module-settings .form-container { padding: var(--space-4) var(--space-3) var(--space-6); }
+  #module-settings .settings-drawer > summary { padding-inline: var(--space-4); }
+  #module-settings .settings-drawer-body { padding: var(--space-4); }
+  #module-settings .form-group, #module-settings .settings-advanced > .form-group,
+  #module-settings .display-preferences-grid label { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  #module-settings .form-label { grid-column: 1; grid-row: auto; padding-top: 0; }
+  #module-settings .form-input { grid-column: 1; grid-row: auto; }
+  #module-settings .form-group > :is(.form-help, .error-message) { grid-column: 1; }
+}
 .ui-tooltip { position: fixed; z-index: 200; pointer-events: none; max-width: 260px; padding: 7px 10px; font-size: 12px; line-height: 1.5; background: #202020; color: white; border-radius: var(--radius-sm); box-shadow: 0 4px 16px #0002; }
 .making-intro { padding: 16px 24px; border-bottom: var(--border-hairline); font-size: 12px; color: var(--color-muted); }
 #module-making {

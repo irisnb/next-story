@@ -193,8 +193,8 @@
               <div id="ai-conversation-list" class="ai-conversation-list hidden" aria-label="会话列表">
                 <div class="ai-conversation-list-header">
                   <span class="ai-conversation-list-title">讨论</span>
-                  <button id="ai-list-new-conversation" class="ai-panel-btn ai-panel-btn-primary" type="button">新建对话</button>
-                  <button id="ai-new-conversation" class="hidden" type="button" aria-label="新建对话"></button>
+                  <button id="ai-list-new-conversation" class="ai-panel-btn ai-panel-btn-primary" type="button">新建讨论</button>
+                  <button id="ai-new-conversation" class="hidden" type="button" aria-label="新建讨论"></button>
                   <button id="ai-dock-more" class="ai-icon-btn" type="button" aria-label="更多讨论操作"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
                   <button id="ai-conversation-list-close" class="ai-panel-btn" type="button">收起</button>
                 </div>
@@ -216,7 +216,7 @@
             <aside id="ai-dock-rail" class="ai-dock-rail hidden" aria-label="AI 停靠区窄轨">
               <span class="ai-rail-label">AI 已收起</span>
               <span id="ai-rail-dot" class="ai-rail-dot hidden" title="有提示：展开后查看"></span>
-              <button id="ai-rail-new" class="ai-rail-btn ai-rail-btn-primary" type="button" title="新建对话">
+              <button id="ai-rail-new" class="ai-rail-btn ai-rail-btn-primary" type="button" title="新建讨论">
                 <svg class="ai-ic"><use href="#i-plus"></use></svg>
               </button>
               <button id="ai-rail-list" class="ai-rail-btn" type="button" title="会话列表">
@@ -298,7 +298,7 @@
                   <div data-role="focus-notice" class="ai-focus-notice hidden" role="status" aria-live="polite"></div>
                   <div data-role="restriction-notice" class="ai-restriction-notice hidden" role="status" aria-live="polite">
                     <div data-role="restriction-notice-message" class="ai-restriction-notice-message"></div>
-                    <button data-role="restriction-new-conversation" class="ai-panel-btn" type="button">新建对话</button>
+                    <button data-role="restriction-new-conversation" class="ai-panel-btn" type="button">新建讨论</button>
                   </div>
                   <form data-role="follow-up-form" class="ai-follow-up-form hidden">
                     <label class="ai-follow-up-label" for="">继续追问</label>
@@ -533,58 +533,76 @@
       <!-- 设置模块 -->
       <section id="module-settings" class="module-view hidden" aria-label="设置">
         <div class="form-container">
-          <header class="settings-page-heading"><span class="page-eyebrow">连接与显示</span><h2 class="form-title">设置</h2></header>
           <section class="setting-section">
-          <div class="setting-intro"><h3>AI 连接</h3><p>填写你使用的服务地址与模型名称。</p></div>
-          <div class="setting-fields">
+            <details class="settings-drawer">
+              <summary class="setting-intro"><h3>API 连接</h3><span class="settings-description">填写 API 地址、API Key 与模型名。</span></summary>
+              <div class="setting-fields settings-drawer-body">
 
-          <div class="form-group">
-            <label class="form-label" for="api-base-url">API 地址</label>
-            <input type="text" id="api-base-url" class="form-input" placeholder="例如 https://api.openai.com/v1" />
-            <p class="form-help">不要填写 /chat/completions。远程地址必须使用 HTTPS；本机 localhost 可使用 HTTP。</p>
-            <p id="api-base-url-error" class="error-message hidden"></p>
-          </div>
+                <div class="form-group">
+                  <label class="form-label" for="api-base-url">API 地址</label>
+                  <input type="text" id="api-base-url" class="form-input" placeholder="例如 https://api.openai.com/v1" />
+                  <p class="form-help">不要填写 /chat/completions。远程地址必须使用 HTTPS；本机 localhost 可使用 HTTP。</p>
+                  <p id="api-base-url-error" class="error-message hidden"></p>
+                </div>
 
-          <div class="form-group">
-            <label class="form-label" for="api-key">API Key</label>
-            <input type="password" id="api-key" class="form-input" placeholder="例如 sk-..." />
-            <p class="form-help">密钥保存在 Windows 凭据管理器，只发送给填写的 API 地址。请使用可信服务。</p>
-            <p id="api-key-error" class="error-message hidden"></p>
-          </div>
+                <div class="form-group">
+                  <label class="form-label" for="api-key">API Key</label>
+                  <input type="password" id="api-key" class="form-input" placeholder="例如 sk-..." />
+                  <p class="form-help">密钥保存在 Windows 凭据管理器，只发送给填写的 API 地址。请使用可信服务。</p>
+                  <p id="api-key-error" class="error-message hidden"></p>
+                </div>
 
-          <div class="form-group">
-            <label class="form-label" for="model-name">模型名</label>
-            <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
-            <p id="model-name-error" class="error-message hidden"></p>
-          </div>
+                <div class="form-group">
+                  <label class="form-label" for="model-name">模型名</label>
+                  <input type="text" id="model-name" class="form-input" placeholder="例如 gpt-4o-mini" />
+                  <p id="model-name-error" class="error-message hidden"></p>
+                </div>
 
-          <details class="settings-advanced">
-            <summary>高级参数</summary>
-          <div class="form-group">
-            <label class="form-label" for="max-tokens">单次生成上限（可选）</label>
-            <input type="text" id="max-tokens" class="form-input" inputmode="numeric" placeholder="留空使用默认 131072" />
-            <p class="form-help">按所用端点支持的范围填写（整数）；留空即使用默认值。</p>
-            <p id="max-tokens-error" class="error-message hidden"></p>
-          </div>
-          </details>
+                <details class="settings-advanced">
+                  <summary>高级参数</summary>
+                  <div class="form-group">
+                    <label class="form-label" for="max-tokens">单次生成上限（可选）</label>
+                    <input type="text" id="max-tokens" class="form-input" inputmode="numeric" placeholder="留空使用默认 131072" />
+                    <p class="form-help">按所用端点支持的范围填写（整数）；留空即使用默认值。</p>
+                    <p id="max-tokens-error" class="error-message hidden"></p>
+                  </div>
+                </details>
 
-          <p id="llm-save-status" class="save-status">未保存</p>
+                <p id="llm-save-status" class="save-status">未保存</p>
 
-          <div class="form-actions">
-            <button id="btn-back-config" class="btn-secondary">返回写作</button>
-            <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
-            <button id="btn-save-config" class="btn-primary" disabled>保存设置</button>
-          </div>
-          <details class="settings-data-note"><summary>发送哪些材料</summary><p>测试连接只发送固定测试语句与密钥。常规讨论会发送问题、可选选区、讨论历史，以及关注文档现场内容（含未保存修改）、获准目录与跨文档字面检索片段；及时召唤首轮使用冻结选区。补读需要授权；不可读文档与回收站内容不会提供。第三方的数据处理遵循其服务协议。AI 回复为临时材料，不会自动写入文档。</p></details>
-          </div></section>
+                <div class="form-actions">
+                  <button id="btn-back-config" class="btn-secondary">返回写作</button>
+                  <button id="btn-test-config" class="btn-secondary" disabled>测试连接</button>
+                  <button id="btn-save-config" class="btn-primary" disabled>保存设置</button>
+                </div>
+                <details class="settings-data-note"><summary>发送哪些材料</summary><p>测试连接只发送固定测试语句与密钥。常规讨论会发送问题、可选选区、讨论历史，以及关注文档现场内容（含未保存修改）、获准目录与跨文档字面检索片段；及时召唤首轮使用冻结选区。补读需要授权；不可读文档与回收站内容不会提供。第三方的数据处理遵循其服务协议。AI 回复为临时材料，不会自动写入文档。</p></details>
+              </div>
+            </details>
+          </section>
           <section class="display-preferences setting-section" aria-label="写作显示">
-            <div class="setting-intro"><h3>写作显示</h3><p>调整正文区域的宽度与四周留白。</p></div>
-            <div class="display-preferences-grid">
-              <label>正文宽度<button id="btn-column-width" type="button" aria-label="切换写作宽度">标准 · 720</button></label>
-              <label>四周留白<button id="btn-margin" type="button" aria-label="切换稿纸留白">标准</button></label>
-              <label>稿纸外背景<select id="writing-background"><option value="gray">浅灰</option><option value="white">白色</option><option value="warm">暖灰</option></select></label>
-            <p class="form-help">空间不足时正文自动收窄。显示设置不改变文档或导出内容。</p>
-            </div>
+            <details class="settings-drawer">
+              <summary class="setting-intro"><h3>写作显示</h3><span class="settings-description">调整正文区域的宽度与四周留白。</span></summary>
+              <div class="settings-drawer-body">
+                <div class="display-preferences-grid">
+                  <label>正文宽度<button id="btn-column-width" type="button" aria-label="切换写作宽度">标准 · 720</button></label>
+                  <label>四周留白<button id="btn-margin" type="button" aria-label="切换稿纸留白">标准</button></label>
+                  <label>稿纸外背景<select id="writing-background"><option value="gray">浅灰</option><option value="white">白色</option><option value="warm">暖灰</option></select></label>
+                  <p class="form-help">空间不足时正文自动收窄。显示设置不改变文档或导出内容。</p>
+                </div>
+              </div>
+            </details>
+          </section>
+          <section class="setting-section" aria-label="帮助">
+            <details class="settings-help settings-drawer">
+              <summary class="setting-intro"><h3>帮助</h3><span class="settings-description">重看软件引导，或翻常见问题。</span></summary>
+              <div class="help-section-body settings-drawer-body">
+                <div class="help-replay">
+                  <p class="form-help">第一次打开软件时的四张引导卡，随时可以重看。</p>
+                  <button id="btn-replay-first-run-guide" class="btn-secondary" type="button">重看软件引导</button>
+                </div>
+                <div id="help-faq-list" class="help-faq-list" aria-label="常见问题"></div>
+              </div>
+            </details>
           </section>
         </div>
       </section>
@@ -904,6 +922,24 @@
         <div class="export-dialog-actions">
           <button id="btn-document-import-cancel" class="btn-secondary" type="button">取消</button>
           <button id="btn-document-import-confirm" class="btn-primary" type="button">确认导入</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 首启引导与帮助（first-run-guide-and-help）：四卡共用骨架，内容与步骤状态由控制器填充。 -->
+    <dialog id="first-run-guide-dialog" class="first-run-guide-dialog" aria-labelledby="first-run-guide-title">
+      <div class="first-run-guide-card">
+        <div class="first-run-guide-head">
+          <h2 id="first-run-guide-title" class="first-run-guide-title"></h2>
+          <button id="first-run-guide-skip" class="btn-secondary" type="button">跳过</button>
+        </div>
+        <div id="first-run-guide-body" class="first-run-guide-body"></div>
+        <div class="first-run-guide-foot">
+          <div id="first-run-guide-dots" class="first-run-guide-dots" aria-hidden="true"></div>
+          <div class="first-run-guide-actions">
+            <button id="first-run-guide-prev" class="btn-secondary" type="button">上一张</button>
+            <button id="first-run-guide-next" class="btn-primary" type="button">下一张</button>
+          </div>
         </div>
       </div>
     </dialog>

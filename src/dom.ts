@@ -73,7 +73,7 @@ export interface AiWindowDom {
   /** 受限讨论提示容器（材料权限已变化时显示，不泄露隐藏文件身份）。 */
   readonly restrictionNotice: HTMLElement;
   readonly restrictionNoticeMessage: HTMLElement;
-  /** 受限提示内的「新建对话」入口（新建干净讨论的继续路径）。 */
+  /** 受限提示内的「新建讨论」入口（新建干净讨论的继续路径）。 */
   readonly restrictionNewConversation: HTMLButtonElement;
 }
 
@@ -95,7 +95,7 @@ export interface AiDockDom {
   readonly conversationListCloseBtn: HTMLButtonElement;
   readonly conversationListItems: HTMLElement;
   readonly conversationListEmpty: HTMLElement;
-  /** 列表内「新建对话」入口。 */
+  /** 列表内「新建讨论」入口。 */
   readonly listNewConversationBtn: HTMLButtonElement;
   /** 列表筛选输入。 */
   readonly searchInput: HTMLInputElement;
@@ -214,6 +214,35 @@ export interface MakingDom {
   /** 「停止」生成入口（仅生成中显示）。 */
   readonly conversationStop: HTMLButtonElement;
   readonly conversationForm: HTMLFormElement;
+}
+
+/**
+ * 首启引导对话框的显式 DOM 依赖契约（first-run-guide-and-help）。
+ * 全部按全局 id 从 `index.html` 解析；缺失抛出包含 id 的明确错误。
+ */
+export interface FirstRunGuideDom {
+  /** 原生 dialog 外壳（close 后可再次 showModal 重放；行为见 src/first-run-guide.ts）。 */
+  readonly dialog: HTMLDialogElement;
+  /** 当前卡标题（控制器按步骤渲染文本）。 */
+  readonly title: HTMLElement;
+  /** 右上「跳过」入口：任意时刻关闭；first-run 模式同时写完成标记。 */
+  readonly skip: HTMLButtonElement;
+  /** 当前卡正文容器（控制器逐段渲染 <p>）。 */
+  readonly body: HTMLElement;
+  /** 进度点容器（控制器按步骤数渲染 .first-run-guide-dot）。 */
+  readonly dots: HTMLElement;
+  /** 「上一张」入口（首卡禁用）。 */
+  readonly prev: HTMLButtonElement;
+  /** 「下一张」入口（末卡文案变「开始使用」，点击关闭并写标记）。 */
+  readonly next: HTMLButtonElement;
+}
+
+/** 设置页「帮助」分区的显式 DOM 依赖契约（first-run-guide-and-help）。 */
+export interface HelpSectionDom {
+  /** 「重看新手引导」入口：重放首启向导，永不写完成标记。 */
+  readonly replayBtn: HTMLButtonElement;
+  /** 常见问题列表容器（十条 FAQ 的渲染落点）。 */
+  readonly faqList: HTMLElement;
 }
 
 export interface AppDom {
@@ -374,6 +403,10 @@ export interface AppDom {
   btnBackConfig: HTMLButtonElement;
   btnToggleAi: HTMLButtonElement;
   aiDock: AiDockDom;
+  /** 首启引导对话框契约（first-run-guide-and-help）。 */
+  firstRunGuide: FirstRunGuideDom;
+  /** 设置页「帮助」分区契约（first-run-guide-and-help）。 */
+  helpSection: HelpSectionDom;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -720,6 +753,19 @@ export function getAppDom(): AppDom {
       railMoreBtn: requireElement<HTMLButtonElement>("ai-rail-more"),
       railExpandBtn: requireElement<HTMLButtonElement>("ai-rail-expand"),
       railDot: requireElement("ai-rail-dot"),
+    },
+    firstRunGuide: {
+      dialog: requireElement<HTMLDialogElement>("first-run-guide-dialog"),
+      title: requireElement("first-run-guide-title"),
+      skip: requireElement<HTMLButtonElement>("first-run-guide-skip"),
+      body: requireElement("first-run-guide-body"),
+      dots: requireElement("first-run-guide-dots"),
+      prev: requireElement<HTMLButtonElement>("first-run-guide-prev"),
+      next: requireElement<HTMLButtonElement>("first-run-guide-next"),
+    },
+    helpSection: {
+      replayBtn: requireElement<HTMLButtonElement>("btn-replay-first-run-guide"),
+      faqList: requireElement("help-faq-list"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

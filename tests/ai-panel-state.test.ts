@@ -638,13 +638,13 @@ test("newConversation opens a new empty discussion and keeps the old one archive
   assert.equal(state.isOpen, true);
 
   assert.equal(state.newConversation(), true);
-  assert.equal(state.isOpen, true, "新建对话后面板保持展开");
+  assert.equal(state.isOpen, true, "新建讨论后面板保持展开");
   assert.deepEqual(state.view.request, { kind: "idle" });
   assert.equal(state.conversation, null);
   assert.equal(state.followUpAvailable, false);
   assert.equal(state.conversationIdentity, null);
   assert.equal(state.view.directQuestionDraft, "", "新讨论草稿为空");
-  // 旧讨论的草稿按窗口独立保留，不被新建对话清空。
+  // 旧讨论的草稿按窗口独立保留，不被新建讨论清空。
   assert.equal(state.viewOf("1").directQuestionDraft, "未发送草稿");
   // 旧讨论保留为档案
   assert.equal(state.conversations.length, 1);
@@ -702,7 +702,7 @@ test("newConversation notifies exactly once when it changes state", () => {
   assert.equal(calls, 1);
 
   assert.equal(state.newConversation(), true);
-  assert.equal(calls, 2, "新建对话只通知一次");
+  assert.equal(calls, 2, "新建讨论只通知一次");
 });
 
 test("newConversation opens an empty discussion window even at zero discussions", () => {
@@ -748,7 +748,7 @@ test("newConversation reopens a collapsed panel that has an existing conversatio
   assert.equal(state.isOpen, false);
 
   assert.equal(state.newConversation(), true);
-  assert.equal(state.isOpen, true, "收起状态下新建对话会重新展开面板");
+  assert.equal(state.isOpen, true, "收起状态下新建讨论会重新展开面板");
   assert.deepEqual(state.view.request, { kind: "idle" });
 });
 
@@ -778,7 +778,7 @@ test("newConversation is distinct from project reset which still closes the pane
   state.succeed(anchor, "首答");
 
   state.newConversation();
-  assert.equal(state.isOpen, true, "新建对话保持面板展开");
+  assert.equal(state.isOpen, true, "新建讨论保持面板展开");
 
   state.beginRequest(snapshot("新选区"));
   state.succeed(snapshot("新选区"), "新答");
@@ -896,7 +896,7 @@ test("failed recovery enters the error state with a new-conversation guidance me
   const request = state.view.request;
   assert.equal(request.kind, "error");
   if (request.kind === "error") {
-    assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
+    assert.equal(request.error.message, "对话恢复失败，请点击新建讨论开始新讨论");
     assert.equal(request.conversationId, "1");
   }
   assert.equal(state.completeRecovery("1"), false);

@@ -826,14 +826,14 @@ test("complete_recovery 的非法迁移返回同一引用：非恢复态、未�
   assert.equal(reduce(done, { type: "complete_recovery", conversationId: "unknown" }), done);
 });
 
-test("fail_recovery 进入 error 并引导新建对话", () => {
+test("fail_recovery 进入 error 并引导新建讨论", () => {
   let state = established();
   state = reduce(state, { type: "begin_recovery", conversationId: "c-1" });
   const next = reduce(state, { type: "fail_recovery", conversationId: "c-1" });
   const request = next.discussions.get("c-1")!.request;
   assert.equal(request.kind, "error");
   if (request.kind === "error") {
-    assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
+    assert.equal(request.error.message, "对话恢复失败，请点击新建讨论开始新讨论");
     assert.equal(request.conversationId, "c-1");
   }
 });

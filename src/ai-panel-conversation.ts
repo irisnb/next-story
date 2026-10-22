@@ -255,11 +255,11 @@ export function restrictionReasonOf(
 
 /** 材料权限已变化的受限讨论提示（不泄露隐藏文件名称 / 身份 / 路径）。 */
 export const HIDDEN_MATERIAL_RESTRICTION_NOTICE =
-  "该讨论曾使用后来已隐藏的文件，无法沿原上下文继续。请新建对话继续。";
+  "该讨论曾使用后来已隐藏的文件，无法沿原上下文继续。请新建讨论继续。";
 
 /** 旧档案缺少材料出处的保守提示。 */
 export const MISSING_PROVENANCE_RESTRICTION_NOTICE =
-  "该讨论缺少材料出处记录，无法确认所用材料是否仍可查看。请新建对话继续。";
+  "该讨论缺少材料出处记录，无法确认所用材料是否仍可查看。请新建讨论继续。";
 
 /** 返回受限讨论的中文提示；未受限返回 null。接受可变或只读对话视图。 */
 export function conversationRestrictionNotice(

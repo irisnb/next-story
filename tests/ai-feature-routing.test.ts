@@ -167,7 +167,7 @@ test("a preflight is not invalidated by newConversation and still sends", async 
   }), true);
   assert.equal(state.view.request.kind, "loading");
 
-  // 预检期间用户新建对话：不使原讨论的在途预检作废。
+  // 预检期间用户新建讨论：不使原讨论的在途预检作废。
   assert.equal(state.newConversation(), true);
 
   configDeferred.resolve?.({ api_base_url: "https://api.example.com", model: "m", has_api_key: true });

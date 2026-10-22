@@ -325,7 +325,7 @@ test("a direct question preflight is not invalidated by newConversation and stil
     getProjectToken: () => 1,
   }), true);
 
-  // 预检期间新建对话：不使原讨论的在途预检作废。
+  // 预检期间新建讨论：不使原讨论的在途预检作废。
   assert.equal(state.newConversation(), true);
   configDeferred.resolve?.(savedConfig);
   await Promise.resolve();
@@ -333,7 +333,7 @@ test("a direct question preflight is not invalidated by newConversation and stil
   await Promise.resolve();
   await Promise.resolve();
 
-  assert.equal(sent, 1, "原讨论的预检照常发送，不因新建对话作废");
+  assert.equal(sent, 1, "原讨论的预检照常发送，不因新建讨论作废");
 });
 
 test("a direct question preflight still enters configuration-required after newConversation", async () => {

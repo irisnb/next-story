@@ -180,6 +180,36 @@
 .document-import-losses summary { cursor: pointer; color: var(--color-warning); }
 .document-import-loss-list { margin: var(--space-2) 0 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: var(--space-2); }
 
+/* 首启引导：沿用通用对话框令牌，步骤内容与进度由控制器填充。 */
+.first-run-guide-dialog {
+  width: min(520px, calc(100% - var(--space-8)));
+  max-height: calc(100% - var(--space-8));
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-control);
+}
+.first-run-guide-dialog::backdrop { background: var(--color-backdrop); }
+.first-run-guide-card { padding: var(--space-8); display: flex; flex-direction: column; gap: var(--space-6); }
+.first-run-guide-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.first-run-guide-title { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+#first-run-guide-skip { flex: none; padding: var(--space-2) var(--space-3); border-color: transparent; background: transparent; color: var(--color-muted); box-shadow: none; font-size: 13px; }
+#first-run-guide-skip:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
+.first-run-guide-body { min-height: 9em; color: var(--color-text-body); font-size: 14px; line-height: 1.8; white-space: pre-line; overflow-wrap: anywhere; }
+.first-run-guide-body p + p { margin-top: var(--space-3); }
+.first-run-guide-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.first-run-guide-dots { display: flex; align-items: center; gap: var(--space-2); }
+.first-run-guide-dot { display: block; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--color-accent); }
+.first-run-guide-dot.active { background: var(--color-primary); }
+.first-run-guide-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; }
+.first-run-guide-actions .btn-primary,
+.first-run-guide-actions .btn-secondary { flex: none; width: auto; }
+.first-run-guide-actions .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
 * {
   margin: 0;
   padding: 0;

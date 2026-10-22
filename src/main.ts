@@ -10,6 +10,8 @@ import { getAppDom } from "./dom";
 import { setupEditor } from "./editor";
 import { setupExport } from "./export";
 import { setupFileManagement } from "./file-management";
+import { setupFirstRunGuide } from "./first-run-guide";
+import { setupHelpSection } from "./help-section";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
 import { setupMaking } from "./making/making-module";
@@ -160,6 +162,11 @@ window.addEventListener("DOMContentLoaded", () => {
     showWriting: () => setModule("writing"),
     unloadExport: () => exportController.unload(),
   });
+
+  // 首启引导：无完成标记时自动弹出，仅此一次（重看入口在设置 → 帮助，重放不写标记）。
+  const firstRunGuide = setupFirstRunGuide(dom.firstRunGuide);
+  setupHelpSection(dom.helpSection, { openReplayGuide: () => firstRunGuide.open("replay") });
+  firstRunGuide.open("first-run");
 
   const appWindow = getCurrentWindow();
   const reportCloseError = (error: unknown): void => {

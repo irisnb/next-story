@@ -531,7 +531,7 @@ test("new conversation control is hidden in the blank direct-question idle state
   // When: 构建显示 view model
   const view = viewOf(state);
 
-  // Then: 空白直接提问状态没有可结束的内容，隐藏“新建对话”
+  // Then: 空白直接提问状态没有可结束的内容，隐藏“新建讨论”
   assert.equal(view.newConversationVisible, false);
 });
 
@@ -545,7 +545,7 @@ test("new conversation control is visible once a conversation exists", () => {
   // When: 构建显示 view model
   const view = viewOf(state);
 
-  // Then: 有临时对话可结束，显示“新建对话”
+  // Then: 有临时对话可结束，显示“新建讨论”
   assert.equal(view.newConversationVisible, true);
 });
 
@@ -673,7 +673,7 @@ test("empty idle panel shows the welcome message and hides it once the conversat
   state.succeedDirectQuestion("回答");
   assert.equal(viewOf(state).welcomeVisible, false);
 
-  // 新建对话回到空白 idle 状态后欢迎语重新显示
+  // 新建讨论回到空白 idle 状态后欢迎语重新显示
   state.newConversation();
   assert.equal(viewOf(state).welcomeVisible, true);
 });

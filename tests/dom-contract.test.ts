@@ -89,7 +89,7 @@ test("document import dialog exposes conclusion, collapsible losses, split choic
 });
 
 test("AI dock header exposes new-conversation and collapse entries", () => {
-  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*aria-label="新建对话"/);
+  assert.match(html, /<button\b[^>]*\bid="ai-new-conversation"[^>]*aria-label="新建讨论"/);
   assert.match(html, /<button\b[^>]*\bid="ai-dock-collapse"[^>]*aria-label="收起 AI 面板"/);
   assert.match(html, /<button\b[^>]*\bid="ai-conversation-list-toggle"[^>]*aria-label="讨论列表"/);
   assert.match(html, /<template\b[^>]*\bid="ai-window-template"/);

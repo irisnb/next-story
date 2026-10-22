@@ -199,7 +199,7 @@ function persistenceHarness(overrides: {
     replayCalls,
     replayTurns,
     submitDirectQuestion(question: string): void {
-      // 新建对话 → 空窗口 → 在窗口内直接提问。
+      // 新建讨论 → 空窗口 → 在窗口内直接提问。
       elements.get("ai-new-conversation")!.dispatch("click");
       const win = env.windowRoots[env.windowRoots.length - 1];
       const input = win.queryResults.get('[data-role="direct-question-input"]')!;
@@ -347,7 +347,7 @@ test("2.4 关闭并重开同一讨论，第一次读取不得覆盖第二次", a
 });
 
 test("2.5 超限原文只显示于保存失败的讨论窗口", async () => {
-  const message = "讨论内容过长（超过 8 MiB 上限），无法保存；请新建对话继续。";
+  const message = "讨论内容过长（超过 8 MiB 上限），无法保存；请新建讨论继续。";
   const ui = persistenceHarness({ dependencies: { conversationSave: () => Promise.reject(message) } });
   try {
     await ui.openRecord(savedRecord("other"));
@@ -793,7 +793,7 @@ test("5.8a replay transport failure enters recovery error instead of completing 
     const request = ui.controller.state.getDiscussion("c-11")?.request;
     assert.equal(request?.kind, "error");
     if (request?.kind === "error") {
-      assert.equal(request.error.message, "对话恢复失败，请点击新建对话开始新对话");
+      assert.equal(request.error.message, "对话恢复失败，请点击新建讨论开始新讨论");
     }
   } finally {
     ui.restore();

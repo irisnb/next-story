@@ -50,5 +50,5 @@
 
 ## 7. 用户验收与归档
 
-- [ ] 7.1 用户真机验收：官网点开预览、README 逐节核对、真实下载安装走通
-- [ ] 7.2 按归档流程归档 change 并同步真相源
+- [x] 7.1 用户真机验收：官网点开预览、README 逐节核对、真实下载安装走通（2026-10-24：官网实况多轮过目满意；README 截图直出与内部文档清理两轮修正后确认；下载直链经 HTTP 200/67.4MB 验证）
+- [x] 7.2 按归档流程归档 change 并同步真相源（2026-10-24 归档为 archive/2026-10-24-site-and-readme-launch，三份新规格 public-site/repo-readme/release-download 同步入 openspec/specs/）

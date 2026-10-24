@@ -17,12 +17,7 @@
 
 Next Story 是一个 Windows 桌面应用：写作空间里你亲手创作，旁边的常驻 AI 面板随时回应提问——直接问就行，不需要先配置上下文。AI 只提供观察、问题、假设和带依据的可能性；什么进入作品、故事往哪里走，判断权永远在你手里。它不替代创作所需的感受、思考、实践与坚持，也不保证写出优秀作品；工具降低的，是开始创作和获得帮助的门槛。
 
-## 界面预览
-
-<img src="assets/shot-welcome.png" width="600" alt="欢迎页：新建项目、打开项目与最近项目" />
-<img src="assets/shot-writing.png" width="600" alt="写作空间：内容树与稿纸化编辑区" />
-<img src="assets/shot-ai-panel.png" width="600" alt="AI 面板：常驻讨论与流式回复" />
-<img src="assets/shot-making.png" width="600" alt="制作模块：链路库、导图与制作对话" />
+官网与界面一览：https://irisnb.github.io/next-story-site/
 
 ## 已实现能力
 

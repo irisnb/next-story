@@ -37,15 +37,16 @@
 ## 5. 门禁与打包
 
 - [x] 5.1 `npm run check` 全绿（首轮红灯：eslint 扫进 `Wangye\_archive\` 的浏览器配置残留（4691 错）——已在 eslint.config.js 增加 `Wangye/**` 忽略（官网独立仓库非本仓源码）后复跑，exit=0）
-- [ ] 5.2 完整重打包（不用 10/23 陈旧产物）：`npm ci --prefix sidecar` → `powershell -ExecutionPolicy Bypass -File scripts\vendor-node.ps1` → `npm run tauri:build`，产出与 main 一致的 0.1.0 双格式安装包
+- [x] 5.2 完整重打包（不用 10/23 陈旧产物）：`npm ci --prefix sidecar` → `powershell -ExecutionPolicy Bypass -File scripts\vendor-node.ps1` → `npm run tauri:build`，产出与 main 一致的 0.1.0 双格式安装包（2026-10-24 22:29/22:40 双格式新鲜产物；打包资源自检通过：内置 Node、DSH 入口、常驻驱动、挂链字体、分页脚本、Basecoat 资源与图标重编齐备；BUILD exit=0）
 
 ## 6. 上线发布
 
-- [ ] 6.1 创建官网专用公开仓库 `irisnb/next-story-site`（`gh repo create --public`），推送 `Wangye\` 全部内容
-- [ ] 6.2 在官网仓库开启 GitHub Pages（main 分支根目录；优先 `gh api` 自动，失败给用户网页指引）
-- [ ] 6.3 主仓库创建 Release `v0.1.0`：上传 NSIS/MSI 原名附件＋稳定名副本 `NextStory-setup.exe`、`NextStory-setup.msi`；Release 说明含 SmartScreen 提示与处理方式
-- [ ] 6.4 把官网与 README 的下载入口换成 `https://github.com/irisnb/next-story/releases/latest/download/NextStory-setup.exe` 直链
-- [ ] 6.5 链接与页面验证：官网地址 `https://irisnb.github.io/next-story-site/` 可访问且无资源 404、跨仓下载直链可真实下载、README 图片正常显示、主仓库文件清单不含任何网页文件
+- [x] 6.1 创建官网专用公开仓库 `irisnb/next-story-site`（`gh repo create --public`），推送 `Wangye\` 全部内容（首提交 5d39604，`_archive` 经其 .gitignore 排除）
+- [x] 6.2 在官网仓库开启 GitHub Pages（main 分支根目录，`gh api` 自动）——线上地址 `https://irisnb.github.io/next-story-site/` 已返回 200 上线
+- [x] 6.3 主仓库创建 Release `v0.1.0`：上传 NSIS/MSI 原名附件＋稳定名副本 `NextStory-setup.exe`、`NextStory-setup.msi`；Release 说明含 SmartScreen 提示与处理方式（https://github.com/irisnb/next-story/releases/tag/v0.1.0，四附件齐）
+- [x] 6.4 把官网与 README 的下载入口换成 `https://github.com/irisnb/next-story/releases/latest/download/NextStory-setup.exe` 直链（官网三处按钮换直链、「即将发布」小注改「当前版本 v0.1.0」；README 状态行更新为已发布；双仓提交推送 a7c6945/272e954）
+- [x] 6.5 链接与页面验证：官网地址可访问且无资源 404（口号/按钮/画廊内容抽查＋截图与图标资源全部 200）、跨仓下载直链可真实下载（HTTP 200、67.4MB 与安装包一致）、README 图片正常显示（assets/ 已随主仓库推送）、主仓库文件清单不含任何网页文件（Wangye/ 入 .gitignore）、README 直链经 GitHub 渲染（主推送完成）
+- [x] 6.6 内部工作文档移出公开仓库（2026-10-24 用户拍板「没必要推的删掉，留在本地」）：`方向/`（103 文件）、`反面案例/`（7）、`.omo/`（4，gitignore 早有但先于规则入库）、`docs/`（20）退出跟踪仅留本地，.gitignore 封门，README 两处引用同步修正；`print.html` 经查为产品打印模板，保留公开
 
 ## 7. 用户验收与归档
 

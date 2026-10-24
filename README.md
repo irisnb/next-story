@@ -250,7 +250,7 @@ npm run tauri:build
 
 ## 协作与协议
 
-本项目用 OpenSpec 流程协作：propose（写清要做什么）→ 用户确认 → apply（实现）→ archive（归档进真相源），一次只开一个 change。项目级红线与协作规则见 [`AGENTS.md`](AGENTS.md)，长期使命见 [`方向/核心方向宪章.md`](方向/核心方向宪章.md)。
+本项目用 OpenSpec 流程协作：propose（写清要做什么）→ 用户确认 → apply（实现）→ archive（归档进真相源），一次只开一个 change。项目级红线与协作规则见 [`AGENTS.md`](AGENTS.md)。
 
 许可：版权所有 © 2026 irisnb。允许免费下载、安装、使用本软件；未经书面许可，不得复用、修改、再分发本仓库的代码与文档，或用于商业用途（见 [LICENSE](LICENSE)）。
 
@@ -258,7 +258,6 @@ npm run tauri:build
 
 | 位置 | 该信什么 |
 | --- | --- |
-| [`方向/核心方向宪章.md`](方向/核心方向宪章.md) | 长期使命、永久架构原则和产品立场的完整真相源 |
 | `AGENTS.md` | 项目级可执行红线和协作规则 |
 | `openspec/specs/` | 当前已经实现的真相源。README 说「已实现」时，应当能在这里找到正式依据 |
 | `openspec/changes/` | 正在提议或实现中的 change，内容可能尚未进入当前实现真相 |

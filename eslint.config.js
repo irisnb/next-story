@@ -18,6 +18,8 @@ export default tseslint.config(
       ".omo/**",
       // 方向文档区（含走通一例证据等存档材料）：是文档与证据，不是仓库源码，不参与 lint。
       "方向/**",
+      // 官网独立仓库（本地工作目录，内容推送远程 next-story-site）：不是本仓库源码，不参与 lint。
+      "Wangye/**",
     ],
   },
   js.configs.recommended,

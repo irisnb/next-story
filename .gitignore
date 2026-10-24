@@ -56,3 +56,6 @@ sidecar/**/.test-home/
 sidecar/**/.gen-home/
 sidecar/probe/cordis.probe.yaml
 sidecar/probe/cordis.dump.yaml
+
+# 官网独立仓库（本地工作目录，内容推送远程 next-story-site，永不入主仓库）
+Wangye/

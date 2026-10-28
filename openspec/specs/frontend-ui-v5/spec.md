@@ -63,3 +63,18 @@ TBD - created by archiving change update-frontend-ui-v5. Update Purpose after ar
 - **WHEN** 本change准备归档
 - **THEN** 总门禁与真实桌面验收证据完整，任何未过项阻止归档
 
+### Requirement: 最大化时讨论窗口头部贴边
+AI 面板最大化时，讨论窗口头部（`ai-window-head`）SHALL 通栏占满面板宽度，其动作组钉在面板右缘；760px 限宽居中 SHALL 仅作用于讨论正文与输入区，MUST NOT 使头部操作按钮悬离面板边缘。恢复常宽后行为一致；动作组不拆散、标题截断让位的既有几何合同保持不变。标题弹性撑开 SHALL 不受遗留最大宽度钳制（2026-10-28 验收发现 170px 钳制使弹性失效、动作组左挤，已移除）。悬停提示 SHALL 由共享提示独占：Basecoat 伪元素提示 SHALL 全局关闭，同一触发路径 MUST NOT 并存两套自绘提示（2026-10-28 验收发现最大化/恢复按钮双黑提示，已修复）。
+
+#### Scenario: 最大化后动作贴边
+- **WHEN** 用户最大化 AI 面板并打开任一讨论
+- **THEN** 头部动作组右缘与面板右缘对齐，不随 760px 内容列内收
+
+#### Scenario: 正文保留稿纸宽度
+- **WHEN** AI 面板处于最大化状态
+- **THEN** 讨论正文与输入区仍限宽 760px 居中，阅读宽度不因头部贴边而变化
+
+#### Scenario: 单一悬停提示
+- **WHEN** 用户悬停带提示的按钮（如最大化/恢复）
+- **THEN** 仅呈现共享提示一个黑底提示，无 Basecoat 伪元素提示并存
+

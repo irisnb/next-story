@@ -1,0 +1,1102 @@
+{
+  "startedAt": "2026-10-28T12:37:09.436Z",
+  "target": {
+    "id": "06F8B4DA0739F1D86D6953828C387B09",
+    "url": "http://localhost:1420/",
+    "title": "Next Story"
+  },
+  "chainName": "UI摩擦冒烟-fix-ui-friction",
+  "assertions": [
+    {
+      "name": "P0.已进入既有项目",
+      "pass": true,
+      "detail": "灯塔"
+    },
+    {
+      "name": "场景1.#ai-dock-more 不存在",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景1.无 aria-label=更多讨论操作 按钮",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景1.面板内无「⋯/更多讨论操作」按钮",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "场景1.window.__waitTiming 已下线",
+      "pass": true,
+      "detail": "undefined"
+    },
+    {
+      "name": "场景1.旧竖条不可见（v5 折叠态不保留竖条）",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景1.#ai-rail-more 不存在（DOM）",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景1.竖条 DOM 内无「更多/⋯」按钮",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "场景2.前置.最大化窗口足够宽（≥860px）",
+      "pass": true,
+      "detail": {
+        "winWidth": 1007
+      }
+    },
+    {
+      "name": "场景2.头部通栏（宽≈窗口宽）",
+      "pass": true,
+      "detail": {
+        "head": 1005,
+        "win": 1007
+      }
+    },
+    {
+      "name": "场景2.头部不受 760 限宽",
+      "pass": true,
+      "detail": {
+        "head": 1005
+      }
+    },
+    {
+      "name": "场景2.动作组右缘钉在头部内容右缘（差≤2px）",
+      "pass": true,
+      "detail": {
+        "actionsRight": 1007,
+        "anchorRight": 1007
+      }
+    },
+    {
+      "name": "场景2.动作组未悬在 760 内容列（距面板右缘≤26px）",
+      "pass": true,
+      "detail": {
+        "dockRight": 1024,
+        "actionsRight": 1007,
+        "gap": 17
+      }
+    },
+    {
+      "name": "场景2.正文区 760 限宽居中",
+      "pass": true,
+      "detail": {
+        "body": {
+          "left": 132.5,
+          "right": 892.5,
+          "width": 760,
+          "center": 512.5
+        },
+        "winCenter": 512.5
+      }
+    },
+    {
+      "name": "场景2.输入区 760 限宽居中",
+      "pass": true,
+      "detail": {
+        "input": {
+          "left": 132.5,
+          "right": 892.5,
+          "width": 760,
+          "center": 512.5
+        },
+        "winCenter": 512.5
+      }
+    },
+    {
+      "name": "场景2.恢复常宽后头部仍通栏",
+      "pass": true,
+      "detail": {
+        "head": 311,
+        "win": 313
+      }
+    },
+    {
+      "name": "场景2.最大化按钮无双提示（伪元素已关、无原生title）",
+      "pass": true,
+      "detail": {
+        "before": "none",
+        "after": "none",
+        "title": null
+      }
+    },
+    {
+      "name": "场景4.诞生即第1版零卡",
+      "pass": true,
+      "detail": [
+        {
+          "id": "chainver-1793191035926264300-2",
+          "index": 1,
+          "cards": 0,
+          "changeNote": "新建链路"
+        }
+      ]
+    },
+    {
+      "name": "场景4.未启用态主按钮＝启用语义",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第1版」"
+    },
+    {
+      "name": "场景4.旧独立启用按钮不存在",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景4.旧独立停用按钮不存在",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "name": "场景4.状态条不承担启停入口",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "name": "场景4.默认宽度.操作区下行控件同线不换行",
+      "pass": true,
+      "detail": {
+        "selectCy": 294.19,
+        "delCy": 294.19,
+        "priCy": 294.19
+      }
+    },
+    {
+      "name": "场景4.默认宽度.主按钮未被挤出操作区",
+      "pass": true,
+      "detail": {
+        "priRight": 985,
+        "contentRight": 1009
+      }
+    },
+    {
+      "name": "场景4.启用确认.确认窗为应用内 dialog.app-confirm",
+      "pass": true,
+      "detail": {
+        "open": true
+      }
+    },
+    {
+      "name": "场景4.启用确认.变体正确（常规）",
+      "pass": true,
+      "detail": {
+        "danger": false
+      }
+    },
+    {
+      "name": "场景4.启用确认.按钮几何≈128×40（两键一致）",
+      "pass": true,
+      "detail": {
+        "cancel": {
+          "width": 128,
+          "height": 40
+        },
+        "accept": {
+          "width": 128,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "场景4.启用确认.打开即聚焦确认按钮",
+      "pass": true,
+      "detail": {
+        "acceptFocused": true
+      }
+    },
+    {
+      "name": "场景4.启用确认.取消与确认仅颜色不同",
+      "pass": true,
+      "detail": {
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)"
+      }
+    },
+    {
+      "name": "场景4.启用确认.确认窗居中（±2px，不贴左上角）",
+      "pass": true,
+      "detail": {
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "name": "场景4.启用确认标题正确",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第1版」？"
+    },
+    {
+      "name": "场景4.启用确认文案含零卡说明",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第1版」，替换当前「傲娇试金石链·第3版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。"
+    },
+    {
+      "name": "场景4.确认按钮文案＝启用",
+      "pass": true,
+      "detail": "启用"
+    },
+    {
+      "name": "场景4.查看启用版主按钮＝停用当前链路",
+      "pass": true,
+      "detail": "停用当前链路"
+    },
+    {
+      "name": "场景4.两态并标（正在查看＋正在使用）",
+      "pass": true,
+      "detail": {
+        "title": "正在查看：UI摩擦冒烟-fix-ui-friction·第1版",
+        "using": "正在使用：UI摩擦冒烟-fix-ui-friction·第1版（未附加自定义）",
+        "state": "当前启用版本"
+      }
+    },
+    {
+      "name": "场景4.注入通道可用(__TAURI_INTERNALS__.invoke)",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "场景4.第2版含一张卡",
+      "pass": true,
+      "detail": {
+        "id": "chainver-1793191036733036800-3",
+        "index": 2,
+        "cards": 1,
+        "changeNote": "fix-ui-friction 真机冒烟注入（沿 allow-empty-chain S5 先例）"
+      }
+    },
+    {
+      "name": "场景4.注入未动启用指针（仍第1版）",
+      "pass": true,
+      "detail": {
+        "chain_id": "chain-1793191035926245200-1",
+        "version_id": "chainver-1793191035926264300-2"
+      }
+    },
+    {
+      "name": "场景4.第2版主按钮＝启用语义",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第2版」"
+    },
+    {
+      "name": "场景4.启用第2版确认.确认窗为应用内 dialog.app-confirm",
+      "pass": true,
+      "detail": {
+        "open": true
+      }
+    },
+    {
+      "name": "场景4.启用第2版确认.变体正确（常规）",
+      "pass": true,
+      "detail": {
+        "danger": false
+      }
+    },
+    {
+      "name": "场景4.启用第2版确认.按钮几何≈128×40（两键一致）",
+      "pass": true,
+      "detail": {
+        "cancel": {
+          "width": 128,
+          "height": 40
+        },
+        "accept": {
+          "width": 128,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "场景4.启用第2版确认.打开即聚焦确认按钮",
+      "pass": true,
+      "detail": {
+        "acceptFocused": true
+      }
+    },
+    {
+      "name": "场景4.启用第2版确认.取消与确认仅颜色不同",
+      "pass": true,
+      "detail": {
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)"
+      }
+    },
+    {
+      "name": "场景4.启用第2版确认.确认窗居中（±2px，不贴左上角）",
+      "pass": true,
+      "detail": {
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "name": "场景4.替换文案明示当前启用对象",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第2版」，替换当前「UI摩擦冒烟-fix-ui-friction·第1版」；所有作品的下一轮提问开始使用。"
+    },
+    {
+      "name": "场景4.查看第2版（启用版）主按钮＝停用当前链路",
+      "pass": true,
+      "detail": "停用当前链路"
+    },
+    {
+      "name": "场景4.查看旧版主按钮＝回退语义",
+      "pass": true,
+      "detail": "回退到「UI摩擦冒烟-fix-ui-friction·第1版」"
+    },
+    {
+      "name": "场景4.两态并标（查看第1版＋使用第2版）",
+      "pass": true,
+      "detail": {
+        "using": "正在使用：UI摩擦冒烟-fix-ui-friction·第2版",
+        "state": "尚未启用"
+      }
+    },
+    {
+      "name": "场景4.停用确认.确认窗为应用内 dialog.app-confirm",
+      "pass": true,
+      "detail": {
+        "open": true
+      }
+    },
+    {
+      "name": "场景4.停用确认.变体正确（常规）",
+      "pass": true,
+      "detail": {
+        "danger": false
+      }
+    },
+    {
+      "name": "场景4.停用确认.按钮几何≈128×40（两键一致）",
+      "pass": true,
+      "detail": {
+        "cancel": {
+          "width": 128,
+          "height": 40
+        },
+        "accept": {
+          "width": 128,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "场景4.停用确认.打开即聚焦确认按钮",
+      "pass": true,
+      "detail": {
+        "acceptFocused": true
+      }
+    },
+    {
+      "name": "场景4.停用确认.取消与确认仅颜色不同",
+      "pass": true,
+      "detail": {
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)"
+      }
+    },
+    {
+      "name": "场景4.停用确认.确认窗居中（±2px，不贴左上角）",
+      "pass": true,
+      "detail": {
+        "dialogRect": {
+          "l": 192,
+          "t": 246.6,
+          "r": 832,
+          "b": 423.4
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "name": "场景4.停用确认文案逐字保留",
+      "pass": true,
+      "detail": "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。"
+    },
+    {
+      "name": "场景4.停用后主按钮恒为启用语义",
+      "pass": true,
+      "detail": "启用「UI摩擦冒烟-fix-ui-friction·第2版」"
+    },
+    {
+      "name": "场景3.删除链路确认.确认窗为应用内 dialog.app-confirm",
+      "pass": true,
+      "detail": {
+        "open": true
+      }
+    },
+    {
+      "name": "场景3.删除链路确认.变体正确（danger）",
+      "pass": true,
+      "detail": {
+        "danger": true
+      }
+    },
+    {
+      "name": "场景3.删除链路确认.按钮几何≈128×40（两键一致）",
+      "pass": true,
+      "detail": {
+        "cancel": {
+          "width": 128,
+          "height": 40
+        },
+        "accept": {
+          "width": 128,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "场景3.删除链路确认.打开即聚焦确认按钮",
+      "pass": true,
+      "detail": {
+        "acceptFocused": true
+      }
+    },
+    {
+      "name": "场景3.删除链路确认.取消与确认仅颜色不同",
+      "pass": true,
+      "detail": {
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(214, 54, 30)"
+      }
+    },
+    {
+      "name": "场景3.删除链路确认.确认窗居中（±2px，不贴左上角）",
+      "pass": true,
+      "detail": {
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "name": "场景3.确认窗标题正确",
+      "pass": true,
+      "detail": "删除链路「UI摩擦冒烟-fix-ui-friction」？"
+    },
+    {
+      "name": "场景3.确认文案明示不可恢复",
+      "pass": true,
+      "detail": "删除链路「UI摩擦冒烟-fix-ui-friction」？其 2 个版本与全部试问证据将被删除，不可恢复；作品正文与日常讨论不受影响。"
+    },
+    {
+      "name": "场景3.确认按钮文案＝删除链路",
+      "pass": true,
+      "detail": "删除链路"
+    },
+    {
+      "name": "场景3.取消按钮文案＝取消",
+      "pass": true,
+      "detail": "取消"
+    },
+    {
+      "name": "场景3.Esc 取消后确认窗关闭",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "场景3.Esc 取消后链路仍在（UI）",
+      "pass": true,
+      "detail": [
+        "傲娇搭档验证链",
+        "傲娇试金石链",
+        "UI摩擦冒烟-fix-ui-friction"
+      ]
+    },
+    {
+      "name": "场景3.Esc 取消后链路仍在（磁盘）",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "场景3.Enter 确认后链路已删除（磁盘）",
+      "pass": true,
+      "detail": {
+        "active": null,
+        "dupCount": 0,
+        "chainFound": false,
+        "chainId": null,
+        "versions": []
+      }
+    },
+    {
+      "name": "场景5.顶部四入口并列成组（相邻间距≤16px）",
+      "pass": true,
+      "detail": {
+        "btns": [
+          {
+            "id": "fm-new-document",
+            "l": 409.4,
+            "r": 502.2
+          },
+          {
+            "id": "fm-new-folder",
+            "l": 509.2,
+            "r": 598.2
+          },
+          {
+            "id": "fm-import-document",
+            "l": 605.2,
+            "r": 656.4
+          },
+          {
+            "id": "btn-export",
+            "l": 663.4,
+            "r": 714.6
+          }
+        ],
+        "gaps": [
+          7,
+          7,
+          7
+        ]
+      }
+    },
+    {
+      "name": "场景5.存在「可读」文档开关",
+      "pass": true,
+      "detail": {
+        "toggles": [
+          {
+            "nodeId": "node-1792743273809552200-2",
+            "checked": "true"
+          },
+          {
+            "nodeId": "node-1792744147850064700-1",
+            "checked": "true"
+          }
+        ]
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.确认窗为应用内 dialog.app-confirm",
+      "pass": true,
+      "detail": {
+        "open": true
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.变体正确（danger）",
+      "pass": true,
+      "detail": {
+        "danger": true
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.按钮几何≈128×40（两键一致）",
+      "pass": true,
+      "detail": {
+        "cancel": {
+          "width": 128,
+          "height": 40
+        },
+        "accept": {
+          "width": 128,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.打开即聚焦确认按钮",
+      "pass": true,
+      "detail": {
+        "acceptFocused": true
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.取消与确认仅颜色不同",
+      "pass": true,
+      "detail": {
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(214, 54, 30)"
+      }
+    },
+    {
+      "name": "场景5.关闭可见性确认.确认窗居中（±2px，不贴左上角）",
+      "pass": true,
+      "detail": {
+        "dialogRect": {
+          "l": 192,
+          "t": 175.2,
+          "r": 832,
+          "b": 494.8
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "name": "场景5.确认文案明示永久只读",
+      "pass": true,
+      "detail": "以下 6 个讨论使用过《未命名文档》：「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」、「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」、「这段夜景我想营造一种\"被困住\"的感觉，从写作者的角度，你觉得哪些细节最能强化这种…」、「今夜，海上有雾，而灯，忽然灭了。」、「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」等。\n关闭后这些讨论将永久只读，无法沿原上下文继续；旧的参考出处会脱敏显示。"
+    },
+    {
+      "name": "场景5.Esc 取消后可见性未变（仍可读）",
+      "pass": true,
+      "detail": "true"
+    },
+    {
+      "name": "收尾.全程控制台零错误（error/exception）",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "stages": [
+    {
+      "name": "P0 项目就绪",
+      "t": 2,
+      "data": {
+        "projectName": "灯塔",
+        "viaWelcome": false
+      }
+    },
+    {
+      "name": "场景1 列表打开",
+      "t": 1137,
+      "data": {
+        "listHeaderButtons": [
+          "新建讨论",
+          "新建讨论",
+          "收起"
+        ]
+      }
+    },
+    {
+      "name": "场景1 折叠态",
+      "t": 1702,
+      "data": {
+        "railVisible": false,
+        "railButtons": []
+      }
+    },
+    {
+      "name": "场景2 常宽基线",
+      "t": 3958,
+      "data": {
+        "maximized": false,
+        "win": 313,
+        "head": 311
+      }
+    },
+    {
+      "name": "场景2 最大化几何",
+      "t": 4577,
+      "data": {
+        "dock": {
+          "left": 0,
+          "right": 1024,
+          "width": 1024,
+          "center": 512
+        },
+        "win": {
+          "left": 9,
+          "right": 1016,
+          "width": 1007,
+          "center": 512.5
+        },
+        "head": {
+          "left": 10,
+          "right": 1015,
+          "width": 1005,
+          "center": 512.5
+        },
+        "actions": {
+          "left": 949,
+          "right": 1007,
+          "width": 58,
+          "center": 978
+        },
+        "body": {
+          "left": 132.5,
+          "right": 892.5,
+          "width": 760,
+          "center": 512.5
+        },
+        "input": {
+          "left": 132.5,
+          "right": 892.5,
+          "width": 760,
+          "center": 512.5
+        },
+        "headPadRight": 8
+      }
+    },
+    {
+      "name": "场景4 零卡第1版",
+      "t": 6680,
+      "data": {
+        "inspectorTitle": "正在查看：UI摩擦冒烟-fix-ui-friction·第1版",
+        "primaryText": "启用「UI摩擦冒烟-fix-ui-friction·第1版」",
+        "versions": [
+          {
+            "id": "chainver-1793191035926264300-2",
+            "index": 1,
+            "cards": 0,
+            "changeNote": "新建链路"
+          }
+        ],
+        "dupCount": 1
+      }
+    },
+    {
+      "name": "场景4 启用完成",
+      "t": 7237,
+      "data": {
+        "statusText": "当前链路：UI摩擦冒烟-fix-ui-friction·第1版（未附加自定义）",
+        "primaryText": "停用当前链路",
+        "usingLabel": "正在使用：UI摩擦冒烟-fix-ui-friction·第1版（未附加自定义）",
+        "inspectorState": "当前启用版本"
+      }
+    },
+    {
+      "name": "场景4 注入第2版落库",
+      "t": 9199,
+      "data": {
+        "versions": [
+          {
+            "id": "chainver-1793191035926264300-2",
+            "index": 1,
+            "cards": 0,
+            "changeNote": "新建链路"
+          },
+          {
+            "id": "chainver-1793191036733036800-3",
+            "index": 2,
+            "cards": 1,
+            "changeNote": "fix-ui-friction 真机冒烟注入（沿 allow-empty-chain S5 先例）"
+          }
+        ],
+        "active": {
+          "chain_id": "chain-1793191035926245200-1",
+          "version_id": "chainver-1793191035926264300-2"
+        }
+      }
+    },
+    {
+      "name": "场景4 回退语义",
+      "t": 10653,
+      "data": {
+        "inspectorTitle": "正在查看：UI摩擦冒烟-fix-ui-friction·第1版（历史版本）",
+        "primaryText": "回退到「UI摩擦冒烟-fix-ui-friction·第1版」",
+        "usingLabel": "正在使用：UI摩擦冒烟-fix-ui-friction·第2版"
+      }
+    },
+    {
+      "name": "场景4 停用完成",
+      "t": 11624,
+      "data": {
+        "statusIdle": true,
+        "primaryText": "启用「UI摩擦冒烟-fix-ui-friction·第2版」"
+      }
+    },
+    {
+      "name": "场景3 删除完成",
+      "t": 13341,
+      "data": {
+        "remaining": 2,
+        "active": null
+      }
+    }
+  ],
+  "screenshots": [
+    "场景1-讨论列表头部无更多菜单.png",
+    "场景1-折叠态无更多入口.png",
+    "场景2-最大化头部贴边.png",
+    "场景2-恢复常宽.png",
+    "场景4-零卡第1版启用语义.png",
+    "场景4-启用确认窗常规变体.png",
+    "场景4-查看启用版停用语义.png",
+    "场景4-旧版回退语义.png",
+    "场景4-停用后恒启用语义.png",
+    "场景3-删除链路danger确认窗.png",
+    "场景3-Esc取消链路保留.png",
+    "场景3-Enter确认链路删除.png",
+    "场景5-关闭可见性danger确认窗.png",
+    "场景5-取消后状态未变.png"
+  ],
+  "consoleErrors": [],
+  "confirms": [
+    {
+      "step": "场景4-启用第1版",
+      "state": {
+        "open": true,
+        "danger": false,
+        "title": "启用「UI摩擦冒烟-fix-ui-friction·第1版」？",
+        "body": "启用「UI摩擦冒烟-fix-ui-friction·第1版」，替换当前「傲娇试金石链·第3版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。",
+        "cancelLabel": "取消",
+        "acceptLabel": "启用",
+        "acceptFocused": true,
+        "cancelRect": {
+          "width": 128,
+          "height": 40
+        },
+        "acceptRect": {
+          "width": 128,
+          "height": 40
+        },
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)",
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "step": "场景4-启用第2版",
+      "state": {
+        "open": true,
+        "danger": false,
+        "title": "启用「UI摩擦冒烟-fix-ui-friction·第2版」？",
+        "body": "启用「UI摩擦冒烟-fix-ui-friction·第2版」，替换当前「UI摩擦冒烟-fix-ui-friction·第1版」；所有作品的下一轮提问开始使用。",
+        "cancelLabel": "取消",
+        "acceptLabel": "启用",
+        "acceptFocused": true,
+        "cancelRect": {
+          "width": 128,
+          "height": 40
+        },
+        "acceptRect": {
+          "width": 128,
+          "height": 40
+        },
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)",
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "step": "场景4-停用",
+      "state": {
+        "open": true,
+        "danger": false,
+        "title": "停用当前链路？",
+        "body": "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。",
+        "cancelLabel": "取消",
+        "acceptLabel": "停用当前链路",
+        "acceptFocused": true,
+        "cancelRect": {
+          "width": 128,
+          "height": 40
+        },
+        "acceptRect": {
+          "width": 128,
+          "height": 40
+        },
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(32, 32, 32)",
+        "dialogRect": {
+          "l": 192,
+          "t": 246.6,
+          "r": 832,
+          "b": 423.4
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "step": "场景3-删除链路",
+      "state": {
+        "open": true,
+        "danger": true,
+        "title": "删除链路「UI摩擦冒烟-fix-ui-friction」？",
+        "body": "删除链路「UI摩擦冒烟-fix-ui-friction」？其 2 个版本与全部试问证据将被删除，不可恢复；作品正文与日常讨论不受影响。",
+        "cancelLabel": "取消",
+        "acceptLabel": "删除链路",
+        "acceptFocused": true,
+        "cancelRect": {
+          "width": 128,
+          "height": 40
+        },
+        "acceptRect": {
+          "width": 128,
+          "height": 40
+        },
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(214, 54, 30)",
+        "dialogRect": {
+          "l": 192,
+          "t": 234.7,
+          "r": 832,
+          "b": 435.3
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    },
+    {
+      "step": "场景5-关闭AI可见性",
+      "state": {
+        "open": true,
+        "danger": true,
+        "title": "确定要关闭这篇文档的 AI 可见性吗？",
+        "body": "以下 6 个讨论使用过《未命名文档》：「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」、「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」、「这段夜景我想营造一种\"被困住\"的感觉，从写作者的角度，你觉得哪些细节最能强化这种…」、「今夜，海上有雾，而灯，忽然灭了。」、「老陈守着这座灯塔三十年了。\n今夜，海上有雾，而灯，忽然灭了。」等。\n关闭后这些讨论将永久只读，无法沿原上下文继续；旧的参考出处会脱敏显示。",
+        "cancelLabel": "取消",
+        "acceptLabel": "关闭",
+        "acceptFocused": true,
+        "cancelRect": {
+          "width": 128,
+          "height": 40
+        },
+        "acceptRect": {
+          "width": 128,
+          "height": 40
+        },
+        "cancelBg": "rgb(255, 255, 255)",
+        "acceptBg": "rgb(214, 54, 30)",
+        "dialogRect": {
+          "l": 192,
+          "t": 175.2,
+          "r": 832,
+          "b": 494.8
+        },
+        "viewport": [
+          1024,
+          670
+        ]
+      }
+    }
+  ],
+  "captured": {
+    "projectName": "灯塔",
+    "maxGeometry": {
+      "maximized": true,
+      "dock": {
+        "left": 0,
+        "right": 1024,
+        "width": 1024,
+        "center": 512
+      },
+      "win": {
+        "left": 9,
+        "right": 1016,
+        "width": 1007,
+        "center": 512.5
+      },
+      "head": {
+        "left": 10,
+        "right": 1015,
+        "width": 1005,
+        "center": 512.5
+      },
+      "actions": {
+        "left": 949,
+        "right": 1007,
+        "width": 58,
+        "center": 978
+      },
+      "body": {
+        "left": 132.5,
+        "right": 892.5,
+        "width": 760,
+        "center": 512.5
+      },
+      "input": {
+        "left": 132.5,
+        "right": 892.5,
+        "width": 760,
+        "center": 512.5
+      },
+      "headPadRight": 8
+    },
+    "restoreGeometry": {
+      "win": {
+        "left": 703,
+        "right": 1016,
+        "width": 313,
+        "center": 859.5
+      },
+      "head": {
+        "left": 704,
+        "right": 1015,
+        "width": 311,
+        "center": 859.5
+      }
+    },
+    "injectedArgs": {
+      "chainId": "chain-1793191035926245200-1",
+      "cards": [
+        {
+          "title": "摩擦冒烟卡-给可能性",
+          "trigger_desc": "适用：讨论情节走向时\n不适用：只聊单句台词时",
+          "body": "回应里至少给出两种不同可能，说明各自依据与代价，不替用户拍板。",
+          "slot_type": "requirement"
+        }
+      ],
+      "changeNote": "fix-ui-friction 真机冒烟注入（沿 allow-empty-chain S5 先例）"
+    }
+  },
+  "environmentNotes": [
+    "场景2 点了一次「新建讨论」：空讨论不发送、不落盘，保留在面板中。",
+    "缩窗迭代后导图区未落入 640–760px 带宽（最后实测 800px），700px 窄幅转人工。"
+  ],
+  "manualSteps": [
+    "【人工】7.2 归档门槛的「用户真实点击」复核：请用户亲手完成一次启用确认（Enter 确认/Esc 取消）与一次删除链路确认，体感键盘行为、焦点与脚本断言一致。",
+    "【人工】写作页「删除有未保存修改的文档」确认（danger 变体）：需脏文档与删除入口联动，本脚本未自动化；请人工删除一篇有未保存修改的文档，确认弹应用内确认窗（危险变体）、取消不删除。",
+    "【人工】制作页「删卡」与「删制作会话」确认（常规/危险变体）：请人工各触发一次，确认同为应用内确认窗、按钮几何一致（≈128×40）、取消不执行。",
+    "【人工】场景2 视觉比对：最大化后头部贴边、正文保持稿纸宽度的整体观感（脚本已做几何断言，归档门槛另需视觉比对截图确认）。",
+    "【人工】附加 700px 窄幅：自动缩窗未落进约 700px 带宽，请人工调窗并确认操作区两行不换行错位。"
+  ],
+  "fatal": null,
+  "finishedAt": "2026-10-28T12:37:33.562Z",
+  "elapsedMs": 24124,
+  "failedAssertions": [],
+  "passedCount": 82
+}

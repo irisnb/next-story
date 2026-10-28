@@ -67,11 +67,12 @@ button:active:not(:disabled) { transform: none; }
 .format-toolbar .ol-style-row { height: 40px; flex: 0 0 40px; align-items: center; }
 .tool-button { box-shadow: none; }
 .tool-button { position: relative; }
-/* The shared tooltip owns these controls; Basecoat's invisible pseudo-elements
-   otherwise add their label width to the tool rail's scrollable geometry. */
-.tool-button[data-tooltip]::before, .tool-button[data-tooltip]::after,
-.ol-style-trigger[data-tooltip]::before, .ol-style-trigger[data-tooltip]::after,
-.ai-win-btn[data-tooltip]::before, .ai-win-btn[data-tooltip]::after { display: none; }
+/* The shared #ui-tooltip owns ALL tooltips app-wide. Basecoat's pseudo-element
+   tooltips (any [data-tooltip] control) are globally suppressed: 2026-10-28 验收发现
+   最大化/恢复按钮悬停同时出现两个黑色提示（Basecoat ::before 在上＋共享提示在下）。
+   !important 保证对 vendor 样式表的决定性（不受加载顺序影响）；原三类控件的局部
+   封锁（工具栏滚动几何）被本规则完全涵盖。 */
+[data-tooltip]::before, [data-tooltip]::after { display: none !important; }
 .format-drawer { box-shadow: 0 8px 28px #0002; border: var(--border-hairline); }
 .ai-dock { --ai-dock-header-height: 56px; }
 .ai-dock-header { height: var(--ai-dock-header-height); min-height: var(--ai-dock-header-height); padding-inline: 16px; gap: 4px; }
@@ -87,7 +88,9 @@ button:active:not(:disabled) { transform: none; }
 .ai-dock-count { position: static; width: auto; min-width: 16px; height: auto; clip-path: none; overflow: visible; font-size: 10px; padding: 0 3px; border-radius: 3px; background: #ededed; }
 .ai-discussion-toggle { height: 32px; padding-inline: 6px; font-size: 12px; gap: 4px; white-space: nowrap; }
 .ai-panel-maximized .ai-dock-header { padding-inline: 16px; }
-.ai-panel-maximized .ai-window-head,
+/* Maximized measure: body and input keep the 760px reading column; the head
+   spans the full panel width so its action group pins to the panel's right
+   edge (frontend-ui-v5 fix-ui-friction-2026-10). */
 .ai-panel-maximized .ai-window-body,
 .ai-panel-maximized .ai-window-input { width: min(100%, 760px); margin-inline: auto; }
 @media (max-width: 1199px) { .ai-dock-header, .ai-panel-maximized .ai-dock-header { padding-inline: 8px; gap: 4px; } .ai-dock-title { font-size: 13px; } .ai-discussion-toggle { padding-inline: 4px; } }
@@ -115,8 +118,14 @@ button:active:not(:disabled) { transform: none; }
 .ai-window-status-dot.is-waiting { background: var(--color-warning); }
 .ai-window-badge.is-waiting { color: var(--color-warning); }
 .making-version-operations { position: sticky; top: 0; z-index: 3; background: var(--color-surface, white); }
-.making-version-using { width: 100%; font-size: 12px; color: var(--color-muted); }
-.making-save-confirm { width: min(640px, calc(100vw - 48px)); max-height: 80vh; overflow-y: auto; padding: 24px; border: var(--border-control); border-radius: var(--radius-sm); color: var(--color-text); background: white; }
+/* 版本操作区两行结构（fix-ui-friction-2026-10 · B 定稿）：上行双状态标注，
+   下行版本下拉＋删除链路（次要 quiet）＋右侧单一状态化主按钮（40px 高、主色实底）。 */
+.making-version-using { margin-left: auto; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--color-muted); }
+#module-making .making-version-select { flex: none; max-width: none; }
+#module-making .making-primary-btn { margin-left: auto; flex: none; height: 40px; min-height: 40px; padding: 8px 20px; white-space: nowrap; }
+#module-making .making-delete-chain-btn { flex: none; border-color: transparent; background: transparent; box-shadow: none; color: var(--color-muted); white-space: nowrap; }
+#module-making .making-delete-chain-btn:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
+.making-save-confirm { width: min(640px, calc(100vw - 48px)); max-height: 80vh; overflow-y: auto; margin: auto; padding: 24px; border: var(--border-control); border-radius: var(--radius-sm); color: var(--color-text); background: white; }
 .making-save-confirm::backdrop { background: #0006; }
 .making-save-confirm p, .making-save-confirm pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; }
 .making-save-confirm summary { cursor: pointer; padding-block: 12px; }
@@ -331,3 +340,18 @@ button:active:not(:disabled) { transform: none; }
   .file-manager { padding: 28px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* fix-ui-friction-2026-10 · in-app-confirmation：全软件统一应用内确认窗。
+   视觉语言与 .making-save-confirm 同源；取消与确认按钮几何完全一致（128×40、
+   内边距 8px 16px，全局 border-box 下含于尺寸），仅颜色角色不同。 */
+.app-confirm { width: min(640px, calc(100vw - 48px)); max-height: 80vh; overflow-y: auto; margin: auto; padding: 24px; border: var(--border-control); border-radius: var(--radius-sm); color: var(--color-text); background: white; }
+.app-confirm::backdrop { background: #0006; }
+.app-confirm h3 { margin: 0 0 12px; font-size: 18px; font-weight: 600; line-height: 1.5; }
+.app-confirm p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; }
+.app-confirm footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.app-confirm footer button { width: 128px; min-width: 128px; height: 40px; padding: 8px 16px; font: inherit; font-size: 14px; font-weight: 500; line-height: 1.5; border-radius: var(--radius-sm); cursor: pointer; }
+.app-confirm .app-confirm-cancel { border: var(--border-control); background: var(--color-surface); color: var(--color-text); }
+.app-confirm .app-confirm-cancel:hover:not(:disabled) { background: var(--color-surface-hover); }
+.app-confirm .app-confirm-accept { border: 1px solid var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+.app-confirm .app-confirm-accept:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+.app-confirm.app-confirm-danger .app-confirm-accept { background: var(--color-danger); border-color: var(--color-danger); }
+.app-confirm.app-confirm-danger .app-confirm-accept:hover:not(:disabled) { background: #b52e1a; border-color: #b52e1a; }

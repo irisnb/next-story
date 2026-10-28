@@ -11,17 +11,6 @@ import {
   type ConversationGroup,
 } from "./ai-panel-conversation-list.ts";
 
-/** 等待计时导出的结果投影（由接线层把保存对话框与后端结果折算成此形状）。 */
-export interface WaitTimingExportOutcome {
-  readonly ok: boolean;
-  /** 用户关闭保存对话框；此时不产生任何提示。 */
-  readonly cancelled: boolean;
-  /** 本次导出的记录条数（成功提示条显示用）。 */
-  readonly count: number;
-  /** 失败时的中文说明。 */
-  readonly message?: string;
-}
-
 /** 窗口管理器对外动作（由 ai-feature 接线）。 */
 export interface AiDockActions {
   openConfigPage: () => void;
@@ -49,12 +38,6 @@ export interface AiDockActions {
   onUndoDelete: () => void;
   /** 当前可撤销的删除提示（无则 null）。 */
   getUndoNotice: () => { title: string } | null;
-  /** 是否有任何等待计时记录（历史全量 + 当前在途）。 */
-  hasWaitTimingData: () => boolean;
-  /** 导出等待计时数据：弹保存对话框并写入用户选择的位置（设计稿 D2）。 */
-  exportWaitTiming: () => Promise<WaitTimingExportOutcome>;
-  /** 清空等待计时数据（内存记录；已导出文件不受影响）。 */
-  clearWaitTiming: () => void;
   /** 显式切换某讨论的关注文档（查看其他文档不自动改绑）。 */
   onSwitchFocusDocument: (conversationId: string, documentId: string, documentTitle: string) => void;
   /** 当前作品允许 AI 查看的文档（关注文档选择器候选）。 */
@@ -292,124 +275,6 @@ export function setupAiDock(
     positionMenu(menu, anchor);
   }
 
-  // ===== 等待计时导出提示（app-real-chain-validation 任务 1.4 / 设计稿 ui-design/notes.md） =====
-  // 停靠区层提示条：后出现的顶替先前的；成功态数秒自动消失，警示态与清空确认态
-  // 常驻到用户处理或被下一条提示顶替。
-  type TimingNotice = { kind: "ok" | "warn" | "confirm"; text: string };
-  const TIMING_NOTICE_TIMEOUT_MS = 6000; // 与删除撤销提示同寿命
-  let timingNotice: TimingNotice | null = null;
-  let timingNoticeTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearTimingNoticeTimer(): void {
-    if (timingNoticeTimer) {
-      clearTimeout(timingNoticeTimer);
-      timingNoticeTimer = null;
-    }
-  }
-
-  // 顶替规则（设计稿 §6.3：后出现的顶替先前的）：撤销 / 保存失败提示在计时提示
-  // 之后出现时（与上次渲染相比发生了变化），计时提示让位。对比「上次渲染值」
-  // 而非只看存在性，避免旧的撤销/保存失败提示把刚出的计时提示顶掉。
-  let lastUndoTitle: string | null = null;
-  let lastSaveError: string | null = null;
-
-  /** 撤销 / 保存失败提示是否比当前计时提示更新（是则计时提示让位）。 */
-  function newerDockNoticePreempts(): boolean {
-    const undoTitle = actions.getUndoNotice()?.title ?? null;
-    const saveError = state.saveError;
-    const undoIsNewer = undoTitle !== null && undoTitle !== lastUndoTitle;
-    const errorIsNewer = saveError !== null && saveError !== lastSaveError;
-    return undoIsNewer || errorIsNewer;
-  }
-
-  function showTimingNotice(notice: TimingNotice, autoDismiss: boolean): void {
-    clearTimingNoticeTimer();
-    timingNotice = notice;
-    if (autoDismiss) {
-      const timer = setTimeout(() => {
-        timingNoticeTimer = null;
-        timingNotice = null;
-        updateDockChrome();
-      }, TIMING_NOTICE_TIMEOUT_MS);
-      timer.unref?.();
-      timingNoticeTimer = timer;
-    }
-    updateDockChrome();
-  }
-
-  function dismissTimingNotice(): void {
-    clearTimingNoticeTimer();
-    if (timingNotice === null) return;
-    timingNotice = null;
-    updateDockChrome();
-  }
-
-  function renderTimingNotice(notice: TimingNotice): void {
-    if (notice.kind === "confirm") {
-      // 清空确认：确认按钮用危险实底（复用 .ai-cl-btn.danger 配色），取消恢复原状。
-      dom.notice.classList.remove("hidden", "ok");
-      dom.notice.classList.add("warn");
-      const text = document.createElement("span");
-      text.textContent = notice.text;
-      const clearBtn = document.createElement("button");
-      clearBtn.type = "button";
-      clearBtn.classList.add("ai-cl-btn", "danger");
-      clearBtn.style.marginLeft = "auto";
-      clearBtn.textContent = "清空";
-      clearBtn.addEventListener("click", () => {
-        actions.clearWaitTiming();
-        showTimingNotice({ kind: "ok", text: "已清空等待计时数据" }, true);
-      });
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.classList.add("ai-cl-btn");
-      cancelBtn.textContent = "取消";
-      cancelBtn.addEventListener("click", () => dismissTimingNotice());
-      dom.notice.append(text, clearBtn, cancelBtn);
-      return;
-    }
-    dom.notice.classList.remove("hidden");
-    dom.notice.classList.toggle("ok", notice.kind === "ok");
-    dom.notice.classList.toggle("warn", notice.kind === "warn");
-    dom.notice.textContent = notice.text;
-  }
-
-  /** 导出等待计时数据：取消无提示，成功轻提示（自动消失），失败警示条常驻。 */
-  async function exportWaitTiming(): Promise<void> {
-    const outcome = await actions.exportWaitTiming();
-    if (destroyed) return;
-    if (outcome.cancelled) return;
-    if (outcome.ok) {
-      showTimingNotice({ kind: "ok", text: `已导出等待计时数据（${outcome.count} 条）` }, true);
-    } else {
-      showTimingNotice({ kind: "warn", text: `导出失败：${outcome.message ?? "未知错误"}` }, false);
-    }
-  }
-
-  function openDockMenu(anchor: HTMLElement): void {
-    closeMenu();
-    const hasTiming = actions.hasWaitTimingData();
-    const noDataTitle = hasTiming ? undefined : "还没有可导出的计时数据";
-    menu = buildMenu([
-      {
-        icon: "i-export",
-        label: "导出等待计时数据（开发者用）…",
-        disabled: !hasTiming,
-        title: noDataTitle,
-        action: () => { void exportWaitTiming(); },
-      },
-      {
-        icon: "i-trash",
-        label: "清空等待计时数据…",
-        danger: true,
-        disabled: !hasTiming,
-        title: noDataTitle,
-        action: () => showTimingNotice({ kind: "confirm", text: "清空等待计时数据？已导出的文件不受影响。" }, false),
-      },
-    ]);
-    positionMenu(menu, anchor);
-  }
-
   function buildMenu(items: readonly MenuItem[]): HTMLElement {
     const el = document.createElement("div");
     el.className = "ai-menu";
@@ -464,8 +329,8 @@ export function setupAiDock(
     const rect = anchor.getBoundingClientRect();
     menuEl.style.position = "fixed";
     // 右对齐锚定：按实际渲染宽度把菜单右缘对到锚点右缘。旧实现按 170px 估宽，
-    // 菜单项文字变长（如导出等待计时数据）后会把菜单顶出屏幕右缘；
-    // offsetWidth 不可用时回退旧估宽，左缘保底 8px。
+    // 菜单项文字变长后会把菜单顶出屏幕右缘；offsetWidth 不可用时回退旧估宽，
+    // 左缘保底 8px。
     menuEl.style.left = `${Math.max(8, rect.right - (menuEl.offsetWidth || 170))}px`;
     menuEl.style.top = `${rect.bottom + 4}px`;
     menuEl.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
@@ -776,47 +641,33 @@ export function setupAiDock(
     ]);
     dom.count.textContent = String(discussionIds.size);
     dom.notice.replaceChildren();
-    // 等待计时提示是最新用户动作的反馈，存在时优先呈现；但撤销 / 保存失败提示
-    // 在其后新出现时按顶替规则让位（后出现的顶替先前的）。计时器到点后
-    // timingNotice 已被清空，自然回落到撤销 / 保存失败提示。
-    if (timingNotice && newerDockNoticePreempts()) {
-      clearTimingNoticeTimer();
-      timingNotice = null;
-    }
-    if (timingNotice) {
-      renderTimingNotice(timingNotice);
-      dom.railDot.classList.add("hidden");
+    dom.notice.classList.remove("ok", "warn");
+    const undo = actions.getUndoNotice();
+    if (undo) {
+      // 删除撤销提示（停靠区层，不依赖列表是否打开）。
+      dom.notice.classList.remove("hidden", "warn");
+      dom.notice.classList.add("ok");
+      const text = document.createElement("span");
+      text.classList.add("ai-dock-notice-text");
+      text.textContent = `已删除：${undo.title}`;
+      text.title = undo.title;
+      dom.notice.append(text);
+      const undoBtn = document.createElement("button");
+      undoBtn.type = "button";
+      undoBtn.classList.add("ai-dock-notice-undo");
+      undoBtn.textContent = "撤销";
+      undoBtn.addEventListener("click", () => actions.onUndoDelete());
+      dom.notice.append(undoBtn);
+      dom.railDot.classList.remove("hidden");
+    } else if (state.saveError !== null) {
+      dom.notice.classList.remove("hidden", "ok");
+      dom.notice.classList.add("warn");
+      dom.notice.textContent = state.saveError;
+      dom.railDot.classList.remove("hidden");
     } else {
-      dom.notice.classList.remove("ok", "warn");
-      const undo = actions.getUndoNotice();
-      lastUndoTitle = undo?.title ?? null;
-      lastSaveError = state.saveError;
-      if (undo) {
-        // 删除撤销提示（停靠区层，不依赖列表是否打开）。
-        dom.notice.classList.remove("hidden", "warn");
-        dom.notice.classList.add("ok");
-        const text = document.createElement("span");
-        text.classList.add("ai-dock-notice-text");
-        text.textContent = `已删除：${undo.title}`;
-        text.title = undo.title;
-        dom.notice.append(text);
-        const undoBtn = document.createElement("button");
-        undoBtn.type = "button";
-        undoBtn.classList.add("ai-dock-notice-undo");
-        undoBtn.textContent = "撤销";
-        undoBtn.addEventListener("click", () => actions.onUndoDelete());
-        dom.notice.append(undoBtn);
-        dom.railDot.classList.remove("hidden");
-      } else if (state.saveError !== null) {
-        dom.notice.classList.remove("hidden", "ok");
-        dom.notice.classList.add("warn");
-        dom.notice.textContent = state.saveError;
-        dom.railDot.classList.remove("hidden");
-      } else {
-        dom.notice.classList.add("hidden");
-        dom.notice.classList.remove("warn", "ok");
-        dom.railDot.classList.add("hidden");
-      }
+      dom.notice.classList.add("hidden");
+      dom.notice.classList.remove("warn", "ok");
+      dom.railDot.classList.add("hidden");
     }
     const open = state.isOpen;
     if (!open) {
@@ -873,10 +724,6 @@ export function setupAiDock(
     renderConversationList();
   };
   const handleNewConversation = (): void => actions.onNewConversation();
-  const handleMore = (event: MouseEvent): void => {
-    event.stopPropagation();
-    openDockMenu(dom.moreBtn);
-  };
   const handleCollapse = (): void => state.close();
   const handleMaximize = (): void => {
     maximized = !maximized;
@@ -901,10 +748,6 @@ export function setupAiDock(
   const handleDividerEnd = (): void => { resizePointer = null; };
   const handleRailNew = (): void => { state.open(); actions.onNewConversation(); };
   const handleRailList = (): void => { state.open(); conversationListOpen = true; renderConversationList(); };
-  const handleRailMore = (event: MouseEvent): void => {
-    event.stopPropagation();
-    openDockMenu(dom.railMoreBtn);
-  };
   const handleRailExpand = (): void => state.open();
 
   dom.listToggleBtn.addEventListener("click", handleListToggle);
@@ -912,7 +755,6 @@ export function setupAiDock(
   dom.listNewConversationBtn.addEventListener("click", handleListNewConversation);
   dom.searchInput.addEventListener("input", handleSearchInput);
   dom.newConversationBtn.addEventListener("click", handleNewConversation);
-  dom.moreBtn.addEventListener("click", handleMore);
   dom.collapseBtn.addEventListener("click", handleCollapse);
   dom.maximizeBtn.addEventListener("click", handleMaximize);
   dom.divider.addEventListener("keydown", handleDividerKey);
@@ -923,7 +765,6 @@ export function setupAiDock(
   dom.divider.addEventListener("lostpointercapture", handleDividerEnd);
   dom.railNewBtn.addEventListener("click", handleRailNew);
   dom.railListBtn.addEventListener("click", handleRailList);
-  dom.railMoreBtn.addEventListener("click", handleRailMore);
   dom.railExpandBtn.addEventListener("click", handleRailExpand);
 
   const unsubscribe = state.subscribe(sync);
@@ -943,7 +784,6 @@ export function setupAiDock(
       dom.listNewConversationBtn.removeEventListener("click", handleListNewConversation);
       dom.searchInput.removeEventListener("input", handleSearchInput);
       dom.newConversationBtn.removeEventListener("click", handleNewConversation);
-      dom.moreBtn.removeEventListener("click", handleMore);
       dom.collapseBtn.removeEventListener("click", handleCollapse);
       dom.maximizeBtn.removeEventListener("click", handleMaximize);
       dom.divider.removeEventListener("keydown", handleDividerKey);
@@ -954,11 +794,9 @@ export function setupAiDock(
       dom.divider.removeEventListener("lostpointercapture", handleDividerEnd);
       dom.railNewBtn.removeEventListener("click", handleRailNew);
       dom.railListBtn.removeEventListener("click", handleRailList);
-      dom.railMoreBtn.removeEventListener("click", handleRailMore);
       dom.railExpandBtn.removeEventListener("click", handleRailExpand);
       for (const [id] of windows) destroyWindow(id);
       scrollMemory.clear();
-      clearTimingNoticeTimer();
       closeMenu();
     },
   };

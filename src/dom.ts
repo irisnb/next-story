@@ -87,7 +87,6 @@ export interface AiDockDom {
   readonly windowTemplate: HTMLTemplateElement;
   readonly listToggleBtn: HTMLButtonElement;
   readonly newConversationBtn: HTMLButtonElement;
-  readonly moreBtn: HTMLButtonElement;
   readonly collapseBtn: HTMLButtonElement;
   readonly maximizeBtn: HTMLButtonElement;
   readonly divider: HTMLElement;
@@ -101,7 +100,6 @@ export interface AiDockDom {
   readonly searchInput: HTMLInputElement;
   readonly railNewBtn: HTMLButtonElement;
   readonly railListBtn: HTMLButtonElement;
-  readonly railMoreBtn: HTMLButtonElement;
   readonly railExpandBtn: HTMLButtonElement;
   readonly railDot: HTMLElement;
 }
@@ -119,7 +117,6 @@ export interface MakingDom {
   readonly statusText: HTMLElement;
   readonly statusIdle: HTMLElement;
   readonly statusError: HTMLElement;
-  readonly deactivateBtn: HTMLButtonElement;
   /** 中等宽度收拢：链路库入口按钮与其外层条。 */
   readonly collapsedBar: HTMLElement;
   readonly libraryToggle: HTMLButtonElement;
@@ -145,7 +142,11 @@ export interface MakingDom {
   /** 版本状态标注（「当前启用版本」／「尚未启用」）。 */
   readonly inspectorState: HTMLElement;
   readonly versionSelect: HTMLSelectElement;
-  readonly enableBtn: HTMLButtonElement;
+  /**
+   * 单一状态化主按钮（fix-ui-friction-2026-10 · B 定稿）：启用／回退／停用三态
+   * 合一，身份随查看版本变化（同一位置、同一按钮，无独立停用按钮）。
+   */
+  readonly primaryBtn: HTMLButtonElement;
   readonly deleteChainBtn: HTMLButtonElement;
   /** 图区容器（组装流＋输出块以图区为基准垂直居中；快捷小窗挂在图区内）。 */
   readonly graph: HTMLElement;
@@ -542,7 +543,7 @@ export function getAppDom(): AppDom {
       statusText: requireElement("making-status-text"),
       statusIdle: requireElement("making-status-idle"),
       statusError: requireElement("making-status-error"),
-      deactivateBtn: requireElement<HTMLButtonElement>("making-deactivate-btn"),
+      primaryBtn: requireElement<HTMLButtonElement>("making-primary-btn"),
       collapsedBar: requireElement("making-collapsed-bar"),
       libraryToggle: requireElement<HTMLButtonElement>("making-library-toggle"),
       viewSwitch: requireElement("making-view-switch"),
@@ -563,7 +564,6 @@ export function getAppDom(): AppDom {
       inspectorTitle: requireElement("making-inspector-title"),
       inspectorState: requireElement("making-inspector-state"),
       versionSelect: requireElement<HTMLSelectElement>("making-version-select"),
-      enableBtn: requireElement<HTMLButtonElement>("making-enable-btn"),
       deleteChainBtn: requireElement<HTMLButtonElement>("making-delete-chain-btn"),
       graph: requireElement("making-graph"),
       wires: requireElement<SVGSVGElement>("making-wires"),
@@ -738,7 +738,6 @@ export function getAppDom(): AppDom {
       windowTemplate: requireElement<HTMLTemplateElement>("ai-window-template"),
       listToggleBtn: requireElement<HTMLButtonElement>("ai-conversation-list-toggle"),
       newConversationBtn: requireElement<HTMLButtonElement>("ai-new-conversation"),
-      moreBtn: requireElement<HTMLButtonElement>("ai-dock-more"),
       collapseBtn: requireElement<HTMLButtonElement>("ai-dock-collapse"),
       maximizeBtn: requireElement<HTMLButtonElement>("ai-dock-maximize"),
       divider: requireElement("ai-dock-divider"),
@@ -750,7 +749,6 @@ export function getAppDom(): AppDom {
       searchInput: requireElement<HTMLInputElement>("ai-conversation-list-filter"),
       railNewBtn: requireElement<HTMLButtonElement>("ai-rail-new"),
       railListBtn: requireElement<HTMLButtonElement>("ai-rail-list"),
-      railMoreBtn: requireElement<HTMLButtonElement>("ai-rail-more"),
       railExpandBtn: requireElement<HTMLButtonElement>("ai-rail-expand"),
       railDot: requireElement("ai-rail-dot"),
     },

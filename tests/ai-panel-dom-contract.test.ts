@@ -21,7 +21,6 @@ test("complete page assembly returns a valid AI dock contract", () => {
     assert.ok(dock.windowTemplate);
     assert.ok(dock.listToggleBtn);
     assert.ok(dock.newConversationBtn);
-    assert.ok(dock.moreBtn);
     assert.ok(dock.collapseBtn);
     assert.ok(dock.conversationList);
     assert.ok(dock.conversationListItems);

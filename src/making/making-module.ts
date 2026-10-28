@@ -1,4 +1,4 @@
-import { confirmDialog } from "../app-dialog.ts";
+import { confirmInApp, type ConfirmInAppOptions } from "../app-confirm.ts";
 import type { MakingDom } from "../dom.ts";
 import {
   chainCreate,
@@ -52,8 +52,11 @@ import { mountTrialRecords } from "./making-trial-records.ts";
  *   位置与尺寸统一由挂载结构保证，不随所点对象及其位置变化。
  * - 导图不直接编辑：一切加／改／删经「转制作对话」走既有会话通道；
  *   卡片上无启用开关，启用始终落在链路版本层（沿用既有确认措辞）。
- * - 启用／回退／停用／删除全部经用户确认后调用后端命令；失败如实提示，
- *   不显示与事实不符的状态。
+ * - 版本操作区主按钮三态合一（fix-ui-friction-2026-10 · B 定稿）：启用／回退／
+ *   停用由同一按钮按查看对象承担（启用/回退＝查看非启用版本、停用＝查看启用版本），
+ *   位置与样式恒定，不再有独立停用按钮。
+ * - 启用／回退／停用／删除全部经用户确认（统一应用内确认窗）后调用后端命令；
+ *   失败如实提示，不显示与事实不符的状态。
  * - 制作对话区由 `making-session-controller` 承载（真实会话接线，车道 F2a）：
  *   会话按链路组织、发送流镜像日常讨论的保存节奏、卡草稿保存经用户确认；
  *   试问 UI 挂点见 `MakingConversationController.setTrialLauncher`。
@@ -64,7 +67,7 @@ export interface MakingServices {
   readonly call?: InvokeFn;
   /** 事件订阅（测试注入；缺省用真实 Tauri listen）。 */
   readonly listen?: ListenFn;
-  /** 确认对话框（测试注入；缺省用 app-dialog 的原生确认）。 */
+  /** 确认替身（测试注入字符串文案决策；缺省走统一应用内确认窗 confirmInApp）。 */
   readonly confirm?: (message: string) => Promise<boolean>;
   /** 试问入口覆盖（缺省接线试问控制器；测试可替换观察钩子）。 */
   readonly startTrial?: MakingTrialLauncher;
@@ -102,7 +105,16 @@ function errorMessage(error: unknown): string {
 
 export function setupMaking(dom: MakingDom, services: MakingServices = {}): MakingController {
   const call = services.call;
-  const confirm = services.confirm ?? confirmDialog;
+  const confirmOverride = services.confirm ?? null;
+
+  /**
+   * 统一确认入口（in-app-confirmation）：缺省走应用内自绘确认窗（常规/危险变体）；
+   * 测试注入字符串替身时按确认文案（＝confirmInApp 的 body，逐字）决策，
+   * 不驱动真实 dialog 断言业务。
+   */
+  function confirmAction(options: ConfirmInAppOptions): Promise<boolean> {
+    return confirmOverride !== null ? confirmOverride(options.body) : confirmInApp(options);
+  }
 
   let library: ChainLibrary | null = null;
   let loadError: string | null = null;
@@ -150,7 +162,6 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const errorText = view.kind === "error" ? view.label : opError;
     dom.statusError.classList.toggle("hidden", errorText === null);
     dom.statusError.textContent = errorText ?? "";
-    dom.deactivateBtn.disabled = library?.active == null;
     if (view.kind === "active") {
       dom.statusText.textContent = view.label;
     }
@@ -233,8 +244,9 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       ? `正在使用：${buildMakingStatusView(library, null).label.replace(/^当前链路：/, "")}`
       : "正在使用：未启用链路，使用日常陪想";
     renderVersionOptions(view);
-    dom.enableBtn.hidden = view.enableLabel === null;
-    if (view.enableLabel !== null) dom.enableBtn.textContent = view.enableLabel;
+    // 主按钮三态（B 定稿）：位置与样式恒定，身份随查看对象变化
+    // （启用／回退／停用合一，不存在「无入口」状态）。
+    dom.primaryBtn.textContent = view.primaryAction.label;
     renderZoneCards(view);
     renderWires(view);
     renderDetail();
@@ -523,7 +535,12 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const lastCardNote = baseline.cards.length === 1
       ? "这是该版本最后一张卡，删除后将产生一个不含任何卡的新版本；"
       : "";
-    if (!await confirm(`从「${chain!.name}·第${baseline.index}版」删除卡片「${card.title}」？${lastCardNote}将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。`)) return;
+    // 应用内确认窗（in-app-confirmation）：body 逐字沿用既有确认文案。
+    if (!await confirmAction({
+      title: `删除卡片「${card.title}」？`,
+      body: `从「${chain!.name}·第${baseline.index}版」删除卡片「${card.title}」？${lastCardNote}将保存为新版本，历史版本保持不变，不自动启用；下一轮使用的版本不变。`,
+      confirmLabel: "删除",
+    })) return;
     try {
       const current = await chainLibraryLoad(call);
       const locked = current.chains.find((c) => c.id === chainId)?.versions.find((v) => v.id === versionId);
@@ -734,16 +751,27 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     if (viewChainId !== null) viewChain(viewChainId, dom.versionSelect.value);
   });
 
-  dom.enableBtn.addEventListener("click", () => {
+  // 主按钮三态分发（B 定稿）：启用/回退→chainSetActive/chainRollback、停用→chainDeactivate；
+  // 确认经应用内确认窗（常规变体），文案逐字沿用视图模型给出的既有措辞。
+  dom.primaryBtn.addEventListener("click", () => {
     const view = library !== null && viewChainId !== null && viewVersionId !== null
       ? buildMakingMapView(library, viewChainId, viewVersionId)
       : null;
     if (view === null || viewChainId === null || viewVersionId === null) return;
-    const message = view.isRollback ? view.rollbackConfirm : view.enableConfirm;
-    if (message === null) return;
+    const action = view.primaryAction;
     void (async () => {
-      if (!await confirm(message)) return;
-      const command = view.isRollback ? chainRollback : chainSetActive;
+      if (!await confirmAction({
+        title: `${action.label}？`,
+        body: action.confirm,
+        confirmLabel: action.confirmLabel,
+      })) return;
+      if (action.kind === "deactivate") {
+        if (await runCommand(() => chainDeactivate(call))) {
+          await refresh();
+        }
+        return;
+      }
+      const command = action.kind === "rollback" ? chainRollback : chainSetActive;
       if (await runCommand(() => command(viewChainId!, viewVersionId!, call))) {
         await refresh();
       }
@@ -754,7 +782,13 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
     const chain = findChain(viewChainId);
     if (chain === null) return;
     void (async () => {
-      if (!await confirm(describeChainDeletion(chain))) return;
+      // 删链路不可恢复：应用内确认窗危险变体（in-app-confirmation），文案逐字保留。
+      if (!await confirmAction({
+        title: `删除链路「${chain.name}」？`,
+        body: describeChainDeletion(chain),
+        confirmLabel: "删除链路",
+        danger: true,
+      })) return;
       const deletedChainId = chain.id;
       if (!await runCommand(() => chainDelete(deletedChainId, call))) return;
       if (makingChainId === deletedChainId) makingChainId = null;
@@ -762,17 +796,6 @@ export function setupMaking(dom: MakingDom, services: MakingServices = {}): Maki
       viewVersionId = null;
       resetDetail();
       await refresh();
-    })();
-  });
-
-  dom.deactivateBtn.addEventListener("click", () => {
-    void (async () => {
-      if (!await confirm(
-        "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。",
-      )) return;
-      if (await runCommand(() => chainDeactivate(call))) {
-        await refresh();
-      }
     })();
   });
 

@@ -1465,7 +1465,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 170px;
+  /* v5：不设 max-width——标题经 ui-v5 的 flex:1 1 0 弹性撑开并把动作组顶到
+     头部右缘，长标题由上面的 ellipsis 截断让位（fix-ui-friction-2026-10 场景2；
+     旧 170px 钳制曾使 flex 失效、动作组左挤）。 */
 }
 .ai-window-doc { font-size: 11px; color: var(--color-muted); white-space: nowrap; flex: none; }
 .ai-window-doc.hidden { display: none; }
@@ -2290,7 +2292,9 @@
 }
 
 .export-word-btn {
-  margin-left: auto;
+  /* fix-ui-friction-2026-10：去掉 margin-left:auto——该历史遗留把「导出」从
+     新建文档/新建文件夹/导入三个并列入口身边推开（file-management-ui 规格
+     要求四入口「并列」）；标题的 margin-right:auto 已承担整组靠右。 */
   flex: none;
 }
 
@@ -2861,15 +2865,32 @@
   padding: 1rem 1.25rem 2rem;
 }
 
+/* 版本操作区（B 定稿两行结构）：上行＝查看/使用双状态标注，下行＝控件＋主按钮 */
 .making-inspector-head {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.making-inspector-head .spacer {
-  flex: 1;
+.making-operations-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.making-operations-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.making-operations-sep {
+  flex: none;
+  width: 1px;
+  height: 1.2rem;
+  background: #e4e4e4;
 }
 
 .making-inspector-title {
@@ -4193,15 +4214,21 @@
   border-bottom: var(--border-hairline);
 }
 
+/* 两行结构（B 定稿）：上行标题＋状态标注＋「正在使用」单行不换行（超长截断省略），
+   下行版本下拉＋删除链路＋主按钮各自完整呈现（约 700px 内不错乱）。 */
+.making-operations-identity,
+.making-operations-actions {
+  gap: 8px;
+}
+
 .making-inspector-title {
-  flex-basis: 100%;
   margin: 0;
   font-size: 18px;
   line-height: 1.6;
-}
-
-.making-inspector-head .spacer {
-  display: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .making-inspector-state {

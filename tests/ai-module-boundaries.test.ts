@@ -178,8 +178,6 @@ test("scheduler 准入与 coordinator 请求调用的组合仅出现在请求网
 const ROOT_ORCHESTRATION_SYMBOLS = [
   "new AiRequestScheduler",
   "new AiRequestCoordinator",
-  "waitTiming.submit(",
-  "waitTiming.complete(",
   "beforeDispatch:",
   "focus_document_id:",
   ".stopRequest(",

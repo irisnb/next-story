@@ -92,7 +92,7 @@ async function settled<T>(promise: Promise<T>, stage: string): Promise<T> {
 function fixture(options: FixtureOptions = {}) {
   const window = new Window();
   const document = window.document as unknown as Document;
-  const savedGlobals = new Map(["window", "document", "HTMLElement", "alert", "confirm"].map((key) =>
+  const savedGlobals = new Map(["window", "document", "HTMLElement", "alert"].map((key) =>
     [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const));
   const alerts: string[] = [];
   Object.defineProperties(globalThis, {
@@ -100,7 +100,6 @@ function fixture(options: FixtureOptions = {}) {
     document: { configurable: true, value: document },
     HTMLElement: { configurable: true, value: window.HTMLElement },
     alert: { configurable: true, value: (message: unknown) => { alerts.push(String(message)); } },
-    confirm: { configurable: true, value: options.confirmDiscard ?? (() => true) },
   });
 
   // 三个 setup 共享同一份 DOM；所有元素属于同一 document 且可通过 ID 找到。
@@ -225,6 +224,8 @@ function fixture(options: FixtureOptions = {}) {
     },
     memoryStorage: options.memoryStorage ?? null,
     marginStorage: null,
+    // 统一应用内确认窗替身（fix-ui-friction-2026-10）：删除未保存文档确认经依赖注入。
+    confirm: options.confirmDiscard ?? (() => true),
   });
   const fileServices: FileManagementServices = {
     openContentTree: unexpected,

@@ -196,7 +196,6 @@
                   <span class="ai-conversation-list-title">讨论</span>
                   <button id="ai-list-new-conversation" class="ai-panel-btn ai-panel-btn-primary" type="button">新建讨论</button>
                   <button id="ai-new-conversation" class="hidden" type="button" aria-label="新建讨论"></button>
-                  <button id="ai-dock-more" class="ai-icon-btn" type="button" aria-label="更多讨论操作"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
                   <button id="ai-conversation-list-close" class="ai-panel-btn" type="button">收起</button>
                 </div>
                 <div class="ai-conversation-list-search">
@@ -222,9 +221,6 @@
               </button>
               <button id="ai-rail-list" class="ai-rail-btn" type="button" title="会话列表">
                 <svg class="ai-ic"><use href="#i-list"></use></svg>
-              </button>
-              <button id="ai-rail-more" class="ai-rail-btn" type="button" title="更多">
-                <svg class="ai-ic"><use href="#i-more"></use></svg>
               </button>
               <button id="ai-rail-expand" class="ai-rail-btn" type="button" title="展开停靠区">
                 <svg class="ai-ic"><use href="#i-chevron-left"></use></svg>
@@ -675,16 +671,22 @@
               <p>从左侧选择一条链路，查看它的组装结构。</p>
             </div>
             <div id="making-inspector-content" class="making-inspector-content hidden">
+              <!-- 版本操作区（B 定稿两行结构，fix-ui-friction-2026-10）：上行＝正在查看
+                   标题＋版本状态标注＋「正在使用」；下行＝版本下拉＋删除链路（次要样式）＋
+                   右侧单一状态化主按钮（启用／回退／停用三态合一，无独立停用按钮） -->
               <header class="making-inspector-head making-version-operations" aria-label="版本操作区">
-                <h2 id="making-inspector-title" class="making-inspector-title"></h2>
-                <span id="making-inspector-state" class="making-inspector-state"></span>
-                <span class="spacer"></span>
-                <label class="making-field-label" for="making-version-select">版本</label>
-                <select id="making-version-select" class="making-version-select" aria-label="版本记录"></select>
-                <button id="making-enable-btn" class="making-action-btn primary" type="button" hidden></button>
-                <button id="making-deactivate-btn" class="making-action-btn" type="button" disabled>停用当前链路</button>
-                <button id="making-delete-chain-btn" class="making-action-btn" type="button">删除链路</button>
-                <span class="making-version-using">正在使用：未启用链路</span>
+                <div class="making-operations-identity">
+                  <h2 id="making-inspector-title" class="making-inspector-title"></h2>
+                  <span id="making-inspector-state" class="making-inspector-state"></span>
+                  <span class="making-version-using">正在使用：未启用链路</span>
+                </div>
+                <div class="making-operations-actions">
+                  <label class="making-field-label" for="making-version-select">版本</label>
+                  <select id="making-version-select" class="making-version-select" aria-label="版本记录"></select>
+                  <span class="making-operations-sep" aria-hidden="true"></span>
+                  <button id="making-delete-chain-btn" class="making-action-btn making-delete-chain-btn" type="button">删除链路</button>
+                  <button id="making-primary-btn" class="making-action-btn primary making-primary-btn" type="button"></button>
+                </div>
               </header>
 
               <h3 id="making-composition-title" class="making-composition-title">提示词组成</h3>

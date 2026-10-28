@@ -1,7 +1,8 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { AppDom } from "./dom.ts";
-import { confirmDialog, showMessage } from "./app-dialog.ts";
+import { confirmInApp, type ConfirmInAppOptions } from "./app-confirm.ts";
+import { showMessage } from "./app-dialog.ts";
 import { createEditorFind, type EditorFind } from "./editor-find.ts";
 import { createEditorDocumentView } from "./editor-document-view.ts";
 import { createEditorDocumentSession } from "./editor-document-session.ts";
@@ -43,10 +44,6 @@ import {
 } from "./content-tree.ts";
 
 const EMPTY_STATE_TEXT = "这里还没有文档，去文件管理新建一篇吧";
-
-async function confirmDiscardingCurrentDocument(): Promise<boolean> {
-  return await confirmDialog("当前文档有未保存修改。删除后这些修改将丢失，确定继续吗？");
-}
 
 export interface EditorController {
   beginWorkspaceTransition(target: string): WorkspaceTransition | null;
@@ -112,6 +109,11 @@ interface EditorDependencies {
   marginStorage?: StorageLike | null;
   /** 写作宽度偏好存储；未注入时由 setupEditor 调用共享解析入口。 */
   columnWidthStorage?: StorageLike | null;
+  /**
+   * 统一应用内确认窗（fix-ui-friction-2026-10）：缺省走 `confirmInApp`，
+   * 测试注入替身、不驱动真实 dialog；兼容同步布尔与 Promise 返回。
+   */
+  confirm?: (options: ConfirmInAppOptions) => boolean | Promise<boolean>;
 }
 
 const defaultDependencies: EditorDependencies = {
@@ -282,6 +284,20 @@ export function setupEditor(
   function onEditorSelectionChange(): void {
     toolbar?.render();
     linkPopover?.update();
+  }
+
+  // ---- 删除有未保存修改文档的确认（统一应用内确认窗，危险变体） ----
+
+  const confirm = dependencies.confirm ?? confirmInApp;
+
+  /** 未保存修改删除后不可恢复；取消与确认窗失败一律视为未确认，不执行删除。 */
+  async function confirmDiscardingCurrentDocument(): Promise<boolean> {
+    return await confirm({
+      title: "删除当前文档？",
+      body: "当前文档有未保存修改。删除后这些修改将丢失，确定继续吗？",
+      confirmLabel: "删除",
+      danger: true,
+    });
   }
 
   // ---- 文档加载与切换 ----

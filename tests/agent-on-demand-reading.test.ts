@@ -21,6 +21,7 @@ import type {
 } from "../src/conversation-archive.ts";
 import { deriveConversationSummary } from "../src/conversation-archive.ts";
 import { setupFileManagement } from "../src/file-management.ts";
+import type { ConfirmInAppOptions } from "../src/app-confirm.ts";
 import type { AppDom } from "../src/dom.ts";
 import type {
   ContentTree,
@@ -765,7 +766,7 @@ const VISIBILITY_TREE: ContentTree = {
 
 interface VisibilityHarness {
   calls: string[];
-  confirmMessages: string[];
+  confirmOptions: ConfirmInAppOptions[];
   toggleVisibleDocument(): Promise<void>;
   restore(): void;
 }
@@ -792,7 +793,7 @@ function visibilityHarness(options: {
   } as unknown as Document;
 
   const calls: string[] = [];
-  const confirmMessages: string[] = [];
+  const confirmOptions: ConfirmInAppOptions[] = [];
   const dom = {
     fmNewDocument: elements.get("fm-new-document"),
     fmNewFolder: elements.get("fm-new-folder"),
@@ -821,6 +822,11 @@ function visibilityHarness(options: {
 
   const controller = setupFileManagement(dom, {
     onTreeChanged: () => {},
+    // 统一应用内确认窗（fix-ui-friction-2026-10）：注入替身捕获确认参数，不驱动真实 dialog。
+    confirm: (request) => {
+      confirmOptions.push(request);
+      return options.confirmResult;
+    },
     services: {
       openContentTree: async () => VISIBILITY_TREE,
       setDocumentAiVisibility: async (_projectPath, _documentId, visible) => {
@@ -839,17 +845,9 @@ function visibilityHarness(options: {
     tree: VISIBILITY_TREE,
   });
 
-  // 统一对话框入口读取 globalThis.confirm（app-dialog.ts）；桩必须打在同一对象上，
-  // 否则 window 与 globalThis 分离的测试环境会绕过桩。
-  const previousConfirm = globalThis.confirm;
-  globalThis.confirm = (message?: unknown) => {
-    confirmMessages.push(String(message));
-    return options.confirmResult;
-  };
-
   return {
     calls,
-    confirmMessages,
+    confirmOptions,
     async toggleVisibleDocument() {
       const fileTree = elements.get("fm-file-tree")!;
       const button = findClickableByText(fileTree, "可读");
@@ -858,7 +856,6 @@ function visibilityHarness(options: {
       for (let i = 0; i < 8; i += 1) await Promise.resolve();
     },
     restore() {
-      globalThis.confirm = previousConfirm;
       globalThis.document = previousDocument;
     },
   };
@@ -881,11 +878,11 @@ test("7.5a 关闭可见性前提示受影响讨论：文案明示永久只读与
   try {
     await h.toggleVisibleDocument();
     assert.ok(h.calls.includes("usage"), "关闭前先查询受影响讨论");
-    assert.equal(h.confirmMessages.length, 1, "有受影响讨论时必须确认");
-    const message = h.confirmMessages[0];
-    assert.ok(message.includes("时间线讨论"), "列出受影响讨论");
-    assert.ok(message.includes("永久只读"), "明示永久只读后果");
-    assert.ok(message.includes("脱敏"), "明示旧出处脱敏后果");
+    assert.equal(h.confirmOptions.length, 1, "有受影响讨论时必须确认");
+    const request = h.confirmOptions[0];
+    assert.ok(request.body.includes("时间线讨论"), "列出受影响讨论");
+    assert.ok(request.body.includes("永久只读"), "明示永久只读后果");
+    assert.ok(request.body.includes("脱敏"), "明示旧出处脱敏后果");
     assert.ok(!h.calls.includes("set:false"), "用户取消时不执行关闭");
   } finally {
     h.restore();
@@ -910,7 +907,7 @@ test("7.5c 没有受影响讨论时不弹确认", async () => {
   const h = visibilityHarness({ usage: [], confirmResult: false });
   try {
     await h.toggleVisibleDocument();
-    assert.equal(h.confirmMessages.length, 0, "无受影响讨论不弹确认");
+    assert.equal(h.confirmOptions.length, 0, "无受影响讨论不弹确认");
     assert.ok(h.calls.includes("set:false"), "直接关闭");
   } finally {
     h.restore();
@@ -921,8 +918,8 @@ test("7.5d 受影响讨论查询失败时保守拦截（失败关闭）", async 
   const h = visibilityHarness({ usage: [], confirmResult: false, usageFails: true });
   try {
     await h.toggleVisibleDocument();
-    assert.equal(h.confirmMessages.length, 1, "查询失败也要确认");
-    assert.ok(h.confirmMessages[0].includes("永久只读"), "失败文案同样明示后果");
+    assert.equal(h.confirmOptions.length, 1, "查询失败也要确认");
+    assert.ok(h.confirmOptions[0].body.includes("永久只读"), "失败文案同样明示后果");
     assert.ok(!h.calls.includes("set:false"), "未确认不执行关闭");
   } finally {
     h.restore();

@@ -1,6 +1,5 @@
 import type { AiFeatureContext } from "./ai-feature-context.ts";
 import type { StructuredRequestSender, SummonFirstRequest } from "./ai-feature-request-gateway.ts";
-import { waitTiming } from "./ai-timing.ts";
 import type { AiPanelState } from "./ai-panel-state.ts";
 import type { GenerateAiRequest, SelectionSnapshot } from "./types.ts";
 
@@ -10,7 +9,7 @@ import type { GenerateAiRequest, SelectionSnapshot } from "./types.ts";
  * 停止 / 关闭 / 重试的编排规则住在本模块（ai-module-boundaries：组合根装配边界）：
  * - `stopGeneration` 与 `closeWindow` 共享同构前缀（取消排队 → 取消传输 → 释放
  *   协调器锁），尾部各自保留原实现步骤，逐条对照、不重排不增删
- *   （stop：waitTiming.complete → stopRequest → persist；close：stopRequest → closeWindow）；
+ *   （stop：stopRequest → persist；close：closeWindow）；
  * - `retryFirstRound` 双分支（直接提问 / 召唤）保持原实现；
  * - `retryStoppedFollowUp` 吸收自 `buildAiDockActions` 的内联实现（停止后的追问重试）。
  *
@@ -83,7 +82,6 @@ export function setupAiRequestLifecycle(options: AiRequestLifecycleOptions): AiR
 
   function stopGeneration(conversationId: string): void {
     detachRequest(conversationId);
-    waitTiming.complete(conversationId);
     context.state.stopRequest(conversationId);
     persistDiscussion(conversationId);
   }

@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import type { AiFeatureController } from "../src/ai-feature.ts";
 import { AiPanelState } from "../src/ai-panel-state.ts";
+import type { ConfirmInAppOptions } from "../src/app-confirm.ts";
 import type { AppDom } from "../src/dom.ts";
 import { setupEditor } from "../src/editor.ts";
 import type { FormatCommand } from "../src/format-commands.ts";
@@ -467,6 +468,8 @@ function editorFixture(
     marginStorage?: StorageLike | null;
     columnWidthStorage?: StorageLike | null;
     readDocument?: (path: string, id: string) => Promise<string>;
+    /** 统一应用内确认窗替身（fix-ui-friction-2026-10）：删除未保存文档确认注入，不驱动真实 dialog。 */
+    confirm?: (options: ConfirmInAppOptions) => boolean | Promise<boolean>;
   } = {},
 ): Fixture {
   const ui = fakeDom();
@@ -1027,17 +1030,21 @@ test("editor shortcuts still run when the editor surface has focus", async () =>
 
 for (const decision of [false, true, "reject"] as const) {
   test(`applyTree awaits asynchronous deletion confirmation: ${decision}`, async () => {
-    const fixture = editorFixture({ "doc-1": notebookJson("正文") });
-    const previousConfirm = globalThis.confirm;
     let resolve!: (value: boolean) => void;
     let reject!: (reason: Error) => void;
     const confirmation = new Promise<boolean>((res, rej) => { resolve = res; reject = rej; });
     let prompted = false;
+    // 注入替身对齐 confirmInApp 契约：调用失败（拒绝）一律 resolve false，不当作已确认。
+    const fixture = editorFixture({ "doc-1": notebookJson("正文") }, {
+      confirm: () => {
+        prompted = true;
+        return confirmation.catch(() => false);
+      },
+    });
     try {
       const tree = treeFrom([docNode("doc-1", "未命名文档")]);
       await fixture.editor.showProject(projectState("作品", tree));
       fixture.editors[0]?.edit(paragraphDoc("未保存修改"));
-      globalThis.confirm = (() => { prompted = true; return confirmation; }) as unknown as typeof globalThis.confirm;
       const applying = fixture.editor.applyTree(treeFrom([]));
       await flushUntil(() => prompted);
       assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
@@ -1055,28 +1062,21 @@ for (const decision of [false, true, "reject"] as const) {
         assert.deepEqual(fixture.editors[0]?.getDocument(), paragraphDoc("未保存修改"));
       }
     } finally {
-      globalThis.confirm = previousConfirm;
       fixture.ui.restore();
     }
   });
 }
 
 test("applyTree keeps the dirty editor when the user cancels deletion", async () => {
-  const fixture = editorFixture({ "doc-1": notebookJson("正文") });
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") }, { confirm: () => false });
   try {
     const tree = treeFrom([docNode("doc-1", "未命名文档")]);
     await fixture.editor.showProject(projectState("作品", tree));
     fixture.editors[0]?.edit(paragraphDoc("未保存修改"));
     assert.equal(fixture.editor.hasUnsavedChanges(), true);
 
-    const previousConfirm = globalThis.confirm;
-    globalThis.confirm = () => false;
-    try {
-      fixture.editor.applyTree(treeFrom([]));
-      await flushUntil(() => !fixture.editor.isTransitioning());
-    } finally {
-      globalThis.confirm = previousConfirm;
-    }
+    fixture.editor.applyTree(treeFrom([]));
+    await flushUntil(() => !fixture.editor.isTransitioning());
 
     assert.equal(fixture.editor.getCurrentDocumentId(), "doc-1");
     assert.equal(fixture.editor.hasUnsavedChanges(), true);
@@ -1092,20 +1092,14 @@ test("applyTree switches to the first remaining document when deletion is confir
   const fixture = editorFixture({
     "doc-1": notebookJson("正文"),
     "doc-2": notebookJson("第二篇"),
-  });
+  }, { confirm: () => true });
   try {
     const tree = treeFrom([docNode("doc-1", "未命名文档"), docNode("doc-2", "第二篇")]);
     await fixture.editor.showProject(projectState("作品", tree));
     fixture.editors[0]?.edit(paragraphDoc("未保存修改"));
 
-    const previousConfirm = globalThis.confirm;
-    globalThis.confirm = () => true;
-    try {
-      fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]));
-      await flushUntil(() => !fixture.editor.isTransitioning());
-    } finally {
-      globalThis.confirm = previousConfirm;
-    }
+    fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]));
+    await flushUntil(() => !fixture.editor.isTransitioning());
 
     await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
     assert.equal(fixture.editor.getCurrentDocumentId(), "doc-2");
@@ -1119,20 +1113,14 @@ test("applyTree switches to the first remaining document when deletion is confir
 });
 
 test("applyTree shows the empty state when deletion is confirmed and no documents remain", async () => {
-  const fixture = editorFixture({ "doc-1": notebookJson("正文") });
+  const fixture = editorFixture({ "doc-1": notebookJson("正文") }, { confirm: () => true });
   try {
     const tree = treeFrom([docNode("doc-1", "未命名文档")]);
     await fixture.editor.showProject(projectState("作品", tree));
     fixture.editors[0]?.edit(paragraphDoc("未保存修改"));
 
-    const previousConfirm = globalThis.confirm;
-    globalThis.confirm = () => true;
-    try {
-      fixture.editor.applyTree(treeFrom([]));
-      await flushUntil(() => !fixture.editor.isTransitioning());
-    } finally {
-      globalThis.confirm = previousConfirm;
-    }
+    fixture.editor.applyTree(treeFrom([]));
+    await flushUntil(() => !fixture.editor.isTransitioning());
 
     assert.equal(fixture.editor.getCurrentDocumentId(), null);
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
@@ -1145,23 +1133,17 @@ test("applyTree shows the empty state when deletion is confirmed and no document
 });
 
 test("applyTree switches away without prompting when the current document is clean", async () => {
+  let confirmCalls = 0;
   const fixture = editorFixture({
     "doc-1": notebookJson("正文"),
     "doc-2": notebookJson("第二篇"),
-  });
+  }, { confirm: () => { confirmCalls += 1; return true; } });
   try {
     const tree = treeFrom([docNode("doc-1", "未命名文档"), docNode("doc-2", "第二篇")]);
     await fixture.editor.showProject(projectState("作品", tree));
     assert.equal(fixture.editor.hasUnsavedChanges(), false);
 
-    let confirmCalls = 0;
-    const previousConfirm = globalThis.confirm;
-    globalThis.confirm = () => { confirmCalls += 1; return true; };
-    try {
-      fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]));
-    } finally {
-      globalThis.confirm = previousConfirm;
-    }
+    fixture.editor.applyTree(treeFrom([docNode("doc-2", "第二篇")]));
 
     await flushUntil(() => fixture.editor.getCurrentDocumentId() === "doc-2");
     assert.equal(confirmCalls, 0);

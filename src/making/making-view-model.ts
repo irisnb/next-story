@@ -38,6 +38,16 @@ export const MAKING_STATE_NOT_ACTIVE = "尚未启用";
 export const MAKING_STATE_ACTIVE = "当前启用版本";
 
 /**
+ * 主按钮停用态文字（fix-ui-friction-2026-10 · B 定稿）：查看的正是当前启用版本时，
+ * 同一主按钮显示「停用当前链路」（停用入口收敛为主按钮身份，不再独立成按钮）。
+ */
+export const MAKING_DEACTIVATE_LABEL = "停用当前链路";
+
+/** 停用确认文字（沿用既有停用文案，一字不改）。 */
+export const MAKING_DEACTIVATE_CONFIRM =
+  "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。";
+
+/**
  * 阅读说明条三句（图区容器之外贴底固定呈现；不参与图区垂直居中计算）。
  * 免责句不暗示 AI 内部思考过程；箭头句与启用句防止「排列＝执行顺序」「卡片级启用」
  * 两类误读。
@@ -232,6 +242,18 @@ const MAP_WIRE_PATHS: readonly string[] = [
   "M588 220 H673", // 组装 → 提示词（输出）
 ];
 
+/**
+ * 版本操作区主按钮的三态决策（fix-ui-friction-2026-10 · B 定稿）：启用／回退／停用
+ * 合一，按查看对象取其一；控制器只消费此决策分发既有命令，不自行判断启停。
+ */
+export type MakingPrimaryAction =
+  /** 查看版本不是当前启用版本（非回退场景）→「启用「名称·第N版」」。 */
+  | { readonly kind: "enable"; readonly label: string; readonly confirmLabel: "启用"; readonly confirm: string }
+  /** 同一链路内查看早于启用版本的版本 →「回退到「名称·第N版」」。 */
+  | { readonly kind: "rollback"; readonly label: string; readonly confirmLabel: "回退"; readonly confirm: string }
+  /** 查看的正是当前启用版本 →「停用当前链路」。 */
+  | { readonly kind: "deactivate"; readonly label: string; readonly confirmLabel: string; readonly confirm: string };
+
 /** 导图视图（正在看什么）的显示决策：三区同构＋组装流＋输出象征块。 */
 export interface MakingMapView {
   readonly chainId: string;
@@ -242,16 +264,16 @@ export interface MakingMapView {
   readonly title: string;
   /** 版本状态标注：「当前启用版本」或「尚未启用」。 */
   readonly stateLabel: string;
-  /** 是否当前启用版本（控制启用入口显隐）。 */
+  /** 是否当前启用版本（主按钮停用态的判定条件）。 */
   readonly isActiveVersion: boolean;
   /** 是否回退场景（同一链路内查看早于启用版本的版本）。 */
   readonly isRollback: boolean;
-  /** 启用按钮文字（查看版本即启用版本时为 null，无入口）。 */
-  readonly enableLabel: string | null;
-  /** 启用确认文字（具体承接：写明替换对象与生效范围）。 */
-  readonly enableConfirm: string | null;
-  /** 回退确认文字（呈现目标版本与「较新版本及试问证据保留」）。 */
-  readonly rollbackConfirm: string | null;
+  /**
+   * 主按钮三态决策：查看非启用版本＝启用／回退语义（文字规则与既有
+   * enableLabel/rollbackConfirm 完全一致），查看启用版本＝停用语义，
+   * 未启用任何链路＝恒为启用语义。
+   */
+  readonly primaryAction: MakingPrimaryAction;
   /** 版本记录下拉项（全部版本，倒序＝最新在前）。 */
   readonly versionOptions: readonly { readonly versionId: string; readonly label: string }[];
   /** 自定义要求区（用户可改的零件分区；原内部名「链路可变区」退役）。 */
@@ -336,18 +358,34 @@ export function buildMakingMapView(
   // 零卡版本启用/回退：确认文字补一句零卡效果（allow-empty-chain，与状态条
   // 「（未附加自定义）」口径一致）；有卡版本不携带，既有措辞不变。
   const zeroCardNote = version.cards.length === 0 ? "该版本不含任何卡，启用后不附加自定义内容。" : "";
-  let enableLabel: string | null = null;
-  let enableConfirm: string | null = null;
-  let rollbackConfirm: string | null = null;
-  if (!isActiveVersion && rollback === null) {
-    enableLabel = `启用「${chain.name}·第${version.index}版」`;
-    enableConfirm = (resolvedActive !== null
-      ? `启用「${chain.name}·第${version.index}版」，替换当前「${resolvedActive.chain.name}·第${resolvedActive.version.index}版」；所有作品的下一轮提问开始使用。`
-      : `启用「${chain.name}·第${version.index}版」；所有作品的下一轮提问开始使用。`) + zeroCardNote;
+  // 主按钮三态（B 定稿）：启用与回退的 label/confirm 文字规则与既有
+  // enableLabel/enableConfirm/rollbackConfirm 完全一致（一字不改）；查看启用版本
+  // 时同一按钮承担停用；未启用任何链路时恒为启用语义（rollback 为 null）。
+  let primaryAction: MakingPrimaryAction;
+  if (isActiveVersion) {
+    primaryAction = {
+      kind: "deactivate",
+      label: MAKING_DEACTIVATE_LABEL,
+      confirmLabel: MAKING_DEACTIVATE_LABEL,
+      confirm: MAKING_DEACTIVATE_CONFIRM,
+    };
   } else if (rollback !== null) {
-    enableLabel = `回退到「${chain.name}·第${version.index}版」`;
-    rollbackConfirm =
-      `回退到「${chain.name}·第${version.index}版」，替换当前第${rollback.activeIndex}版；较新版本及试问证据保留，所有作品的下一轮提问开始使用回退后的版本。` + zeroCardNote;
+    primaryAction = {
+      kind: "rollback",
+      label: `回退到「${chain.name}·第${version.index}版」`,
+      confirmLabel: "回退",
+      confirm:
+        `回退到「${chain.name}·第${version.index}版」，替换当前第${rollback.activeIndex}版；较新版本及试问证据保留，所有作品的下一轮提问开始使用回退后的版本。` + zeroCardNote,
+    };
+  } else {
+    primaryAction = {
+      kind: "enable",
+      label: `启用「${chain.name}·第${version.index}版」`,
+      confirmLabel: "启用",
+      confirm: (resolvedActive !== null
+        ? `启用「${chain.name}·第${version.index}版」，替换当前「${resolvedActive.chain.name}·第${resolvedActive.version.index}版」；所有作品的下一轮提问开始使用。`
+        : `启用「${chain.name}·第${version.index}版」；所有作品的下一轮提问开始使用。`) + zeroCardNote,
+    };
   }
 
   const requirementCards = version.cards.filter((card) => slotTypeOf(card) === "requirement");
@@ -361,9 +399,7 @@ export function buildMakingMapView(
     stateLabel: isActiveVersion ? MAKING_STATE_ACTIVE : MAKING_STATE_NOT_ACTIVE,
     isActiveVersion,
     isRollback: rollback !== null,
-    enableLabel,
-    enableConfirm,
-    rollbackConfirm,
+    primaryAction,
     versionOptions: [...chain.versions]
       .sort((a, b) => b.index - a.index)
       .map((candidate) => ({

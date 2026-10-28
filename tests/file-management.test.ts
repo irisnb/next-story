@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { setupFileManagement, type FileManagementServices } from "../src/file-management.ts";
+import type { ConfirmInAppOptions } from "../src/app-confirm.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { ContentTree, ProjectLoadIdentity, ProjectTreeState } from "../src/types.ts";
 
@@ -108,7 +109,12 @@ function findButton(root: FakeElement, label: string): FakeElement | null {
   return null;
 }
 
-function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices> = {}): {
+function makeHarness(
+  tree: ContentTree,
+  initial: Partial<FileManagementServices> = {},
+  /** 统一应用内确认窗替身（fix-ui-friction-2026-10）：缺省走真实组件（fake DOM 下失败关闭）。 */
+  confirm?: (options: ConfirmInAppOptions) => boolean | Promise<boolean>,
+): {
   controller: ReturnType<typeof setupFileManagement>;
   elements: Map<string, FakeElement>;
   calls: string[];
@@ -201,6 +207,7 @@ function makeHarness(tree: ContentTree, initial: Partial<FileManagementServices>
       return { status: "committed" };
     },
     services,
+    confirm,
   });
 
   const state: ProjectTreeState = {
@@ -487,15 +494,13 @@ test("same path reopened gets a new load generation", async () => {
 
 test("visibility usage query does not confirm or write after unload", async () => {
   const usage = deferred<[]>();
-  const previousWindow = globalThis.window;
   let confirms = 0;
-  Object.defineProperty(globalThis, "window", { configurable: true, value: {
-    confirm: () => { confirms += 1; return true; },
-    prompt: () => null,
-  } });
   const h = makeHarness(VISIBILITY_TREE, {
     conversationsUsingDocument: async () => usage.promise,
     setDocumentAiVisibility: async () => { throw new Error("不应写入"); },
+  }, () => {
+    confirms += 1;
+    return true;
   });
   try {
     const toggle = collectButtons(h.elements.get("fm-file-tree")!, "可读")[0];
@@ -509,27 +514,24 @@ test("visibility usage query does not confirm or write after unload", async () =
     assert.equal(h.calls.includes("set_document_ai_visibility:false"), false);
   } finally {
     h.restore();
-    if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window");
-    else Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
   }
 });
 
 for (const decision of [false, true, "reject", "unload", "new-operation"] as const) {
   test(`visibility change awaits confirmation and retains ownership: ${decision}`, async () => {
     const confirmation = deferred<boolean>();
-    const previousConfirm = globalThis.confirm;
     let prompted = false;
     let writes = 0;
     const h = makeHarness(VISIBILITY_TREE, {
       conversationsUsingDocument: async () => { throw new Error("查询失败，保守确认"); },
       setDocumentAiVisibility: async () => { writes += 1; },
+    }, (options) => {
+      assert.match(options.body, /无法确认有哪些讨论使用过这篇文档/);
+      prompted = true;
+      // 对齐 confirmInApp 契约：调用失败（拒绝）一律 resolve false，不当作已确认。
+      return confirmation.promise.catch(() => false);
     });
     try {
-      globalThis.confirm = ((message: string) => {
-        assert.match(message, /无法确认有哪些讨论使用过这篇文档/);
-        prompted = true;
-        return confirmation.promise;
-      }) as unknown as typeof globalThis.confirm;
       collectButtons(h.elements.get("fm-file-tree")!, "可读")[0]!.click();
       await settle();
       assert.equal(prompted, true);
@@ -542,7 +544,6 @@ for (const decision of [false, true, "reject", "unload", "new-operation"] as con
       await settle();
       assert.equal(writes, decision === true ? 1 : 0);
     } finally {
-      globalThis.confirm = previousConfirm;
       h.restore();
     }
   });

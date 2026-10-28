@@ -1,6 +1,5 @@
 import { AiRequestCoordinator, type RequestIdentity } from "./ai-request.ts";
 import { AiRequestScheduler, DEFAULT_MAX_CONCURRENT } from "./ai-request-scheduler.ts";
-import { waitTiming } from "./ai-timing.ts";
 import type { AiFeatureContext } from "./ai-feature-context.ts";
 import {
   withFocusDocumentIdentity,
@@ -25,9 +24,8 @@ import type { AiPanelState } from "./ai-panel-state.ts";
  * - 三个同构 sender 收敛为一条派发管道（`scheduleTracked` + busy/queued 回写），
  *   差异只在三根轴：材料注入开关（enrich）、kind 标签来源、coordinator 方法；
  * - `materialDispatchGuard`（派发前材料权限复核）只服务排队派发，属管道私有；
- * - coordinator 与其六个终态回调在本模块构造：回调尾部的固定四连
- *   （`waitTiming.complete → state 迁移 → persist → refreshOnDemand`）是编排规则，
- *   逐条保持原实现；
+ * - coordinator 与其六个终态回调在本模块构造：回调尾部的固定三连
+ *   （`state 迁移 → persist → refreshOnDemand`）是编排规则，逐条保持原实现；
  * - 不引 DOM；一切状态与副作用经 `AiFeatureContext` 访问器（禁快照，每次现取）。
  */
 
@@ -77,9 +75,9 @@ export interface AiRequestGatewayOptions {
   readonly context: AiFeatureContext;
   /** 全局同时生成上限（缺省用调度器默认值）。 */
   readonly maxConcurrent?: number;
-  /** 讨论档案保存入口（终态编排四连的第三步；由组合根注入）。 */
+  /** 讨论档案保存入口（终态编排三连的第二步；由组合根注入）。 */
   readonly persistDiscussion: (conversationId: string) => void;
-  /** 轮次终态后的按需补读状态刷新入口（四连的第四步；由组合根注入）。 */
+  /** 轮次终态后的按需补读状态刷新入口（三连的第三步；由组合根注入）。 */
   readonly refreshOnDemandState: (conversationId: string) => void;
 }
 
@@ -102,19 +100,16 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
       }),
     {
       onSuccess: (snapshot: SelectionSnapshot, content: string, conversationId: string) => {
-        waitTiming.complete(conversationId);
         context.state.succeed(snapshot, content, conversationId);
         persistDiscussion(conversationId);
         refreshOnDemandState(conversationId);
       },
       onError: (snapshot: SelectionSnapshot, error, conversationId: string) => {
-        waitTiming.complete(conversationId);
         applyGenerateError(context.state, snapshot, error, conversationId);
         persistDiscussion(conversationId);
         refreshOnDemandState(conversationId);
       },
       onStructuredSuccess: (content, provenance, sentConfirmed, identity, chainRound) => {
-        waitTiming.complete(identity.conversationId);
         context.state.succeedFollowUp(identity.turnId ?? -1, content, identity.conversationId);
         context.state.recordRoundProvenance(
           identity.conversationId,
@@ -127,7 +122,6 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
         refreshOnDemandState(identity.conversationId);
       },
       onStructuredError: (error, identity) => {
-        waitTiming.complete(identity.conversationId);
         if (error.code === "configuration_required") {
           context.state.requireFollowUpConfiguration(identity.turnId ?? -1, identity.conversationId);
         } else {
@@ -137,7 +131,6 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
         refreshOnDemandState(identity.conversationId);
       },
       onDirectQuestionSuccess: (content, provenance, sentConfirmed, conversationId, chainRound) => {
-        waitTiming.complete(conversationId);
         context.state.succeedDirectQuestion(content, conversationId);
         context.state.recordRoundProvenance(
           conversationId,
@@ -150,7 +143,6 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
         refreshOnDemandState(conversationId);
       },
       onDirectQuestionError: (error, conversationId) => {
-        waitTiming.complete(conversationId);
         if (error.code === "configuration_required") {
           context.state.requireDirectQuestionConfiguration(conversationId);
         } else {
@@ -170,10 +162,8 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
     options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT,
     (conversationId) => {
       context.state.startQueuedRequest(conversationId);
-      waitTiming.started(conversationId);
     },
     (conversationId) => {
-      waitTiming.complete(conversationId);
       context.state.rejectQueuedRequest(conversationId, {
         code: "document_not_visible",
         message: "材料文档的可见性已变化，本次请求未发送。请重新发起。",
@@ -195,30 +185,16 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
     };
   }
 
-  /** 记录提交/排队/开始时间，并返回调度结果。 */
-  function scheduleTracked(
+  /** 三个 sender 共用的派发管道：调度准入 → busy/queued 回写。 */
+  function dispatchTracked(
     conversationId: string,
-    kind: string,
     run: () => Promise<void> | null,
-  ): "started" | "queued" | "busy" {
-    waitTiming.submit(conversationId, kind);
+  ): Promise<void> | null {
     const result = scheduler.submit({
       conversationId,
       run,
       beforeDispatch: materialDispatchGuard(conversationId),
     });
-    if (result === "started") waitTiming.started(conversationId);
-    else if (result === "queued") waitTiming.queued(conversationId);
-    return result;
-  }
-
-  /** 三个 sender 共用的派发管道：调度准入 → busy/queued 回写。 */
-  function dispatchTracked(
-    conversationId: string,
-    kind: string,
-    run: () => Promise<void> | null,
-  ): Promise<void> | null {
-    const result = scheduleTracked(conversationId, kind, run);
     if (result === "busy") return null;
     if (result === "queued") context.state.queueRequest(conversationId);
     return Promise.resolve();
@@ -229,7 +205,7 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
   /** 经调度器发送结构化请求（追问 / 重试 / 编辑重发）。 */
   const requestStructured: StructuredRequestSender = (request, identity) => {
     const focused = withFocusDocumentIdentity(request, identity.conversationId, materials);
-    return dispatchTracked(identity.conversationId, focused.kind, () =>
+    return dispatchTracked(identity.conversationId, () =>
       coordinator.requestStructured(focused, identity),
     );
   };
@@ -240,7 +216,7 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
     snapshot: SelectionSnapshot,
     firstRequest?: SummonFirstRequest,
   ): Promise<void> | null =>
-    dispatchTracked(conversationId, "summon", () =>
+    dispatchTracked(conversationId, () =>
       coordinator.requestFor(conversationId, snapshot, firstRequest),
     );
 
@@ -250,7 +226,7 @@ export function setupAiRequestGateway(options: AiRequestGatewayOptions): AiReque
     request: GenerateAiRequest,
   ): Promise<void> | null => {
     const focused = withFocusDocumentIdentity(request, conversationId, materials);
-    return dispatchTracked(conversationId, focused.kind, () =>
+    return dispatchTracked(conversationId, () =>
       coordinator.requestDirectQuestionFor(conversationId, focused),
     );
   };

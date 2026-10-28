@@ -176,13 +176,26 @@ test("status view distinguishes enabled with cards, zero-card enabled, and idle"
   assert.equal((idle as { label: string }).label, "当前未启用链路，使用日常陪想");
 });
 
-test("version controls share one region outside the read-only status bar", () => {
+test("version operations form two rows with a single stateful primary button", () => {
   const { document } = parseMakingDocument();
-  const enable = document.getElementById("making-enable-btn")!;
-  const deactivate = document.getElementById("making-deactivate-btn")!;
-  assert.equal(enable.closest(".making-version-operations"), deactivate.closest(".making-version-operations"));
-  assert.ok(enable.closest(".making-version-operations"));
-  assert.equal(deactivate.closest("#making-status-bar"), null);
+  // 单一状态化主按钮（B 定稿）：启用/回退/停用三态合一，不再有独立停用按钮。
+  const primary = document.getElementById("making-primary-btn")!;
+  assert.equal(document.getElementById("making-deactivate-btn"), null, "独立停用按钮已移除");
+  assert.equal(document.getElementById("making-enable-btn"), null, "独立启用按钮已并入主按钮");
+  assert.ok(primary.closest(".making-version-operations"), "主按钮在固定版本操作区内");
+  assert.equal(primary.closest("#making-status-bar"), null, "状态条不承担启停入口");
+  // 两行结构：上行＝查看标题＋状态标注＋「正在使用」；下行＝版本下拉＋删除链路＋主按钮。
+  const identity = document.querySelector(".making-operations-identity")!;
+  const actions = document.querySelector(".making-operations-actions")!;
+  assert.ok(identity.contains(document.getElementById("making-inspector-title")));
+  assert.ok(identity.contains(document.getElementById("making-inspector-state")));
+  assert.ok(identity.contains(document.querySelector(".making-version-using")));
+  assert.ok(actions.contains(document.getElementById("making-version-select")));
+  assert.ok(actions.contains(document.getElementById("making-delete-chain-btn")));
+  assert.ok(actions.contains(primary));
+  // 下行不出现第二个启停按钮：动作行的按钮只有删除链路与主按钮。
+  const actionButtons = [...actions.querySelectorAll("button")].map((button) => button.id);
+  assert.deepEqual(actionButtons, ["making-delete-chain-btn", "making-primary-btn"]);
 });
 
 for (const scenario of ["changed", "missing", "appended", "failure"] as const) {
@@ -383,31 +396,42 @@ test("map view separates draft viewing from the active version with concrete wor
   ]);
   const data = library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id });
 
-  // 查看启用版本：无启用入口，状态标注「当前启用版本」，标题无版本后缀。
+  // 查看启用版本：主按钮呈停用态（B 定稿三态），状态标注「当前启用版本」，标题无版本后缀。
   const activeView = buildMakingMapView(data, chainA.id, chainA.versions[1].id)!;
   assert.equal(activeView.title, "正在查看：情节探索·第3版");
   assert.equal(activeView.stateLabel, "当前启用版本");
-  assert.equal(activeView.enableLabel, null);
+  assert.equal(activeView.primaryAction.kind, "deactivate", "查看启用版本时主按钮＝停用");
+  assert.equal(activeView.primaryAction.label, "停用当前链路");
+  assert.equal(
+    activeView.primaryAction.confirm,
+    "停用当前链路？从下一轮提问开始回到日常陪想；链路、版本与试问档案全部保留。",
+  );
   assert.equal(activeView.isActiveVersion, true);
 
-  // 查看更新的草稿（第4版）：标题标注草稿，明示「尚未启用」，启用文字写明替换对象与生效范围。
+  // 查看更新的草稿（第4版）：标题标注草稿，明示「尚未启用」，主按钮呈启用语义，
+  // 确认文字写明替换对象与生效范围（规则与既有 enableConfirm 一字不改）。
   const draftView = buildMakingMapView(data, chainA.id, chainA.versions[2].id)!;
   assert.equal(draftView.title, "正在查看：情节探索·第4版（草稿）");
   assert.equal(draftView.stateLabel, "尚未启用");
-  assert.equal(draftView.enableLabel, "启用「情节探索·第4版」");
+  assert.equal(draftView.primaryAction.kind, "enable");
+  assert.equal(draftView.primaryAction.label, "启用「情节探索·第4版」");
+  assert.equal(draftView.primaryAction.confirmLabel, "启用");
   assert.equal(
-    draftView.enableConfirm,
+    draftView.primaryAction.confirm,
     "启用「情节探索·第4版」，替换当前「情节探索·第3版」；所有作品的下一轮提问开始使用。",
   );
   assert.equal(draftView.isRollback, false);
 
-  // 查看更早版本（第1版，启用第3版）：标题标注历史版本；回退场景，确认文字呈现保留承诺。
+  // 查看更早版本（第1版，启用第3版）：标题标注历史版本；主按钮呈回退语义，
+  // 确认文字呈现保留承诺（规则与既有 rollbackConfirm 一字不改）。
   const rollbackView = buildMakingMapView(data, chainA.id, chainA.versions[0].id)!;
   assert.equal(rollbackView.title, "正在查看：情节探索·第1版（历史版本）");
   assert.equal(rollbackView.isRollback, true);
-  assert.equal(rollbackView.enableLabel, "回退到「情节探索·第1版」");
-  assert.match(rollbackView.rollbackConfirm!, /较新版本及试问证据保留/);
-  assert.match(rollbackView.rollbackConfirm!, /回退到「情节探索·第1版」，替换当前第3版/);
+  assert.equal(rollbackView.primaryAction.kind, "rollback");
+  assert.equal(rollbackView.primaryAction.label, "回退到「情节探索·第1版」");
+  assert.equal(rollbackView.primaryAction.confirmLabel, "回退");
+  assert.match(rollbackView.primaryAction.confirm, /较新版本及试问证据保留/);
+  assert.match(rollbackView.primaryAction.confirm, /回退到「情节探索·第1版」，替换当前第3版/);
 
   // 版本记录倒序（最新在前）。
   assert.deepEqual(
@@ -419,15 +443,16 @@ test("map view separates draft viewing from the active version with concrete wor
 test("enable wording states first-time activation without a replacement target", () => {
   const chainB = chain("对话打磨", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
   const view = buildMakingMapView(library([chainB]), chainB.id, chainB.versions[0].id)!;
-  assert.equal(view.enableLabel, "启用「对话打磨·第1版」");
+  assert.equal(view.primaryAction.kind, "enable", "未启用任何链路时恒为启用语义");
+  assert.equal(view.primaryAction.label, "启用「对话打磨·第1版」");
   assert.equal(
-    view.enableConfirm,
+    view.primaryAction.confirm,
     "启用「对话打磨·第1版」；所有作品的下一轮提问开始使用。",
   );
 });
 
 test("zero-card versions keep enable and rollback entries with zero-card effect wording", () => {
-  // 查看零卡草稿（第2版，启用第1版有卡版本）：启用入口照常在场，
+  // 查看零卡草稿（第2版，启用第1版有卡版本）：主按钮照常呈启用态，
   // 确认文字补零卡效果说明（与状态条「（未附加自定义）」口径一致）。
   const c = chain("空链路", [
     version(1, [{ title: "卡", trigger: "适用：x" }]),
@@ -435,9 +460,10 @@ test("zero-card versions keep enable and rollback entries with zero-card effect 
   ]);
   const data = library([c], { chainId: c.id, versionId: c.versions[0].id });
   const view = buildMakingMapView(data, c.id, c.versions[1].id)!;
-  assert.equal(view.enableLabel, "启用「空链路·第2版」");
+  assert.equal(view.primaryAction.kind, "enable");
+  assert.equal(view.primaryAction.label, "启用「空链路·第2版」");
   assert.equal(
-    view.enableConfirm,
+    view.primaryAction.confirm,
     "启用「空链路·第2版」，替换当前「空链路·第1版」；所有作品的下一轮提问开始使用。该版本不含任何卡，启用后不附加自定义内容。",
   );
   assert.equal(view.isRollback, false);
@@ -452,9 +478,10 @@ test("zero-card versions keep enable and rollback entries with zero-card effect 
     rolled.id,
     rolled.versions[0].id,
   )!;
-  assert.equal(rollbackView.enableLabel, "回退到「回退空·第1版」");
-  assert.match(rollbackView.rollbackConfirm!, /较新版本及试问证据保留/);
-  assert.match(rollbackView.rollbackConfirm!, /该版本不含任何卡，启用后不附加自定义内容/);
+  assert.equal(rollbackView.primaryAction.kind, "rollback");
+  assert.equal(rollbackView.primaryAction.label, "回退到「回退空·第1版」");
+  assert.match(rollbackView.primaryAction.confirm, /较新版本及试问证据保留/);
+  assert.match(rollbackView.primaryAction.confirm, /该版本不含任何卡，启用后不附加自定义内容/);
 
   // 有卡版本的启用确认不携带零卡说明（既有措辞逐字不变）。
   const withCards = chain("有卡", [
@@ -467,7 +494,7 @@ test("zero-card versions keep enable and rollback entries with zero-card effect 
     withCards.versions[1].id,
   )!;
   assert.equal(
-    plain.enableConfirm,
+    plain.primaryAction.confirm,
     "启用「有卡·第2版」，替换当前「有卡·第1版」；所有作品的下一轮提问开始使用。",
   );
 });
@@ -803,13 +830,13 @@ test("real index.html resolves the complete making DOM contract", () => {
     assert.ok(making.moduleRoot);
     assert.ok(making.statusBar);
     assert.ok(making.statusText);
-    assert.ok(making.deactivateBtn);
+    assert.ok(making.primaryBtn);
     assert.ok(making.chainLibrary);
     assert.ok(making.newChainBtn);
     assert.ok(making.chainList);
     assert.ok(making.inspectorTitle);
     assert.ok(making.versionSelect);
-    assert.ok(making.enableBtn);
+    assert.ok(making.primaryBtn);
     // 导图契约：图区容器、连线 SVG、三区、统一详情两挂载位。
     assert.ok(making.graph);
     assert.ok(making.wires);
@@ -1060,8 +1087,10 @@ test("zero-card active version shows the honest suffix in status bar and using l
     assert.match(makingElement(fixture, "making-card-count").textContent ?? "", /· 0 张卡/);
     assert.match(makingElement(fixture, "making-posture-card-count").textContent ?? "", /· 0 张卡/);
 
-    // 查看版本即启用版本（零卡）：无启用入口（启用判定逻辑对零卡版本无特判）。
-    assert.equal((makingElement(fixture, "making-enable-btn") as HTMLButtonElement).hidden, true);
+    // 查看版本即启用版本（零卡）：主按钮呈停用态（三态判定对零卡版本无特判）。
+    const zeroPrimary = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    assert.equal(zeroPrimary.hidden, false);
+    assert.match(zeroPrimary.textContent ?? "", /停用当前链路/);
   } finally {
     await flushPromises(40);
     fixture.restore();
@@ -1081,8 +1110,8 @@ test("zero-card draft version keeps the enable entry available", async () => {
     select.value = c.versions[1].id;
     dispatchEvent(fixture.page, select, "change");
     await flushPromises();
-    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
-    assert.equal(enable.hidden, false, "零卡版本出现启用入口");
+    const enable = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    assert.equal(enable.hidden, false, "零卡版本主按钮呈启用态");
     assert.match(enable.textContent ?? "", /启用「空链路·第2版」/);
     fixture.confirmResult = true;
     enable.click();
@@ -1520,9 +1549,11 @@ test("cards carry no enable switch; enabling stays at the version level", async 
     const host = makingElement(fixture, "making-quick-panel");
     const labels = [...host.querySelectorAll("button")].map((button) => button.textContent);
     assert.ok(labels.every((label) => !/启用|停用|回退/.test(label ?? "")), "卡片上无启用开关");
-    // 启用入口只在导图头部（链路版本层级），且沿用既有确认措辞。
-    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
-    assert.equal(enable.hidden, true, "查看版本即启用版本时无入口");
+    // 启停入口只在导图操作区（链路版本层级）的单一主按钮上：查看启用版本时呈停用态。
+    const primary = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    assert.equal(primary.hidden, false);
+    assert.match(primary.textContent ?? "", /停用当前链路/);
+    assert.ok(primary.closest(".making-version-operations") !== null);
   } finally {
     fixture.restore();
   }
@@ -1544,7 +1575,7 @@ test("enabling a draft version requires confirmation with concrete wording", asy
     assert.equal(makingElement(fixture, "making-inspector-title").textContent, "正在查看：情节探索·第4版（草稿）");
     assert.equal(makingElement(fixture, "making-inspector-state").textContent, "尚未启用");
 
-    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
+    const enable = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
     assert.equal((enable as HTMLElement).hidden, false);
     assert.match(enable.textContent ?? "", /启用「情节探索·第4版」/);
 
@@ -1583,7 +1614,7 @@ test("rolling back to an older version calls chain_rollback after confirmation",
     dispatchEvent(fixture.page, select, "change");
     await flushPromises();
 
-    const enable = makingElement(fixture, "making-enable-btn") as HTMLButtonElement;
+    const enable = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
     assert.match(enable.textContent ?? "", /回退到「情节探索·第1版」/);
     enable.click();
     await flushPromises();
@@ -1601,12 +1632,74 @@ test("deactivating returns to the daily companion and keeps archives", async () 
   const chainA = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
   const fixture = await makingFixture(library([chainA], { chainId: chainA.id, versionId: chainA.versions[0].id }));
   try {
-    click(fixture, "making-deactivate-btn");
+    // 停用入口收敛：查看启用版本时，主按钮显示「停用当前链路」并承担停用。
+    await browseChain(fixture, chainA.id);
+    const primary = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    assert.match(primary.textContent ?? "", /停用当前链路/);
+
+    fixture.confirmResult = false;
+    primary.click();
+    await flushPromises();
+    assert.equal(fixture.store.calls.some((call) => call.cmd === "chain_deactivate"), false, "未确认不停用");
+
+    fixture.confirmResult = true;
+    primary.click();
     await flushPromises();
     assert.ok(fixture.store.calls.some((call) => call.cmd === "chain_deactivate"));
+    assert.match(fixture.confirms[fixture.confirms.length - 1]!, /停用当前链路\？从下一轮提问开始回到日常陪想/);
     assert.equal(makingElement(fixture, "making-status-idle").classList.contains("hidden"), false);
     assert.equal(makingElement(fixture, "making-status-active").classList.contains("hidden"), true);
     assert.equal(fixture.store.data.chains.length, 1, "链路保留");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("primary button carries enable, deactivate, and rollback by the viewed version", async () => {
+  const chainA = chain("情节探索", [
+    version(1, [{ title: "卡", trigger: "适用：x" }]),
+    version(3, [{ title: "卡", trigger: "适用：x" }]),
+    version(4, [{ title: "卡", trigger: "适用：x" }]),
+  ]);
+  const fixture = await makingFixture(library([chainA], { chainId: chainA.id, versionId: chainA.versions[1].id }));
+  try {
+    await browseChain(fixture, chainA.id);
+    const primary = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    // 浏览默认落最新版（第4版草稿）：同一主按钮呈启用语义。
+    assert.equal(primary.hidden, false);
+    assert.match(primary.textContent ?? "", /启用「情节探索·第4版」/);
+    // 停用入口收敛：查看非启用版本时，整个制作页没有可点的停用入口。
+    assert.ok(
+      [...fixture.document.querySelectorAll("#module-making button")]
+        .every((button) => !/停用/.test(button.textContent ?? "")),
+      "查看草稿时无停用入口",
+    );
+
+    // 切到当前启用版本（第3版）：同一按钮变为「停用当前链路」。
+    const select = makingElement(fixture, "making-version-select") as HTMLSelectElement;
+    select.value = chainA.versions[1].id;
+    dispatchEvent(fixture.page, select, "change");
+    await flushPromises();
+    assert.match(primary.textContent ?? "", /停用当前链路/);
+
+    // 切到更早版本（第1版）：同一按钮变为回退语义。
+    select.value = chainA.versions[0].id;
+    dispatchEvent(fixture.page, select, "change");
+    await flushPromises();
+    assert.match(primary.textContent ?? "", /回退到「情节探索·第1版」/);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("primary button stays on enable semantics when no chain is active", async () => {
+  const chainA = chain("情节探索", [version(1, [{ title: "卡", trigger: "适用：x" }])]);
+  const fixture = await makingFixture(library([chainA]));
+  try {
+    await browseChain(fixture, chainA.id);
+    const primary = makingElement(fixture, "making-primary-btn") as HTMLButtonElement;
+    assert.equal(primary.hidden, false);
+    assert.match(primary.textContent ?? "", /启用「情节探索·第1版」/, "未启用任何链路时恒为启用语义");
   } finally {
     fixture.restore();
   }

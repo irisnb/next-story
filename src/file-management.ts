@@ -1,5 +1,5 @@
 import type { AppDom } from "./dom.ts";
-import { confirmDialog } from "./app-dialog.ts";
+import { confirmInApp, type ConfirmInAppOptions } from "./app-confirm.ts";
 import {
   moveTargets,
   type MoveTarget,
@@ -81,9 +81,15 @@ export function setupFileManagement(
     onTreeChanged(tree: ContentTree, identity: ProjectLoadIdentity, acceptance: TreeRefreshAcceptance): Promise<SessionResult> | SessionResult | void;
     onOpenDocument?(documentId: string, identity: ProjectLoadIdentity): Promise<void> | void;
     services?: Partial<FileManagementServices>;
+    /**
+     * 统一应用内确认窗（fix-ui-friction-2026-10）：缺省走 `confirmInApp`，
+     * 测试注入替身、不驱动真实 dialog；兼容同步布尔与 Promise 返回。
+     */
+    confirm?: (options: ConfirmInAppOptions) => boolean | Promise<boolean>;
   },
 ): FileManagementController {
   const services: FileManagementServices = { ...defaultServices, ...options.services };
+  const confirm = options.confirm ?? confirmInApp;
   let projectPath: string | null = null;
   let loadGeneration = 0;
   let allocatedLoadGeneration = 0;
@@ -225,17 +231,21 @@ export function setupFileManagement(
   }
 
   /**
-   * 关闭 AI 可见性前的影响提示文案（add-agent-on-demand-reading 任务 7.5）：
+   * 关闭 AI 可见性前的影响提示（add-agent-on-demand-reading 任务 7.5）：
    * 明示后果（受影响讨论永久只读、旧出处脱敏），并列出受影响讨论的标题。
+   * 文案沿用原文逐字，按统一应用内确认窗拆为标题与正文（fix-ui-friction-2026-10）。
    */
-  function visibilityImpactMessage(documentName: string, usage: ConversationUsage[]): string {
+  function visibilityImpactConfirm(documentName: string, usage: ConversationUsage[]): ConfirmInAppOptions {
     const titles = usage.slice(0, 5).map((item) => `「${item.title}」`).join("、");
     const suffix = usage.length > 5 ? "等" : "";
-    return (
-      `以下 ${usage.length} 个讨论使用过《${documentName}》：${titles}${suffix}。\n` +
-      "关闭后这些讨论将永久只读，无法沿原上下文继续；旧的参考出处会脱敏显示。\n" +
-      "确定要关闭这篇文档的 AI 可见性吗？"
-    );
+    return {
+      title: "确定要关闭这篇文档的 AI 可见性吗？",
+      body:
+        `以下 ${usage.length} 个讨论使用过《${documentName}》：${titles}${suffix}。\n` +
+        "关闭后这些讨论将永久只读，无法沿原上下文继续；旧的参考出处会脱敏显示。",
+      confirmLabel: "关闭",
+      danger: true,
+    };
   }
 
   /** 查询使用过指定文档的讨论；查询失败时按「有影响」保守处理（失败关闭）。 */
@@ -267,11 +277,16 @@ export function setupFileManagement(
       if (!owns(identity, operation) || workspacePaused) return;
       // 查询失败（null）时保守拦截：宁可多一次确认，不悄悄关闭。
       if (usage === null || usage.length > 0) {
-        const message =
-          usage === null
-            ? "无法确认有哪些讨论使用过这篇文档。关闭后相关讨论将永久只读、旧出处脱敏。\n确定要关闭吗？"
-            : visibilityImpactMessage(node?.name ?? "这篇文档", usage);
-        if (!owns(identity, operation) || !(await confirmDialog(message)) || !owns(identity, operation)) return;
+        // 后果不可恢复（受影响讨论永久只读），走危险变体；文案沿用原文逐字拆分。
+        const confirmOptions: ConfirmInAppOptions = usage === null
+          ? {
+              title: "确定要关闭吗？",
+              body: "无法确认有哪些讨论使用过这篇文档。关闭后这些讨论将永久只读、旧出处脱敏。",
+              confirmLabel: "关闭",
+              danger: true,
+            }
+          : visibilityImpactConfirm(node?.name ?? "这篇文档", usage);
+        if (!owns(identity, operation) || !(await confirm(confirmOptions)) || !owns(identity, operation)) return;
       }
     }
     if (!owns(identity, operation) || workspacePaused) return;

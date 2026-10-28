@@ -1,4 +1,4 @@
-import { confirmDialog } from "../app-dialog.ts";
+import { confirmInApp, type ConfirmInAppOptions } from "../app-confirm.ts";
 import type { MakingDom } from "../dom.ts";
 import {
   chainSaveVersion,
@@ -67,7 +67,7 @@ export interface MakingConversationServices {
   readonly call?: InvokeFn;
   /** 事件订阅（测试注入；缺省用真实 Tauri listen）。 */
   readonly listen?: ListenFn;
-  /** 确认对话框（测试注入；缺省用 app-dialog 的原生确认）。 */
+  /** 确认替身（测试注入字符串文案决策；缺省删会话走应用内确认窗、草稿保存走富确认窗）。 */
   readonly confirm?: (message: string) => Promise<boolean>;
   /** 读取链路（草稿确认文案与试问钩子需要链路名称快照）；未绑定（null）返回 null。 */
   readonly getChain: (chainId: string | null) => Chain | null;
@@ -179,7 +179,16 @@ export function setupMakingConversation(
 ): MakingConversationController {
   const call = services.call;
   const listen = services.listen;
-  const confirm = services.confirm ?? confirmDialog;
+  const confirmOverride = services.confirm ?? null;
+
+  /**
+   * 删会话等简单确认（in-app-confirmation）：缺省走统一应用内确认窗；
+   * 测试注入字符串替身时按确认文案（＝confirmInApp 的 body，逐字）决策。
+   * 卡草稿保存不经过这里（富确认窗 confirmDraftSave 或注入替身）。
+   */
+  function confirmAction(options: ConfirmInAppOptions): Promise<boolean> {
+    return confirmOverride !== null ? confirmOverride(options.body) : confirmInApp(options);
+  }
   const getChain = services.getChain;
   const refreshLibrary = services.refreshLibrary;
   const switchMakingObject = services.switchMakingObject;
@@ -565,8 +574,8 @@ export function setupMakingConversation(
     const chainName = chainNameOf(session);
     const view = buildCardDraftPanelView(drafts, chainName);
     if (view === null) return;
-    // 取消保存：不建立链路（未绑定会话保持未绑定）。
-    if (!await (services.confirm ? confirm(view.saveConfirm) : confirmDraftSave(view.saveConfirm, drafts))) return;
+    // 取消保存：不建立链路（未绑定会话保持未绑定）。富确认窗不动（带预览明细）。
+    if (!await (confirmOverride !== null ? confirmOverride(view.saveConfirm) : confirmDraftSave(view.saveConfirm, drafts))) return;
     const cards = drafts.map(draftToCardInput);
     // 优先处理「待补绑定」阶段：首次保存的链路已建立，只需把绑定写回档案，
     // 不再重复 ensure、不再追加版本。
@@ -803,10 +812,13 @@ export function setupMakingConversation(
   }
 
   async function deleteConversation(entry: MakingConversationSummary): Promise<void> {
-    const confirmed = await confirm(
-      `删除制作会话「${makingListTitle(entry.title)}」？对话记录将删除，不可恢复；链路与卡片不受影响。`,
-    );
-    if (!confirmed) return;
+    // 删制作会话不可恢复：应用内确认窗危险变体（in-app-confirmation），文案逐字保留。
+    if (!await confirmAction({
+      title: `删除制作会话「${makingListTitle(entry.title)}」？`,
+      body: `删除制作会话「${makingListTitle(entry.title)}」？对话记录将删除，不可恢复；链路与卡片不受影响。`,
+      confirmLabel: "删除",
+      danger: true,
+    })) return;
     try {
       await makingConversationDelete(entry.id, call);
     } catch (error) {

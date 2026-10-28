@@ -277,7 +277,6 @@ export function createAiDockDomFixture(): {
   const body = new FakeElement("ai-dock-body", ["ai-dock-body"]);
   const listToggleBtn = new FakeElement("ai-conversation-list-toggle");
   const newConversationBtn = new FakeElement("ai-new-conversation");
-  const moreBtn = new FakeElement("ai-dock-more");
   const collapseBtn = new FakeElement("ai-dock-collapse");
   const maximizeBtn = new FakeElement("ai-dock-maximize");
   const divider = new FakeElement("ai-dock-divider");
@@ -289,7 +288,6 @@ export function createAiDockDomFixture(): {
   const searchInput = new FakeElement("ai-conversation-list-filter");
   const railNewBtn = new FakeElement("ai-rail-new");
   const railListBtn = new FakeElement("ai-rail-list");
-  const railMoreBtn = new FakeElement("ai-rail-more");
   const railExpandBtn = new FakeElement("ai-rail-expand");
   const railDot = new FakeElement("ai-rail-dot", ["hidden"]);
 
@@ -303,7 +301,7 @@ export function createAiDockDomFixture(): {
     return win.root;
   };
 
-  for (const el of [dock, rail, count, notice, body, listToggleBtn, newConversationBtn, moreBtn, collapseBtn, maximizeBtn, divider, conversationList, conversationListCloseBtn, conversationListItems, conversationListEmpty, listNewConversationBtn, searchInput, railNewBtn, railListBtn, railMoreBtn, railExpandBtn, railDot, template]) {
+  for (const el of [dock, rail, count, notice, body, listToggleBtn, newConversationBtn, collapseBtn, maximizeBtn, divider, conversationList, conversationListCloseBtn, conversationListItems, conversationListEmpty, listNewConversationBtn, searchInput, railNewBtn, railListBtn, railExpandBtn, railDot, template]) {
     elements.set(el.id, el);
   }
 
@@ -316,7 +314,6 @@ export function createAiDockDomFixture(): {
     windowTemplate: template as unknown as HTMLTemplateElement,
     listToggleBtn: listToggleBtn as unknown as HTMLButtonElement,
     newConversationBtn: newConversationBtn as unknown as HTMLButtonElement,
-    moreBtn: moreBtn as unknown as HTMLButtonElement,
     collapseBtn: collapseBtn as unknown as HTMLButtonElement,
     maximizeBtn: maximizeBtn as unknown as HTMLButtonElement,
     divider: divider as unknown as HTMLElement,
@@ -328,7 +325,6 @@ export function createAiDockDomFixture(): {
     searchInput: searchInput as unknown as HTMLInputElement,
     railNewBtn: railNewBtn as unknown as HTMLButtonElement,
     railListBtn: railListBtn as unknown as HTMLButtonElement,
-    railMoreBtn: railMoreBtn as unknown as HTMLButtonElement,
     railExpandBtn: railExpandBtn as unknown as HTMLButtonElement,
     railDot: railDot as unknown as HTMLElement,
   } as unknown as AiDockDom;

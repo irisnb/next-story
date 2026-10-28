@@ -101,7 +101,7 @@ test("making module exposes a fourth tab and a status bar bound to the global ac
   assert.match(html, /<button\b[^>]*\bid="tab-making"[^>]*>制作<\/button>/);
   assert.match(html, /<section\b[^>]*\bid="module-making"[^>]*aria-label="制作模块"/);
   // 状态条（常驻）：启用态（名·第N版｜所有项目共用）与未启用态；纯全局只读展示，
-  // 停用入口已随本 change 移入版本操作区（由下一个测试断言）。
+  // 停用入口由版本操作区主按钮承担（下一个测试断言）。
   assert.match(html, /\bid="making-status-bar"/);
   assert.match(html, /\bid="making-status-active"/);
   assert.match(html, /\bid="making-status-text"/);
@@ -114,10 +114,12 @@ test("making module exposes dual tabs, graph zones, and unified detail mounts", 
   assert.match(html, /<aside\b[^>]*\bid="making-chain-library"[^>]*aria-label="链路库"/);
   assert.match(html, /<section\b[^>]*\bid="making-inspector"[^>]*aria-label="导图"/);
   assert.match(html, /<aside\b[^>]*\bid="making-conversation-pane"[^>]*aria-label="制作对话"/);
-  // 版本操作区（固定头区）：启用/回退/停用集中同区，并标注「正在查看／正在使用」，
-  // 停用入口不再散落在顶部状态条（本 change 决策 D8）。
+  // 版本操作区（固定头区，B 定稿两行结构）：上行查看/使用双状态标注，下行版本选择＋
+  // 删除链路＋单一状态化主按钮（启用/回退/停用三态合一，无独立启停按钮）。
   assert.match(html, /<header\b[^>]*\bmaking-version-operations\b[^>]*aria-label="版本操作区"/);
-  assert.match(html, /\bid="making-deactivate-btn"[^>]*>停用当前链路<\/button>/);
+  assert.match(html, /\bid="making-primary-btn"/);
+  assert.doesNotMatch(html, /making-deactivate-btn/);
+  assert.doesNotMatch(html, /making-enable-btn/);
   assert.match(html, /<span\b[^>]*class="[^"]*making-version-using[^"]*"/);
   assert.match(html, /\bid="making-view-switch"/);
   assert.match(html, /<button\b[^>]*\bid="making-view-map-btn"[^>]*role="tab"[^>]*>导图<\/button>/);

@@ -3,7 +3,6 @@ import test from "node:test";
 import type { JSONContent } from "@tiptap/core";
 
 import { setupAiFeature } from "../src/ai-feature.ts";
-import { waitTiming } from "../src/ai-timing.ts";
 import type { AiSessionTransport } from "../src/ai-session-transport.ts";
 import type { AppDom } from "../src/dom.ts";
 import type { SelectionEntryEditor } from "../src/selection-entry.ts";
@@ -21,8 +20,8 @@ import { FakeElement, installAiFeatureEnvironment } from "./ai-panel-dom-fixture
  * extract-ai-request-orchestration 任务组 1：请求编排的组合级安全网。
  *
  * 经 `maxConcurrent` / `transport` / `loadConfig` 三个既有注入缝驱动 `setupAiFeature`，
- * 只断言外部可见效果（transport 收到的调用序列、状态迁移、窗口显示、waitTiming
- * 收集、档案保存），不引用实现内部——为后续编排拆分织网。
+ * 只断言外部可见效果（transport 收到的调用序列、状态迁移、窗口显示、档案保存），
+ * 不引用实现内部——为后续编排拆分织网。
  */
 
 async function flush(): Promise<void> {
@@ -82,7 +81,6 @@ interface OrchestrationHarness {
 }
 
 function orchestrationHarness(options: { maxConcurrent?: number } = {}): OrchestrationHarness {
-  waitTiming.clear();
   const env = installAiFeatureEnvironment();
   const editorPage = new FakeElement("editor-page");
   const sent: SentRequest[] = [];
@@ -228,17 +226,13 @@ test("快车道并发：常规生成进行中，及时召唤独立发起而不�
     assert.equal(ui.sent[1].conversationId, summon);
     assert.equal(ui.sent[1].request.kind, "summon");
 
-    // 两条讨论同时处于生成中（等待计时按各自讨论记录）。
+    // 两条讨论同时处于生成中。
     const direct = ui.controller.state.viewOf(regular).request;
     assert.equal(direct.kind, "direct_question");
     if (direct.kind === "direct_question") assert.equal(direct.status, "loading");
     const summonRequest = ui.controller.state.viewOf(summon).request;
     assert.equal(summonRequest.kind, "loading");
     if (summonRequest.kind === "loading") assert.equal(summonRequest.phase, "first");
-
-    const summonTiming = waitTiming.getRecords().find((r) => r.conversationId === summon);
-    assert.ok(summonTiming, "召唤应接入等待计时");
-    assert.equal(summonTiming.kind, "summon");
 
     // 分别完成后各自落档，互不干扰。
     ui.finishNext();
@@ -298,7 +292,7 @@ test("达到全局上限后排队的请求只在对应讨论显示排队状态",
 
 // ========== 1.3 停止排队中的请求 ==========
 
-test("停止排队中的请求：取消派发并留下已停止终态、计时收束与持久化", async () => {
+test("停止排队中的请求：取消派发并留下已停止终态与持久化", async () => {
   const ui = orchestrationHarness({ maxConcurrent: 1 });
   try {
     ui.submitDirectQuestion("第一个问题");
@@ -321,11 +315,6 @@ test("停止排队中的请求：取消派发并留下已停止终态、计时�
       assert.equal(stopped.queued, undefined);
     }
     assert.equal(badgeOf(ui.windowRoots[1]), "已停止");
-
-    // 等待计时随停止收束（不残留「进行中」）。
-    const timing = waitTiming.getRecords().find((r) => r.conversationId === queuedId);
-    assert.ok(timing);
-    assert.notEqual(timing.completedAt, null, "停止应收束等待计时");
 
     // 停止终态被持久化（接受即存的讨论档案更新）。
     assert.ok(
@@ -448,60 +437,7 @@ test("派发前复核：锚点文档可见时放行，不受关注文档可见�
   }
 });
 
-// ========== 1.5 waitTiming 四点接线 ==========
-
-test("waitTiming 四点接线：立即开始与排队两条路径都记录完整时间线", async () => {
-  const ui = orchestrationHarness({ maxConcurrent: 1 });
-  try {
-    ui.submitDirectQuestion("立即开始的问题");
-    await flush();
-    const immediateId = ui.activeId();
-    ui.submitDirectQuestion("排队的问题");
-    await flush();
-    const queuedId = ui.activeId();
-
-    // 立即开始路径：submit → started，无 queued。
-    const immediate = waitTiming.getRecords().find((r) => r.conversationId === immediateId);
-    assert.ok(immediate, "立即开始的请求应有计时记录");
-    assert.equal(immediate.kind, "direct_question");
-    assert.equal(immediate.queuedAt, null, "立即开始不经过排队点");
-    assert.notEqual(immediate.startedAt, null, "submit 后应记录 started");
-
-    // 排队路径：submit → queued，此时尚未 started。
-    const queued = waitTiming.getRecords().find((r) => r.conversationId === queuedId);
-    assert.ok(queued, "排队请求应有计时记录");
-    assert.notEqual(queued.queuedAt, null, "达上限应记录 queued");
-    assert.equal(queued.startedAt, null, "排队期间不得提前记录 started");
-
-    ui.finishNext();
-    await flush();
-
-    // 名额释放：排队请求补记 started（不早于入队）。
-    const startedQueued = waitTiming.getRecords().find((r) => r.conversationId === queuedId)!;
-    assert.notEqual(startedQueued.startedAt, null);
-    assert.ok(
-      startedQueued.startedAt! >= startedQueued.queuedAt!,
-      "started 不得早于 queued",
-    );
-    assert.notEqual(
-      waitTiming.getRecords().find((r) => r.conversationId === immediateId)!.completedAt,
-      null,
-      "完成应记录 complete",
-    );
-
-    ui.finishNext();
-    await flush();
-    assert.notEqual(
-      waitTiming.getRecords().find((r) => r.conversationId === queuedId)!.completedAt,
-      null,
-      "排队请求完成也应记录 complete",
-    );
-  } finally {
-    ui.restore();
-  }
-});
-
-// ========== 1.6 onRetryStoppedFollowUp 组合基线（迁移前置） ==========
+// ========== 1.5 onRetryStoppedFollowUp 组合基线（迁移前置） ==========
 
 test("停止后的追问重试：经窗口「重试」重新发送原问题并回到生成中", async () => {
   const ui = orchestrationHarness();

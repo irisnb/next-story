@@ -125,7 +125,7 @@ propose（写清要做什么）→ 用户确认 → apply（实现）→ archive
 | `openspec/specs/` | 真相源：我们"已经做成"什么（实现并归档后才有） | 工具自动驱动 |
 | `openspec/changes/` | 正在进行的变更 | 工具自动驱动 |
 
-## 工程命令（2026-10-04 核对；完整说明见 `README.md`「运行、检查与打包」）
+## 工程命令（2026-10-04 核对；完整说明见 `docs/DEVELOPMENT.md`）
 
 - 安装：`npm install`，再 `npm ci --prefix sidecar`（根目录与 `sidecar/` 依赖分开安装）。
 - 开发：`npm run tauri:dev` 启动完整桌面应用（首次 Rust 编译可能数分钟）；只调前端用 `npm run dev`。

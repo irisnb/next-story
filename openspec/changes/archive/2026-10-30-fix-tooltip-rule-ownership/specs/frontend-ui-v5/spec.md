@@ -3,7 +3,11 @@
 ## MODIFIED Requirements
 
 ### Requirement: 提示和面板头部稳定
-图标按钮 SHALL 有中文可访问名称及hover/focus提示；同一触发路径 MUST NOT 并存原生title与自定义提示，长名称完整名title SHALL 保留。提示所有权 SHALL 由属性分离保证：共享提示系统读写自家 `data-hint` 属性，全部代码路径 MUST NOT 向元素写入 `data-tooltip`（vendor 伪元素提示因此断粮，永不出现）；全局或局部「封锁/禁用 Basecoat 伪元素」的 CSS 规则 MUST NOT 存在。工具栏按钮的不可用态 SHALL 以 `aria-disabled="true"` 表达且外观与启用态一致（图标亮起、悬停反应正常），MUST NOT 以变灰或半透明作为不可用信号（2026-10-30 用户拍板：按钮应「亮着，只是没有适用对象」）；悬停/聚焦 SHALL 仍显示功能名称提示；点击/键盘触发不可用工具 SHALL 显示简短原因提示（选区依赖：「先选中文字再用」；撤销/重做历史空：「没有可撤销的内容」/「没有可重做的内容」），MUST NOT 静默无响应；适用范围含选区依赖工具与撤销/重做。AI头动作 SHALL 为讨论、最大化/恢复、关闭，最大化按钮108px，切换边栏/全宽后三个按钮几何边界变化 SHALL 不超过1 CSS px。讨论窗口头部（`ai-window-head`）的右侧动作（「本次参考了什么」、停止、更多）SHALL 归入一个不拆散的动作组：在窄窗、长标题、最大化/恢复切换及材料入口出现/隐藏时，动作组 MUST NOT 换行错排或与标题错位，标题 SHALL 截断让位；讨论窗口头 MUST NOT 承载收起面板动作（收起入口唯一化见 discussion-windows）。此几何合同 SHALL 由针对讨论窗口头部本身的断言保证，MUST NOT 仅以停靠区头部（`ai-dock-header`）的几何断言替代。
+图标按钮 SHALL 有中文可访问名称及hover/focus提示；同一触发路径 MUST NOT 并存原生title与自定义提示，长名称完整名title SHALL 保留。提示所有权 SHALL 由属性分离保证：共享提示系统读写自家 `data-hint` 属性，全部代码路径 MUST NOT 向元素写入 `data-tooltip`（vendor 伪元素提示因此断粮，永不出现）；全局或局部「封锁/禁用 Basecoat 伪元素」的 CSS 规则 MUST NOT 存在。工具栏按钮的不可用态 SHALL 以 `aria-disabled="true"` 表达且外观与启用态一致（图标亮起、悬停反应正常），MUST NOT 以变灰或半透明作为不可用信号（2026-10-30 用户拍板：按钮应「亮着，只是没有适用对象」）；悬停/聚焦 SHALL 仍显示功能名称提示；点击/键盘触发不可用工具 SHALL 显示简短原因提示（选区依赖：「先选中文字再用」；撤销/重做历史空：「没有可撤销的内容」/「没有可重做的内容」），MUST NOT 静默无响应；适用范围含选区依赖工具与撤销/重做。AI头动作 SHALL 为讨论、最大化/恢复、关闭，最大化按钮108px，切换边栏/全宽后三个按钮几何边界变化 SHALL 不超过1 CSS px。「讨论」开关（`ai-conversation-list-toggle`）展开态 SHALL 以轻表面底色指示列表开启（与列表行悬停/选中同族），MUST NOT 使用深色持续填充（2026-10-30 用户拍板：#737373 持续深灰读作「卡住」，指示太重、与全软件设计语言不一致；标签页深底属一次性强选择信号，不适用于持续面板指示）。讨论窗口头部（`ai-window-head`）的右侧动作（「本次参考了什么」、停止、更多）SHALL 归入一个不拆散的动作组：在窄窗、长标题、最大化/恢复切换及材料入口出现/隐藏时，动作组 MUST NOT 换行错排或与标题错位，标题 SHALL 截断让位；讨论窗口头 MUST NOT 承载收起面板动作（收起入口唯一化见 discussion-windows）。此几何合同 SHALL 由针对讨论窗口头部本身的断言保证，MUST NOT 仅以停靠区头部（`ai-dock-header`）的几何断言替代。
+
+#### Scenario: 讨论开关展开态轻指示
+- **WHEN** 用户打开讨论列表（「讨论」开关 aria-expanded=true）
+- **THEN** 开关呈轻表面底色而非深灰持续填充；收起后底色消失
 
 #### Scenario: 切换最大化
 - **WHEN** 面板在边栏与全宽之间切换

@@ -1520,7 +1520,6 @@
 }
 .ai-win-btn-icon { padding: 3px 5px; }
 .ai-win-btn-stop { color: var(--color-danger); border-color: var(--color-danger-border); }
-.ai-win-btn-close { padding: 3px 5px; color: var(--color-text-body); }
 .ai-win-btn.hidden { display: none; }
 .ai-win-btn[disabled] { opacity: 0.4; }
 

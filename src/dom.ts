@@ -20,7 +20,6 @@ export interface AiWindowDom {
   readonly materialsToggle: HTMLButtonElement;
   readonly stopBtn: HTMLButtonElement;
   readonly moreBtn: HTMLButtonElement;
-  readonly closeBtn: HTMLButtonElement;
   readonly body: HTMLElement;
   readonly snapshotBlock: HTMLElement;
   readonly snapshotText: HTMLPreElement;
@@ -450,7 +449,6 @@ export function buildAiWindowDom(root: HTMLElement): AiWindowDom {
     materialsToggle: requireRole<HTMLButtonElement>(root, "materials-toggle"),
     stopBtn: requireRole<HTMLButtonElement>(root, "stop"),
     moreBtn: requireRole<HTMLButtonElement>(root, "more"),
-    closeBtn: requireRole<HTMLButtonElement>(root, "close"),
     body: requireRole(root, "body"),
     snapshotBlock: requireRole(root, "snapshot-block"),
     snapshotText: requireRole<HTMLPreElement>(root, "snapshot-text"),

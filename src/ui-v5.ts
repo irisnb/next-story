@@ -1,4 +1,9 @@
 /** Shared presentation only: one tooltip, responsive tool placement, display preferences. */
+/** 不可用工具原因提示的窗口事件名（D3 C 案）：editor-toolbar 等守卫点经 window 解耦送来原因文本。 */
+const TOOLBAR_HINT_EVENT = "ns-toolbar-hint";
+/** 原因提示展示时长（毫秒）：短暂呈现后定时强制隐藏。 */
+const TOOLBAR_HINT_DISPLAY_MS = 1400;
+
 export function setupUiV5(): () => void {
   const cleanup: Array<() => void> = [];
   const tooltip = document.createElement("div");
@@ -8,7 +13,12 @@ export function setupUiV5(): () => void {
   document.body.append(tooltip);
   let trigger: HTMLElement | null = null;
   let previousDescription: string | null = null;
+  // 原因提示展示期截止时间戳：期间悬停/移出等指针事件不抢位、不提前隐藏（简化为定时强制隐藏）。
+  let reasonHoldUntil = 0;
+  let reasonHintTimer: ReturnType<typeof setTimeout> | null = null;
   function hideTooltip(): void {
+    // 原因提示展示期（无触发元素绑定）：定时器负责隐藏，指针事件不得提前清掉。
+    if (Date.now() < reasonHoldUntil && trigger === null) return;
     if (trigger) {
       if (previousDescription) trigger.setAttribute("aria-describedby", previousDescription);
       else trigger.removeAttribute("aria-describedby");
@@ -20,23 +30,27 @@ export function setupUiV5(): () => void {
     const buttons = Array.from(root.querySelectorAll<HTMLElement>("button[title]"));
     if (root instanceof HTMLElement && root.matches("button[title]")) buttons.push(root);
     buttons.forEach((button) => {
-      if (button.title) button.dataset.tooltip = button.title;
+      // 提示所有权分离（fix-tooltip-rule-ownership）：共享提示只写自家 data-hint，
+      // 不再写 data-tooltip——vendor Basecoat 伪元素提示因此断粮，无需任何封锁规则。
+      if (button.title) button.dataset.hint = button.title;
       button.removeAttribute("title");
     });
     root.querySelectorAll<HTMLButtonElement>('.ai-send-mark').forEach((button) => {
       button.setAttribute("aria-label", button.textContent?.trim() || "发送");
-      button.dataset.tooltip = button.getAttribute("aria-label") ?? "发送";
+      button.dataset.hint = button.getAttribute("aria-label") ?? "发送";
     });
   }
   function showTooltip(event: Event): void {
-    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button, [data-tooltip]") : null;
+    // 原因提示展示期：悬停不抢位（到期由定时器统一收场）。
+    if (Date.now() < reasonHoldUntil) return;
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button, [data-hint]") : null;
     if (!target || target.closest(".hidden") || target.getClientRects().length === 0) return;
     if (target.classList.contains("ai-send-mark")) {
       const label = target.textContent?.trim() || "发送";
       target.setAttribute("aria-label", label);
-      target.dataset.tooltip = label;
+      target.dataset.hint = label;
     }
-    const text = target.dataset.tooltip ?? target.getAttribute("aria-label");
+    const text = target.dataset.hint ?? target.getAttribute("aria-label");
     if (!text) return;
     hideTooltip();
     trigger = target;
@@ -59,12 +73,57 @@ export function setupUiV5(): () => void {
     document.addEventListener(type, handler, true);
     cleanup.push(() => document.removeEventListener(type, handler, true));
   }
+  /**
+   * 不可用工具的原因提示（D3 C 案「亮着＋点击给提示」）：editor-toolbar 与写作工具
+   * 的守卫点经 window 事件 `ns-toolbar-hint`（detail＝`{ text, anchor }`，anchor＝
+   * 触发按钮）解耦送来原因——避免循环导入；共享提示层短暂呈现（约 1.4 秒）后定时
+   * 强制隐藏，展示期不受指针事件干扰（showTooltip/hideTooltip 的 reasonHoldUntil
+   * 早退）。定位按 anchor 矩形用与 showTooltip 相同算法（x 居中钳位、y 下优先上
+   * 回退）——3.9 修正：编辑器工具按钮 mousedown 阻止抢焦点保选区，点击后
+   * activeElement=BODY，不得以聚焦元素猜锚；键盘触发时 anchor 即聚焦按钮。
+   * anchor 缺失或已脱离 DOM 时回退左侧工具栏竖排。
+   */
+  function showReasonHint(event: Event): void {
+    const detail = (event as CustomEvent<{ text?: string; anchor?: HTMLElement | null }>).detail;
+    const reason = detail && typeof detail.text === "string" ? detail.text : "";
+    if (!reason.trim()) return;
+    const anchorElement = detail?.anchor instanceof HTMLElement && detail.anchor.isConnected
+      ? detail.anchor
+      : null;
+    if (reasonHintTimer !== null) { clearTimeout(reasonHintTimer); reasonHintTimer = null; }
+    trigger = null;
+    previousDescription = null;
+    tooltip.textContent = reason;
+    tooltip.classList.remove("hidden");
+    if (anchorElement) {
+      const rect = anchorElement.getBoundingClientRect();
+      const x = Math.max(8, Math.min(rect.left + rect.width / 2 - tooltip.offsetWidth / 2, window.innerWidth - tooltip.offsetWidth - 8));
+      const y = rect.bottom + tooltip.offsetHeight + 12 < window.innerHeight ? rect.bottom + 8 : rect.top - tooltip.offsetHeight - 8;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${Math.max(8, y)}px`;
+    } else {
+      tooltip.style.left = `${Math.max(8, Math.min(64, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+      tooltip.style.top = `${Math.max(8, Math.min(window.innerHeight * 0.4, window.innerHeight - tooltip.offsetHeight - 8))}px`;
+    }
+    reasonHoldUntil = Date.now() + TOOLBAR_HINT_DISPLAY_MS;
+    reasonHintTimer = setTimeout(() => {
+      reasonHintTimer = null;
+      reasonHoldUntil = 0;
+      hideTooltip();
+    }, TOOLBAR_HINT_DISPLAY_MS);
+    reasonHintTimer.unref?.();
+  }
+  window.addEventListener(TOOLBAR_HINT_EVENT, showReasonHint);
+  cleanup.push(() => {
+    if (reasonHintTimer !== null) { clearTimeout(reasonHintTimer); reasonHintTimer = null; }
+    window.removeEventListener(TOOLBAR_HINT_EVENT, showReasonHint);
+  });
   prepareTitles(document);
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === "attributes" && record.target instanceof HTMLElement && record.attributeName === "title") {
         if (record.target.matches("button[title]")) {
-          record.target.dataset.tooltip = record.target.title;
+          record.target.dataset.hint = record.target.title;
           record.target.removeAttribute("title");
         }
       }
@@ -72,7 +131,7 @@ export function setupUiV5(): () => void {
       if (record.target instanceof HTMLElement && record.target.classList.contains("ai-send-mark")) {
         const label = record.target.textContent?.trim() || "发送";
         record.target.setAttribute("aria-label", label);
-        record.target.dataset.tooltip = label;
+        record.target.dataset.hint = label;
       }
     }
     if (trigger && (!trigger.isConnected || trigger.closest(".hidden") || trigger.getClientRects().length === 0)) hideTooltip();
@@ -200,7 +259,7 @@ function setupWritingTools(rail: HTMLElement): () => void {
   const presentation = new Map<HTMLElement, { attributes: Array<[string, string | null]>; children?: Node[] }>();
   function remember(node: HTMLElement, children = false): void {
     if (presentation.has(node)) return;
-    const names = ["class", "data-variant", "data-size", "data-tool-group", "data-tooltip", "data-value", "aria-label", "aria-expanded", "aria-controls"];
+    const names = ["class", "data-variant", "data-size", "data-tool-group", "data-hint", "data-value", "aria-label", "aria-expanded", "aria-controls"];
     presentation.set(node, { attributes: names.map((name) => [name, node.getAttribute(name)]), children: children ? Array.from(node.childNodes) : undefined });
   }
   const listeners: Array<() => void> = [];
@@ -295,7 +354,7 @@ function setupWritingTools(rail: HTMLElement): () => void {
     button.dataset.size = "icon";
     button.dataset.toolGroup = String(group);
     button.setAttribute("aria-label", label);
-    button.dataset.tooltip = label;
+    button.dataset.hint = label;
     button.innerHTML = `<svg class="v5-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
     if (id === "btn-ordered-list" && orderedRow) {
       remember(orderedRow);
@@ -327,6 +386,12 @@ function setupWritingTools(rail: HTMLElement): () => void {
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-controls", sheet.id);
     bind(button, "click", () => {
+      // 不可用态守卫（D3 C 案）：事件照常流动（悬停提示可见），但动作在处理器入口
+      // 拒绝——不打开工具选项面板，并经共享提示层给统一原因提示，禁止静默无响应。
+      if (button.getAttribute("aria-disabled") === "true") {
+        window.dispatchEvent(new CustomEvent(TOOLBAR_HINT_EVENT, { detail: { text: "先选中文字再用", anchor: button } }));
+        return;
+      }
       const wasOpen = active === button;
       close();
       if (wasOpen) return;
@@ -348,16 +413,20 @@ function setupWritingTools(rail: HTMLElement): () => void {
     for (const { button, controls } of triggers) {
       const select = controls.find((control) => control instanceof HTMLSelectElement) as HTMLSelectElement | undefined;
       const enabled = controls.some((control) => !(control as HTMLButtonElement).disabled);
-      button.disabled = !enabled;
+      // 无选区禁用态（D3）：改置 aria-disabled（＋CSS 等价视觉），不置原生 disabled
+      // ——原生 disabled 会掐断事件与提示，功能在禁用态不可发现。
+      button.disabled = false;
+      if (enabled) button.removeAttribute("aria-disabled");
+      else button.setAttribute("aria-disabled", "true");
       if (select) {
         const value = select.value === "mixed" || select.value === "" ? "" : select.selectedOptions[0]?.textContent ?? "";
         button.dataset.value = value;
         const label = button.getAttribute("aria-label")?.split(" · ")[0];
-        button.dataset.tooltip = `${label}${value ? ` · ${value}` : ""}`;
-        button.setAttribute("aria-label", button.dataset.tooltip);
+        button.dataset.hint = `${label}${value ? ` · ${value}` : ""}`;
+        button.setAttribute("aria-label", button.dataset.hint);
       }
     }
-    if (active?.disabled) close();
+    if (active && (active.disabled || active.getAttribute("aria-disabled") === "true")) close();
   }
   bind(document, "writing-format-rendered", sync);
   bind(body, "change", sync);

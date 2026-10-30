@@ -239,7 +239,6 @@
                   <button class="ai-win-btn ai-win-btn-icon" data-role="materials-toggle" type="button" title="本次参考了什么"><svg class="ai-ic"><use href="#i-info"></use></svg></button>
                   <button class="ai-win-btn ai-win-btn-stop hidden" data-role="stop" type="button">停止</button>
                   <button class="ai-win-btn ai-win-btn-icon" data-role="more" type="button" title="更多"><svg class="ai-ic"><use href="#i-more"></use></svg></button>
-                  <button class="ai-win-btn ai-win-btn-close" data-role="close" type="button" title="收起 AI 面板"><svg class="ai-ic"><use href="#i-close"></use></svg></button>
                   </div>
                 </div>
                 <div data-role="reading-request" class="ai-reading-request hidden" role="region" aria-label="等待补读授权">
@@ -300,7 +299,7 @@
                   <form data-role="follow-up-form" class="ai-follow-up-form hidden">
                     <label class="ai-follow-up-label" for="">继续追问</label>
                     <textarea data-role="follow-up-input" class="ai-follow-up-input" rows="3" placeholder="围绕本次选区继续追问"></textarea>
-                    <button data-role="follow-up-send" class="ai-follow-up-send ai-send-mark" aria-label="发送" type="submit" disabled>发送</button>
+                    <button data-role="follow-up-send" class="ai-follow-up-send ai-send-mark" aria-label="发送" type="submit" disabled><img src="src/assets/user-mark.png" alt="" aria-hidden="true"><span class="ai-send-label">发送</span></button>
                   </form>
                   <div data-role="direct-question" class="ai-direct-question hidden">
                     <div data-role="direct-question-selection" class="ai-direct-question-selection hidden">
@@ -311,7 +310,7 @@
                     <form data-role="direct-question-form" class="ai-direct-question-form">
                       <label class="ai-direct-question-label">直接提问</label>
                       <textarea data-role="direct-question-input" class="ai-direct-question-input" rows="3" placeholder="直接向 AI 提问…"></textarea>
-                      <button data-role="direct-question-send" class="ai-direct-question-send ai-send-mark" aria-label="提问" type="submit" disabled>提问</button>
+                      <button data-role="direct-question-send" class="ai-direct-question-send ai-send-mark" aria-label="提问" type="submit" disabled><img src="src/assets/user-mark.png" alt="" aria-hidden="true"><span class="ai-send-label">提问</span></button>
                     </form>
                     <div data-role="direct-question-error" class="ai-error-block hidden">
                       <div data-role="direct-question-error-message" class="ai-error-message"></div>
@@ -847,7 +846,7 @@
               <textarea id="making-conversation-input" class="making-conversation-input" rows="3" placeholder="先开始或继续一个制作会话"></textarea>
               <span class="making-form-actions">
                 <button id="making-conversation-stop" class="making-mini-btn" type="button" hidden>停止</button>
-                <button id="making-conversation-send" class="making-mini-btn ai-send-mark" aria-label="发送" type="submit" disabled>发送</button>
+                <button id="making-conversation-send" class="making-mini-btn ai-send-mark" aria-label="发送" type="submit" disabled><img src="src/assets/user-mark.png" alt="" aria-hidden="true"><span class="ai-send-label">发送</span></button>
               </span>
             </form>
           </aside>

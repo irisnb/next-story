@@ -122,8 +122,8 @@ export interface EditorToolbar {
   render(): void;
   /** 执行格式命令并刷新工具栏；无编辑器时返回 false。 */
   runFormatCommand(command: FormatCommand): boolean;
-  /** 仅当存在文字选区时执行格式命令。 */
-  runSelectionCommand(command: FormatCommand): void;
+  /** 仅当存在文字选区时执行格式命令；anchor 为触发控件（不可用时供原因提示定位）。 */
+  runSelectionCommand(command: FormatCommand, anchor?: HTMLElement): void;
   /** 移除全部监听并清理抽屉自动隐藏定时器。 */
   dispose(): void;
 }
@@ -155,6 +155,35 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     return state === "on" ? "true" : state === "off" ? "false" : "mixed";
   }
 
+  /**
+   * 工具不可用态（fix-tooltip-rule-ownership D3，2026-10-30 用户拍板 C「亮着＋点击
+   * 给提示」修订）：按钮不置原生 disabled（会掐断事件、剥离提示——功能不可发现），
+   * 改置 `aria-disabled="true"`；外观与启用态完全一致（图标亮着、悬停反应正常，
+   * 不变灰/半透明——首版复刻 :disabled 灰视觉已被用户验收否决）；点击/键盘由
+   * 处理器入口守卫拒绝并给原因提示（notifyUnavailableHint）。清除时摘除标记。
+   */
+  function setToolUnavailable(element: HTMLButtonElement, unavailable: boolean): void {
+    element.disabled = false;
+    if (unavailable) element.setAttribute("aria-disabled", "true");
+    else element.removeAttribute("aria-disabled");
+  }
+
+  /** 选区依赖工具统一的原因提示文案（D3 C 案，用户拍板统一口径）。 */
+  const NEED_SELECTION_HINT = "先选中文字再用";
+
+  /**
+   * 不可用工具点击/键盘触发的简短原因提示（D3 C 案）：经 window 自定义事件
+   * `ns-toolbar-hint`（detail＝`{ text: 原因, anchor: 触发按钮 }`）送共享提示层短暂
+   * 呈现——事件解耦，避免工具栏模块反向依赖展示层（ui-v5.ts 监听并驱动
+   * #ui-tooltip）。anchor 供提示层按按钮矩形定位（3.9：编辑器工具按钮 mousedown
+   * 阻止抢焦点保选区，点击后 activeElement=BODY，故显式传锚，不猜聚焦元素）。
+   * 禁止静默无响应；无 window 环境（node 单测桩）静默跳过。
+   */
+  function notifyUnavailableHint(reason: string, anchor?: HTMLElement): void {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+    window.dispatchEvent(new CustomEvent("ns-toolbar-hint", { detail: { text: reason, anchor } }));
+  }
+
   /** 抽屉下拉的显示值：多种→"mixed" 占位项（禁用、仅程序选中），无→""（默认/无），统一值→原值。 */
   function drawerSelectValue(state: string | null | "mixed"): string {
     return state === "mixed" ? "mixed" : state ?? "";
@@ -166,7 +195,9 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnOrderedListStyle.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
-  // 抽屉内所有格式控件：无文字选区时整体禁用。
+  // 抽屉内格式控件：无文字选区时整体禁用（面板内 selects/inputs 与面板内按钮，
+  // 不可直达——面板由触发按钮守卫把关；3.8 补漏后 rail 上的六枚工具按钮已移出
+  // 本清单，单独走 aria-disabled「亮着」模式）。
   const drawerControls: Array<HTMLButtonElement | HTMLSelectElement | HTMLInputElement> = [
     dom.btnUnderline,
     dom.btnStrike,
@@ -176,17 +207,24 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnClearTextColor,
     dom.inputHighlight,
     dom.btnClearHighlight,
-    dom.btnClearCharacterFormat,
-    dom.btnAlignLeft,
-    dom.btnAlignCenter,
-    dom.btnAlignRight,
-    dom.btnAlignJustify,
     dom.selectLineHeight,
     dom.selectSpacingBefore,
     dom.selectSpacingAfter,
     dom.selectTextIndent,
     dom.selectIndentLeft,
     dom.selectIndentRight,
+  ];
+
+  // 3.8 补漏（2026-10-30 复验发现）：对齐四枚与清除格式两枚虽源于格式抽屉，但 v5
+  // 把它们摆上了左侧工具栏（ui-v5 装配重建为 rail 按钮）——首版盘点误将其归入
+  // 抽屉控件走原生 disabled＋灰视觉（CDP 实测 op=0.4 dis=true）。并入
+  // setToolUnavailable「亮着＋守卫＋原因提示」模式。
+  const sheetRailToolButtons: HTMLButtonElement[] = [
+    dom.btnClearCharacterFormat,
+    dom.btnAlignLeft,
+    dom.btnAlignCenter,
+    dom.btnAlignRight,
+    dom.btnAlignJustify,
     dom.btnClearParagraphFormat,
   ];
 
@@ -199,6 +237,13 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnBulletList.disabled = true;
     dom.btnOrderedList.disabled = true;
     dom.btnOrderedListStyle.disabled = true;
+    // 3.8 补漏的六枚 rail 工具按钮同走原生 disabled（过渡态口径不变）。
+    for (const button of sheetRailToolButtons) button.disabled = true;
+    // 无编辑器（非「无选区」，文档切换过渡态）走原生 disabled 全关；摘除
+    // aria-disabled 保持单一标记，避免切换时两套禁用标记并存。
+    for (const button of [dom.btnBold, dom.btnItalic, dom.btnToolbarUnderline, dom.btnToolbarStrike, dom.btnBulletList, dom.btnOrderedList, dom.btnOrderedListStyle, dom.btnUndo, dom.btnRedo, ...sheetRailToolButtons]) {
+      button.removeAttribute("aria-disabled");
+    }
     setOrderedListStyleMenuOpen(false);
     dom.btnUndo.disabled = true;
     dom.btnRedo.disabled = true;
@@ -246,7 +291,7 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     // 且选区触及有序列表项（样式状态非 null）才可用；禁用时随 render 收起菜单。
     const olStyle = orderedListStyleState(canonical, selection.from, selection.to);
     const olStyleUsable = hasSelection && olStyle !== null;
-    dom.btnOrderedListStyle.disabled = !olStyleUsable;
+    setToolUnavailable(dom.btnOrderedListStyle, !olStyleUsable);
     if (!olStyleUsable) setOrderedListStyleMenuOpen(false);
     dom.btnOrderedListStyle.title =
       olStyle === "mixed"
@@ -285,15 +330,23 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.selectIndentLeft.value = drawerSelectValue(format.indentLeft);
     dom.selectIndentRight.value = drawerSelectValue(format.indentRight);
 
-    dom.paragraphStyle.disabled = !hasSelection;
-    dom.btnBold.disabled = !hasSelection;
-    dom.btnItalic.disabled = !hasSelection;
-    dom.btnToolbarUnderline.disabled = !hasSelection;
-    dom.btnToolbarStrike.disabled = !hasSelection;
-    dom.btnBulletList.disabled = !hasSelection;
-    dom.btnOrderedList.disabled = !hasSelection;
-    dom.btnUndo.disabled = !canUndo;
-    dom.btnRedo.disabled = !canRedo;
+    // 工具不可用态走 aria-disabled（D3 C 案「亮着＋点击给提示」）：选区依赖的基础
+    // 格式按钮与历史依赖的撤销/重做都亮着（外观＝启用态），悬停/聚焦可见功能名，
+    // 点击由守卫拒绝并给原因提示；paragraphStyle 是工具选项面板内的下拉（change
+    // 处理器已有守卫＋原因提示），保持原生禁用口径。
+    setToolUnavailable(dom.btnBold, !hasSelection);
+    setToolUnavailable(dom.btnItalic, !hasSelection);
+    setToolUnavailable(dom.btnToolbarUnderline, !hasSelection);
+    setToolUnavailable(dom.btnToolbarStrike, !hasSelection);
+    setToolUnavailable(dom.btnBulletList, !hasSelection);
+    setToolUnavailable(dom.btnOrderedList, !hasSelection);
+    // 撤销/重做并入同一模式（3.5）：历史空时不再原生 disabled（用户所见「有的有、
+    // 有的没有」提示不一致的来源），亮着＋守卫＋专属原因提示。
+    setToolUnavailable(dom.btnUndo, !canUndo);
+    setToolUnavailable(dom.btnRedo, !canRedo);
+    // 3.8 补漏：六枚 rail 工具按钮（对齐四枚＋清除格式两枚）无选区时同样亮着，
+    // 不再随抽屉控件走原生 disabled＋灰视觉。
+    for (const button of sheetRailToolButtons) setToolUnavailable(button, !hasSelection);
     for (const control of drawerControls) control.disabled = !hasSelection;
     if (typeof document !== "undefined") {
       const url = document.getElementById("toolbar-link-url") as HTMLInputElement | null;
@@ -322,8 +375,10 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     return selection.from < selection.to;
   }
 
-  function runSelectionCommand(command: FormatCommand): void {
+  function runSelectionCommand(command: FormatCommand, anchor?: HTMLElement): void {
+    // 选区依赖守卫（D3 C 案）：不可用时给出统一原因提示（锚＝触发按钮），禁止静默无响应。
     if (hasSelection()) runFormatCommand(command);
+    else notifyUnavailableHint(NEED_SELECTION_HINT, anchor);
   }
 
   function setFormatDrawerOpen(open: boolean): void {
@@ -332,18 +387,23 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     dom.btnFormatDrawer.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
-  // ---- 工具栏命令 ----
+  // ---- 工具栏命令（anchor＝触发按钮，供不可用原因提示定位 3.9） ----
 
-  bind(dom.btnBold, "click", () => runSelectionCommand({ kind: "bold" }));
-  bind(dom.btnItalic, "click", () => runSelectionCommand({ kind: "italic" }));
-  bind(dom.btnToolbarUnderline, "click", () => runSelectionCommand({ kind: "underline" }));
-  bind(dom.btnToolbarStrike, "click", () => runSelectionCommand({ kind: "strike" }));
-  bind(dom.btnBulletList, "click", () => runSelectionCommand({ kind: "bulletList" }));
-  bind(dom.btnOrderedList, "click", () => runSelectionCommand({ kind: "orderedList" }));
+  bind(dom.btnBold, "click", () => runSelectionCommand({ kind: "bold" }, dom.btnBold));
+  bind(dom.btnItalic, "click", () => runSelectionCommand({ kind: "italic" }, dom.btnItalic));
+  bind(dom.btnToolbarUnderline, "click", () => runSelectionCommand({ kind: "underline" }, dom.btnToolbarUnderline));
+  bind(dom.btnToolbarStrike, "click", () => runSelectionCommand({ kind: "strike" }, dom.btnToolbarStrike));
+  bind(dom.btnBulletList, "click", () => runSelectionCommand({ kind: "bulletList" }, dom.btnBulletList));
+  bind(dom.btnOrderedList, "click", () => runSelectionCommand({ kind: "orderedList" }, dom.btnOrderedList));
 
   // ---- 有序列表编号样式 flyout（PS 风格紧邻子菜单） ----
 
   bind(dom.btnOrderedListStyle, "click", () => {
+    // 不可用态守卫（D3 C 案）：事件照常流动但入口拒绝——不展开 flyout，给原因提示。
+    if (dom.btnOrderedListStyle.getAttribute("aria-disabled") === "true") {
+      notifyUnavailableHint(NEED_SELECTION_HINT, dom.btnOrderedListStyle);
+      return;
+    }
     setOrderedListStyleMenuOpen(dom.orderedListStyleMenu.classList.contains("hidden"));
   });
   for (const item of dom.orderedListStyleItems) {
@@ -353,7 +413,7 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
       );
       if (!style) return;
       // 经既有命令对当前选区生效（可撤销由命令保证）；点击后收起菜单。
-      runSelectionCommand({ kind: "orderedListStyle", style });
+      runSelectionCommand({ kind: "orderedListStyle", style }, item);
       setOrderedListStyleMenuOpen(false);
     });
   }
@@ -388,20 +448,34 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     if (event.key === "Escape") setOrderedListStyleMenuOpen(false);
   });
 
-  bind(dom.btnUndo, "click", () => runFormatCommand({ kind: "undo" }));
-  bind(dom.btnRedo, "click", () => runFormatCommand({ kind: "redo" }));
+  // 撤销/重做（D3 C 案 3.5）：历史空时亮着但不可用——守卫拒绝并给专属原因提示
+  // （原生 disabled 时期这两枚悬停无提示，即用户所见「有的有、有的没有」）。
+  bind(dom.btnUndo, "click", () => {
+    if (dom.btnUndo.getAttribute("aria-disabled") === "true") {
+      notifyUnavailableHint("没有可撤销的内容", dom.btnUndo);
+      return;
+    }
+    runFormatCommand({ kind: "undo" });
+  });
+  bind(dom.btnRedo, "click", () => {
+    if (dom.btnRedo.getAttribute("aria-disabled") === "true") {
+      notifyUnavailableHint("没有可重做的内容", dom.btnRedo);
+      return;
+    }
+    runFormatCommand({ kind: "redo" });
+  });
   if (typeof document !== "undefined") {
     const url = document.getElementById("toolbar-link-url") as HTMLInputElement | null;
     const save = document.getElementById("toolbar-link-save");
     const remove = document.getElementById("toolbar-link-remove");
     if (save && url) bind(save, "click", () => {
       const href = url.value.trim();
-      if (href) runSelectionCommand({ kind: "setLink", href });
+      if (href) runSelectionCommand({ kind: "setLink", href }, save);
     });
-    if (remove) bind(remove, "click", () => runSelectionCommand({ kind: "unsetLink" }));
+    if (remove) bind(remove, "click", () => runSelectionCommand({ kind: "unsetLink" }, remove));
   }
   bind(dom.paragraphStyle, "change", () => {
-    if (!hasSelection()) return;
+    if (!hasSelection()) { notifyUnavailableHint(NEED_SELECTION_HINT, dom.paragraphStyle); return; }
     const value = dom.paragraphStyle.value;
     if (value.startsWith("heading")) {
       const level = Number(value.slice("heading".length));
@@ -482,58 +556,60 @@ export function createEditorToolbar(deps: EditorToolbarDeps): EditorToolbar {
     if (deps.columnWidthStorage) writeColumnWidthPreset(deps.columnWidthStorage, next);
   });
 
-  // ---- 抽屉：字符格式 ----
+  // ---- 抽屉：字符格式（anchor＝触发控件，供不可用原因提示定位 3.9） ----
 
-  bind(dom.btnUnderline, "click", () => runSelectionCommand({ kind: "underline" }));
-  bind(dom.btnStrike, "click", () => runSelectionCommand({ kind: "strike" }));
+  bind(dom.btnUnderline, "click", () => runSelectionCommand({ kind: "underline" }, dom.btnUnderline));
+  bind(dom.btnStrike, "click", () => runSelectionCommand({ kind: "strike" }, dom.btnStrike));
   bind(dom.selectFontFamily, "change", () => {
-    runSelectionCommand({ kind: "fontFamily", font: dom.selectFontFamily.value || null });
+    runSelectionCommand({ kind: "fontFamily", font: dom.selectFontFamily.value || null }, dom.selectFontFamily);
   });
   bind(dom.selectFontSize, "change", () => {
-    runSelectionCommand({ kind: "fontSize", size: dom.selectFontSize.value || null });
+    runSelectionCommand({ kind: "fontSize", size: dom.selectFontSize.value || null }, dom.selectFontSize);
   });
   bind(dom.inputTextColor, "change", () => {
-    runSelectionCommand({ kind: "textColor", color: dom.inputTextColor.value });
+    runSelectionCommand({ kind: "textColor", color: dom.inputTextColor.value }, dom.inputTextColor);
   });
   bind(dom.btnClearTextColor, "click", () => {
-    runSelectionCommand({ kind: "textColor", color: null });
+    runSelectionCommand({ kind: "textColor", color: null }, dom.btnClearTextColor);
   });
   bind(dom.inputHighlight, "change", () => {
-    runSelectionCommand({ kind: "highlight", color: dom.inputHighlight.value });
+    runSelectionCommand({ kind: "highlight", color: dom.inputHighlight.value }, dom.inputHighlight);
   });
   bind(dom.btnClearHighlight, "click", () => {
-    runSelectionCommand({ kind: "highlight", color: null });
+    runSelectionCommand({ kind: "highlight", color: null }, dom.btnClearHighlight);
   });
   bind(dom.btnClearCharacterFormat, "click", () => {
-    runSelectionCommand({ kind: "clearCharacterFormat" });
+    // 3.8 补漏：处理器经 runSelectionCommand 已有选区守卫＋统一原因提示，此处只需传锚。
+    runSelectionCommand({ kind: "clearCharacterFormat" }, dom.btnClearCharacterFormat);
   });
 
   // ---- 抽屉：段落格式 ----
 
-  bind(dom.btnAlignLeft, "click", () => runSelectionCommand({ kind: "textAlign", align: "left" }));
-  bind(dom.btnAlignCenter, "click", () => runSelectionCommand({ kind: "textAlign", align: "center" }));
-  bind(dom.btnAlignRight, "click", () => runSelectionCommand({ kind: "textAlign", align: "right" }));
-  bind(dom.btnAlignJustify, "click", () => runSelectionCommand({ kind: "textAlign", align: "justify" }));
+  bind(dom.btnAlignLeft, "click", () => runSelectionCommand({ kind: "textAlign", align: "left" }, dom.btnAlignLeft));
+  bind(dom.btnAlignCenter, "click", () => runSelectionCommand({ kind: "textAlign", align: "center" }, dom.btnAlignCenter));
+  bind(dom.btnAlignRight, "click", () => runSelectionCommand({ kind: "textAlign", align: "right" }, dom.btnAlignRight));
+  bind(dom.btnAlignJustify, "click", () => runSelectionCommand({ kind: "textAlign", align: "justify" }, dom.btnAlignJustify));
   bind(dom.selectLineHeight, "change", () => {
-    runSelectionCommand({ kind: "lineHeight", value: dom.selectLineHeight.value || null });
+    runSelectionCommand({ kind: "lineHeight", value: dom.selectLineHeight.value || null }, dom.selectLineHeight);
   });
   bind(dom.selectSpacingBefore, "change", () => {
-    runSelectionCommand({ kind: "spacingBefore", value: dom.selectSpacingBefore.value || null });
+    runSelectionCommand({ kind: "spacingBefore", value: dom.selectSpacingBefore.value || null }, dom.selectSpacingBefore);
   });
   bind(dom.selectSpacingAfter, "change", () => {
-    runSelectionCommand({ kind: "spacingAfter", value: dom.selectSpacingAfter.value || null });
+    runSelectionCommand({ kind: "spacingAfter", value: dom.selectSpacingAfter.value || null }, dom.selectSpacingAfter);
   });
   bind(dom.selectTextIndent, "change", () => {
-    runSelectionCommand({ kind: "textIndent", value: dom.selectTextIndent.value || null });
+    runSelectionCommand({ kind: "textIndent", value: dom.selectTextIndent.value || null }, dom.selectTextIndent);
   });
   bind(dom.selectIndentLeft, "change", () => {
-    runSelectionCommand({ kind: "indentLeft", value: dom.selectIndentLeft.value || null });
+    runSelectionCommand({ kind: "indentLeft", value: dom.selectIndentLeft.value || null }, dom.selectIndentLeft);
   });
   bind(dom.selectIndentRight, "change", () => {
-    runSelectionCommand({ kind: "indentRight", value: dom.selectIndentRight.value || null });
+    runSelectionCommand({ kind: "indentRight", value: dom.selectIndentRight.value || null }, dom.selectIndentRight);
   });
   bind(dom.btnClearParagraphFormat, "click", () => {
-    runSelectionCommand({ kind: "clearParagraphFormat" });
+    // 3.8 补漏：同清除字符格式——守卫＋原因提示经 runSelectionCommand 覆盖。
+    runSelectionCommand({ kind: "clearParagraphFormat" }, dom.btnClearParagraphFormat);
   });
 
   return {

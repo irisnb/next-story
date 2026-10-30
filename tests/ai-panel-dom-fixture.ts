@@ -174,10 +174,10 @@ export class FakeElement {
   }
 }
 
-/** 窗口模板里所需的全部 `data-role`。 */
+/** 窗口模板里所需的全部 `data-role`（fix-tooltip-rule-ownership D4：窗口头不再有 close 收起角色）。 */
 export const AI_WINDOW_ROLES = [
   "discussion-header", "status-dot", "title", "doc", "focus-switch", "badge",
-  "materials-toggle", "stop", "more", "close", "body",
+  "materials-toggle", "stop", "more", "body",
   "snapshot-block", "snapshot-text", "welcome", "loading", "response",
   "materials-panel", "materials-body", "materials-close",
   "reading-request", "reading-request-title", "reading-request-reason",
@@ -210,7 +210,7 @@ export function createAiWindowFixture(conversationId: string): {
       el.tag = "form";
     } else if (role === "follow-up-input" || role === "direct-question-input") {
       el.tag = "textarea";
-    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "close" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation" || role === "focus-switch" || role === "materials-toggle" || role === "materials-close" || role === "reading-allow" || role === "reading-deny" || role === "reading-toggle") {
+    } else if (role.endsWith("-send") || role === "stop" || role === "more" || role === "retry" || role === "go-config" || role === "follow-up-retry" || role === "follow-up-edit" || role === "direct-question-selection-remove" || role === "direct-question-go-config" || role === "restriction-new-conversation" || role === "focus-switch" || role === "materials-toggle" || role === "materials-close" || role === "reading-allow" || role === "reading-deny" || role === "reading-toggle") {
       el.tag = "button";
     }
     roles.set(role, el);
@@ -251,11 +251,12 @@ export function createAiWindowFixture(conversationId: string): {
     roles.get("direct-question")!,
   );
   const head = roles.get("discussion-header")!;
+  // D4：头部动作组不含收起按钮（收起入口唯一化——停靠区头 ✕ 与顶栏入口）。
   head.append(
     roles.get("status-dot")!, roles.get("title")!,
     roles.get("doc")!, roles.get("focus-switch")!, roles.get("badge")!,
     roles.get("materials-toggle")!, roles.get("stop")!,
-    roles.get("more")!, roles.get("close")!,
+    roles.get("more")!,
   );
   root.append(head, body, input);
   return { root, roles };

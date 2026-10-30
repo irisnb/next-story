@@ -18,8 +18,9 @@ import { deriveConversationTitle } from "./conversation-archive.ts";
 /**
  * 单个讨论窗口的动作（由窗口管理器按讨论身份绑定）。
  *
- * 追问 / 重试 / 直接提问沿用当前讨论语义；单面板只挂载当前讨论。
- * 停止为业务动作，关闭仅结束显示，两者按讨论身份绑定。
+  * 追问 / 重试 / 直接提问沿用当前讨论语义；单面板只挂载当前讨论。
+  * 停止为业务动作；收起面板入口唯一化（fix-tooltip-rule-ownership D4）后窗口头
+  * 不再承载收起动作（停靠区头 ✕ 与顶栏入口收起，语义见 ai-panel reducer）。
  */
 export interface AiWindowActions {
   /** 首轮重试（error / configuration_required / stopped 首轮）。 */
@@ -36,8 +37,6 @@ export interface AiWindowActions {
   onDirectQuestionFocus: () => void;
   /** 停止本窗口讨论的当前生成。 */
   onStop: () => void;
-  /** 关闭本窗口（只结束显示，不删除讨论）。 */
-  onClose: () => void;
   /** 新建一个干净讨论（受限讨论的继续路径）。 */
   onNewConversation: () => void;
   /** 请求打开「切换关注文档」选择器（锚点为本窗口的切换按钮）；缺省不显示入口。 */
@@ -165,6 +164,17 @@ export function setupAiWindow(
   let materialsOpen = false;
   /** 补读过程详情（已读文档列表）展开状态（纯显示层，不进状态、不持久化）。 */
   let readingDetailsOpen = false;
+
+  /**
+   * 更新发送按钮功能名（fix-tooltip-rule-ownership D2）：按钮内是「纹样 img＋视觉
+   * 隐藏文字」，整体 `textContent` 赋值会抹掉纹样节点，故只改文字节点；无该结构时
+   * （测试桩）退回整体赋值。文字仍参与派生 aria-label / data-hint。
+   */
+  function setSendLabel(button: HTMLButtonElement, text: string): void {
+    const label = button.querySelector(".ai-send-label");
+    if (label) label.textContent = text;
+    else button.textContent = text;
+  }
   /** 切换关注文档提示的显示时长。 */
   const FOCUS_NOTICE_MS = 6000;
   let focusNoticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -218,7 +228,6 @@ export function setupAiWindow(
   });
 
   listen(dom.stopBtn, "click", () => actions.onStop());
-  listen(dom.closeBtn, "click", () => actions.onClose());
   listen(dom.restrictionNewConversation, "click", () => actions.onNewConversation());
   listen(dom.retryBtn, "click", () => actions.onRetry());
   listen(dom.goConfigBtn, "click", () => actions.onGoToConfig());
@@ -233,7 +242,7 @@ export function setupAiWindow(
     dom.followUpInput.value = pending.question;
     state.updateDirectQuestionDraft(conversationId, pending.question);
     dom.followUpInput.disabled = false;
-    dom.followUpSend.textContent = "修改后重发";
+    setSendLabel(dom.followUpSend, "修改后重发");
     updateFollowUpSendState();
     dom.followUpInput.focus();
   });
@@ -293,7 +302,7 @@ export function setupAiWindow(
     editingFailedQuestion = false;
     state.updateDirectQuestionDraft(conversationId, "");
     dom.followUpInput.value = "";
-    dom.followUpSend.textContent = "发送";
+    setSendLabel(dom.followUpSend, "发送");
     updateFollowUpSendState();
   }
 
@@ -566,13 +575,13 @@ export function setupAiWindow(
     if (followUpFormView === null) {
       editingFailedQuestion = false;
       dom.followUpInput.value = "";
-      dom.followUpSend.textContent = "发送";
+      setSendLabel(dom.followUpSend, "发送");
     }
     dom.followUpInput.disabled = followUpFormView === null || !followUpFormView.inputEnabled;
     if (followUpFormView === null && editingFailedQuestion) {
       editingFailedQuestion = false;
       dom.followUpInput.value = "";
-      dom.followUpSend.textContent = "发送";
+      setSendLabel(dom.followUpSend, "发送");
     }
     updateFollowUpSendState();
 

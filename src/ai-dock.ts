@@ -24,8 +24,6 @@ export interface AiDockActions {
   onDirectQuestionFocus: () => void;
   /** 停止指定讨论的当前生成。 */
   onStop: (conversationId: string) => void;
-  /** 关闭指定讨论的窗口（只结束显示）。 */
-  onClose: (conversationId: string) => void;
   /** 删除指定讨论（独立动作，先停后删）。 */
   onDelete: (conversationId: string) => Promise<void>;
   onOpenDiscussion: (summary: ConversationSummary) => void;
@@ -136,7 +134,6 @@ export function setupAiDock(
       onRemoveDirectQuestionSelection: actions.onRemoveDirectQuestionSelection,
       onDirectQuestionFocus: actions.onDirectQuestionFocus,
       onStop: () => actions.onStop(conversationId),
-      onClose: () => actions.onClose(conversationId),
       onNewConversation: () => actions.onNewConversation(),
       // 及时召唤讨论不提供「切换关注文档」入口（automatic-story-context delta）：
       // 常规现场材料在这类讨论中不自动附带，「从下一轮开始使用」的承诺无法成立。
@@ -680,7 +677,8 @@ export function setupAiDock(
     dom.root.classList.toggle("ai-panel-maximized", maximized);
     dom.maximizeBtn.innerHTML = `<svg class="panelicon" aria-hidden="true" viewBox="0 0 24 24"><path d="${maximized ? "M8 4h12v12h-4M4 8h12v12H4ZM4 12h12" : "M4 4h16v16H4ZM4 8h16"}"/></svg><span>${maximized ? "恢复边栏" : "最大化"}</span>`;
     dom.maximizeBtn.setAttribute("aria-label", maximized ? "恢复边栏" : "最大化 AI 面板");
-    dom.maximizeBtn.dataset.tooltip = maximized ? "恢复写作与 AI 并排" : "最大化 AI 面板";
+    // 提示所有权分离（fix-tooltip-rule-ownership）：共享提示写自家 data-hint。
+    dom.maximizeBtn.dataset.hint = maximized ? "恢复写作与 AI 并排" : "最大化 AI 面板";
     dom.maximizeBtn.setAttribute("aria-pressed", String(maximized));
     if (panelWidth > 0) dom.root.style.width = maximized ? "100%" : `${panelWidth}px`;
     dom.root.classList.toggle("hidden", !open);

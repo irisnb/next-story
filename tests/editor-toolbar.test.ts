@@ -64,6 +64,10 @@ class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+
   closest(selector: string): FakeElement | null {
     return selector === ".drawer-group" ? this.closestGroup : null;
   }
@@ -74,6 +78,20 @@ function paragraphDoc(text: string, marks?: Array<{ type: string }>): JSONConten
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text, marks }] }],
   };
+}
+
+/** 捕获 ns-toolbar-hint 原因提示事件的 window 桩（D3 C 案；detail＝{ text, anchor }）。 */
+function installHintWindow(): { hints: Array<{ text: string; anchor?: unknown }>; restore(): void } {
+  const hints: Array<{ text: string; anchor?: unknown }> = [];
+  const g = globalThis as unknown as { window?: unknown };
+  const previous = g.window;
+  g.window = {
+    dispatchEvent: (event: { type: string; detail?: { text: string; anchor?: unknown } }) => {
+      if (event.type === "ns-toolbar-hint") hints.push(event.detail ?? { text: "" });
+      return true;
+    },
+  };
+  return { hints, restore: () => { g.window = previous; } };
 }
 
 /** 有序列表节点（attrs.type 仅在非缺省样式时出现，与规范形态一致）。 */
@@ -186,9 +204,12 @@ function toolbarFixture(
 }
 
 test("render disables all toolbar controls when there is no editor", () => {
-  const { elements, toolbar } = toolbarFixture();
+  // 真正的「无编辑器」路径（文档切换过渡态）：全关走原生 disabled；
+  // 无选区（有编辑器）的禁用口径见 aria-disabled 专项测试。
+  const { elements, toolbar } = toolbarFixture({ getEditor: () => null });
   toolbar.render();
   assert.equal(elements["btnBold"].disabled, true);
+  assert.equal(elements["btnBold"].getAttribute("aria-disabled"), null);
   assert.equal(elements["btnUndo"].disabled, true);
   assert.equal(elements["paragraphStyle"].disabled, true);
   assert.equal(elements["btnUnderline"].disabled, true);
@@ -207,8 +228,103 @@ test("render reflects bold, undo, and redo state from the current selection", ()
   assert.equal(elements["btnBold"].getAttribute("aria-pressed"), "true");
   assert.equal(elements["btnBold"].disabled, false);
   assert.equal(elements["btnUnderline"].getAttribute("aria-pressed"), "false");
+  // 撤销/重做（D3 C 案 3.5）：历史可用性走 aria-disabled（亮着），不再原生 disabled。
+  assert.equal(elements["btnUndo"].getAttribute("aria-disabled"), null, "历史可撤销时应可用");
   assert.equal(elements["btnUndo"].disabled, false);
-  assert.equal(elements["btnRedo"].disabled, true);
+  assert.equal(elements["btnRedo"].getAttribute("aria-disabled"), "true", "历史无可重做时应 aria-disabled");
+  assert.equal(elements["btnRedo"].disabled, false, "不置原生 disabled（亮着）");
+});
+
+test("empty history keeps undo/redo lit with aria-disabled and clicking explains why", () => {
+  // D3 C 案 3.5：撤销/重做历史空时并入「亮着＋点击给提示」——不再原生 disabled
+  // （原生 disabled 悬停无提示，即用户验收所见「有的有、有的没有」）。
+  const hintWindow = installHintWindow();
+  try {
+    const { elements, editor, toolbar } = toolbarFixture();
+    editor.document = paragraphDoc("hello");
+    editor.selection = { from: 1, to: 6 };
+    editor.canUndoValue = false;
+    editor.canRedoValue = false;
+
+    toolbar.render();
+
+    for (const id of ["btnUndo", "btnRedo"]) {
+      assert.equal(elements[id].getAttribute("aria-disabled"), "true", `${id} 历史空应置 aria-disabled`);
+      assert.equal(elements[id].disabled, false, `${id} 不置原生 disabled`);
+    }
+
+    // 点击（键盘经 click 同路）：动作被拒绝并给专属原因提示（锚＝各自按钮），禁止静默无响应。
+    elements["btnUndo"].dispatch("click");
+    elements["btnRedo"].dispatch("click");
+    assert.equal(editor.runCommands.length, 0, "历史空点击不产生命令");
+    assert.deepEqual(hintWindow.hints, [
+      { text: "没有可撤销的内容", anchor: elements["btnUndo"] },
+      { text: "没有可重做的内容", anchor: elements["btnRedo"] },
+    ]);
+
+    // 历史可用后：标记摘除、动作恢复、不再给原因提示。
+    editor.canUndoValue = true;
+    toolbar.render();
+    assert.equal(elements["btnUndo"].getAttribute("aria-disabled"), null);
+    hintWindow.hints.length = 0;
+    elements["btnUndo"].dispatch("click");
+    assert.deepEqual(editor.runCommands, [{ kind: "undo" }]);
+    assert.deepEqual(hintWindow.hints, []);
+  } finally {
+    hintWindow.restore();
+  }
+});
+
+test("no-selection disable uses aria-disabled, keeps events flowing, and refuses actions with a reason hint", () => {
+  // fix-tooltip-rule-ownership D3 C 案：无选区不可用态亮着（不置原生 disabled，事件
+  // 与提示保留），点击/键盘（经 click）由处理器入口守卫拒绝，并给统一原因提示
+  // 「先选中文字再用」（锚＝触发按钮）——禁止静默无响应。
+  const hintWindow = installHintWindow();
+  try {
+    const { elements, editor, toolbar } = toolbarFixture();
+    editor.document = paragraphDoc("hello");
+    editor.selection = { from: 1, to: 1 };
+
+    toolbar.render();
+
+    const unavailable = [
+      "btnBold", "btnItalic", "btnToolbarUnderline", "btnToolbarStrike", "btnBulletList", "btnOrderedList",
+      // 3.8 补漏：对齐四枚＋清除格式两枚（首版误入抽屉控件清单走原生 disabled＋灰）。
+      "btnAlignLeft", "btnAlignCenter", "btnAlignRight", "btnAlignJustify",
+      "btnClearCharacterFormat", "btnClearParagraphFormat",
+    ];
+    for (const id of unavailable) {
+      assert.equal(elements[id].getAttribute("aria-disabled"), "true", `${id} 无选区应置 aria-disabled`);
+      assert.equal(elements[id].disabled, false, `${id} 不置原生 disabled（亮着）`);
+    }
+
+    // 事件照常流动但动作被拒绝：无选区点击不产生任何格式命令，且给原因提示
+    // （含 3.8 补漏的对齐与清除格式两枚——锚点应为各自按钮）。
+    elements["btnBold"].dispatch("click");
+    elements["btnOrderedList"].dispatch("click");
+    elements["btnAlignLeft"].dispatch("click");
+    elements["btnClearCharacterFormat"].dispatch("click");
+    assert.equal(editor.runCommands.length, 0);
+    assert.deepEqual(
+      hintWindow.hints.map((hint) => hint.text),
+      ["先选中文字再用", "先选中文字再用", "先选中文字再用", "先选中文字再用"],
+      "不可用点击给统一原因提示",
+    );
+    assert.equal(hintWindow.hints[0].anchor, elements["btnBold"], "锚点＝触发按钮（3.9）");
+    assert.equal(hintWindow.hints[2].anchor, elements["btnAlignLeft"], "对齐按钮锚点＝自身");
+    assert.equal(hintWindow.hints[3].anchor, elements["btnClearCharacterFormat"], "清除格式锚点＝自身");
+
+    // 有选区恢复后禁用标记摘除（含六枚补漏）、动作恢复、不再给原因提示。
+    editor.selection = { from: 1, to: 6 };
+    toolbar.render();
+    for (const id of unavailable) assert.equal(elements[id].getAttribute("aria-disabled"), null, `${id} 恢复可用`);
+    hintWindow.hints.length = 0;
+    elements["btnBold"].dispatch("click");
+    assert.deepEqual(editor.runCommands, [{ kind: "bold" }]);
+    assert.deepEqual(hintWindow.hints, []);
+  } finally {
+    hintWindow.restore();
+  }
 });
 
 test("runFormatCommand runs the command and re-renders the toolbar", () => {
@@ -330,8 +446,14 @@ test("style trigger is disabled without a text selection", () => {
 
   toolbar.render();
 
-  assert.equal(elements["btnOrderedListStyle"].disabled, true);
+  // D3：无选区禁用态＝aria-disabled（提示可见），非原生 disabled。
+  assert.equal(elements["btnOrderedListStyle"].getAttribute("aria-disabled"), "true");
+  assert.equal(elements["btnOrderedListStyle"].disabled, false);
   assert.equal(elements["orderedListStyleMenu"].classList.contains("hidden"), true);
+  // 禁用态点击（含键盘经 click）不展开 flyout。
+  elements["btnOrderedListStyle"].dispatch("click");
+  assert.equal(elements["orderedListStyleMenu"].classList.contains("hidden"), true);
+  assert.equal(elements["btnOrderedListStyle"].getAttribute("aria-expanded"), "false");
 });
 
 test("style trigger is disabled when the selection is outside ordered lists", () => {
@@ -341,7 +463,8 @@ test("style trigger is disabled when the selection is outside ordered lists", ()
 
   toolbar.render();
 
-  assert.equal(elements["btnOrderedListStyle"].disabled, true);
+  assert.equal(elements["btnOrderedListStyle"].getAttribute("aria-disabled"), "true");
+  assert.equal(elements["btnOrderedListStyle"].disabled, false);
   assert.equal(elements["btnOrderedListStyle"].getAttribute("aria-expanded"), "false");
 });
 
@@ -437,11 +560,12 @@ test("render closes an open menu once the trigger becomes disabled", () => {
   elements["btnOrderedListStyle"].dispatch("click");
   assert.equal(elements["orderedListStyleMenu"].classList.contains("hidden"), false);
 
-  // 选区收回到光标：触发器禁用，菜单随之收起。
+  // 选区收回到光标：触发器禁用（aria-disabled），菜单随之收起。
   editor.selection = { from: 3, to: 3 };
   toolbar.render();
 
-  assert.equal(elements["btnOrderedListStyle"].disabled, true);
+  assert.equal(elements["btnOrderedListStyle"].getAttribute("aria-disabled"), "true");
+  assert.equal(elements["btnOrderedListStyle"].disabled, false);
   assert.equal(elements["orderedListStyleMenu"].classList.contains("hidden"), true);
 });
 

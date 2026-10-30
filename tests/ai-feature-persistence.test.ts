@@ -287,7 +287,8 @@ test("2.4 读档失败结束加载并保留具体错误，关闭后可重新打�
     assert.equal(ui.controller.state.view.archiveOpening, false);
     assert.match(ui.controller.state.view.archiveOpenError!, /档案格式损坏/);
     assert.match(collectText(ui.windowRoots[0]), /档案格式损坏/);
-    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    // D4（收起入口唯一化）：窗口头 ✕ 已移除，收起走 state.close——与原 closeWindow 等价。
+    ui.controller.state.close();
     ui.controller.openDiscussion(item);
     assert.equal(ui.reads.length, 2);
     await flush();
@@ -318,7 +319,8 @@ test("2.4 隐藏（×收起）不使有效读档失效：读档完成归入目�
   const ui = persistenceHarness({ dependencies: { conversationRead: () => read.promise } });
   try {
     ui.controller.openDiscussion(deriveConversationSummary(record));
-    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    // D4（收起入口唯一化）：窗口头 ✕ 已移除，收起走 state.close——与原 closeWindow 等价。
+    ui.controller.state.close();
     read.resolve(record);
     await flush();
     assert.notEqual(ui.controller.state.conversationOf(record.conversation_id), null, "隐藏后读档结果仍归入所属讨论");
@@ -335,7 +337,8 @@ test("2.4 关闭并重开同一讨论，第一次读取不得覆盖第二次", a
     const record = savedRecord();
     const item = deriveConversationSummary(record);
     ui.controller.openDiscussion(item);
-    ui.windowRoots[0].queryResults.get('[data-role="close"]')!.dispatch("click");
+    // D4（收起入口唯一化）：窗口头 ✕ 已移除，收起走 state.close——与原 closeWindow 等价。
+    ui.controller.state.close();
     ui.controller.openDiscussion(item);
     second.resolve({ ...record, turns: [{ role: "assistant", text: "新档案", status: "done" }] });
     await flush();

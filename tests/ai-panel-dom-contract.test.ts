@@ -49,7 +49,6 @@ test("buildAiWindowDom assembles a full contract from a window root by role", ()
   assert.ok(dom.badge);
   assert.ok(dom.stopBtn);
   assert.ok(dom.moreBtn);
-  assert.ok(dom.closeBtn);
   assert.ok(dom.conversation);
   assert.ok(dom.followUpForm);
   assert.ok(dom.followUpInput);
@@ -61,6 +60,8 @@ test("buildAiWindowDom assembles a full contract from a window root by role", ()
   assert.ok(dom.materialsBody);
   assert.ok(dom.materialsClose);
   assert.ok(dom.focusNotice);
+  // 收起入口唯一化（fix-tooltip-rule-ownership D4）：契约不再含 closeBtn。
+  assert.equal("closeBtn" in dom, false, "AiWindowDom 契约不得再有 closeBtn（窗口头无收起按钮）");
 });
 
 test("buildAiWindowDom fails with the missing role identifier when a node is absent", () => {
@@ -92,7 +93,6 @@ test("setupAiWindow renders from the explicit contract without global lookups an
   try {
     const state = new AiPanelState();
     let stopCalls = 0;
-    let closeCalls = 0;
     const controller = setupAiWindow(
       root as unknown as HTMLElement,
       state,
@@ -108,7 +108,6 @@ test("setupAiWindow renders from the explicit contract without global lookups an
         onRemoveDirectQuestionSelection: () => {},
         onDirectQuestionFocus: () => {},
         onStop: () => { stopCalls += 1; },
-        onClose: () => { closeCalls += 1; },
         onNewConversation: () => {},
       },
     );
@@ -122,10 +121,8 @@ test("setupAiWindow renders from the explicit contract without global lookups an
     const stopBtn = root.queryResults.get('[data-role="stop"]')!;
     stopBtn.dispatch("click");
     assert.equal(stopCalls, 1);
-    // 关闭按钮触发 close。
-    const closeBtn = root.queryResults.get('[data-role="close"]')!;
-    closeBtn.dispatch("click");
-    assert.equal(closeCalls, 1);
+    // 收起入口唯一化（D4）：窗口头不得再有 close 角色按钮（契约层面断言见上方组装测试）。
+    assert.equal(root.queryResults.has('[data-role="close"]'), false, "窗口头不得有 close 角色按钮");
 
     controller.destroy();
     assert.equal(root.parentElement, null, "销毁后从 DOM 摘除");

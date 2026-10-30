@@ -94,6 +94,11 @@ test("AI dock header exposes new-conversation and collapse entries", () => {
   assert.match(html, /<button\b[^>]*\bid="ai-conversation-list-toggle"[^>]*aria-label="讨论列表"/);
   assert.match(html, /<template\b[^>]*\bid="ai-window-template"/);
   assert.match(html, /<aside\b[^>]*\bid="ai-dock"/);
+  // 收起入口唯一化（fix-tooltip-rule-ownership D4，2026-10-30 用户拍板留停靠区头 ✕）：
+  // 讨论窗口模板不得再有 data-role="close" 收起按钮；收起只经停靠区头 ✕ 与顶栏入口。
+  const template = html.slice(html.indexOf('id="ai-window-template"'), html.indexOf("</template>", html.indexOf('id="ai-window-template"')));
+  assert.doesNotMatch(template, /data-role="close"/, "讨论窗口头不得承载收起动作");
+  assert.doesNotMatch(template, /收起 AI 面板/, "收起提示文案只属于停靠区头 ✕ 与顶栏入口");
 });
 
 test("making module exposes a fourth tab and a status bar bound to the global active chain", () => {

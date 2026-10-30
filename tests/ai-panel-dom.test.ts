@@ -43,11 +43,9 @@ async function flushAiFeatureFlow(): Promise<void> {
 
 function windowActions(state: AiPanelState) {
   let stopCalls = 0;
-  let closeCalls = 0;
   let newConversationCalls = 0;
   return {
     stopCalls: () => stopCalls,
-    closeCalls: () => closeCalls,
     newConversationCalls: () => newConversationCalls,
     actions: {
       onRetry: () => {},
@@ -60,7 +58,6 @@ function windowActions(state: AiPanelState) {
       onRemoveDirectQuestionSelection: () => state.setPendingSelection(null),
       onDirectQuestionFocus: () => {},
       onStop: () => { stopCalls += 1; },
-      onClose: () => { closeCalls += 1; },
       onNewConversation: () => { newConversationCalls += 1; },
     },
   };
@@ -129,8 +126,8 @@ test("streaming and completion preserve existing message nodes", () => {
   }
 });
 
-test("window stop and close buttons invoke the bound actions", () => {
-  const { root } = createAiWindowFixture("1");
+test("window stop button invokes the bound action and the head carries no collapse entry", () => {
+  const { root, roles } = createAiWindowFixture("1");
   const doc = installDocument();
   try {
     const state = new AiPanelState();
@@ -140,8 +137,15 @@ test("window stop and close buttons invoke the bound actions", () => {
     state.beginDirectQuestion("问题", null);
     root.queryResults.get('[data-role="stop"]')!.dispatch("click");
     assert.equal(wa.stopCalls(), 1);
-    root.queryResults.get('[data-role="close"]')!.dispatch("click");
-    assert.equal(wa.closeCalls(), 1);
+    // 收起入口唯一化（fix-tooltip-rule-ownership D4）：讨论窗口头不得承载收起按钮；
+    // 收起面板只经停靠区头 ✕ 与顶栏入口（两者都走 state.close，语义不变）。
+    assert.equal(root.queryResults.has('[data-role="close"]'), false, "窗口头不得有 close 角色按钮");
+    const head = roles.get("discussion-header")!;
+    assert.equal(
+      head.children.some((child) => child.id === "role-close"),
+      false,
+      "头部动作组不得包含收起按钮",
+    );
   } finally {
     doc.restore();
   }

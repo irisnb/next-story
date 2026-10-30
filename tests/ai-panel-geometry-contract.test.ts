@@ -50,13 +50,31 @@ test("head action group stays a non-shrinking cluster anchored to the head", () 
   assert.match(css, /\.ai-window-head\s*\{[^}]*flex-wrap:\s*nowrap;/);
 });
 
-test("basecoat pseudo tooltips stay globally suppressed (shared tip is the only tooltip)", () => {
-  // 2026-10-28 验收：最大化/恢复按钮悬停出现两个黑色提示（Basecoat ::before 在上＋
-  // 共享 #ui-tooltip 在下）。共享提示独占全部提示；Basecoat 伪元素全局关闭，带
-  // !important 保证对 vendor 样式表的决定性（不受加载顺序影响）。
+test("tooltip ownership is separated: no data-tooltip writes, no blocking rules, shared tip reads data-hint", () => {
+  // 提示所有权分离（fix-tooltip-rule-ownership D1，2026-10-30 结构修）：共享提示系统
+  // 只读写自家 data-hint；全部代码路径不再向元素写入 data-tooltip（vendor Basecoat
+  // 伪元素提示因此断粮，双提示根除）；样式表不得存在任何封锁/禁用伪元素的全局或
+  // 局部规则（2026-10-28 全局封锁已删——它误杀了发送纹样与禁用态提示）。
+  // 断言用「写入形态」精确匹配（dataset.tooltip 赋值、HTML 属性、CSS 选择器），
+  // 不匹配说明注释里的字面提及。
+  const sources = ["../src/ui-v5.ts", "../src/ai-dock.ts", "../src/dom.ts", "../src/ai-window.ts", "../index.html"];
+  for (const file of sources) {
+    const text = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(
+      text,
+      /\.dataset\.tooltip\b|setAttribute\(\s*["']data-tooltip["']|data-tooltip\s*=/,
+      `${file} 不得再写入 data-tooltip（共享提示改用 data-hint）`,
+    );
+  }
+  const allCss = ["../src/ui-v5.css", "../src/styles.css"].map((file) => readFileSync(new URL(file, import.meta.url), "utf8")).join("\n");
+  assert.doesNotMatch(
+    allCss,
+    /\[data-tooltip\][^{}]*::(?:before|after)\s*\{[^}]*display:\s*none/,
+    "样式表不得存在封锁伪元素提示的规则（所有权分离后无需镇压）",
+  );
   assert.match(
-    css,
-    /\[data-tooltip\]::before,\s*\[data-tooltip\]::after\s*\{\s*display:\s*none\s*!important;\s*\}/,
-    "Basecoat 伪元素提示应全局关闭（display:none !important）",
+    readFileSync(new URL("../src/ui-v5.ts", import.meta.url), "utf8"),
+    /dataset\.hint/,
+    "共享提示应由 data-hint 驱动",
   );
 });

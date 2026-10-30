@@ -67,12 +67,16 @@ button:active:not(:disabled) { transform: none; }
 .format-toolbar .ol-style-row { height: 40px; flex: 0 0 40px; align-items: center; }
 .tool-button { box-shadow: none; }
 .tool-button { position: relative; }
-/* The shared #ui-tooltip owns ALL tooltips app-wide. Basecoat's pseudo-element
-   tooltips (any [data-tooltip] control) are globally suppressed: 2026-10-28 验收发现
-   最大化/恢复按钮悬停同时出现两个黑色提示（Basecoat ::before 在上＋共享提示在下）。
-   !important 保证对 vendor 样式表的决定性（不受加载顺序影响）；原三类控件的局部
-   封锁（工具栏滚动几何）被本规则完全涵盖。 */
-[data-tooltip]::before, [data-tooltip]::after { display: none !important; }
+/* 工具不可用态（fix-tooltip-rule-ownership D3，2026-10-30 用户拍板 C「亮着＋点击给
+   提示」修订）：aria-disabled 按钮外观与启用态完全一致——图标亮着、悬停抬起与
+   指针正常（正常 .toolbar-btn 规则全量生效），不变灰/不半透明（首版复刻 :disabled
+   灰视觉已被用户验收否决：「本身是亮着的，只是没有适用对象」）。不可用信号只经
+   点击/键盘触发时的共享提示原因文本传达（ns-toolbar-hint）；此处不写任何
+   [aria-disabled] 视觉规则。 */
+/* 提示所有权分离（fix-tooltip-rule-ownership，2026-10-30 结构修）：共享 #ui-tooltip
+   只读写自家 data-hint，全部代码路径不再写 data-tooltip——vendor Basecoat 伪元素
+   提示因断粮永不出现，无需任何「封锁/禁用伪元素」的全局或局部规则（2026-10-28
+   的全局封锁已删除：它误杀了同样住在伪元素里的发送纹样与禁用态提示）。 */
 .format-drawer { box-shadow: 0 8px 28px #0002; border: var(--border-hairline); }
 .ai-dock { --ai-dock-header-height: 56px; }
 .ai-dock-header { height: var(--ai-dock-header-height); min-height: var(--ai-dock-header-height); padding-inline: 16px; gap: 4px; }
@@ -87,6 +91,11 @@ button:active:not(:disabled) { transform: none; }
 .ai-dock-title { font-size: 14px; white-space: nowrap; }
 .ai-dock-count { position: static; width: auto; min-width: 16px; height: auto; clip-path: none; overflow: visible; font-size: 10px; padding: 0 3px; border-radius: 3px; background: #ededed; }
 .ai-discussion-toggle { height: 32px; padding-inline: 6px; font-size: 12px; gap: 4px; white-space: nowrap; }
+/* 展开态用轻表面（fix-tooltip-rule-ownership 3.11，2026-10-30 用户拍板：指示太重）：
+   Basecoat ghost 展开态默认 #737373 持续深灰填充（实测 rgb(115,115,115)，开列表期间
+   常驻，读作「卡住」）；标签页深底是一次性强选择信号，不适用于持续面板指示；改用
+   列表行悬停/选中同族轻表面。本表加载于 vendor 之后，同特异度即胜出，悬停不回深。 */
+.ai-discussion-toggle[aria-expanded="true"] { background: var(--color-surface-hover); color: var(--color-text); }
 .ai-panel-maximized .ai-dock-header { padding-inline: 16px; }
 /* Maximized measure: body and input keep the 760px reading column; the head
    spans the full panel width so its action group pins to the panel's right
@@ -134,12 +143,16 @@ button:active:not(:disabled) { transform: none; }
 .ai-message { line-height: 1.9; }
 .ai-message-user { padding: 13px 15px; margin-top: 23px; }
 .ai-direct-question, .ai-follow-up-form { border-top: var(--border-hairline); padding: 12px 16px; }
-.ai-send-mark { width: 72px; min-width: 72px; height: 32px; padding: 0; font-size: 0 !important; background: var(--color-primary); border: 0; color: white; opacity: 1 !important; }
-.ai-send-mark::after { content: ""; display: block; width: 28px; height: auto; aspect-ratio: 988 / 789; margin: auto; background: url("./assets/user-mark.png") center / contain no-repeat; filter: invert(1); }
+/* 发送纹样改按钮内真实 img（fix-tooltip-rule-ownership D2）：对任何作用于伪元素的
+   CSS 全局规则免疫；几何合同不变（按钮 72×32 黑底、图案宽 28px 高自动、比例 988/789）。
+   功能名由 aria-label 承担，文字节点视觉隐藏（clip 手法，与仓库既有惯例一致）。 */
+.ai-send-mark { position: relative; width: 72px; min-width: 72px; height: 32px; padding: 0; background: var(--color-primary); border: 0; color: white; opacity: 1 !important; display: inline-flex; align-items: center; justify-content: center; }
+.ai-send-mark img { display: block; width: 28px; height: auto; aspect-ratio: 988 / 789; filter: invert(1); }
+.ai-send-mark .ai-send-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ai-send-mark:hover:not(:disabled) { background: #383838; }
 .ai-send-mark:active:not(:disabled) { background: #111; }
 .ai-send-mark:disabled { background: #e4e4e4; cursor: not-allowed; }
-.ai-send-mark:disabled::after { filter: none; opacity: .45; }
+.ai-send-mark:disabled img { filter: none; opacity: .45; }
 .ai-send-mark:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
 .file-manager { padding: 30px 40px; }
 .page-title { font-size: 25px; margin: 0 auto 0 0; font-weight: 600; }

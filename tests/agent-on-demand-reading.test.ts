@@ -86,7 +86,6 @@ const baseWindowActions = {
   onRemoveDirectQuestionSelection: () => {},
   onDirectQuestionFocus: () => {},
   onStop: () => {},
-  onClose: () => {},
   onNewConversation: () => {},
 };
 

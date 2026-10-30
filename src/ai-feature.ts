@@ -177,7 +177,6 @@ interface AiFeatureWiring {
   readonly openDiscussion: (summary: ConversationSummary) => void;
   readonly deleteDiscussion: (conversationId: string) => Promise<void>;
   readonly stopGeneration: (conversationId: string) => void;
-  readonly closeWindow: (conversationId: string) => void;
   readonly retryFirstRound: () => void;
   /** 停止后的追问重试（extract-ai-request-orchestration 组 5：实现在生命周期模块）。 */
   readonly retryStoppedFollowUp: () => Promise<boolean>;
@@ -204,7 +203,6 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     openDiscussion,
     deleteDiscussion,
     stopGeneration,
-    closeWindow,
     retryFirstRound,
     retryStoppedFollowUp,
     renameDiscussion,
@@ -247,7 +245,6 @@ function buildAiDockActions(wiring: AiFeatureWiring): AiDockActions {
     onRemoveDirectQuestionSelection: () => state.removePendingSelection(),
     onDirectQuestionFocus: () => syncPendingSelection(),
     onStop: stopGeneration,
-    onClose: closeWindow,
     onDelete: deleteDiscussion,
     onOpenDiscussion: openDiscussion,
     onNewConversation: () => {
@@ -689,10 +686,11 @@ export function setupAiFeature(
   // ===== 请求生命周期（extract-ai-request-orchestration 组 5） =====
   // 停止 / 关闭 / 首轮重试 / 停止后追问重试的编排规则已提取至
   // ai-feature-request-lifecycle.ts（停止与关闭共享同构前缀，尾部步骤逐条对照）。
+  // closeWindow（收起＝只隐藏显示）在窗口头 ✕ 移除后不再经编排层接线（停靠区头 ✕
+  // 与顶栏入口直接走 state.close，语义不变），生命周期模块保留该定义与其直接测试。
 
   const {
     stopGeneration,
-    closeWindow,
     retryFirstRound,
     retryStoppedFollowUp,
   } = setupAiRequestLifecycle({
@@ -782,7 +780,6 @@ export function setupAiFeature(
     openDiscussion,
     deleteDiscussion,
     stopGeneration,
-    closeWindow,
     retryFirstRound,
     retryStoppedFollowUp,
     renameDiscussion,

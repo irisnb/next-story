@@ -1,0 +1,201 @@
+{
+  "step": "smoke-tooltip-ownership",
+  "at": "2026-10-30T02:36:13.006Z",
+  "assertions": {
+    "② 单一悬停提示": {
+      "sharedTipVisible": true,
+      "sharedTipText": "最大化 AI 面板",
+      "btnDataTooltip": null,
+      "btnDataHint": "最大化 AI 面板",
+      "pseudoBefore": {
+        "content": "none",
+        "display": "block"
+      },
+      "pseudoAfter": {
+        "content": "none",
+        "display": "block"
+      },
+      "domDataTooltipCount": 0,
+      "visibleTooltipRoles": 1
+    },
+    "③ 不可用态亮着": {
+      "bold": {
+        "aria": "true",
+        "dis": false,
+        "op": "1"
+      },
+      "missed": [
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        },
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        },
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        },
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        },
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        },
+        {
+          "aria": "true",
+          "dis": false,
+          "op": "1"
+        }
+      ]
+    },
+    "③ 禁用态功能名提示": {
+      "button": {
+        "exists": true,
+        "ariaDisabled": "true",
+        "nativeDisabled": false,
+        "hint": "粗体"
+      },
+      "tip": {
+        "visible": true,
+        "text": "粗体"
+      }
+    },
+    "③ 点击不可用工具给原因提示": {
+      "reasonTip": {
+        "visible": true,
+        "text": "先选中文字再用"
+      },
+      "boldStillAriaDisabled": "true",
+      "editorUnchanged": true,
+      "strongCountBeforeAfter": [
+        1,
+        1
+      ],
+      "position": {
+        "tip": {
+          "x": 8,
+          "y": 284,
+          "width": 104,
+          "height": 32,
+          "top": 284,
+          "right": 112,
+          "bottom": 316,
+          "left": 8
+        },
+        "bold": {
+          "x": 9.5,
+          "y": 240,
+          "width": 36,
+          "height": 36,
+          "top": 240,
+          "right": 45.5,
+          "bottom": 276,
+          "left": 9.5
+        }
+      }
+    },
+    "③ 撤销（历史空）功能名提示": {
+      "button": {
+        "exists": true,
+        "ariaDisabled": "true",
+        "nativeDisabled": false,
+        "hint": "撤销"
+      },
+      "tip": {
+        "visible": true,
+        "text": "撤销"
+      }
+    },
+    "3.11 开关展开态轻表面": {
+      "open": {
+        "expanded": "true",
+        "backgroundColor": "rgb(240, 240, 240)",
+        "rgba": [
+          240,
+          240,
+          240
+        ]
+      },
+      "closed": {
+        "expanded": "false",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "rgba": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "① 发送纹样真实 img 渲染": {
+      "direct": {
+        "found": true,
+        "img": true,
+        "rendered": {
+          "width": 28,
+          "height": 22.359375,
+          "visible": true,
+          "complete": true,
+          "naturalOk": true
+        },
+        "ratio": 1.2522711390635919,
+        "srcTail": "assets/user-mark.png",
+        "disabledLook": "rgb(228, 228, 228)"
+      },
+      "making": {
+        "found": true,
+        "img": true,
+        "rendered": {
+          "width": 28,
+          "height": 22.359375,
+          "visible": true,
+          "complete": true,
+          "naturalOk": true
+        },
+        "ratio": 1.2522711390635919,
+        "srcTail": "assets/user-mark.png",
+        "disabledLook": "rgb(228, 228, 228)"
+      },
+      "followUp": {
+        "found": true,
+        "img": true,
+        "rendered": {
+          "width": 28,
+          "height": 22.359375,
+          "visible": true,
+          "complete": true,
+          "naturalOk": true
+        },
+        "ratio": 1.2522711390635919,
+        "srcTail": "assets/user-mark.png",
+        "disabledLook": "rgb(228, 228, 228)"
+      }
+    },
+    "④ 收起入口唯一": {
+      "head": {
+        "windowOpen": true,
+        "closeRoleInHead": false,
+        "closeClassInHead": false,
+        "dockCollapse": true
+      },
+      "collapse": {
+        "discussionIdBeforeCollapse": "mvtn8af5-80986942dd984caa821091ea12762eae",
+        "panelHiddenAfterCollapse": true,
+        "conversationRowsAfterReopen": 8,
+        "generationContinuity": "degraded: no live request（生成不中断需真实 API；以收起后讨论仍在列表、可重开为降级断言）"
+      }
+    }
+  },
+  "events": [],
+  "passed": true,
+  "elapsedMs": 11581
+}

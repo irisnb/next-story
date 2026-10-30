@@ -16,7 +16,6 @@ function actions(): AiDockActions {
     onRemoveDirectQuestionSelection: () => {},
     onDirectQuestionFocus: () => {},
     onStop: () => {},
-    onClose: () => {},
     onDelete: async () => {},
     onOpenDiscussion: () => {},
     onNewConversation: () => {},

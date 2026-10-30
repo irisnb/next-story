@@ -9,7 +9,7 @@
 <p>
   <img src="https://img.shields.io/badge/License-%E4%BF%9D%E7%95%99%E6%89%80%E6%9C%89%E6%9D%83%E5%88%A9%20%C2%B7%20%E5%85%81%E8%AE%B8%E4%BD%BF%E7%94%A8-000000" alt="许可：保留所有权利 · 允许使用" />
   <img src="https://img.shields.io/badge/Platform-Windows-0078D4" alt="平台：Windows" />
-  <img src="https://img.shields.io/badge/Version-0.1.0-000000" alt="版本：0.1.0" />
+  <img src="https://img.shields.io/badge/Version-0.1.1-000000" alt="版本：0.1.1" />
   <img src="https://img.shields.io/badge/Stack-Tauri%20%C2%B7%20React%20%C2%B7%20Rust-FFC131" alt="技术栈：Tauri · React · Rust" />
 </p>
 
@@ -69,7 +69,7 @@ Next Story 是一个 Windows 桌面应用，给想写剧本（或任何故事）
 
 ## 下载
 
-当前状态：**v0.1.0 已发布**，下方链接直达最新版安装包。
+当前状态：**v0.1.1 已发布**，下方链接直达最新版安装包。
 
 | 格式 | 链接 | 说明 |
 | --- | --- | --- |

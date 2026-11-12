@@ -228,9 +228,12 @@ function summary(partial: Partial<ConversationSummary> & { conversation_id: stri
 }
 
 function savedRecord(id = "archive"): ConversationRecord {
+  // 相对当前时间取值（3 天前，恒落「今天/昨天/本周」渲染分组）——绝对日期会随日历
+  // 滑入默认收起的「更早」组，导致列表行不渲染（2026-11-12 门禁失败实证）。
+  const recentIso = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
   return {
-    version: 1, conversation_id: id, title: "", created_at: "2026-09-24T00:00:00Z",
-    updated_at: "2026-09-24T00:00:00Z", focus_document_id: null, focus_document_title: null,
+    version: 1, conversation_id: id, title: "", created_at: recentIso,
+    updated_at: recentIso, focus_document_id: null, focus_document_title: null,
     first_round_material: { kind: "direct_question", question: "原问题", selection_text: null },
     turns: [{ role: "assistant", text: "已保存回答", status: "done" }], provenance: [],
   };

@@ -1264,8 +1264,9 @@ struct ZipScan {
 /// 解压防护 + ZIP 结构判定 + 顺带提取 document.xml / docProps，然后解析映射
 /// 为共享管线的 [`ParsedDocument`]。
 ///
-/// 上限按**真实解压量**执行：逐条目流式读出并在超限时立即中止，保证后续
-/// docx-rs 的解压读取不会超出已验证的安全范围（防声明值造假的压缩炸弹）。
+/// 上限双层执行：**声明大小**逐条目设卡（docx-rs 按声明值 `Vec::with_capacity`
+/// 预留内存，防「声明超大、实际极小」的分配炸弹）；**真实解压量**逐条目流式
+/// 读出并在超限时立即中止（防声明值造小的压缩炸弹）。两层都在解析前失败关死。
 pub(crate) fn parse_docx(bytes: &[u8]) -> Result<ParsedDocument, ProjectError> {
     let scan = prescan_zip(bytes)?;
     let generator = extract_generator(&scan);
@@ -1326,17 +1327,30 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
         let mut entry = archive
             .by_index(index)
             .map_err(|_| invalid("压缩包读取失败，文件可能已损坏".to_string()))?;
-        if entry.is_dir() {
-            continue;
-        }
-        // zip 9（CVE-2026-115905 修复）：不一致的双头文件名不再被静默接受，
-        // name() 返回 Result；解析失败＝按恶意构造处理，失败关死拒绝导入。
+        // 文件名安全解码在前、目录短路在后：每个条目的名字都必须先通过校验
+        // （zip 9 的 name() 返回 Result）。源码核查（zip 9.5.1 types.rs:137 与
+        // cp437.rs:17：UTF-8 失败回退 CP437 全表映射）表明 Err 路径当前对任何
+        // 字节输入不可达，此分支为纵深防御——未来 zip 收紧解码语义时已就位。
+        // 双头一致性（Zip Cloaking，CVE-2026-115905）防线由 docx-rs 主线的
+        // validate_ascii_part_names 在读取侧承担，此处不重复实现。
         let name = entry
             .name()
             .map_err(|_| {
                 invalid("压缩包内文件名无法安全解析，已拒绝导入（可能是恶意文件）".to_string())
             })?
             .to_string();
+        // 声明大小上限：ZIP 头里的「解压后大小」是攻击者可随意填写的数字，
+        // docx-rs 读取部件时会按它预留内存——真实量预扫描拦不住「声明超大、
+        // 实际极小」的分配炸弹，必须对声明值单独设卡。
+        if entry.size() > MAX_IMPORT_ENTRY_BYTES {
+            return Err(ProjectError::ImportRejected(format!(
+                "压缩包内单个文件声明解压后超过 {} MB 上限，已拒绝导入（可能是恶意文件）",
+                MAX_IMPORT_ENTRY_BYTES / (1024 * 1024)
+            )));
+        }
+        if entry.is_dir() {
+            continue;
+        }
         let capture = matches!(
             name.as_str(),
             "word/document.xml" | "docProps/app.xml" | "docProps/custom.xml" | "word/styles.xml"
@@ -1858,6 +1872,56 @@ mod tests {
         let message = error.to_string();
         assert!(
             message.contains("解压后超过") && message.contains("已拒绝导入"),
+            "报错：{message}"
+        );
+    }
+
+    /// 定位签名 `sig`、名字段以 `name` 开头的 ZIP 条目头起始偏移（测试辅助，
+    /// 用于手工构造畸形包；找不到即 panic）。
+    fn locate_zip_header(bytes: &[u8], sig: [u8; 4], name: &str, name_at: usize) -> usize {
+        let target = name.as_bytes();
+        for i in 0..bytes.len() {
+            if i + 4 <= bytes.len()
+                && bytes[i..i + 4] == sig
+                && i + name_at + target.len() <= bytes.len()
+                && &bytes[i + name_at..i + name_at + target.len()] == target
+            {
+                return i;
+            }
+        }
+        panic!("未找到名字段为 {name} 的 ZIP 头（sig={sig:?}）");
+    }
+
+    #[test]
+    fn declared_size_bomb_rejected_before_allocation() {
+        // 分配炸弹：实际内容极小、ZIP 头里声明的解压后大小超大。真实解压量
+        // 预扫描拦不住（读出量很小），必须由声明大小设卡，赶在 docx-rs 按声明
+        // 值 Vec::with_capacity 预留内存之前拒绝（oracle 审查发现，2026-11-12）。
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        writer
+            .start_file("[Content_Types].xml", options)
+            .expect("start content types");
+        writer.write_all(b"<Types/>").unwrap();
+        writer.start_file("bomb.xml", options).expect("start bomb");
+        writer.write_all(b"tiny").unwrap();
+        let mut bytes = writer.finish().expect("finish").into_inner();
+
+        // 本地文件头（+18）与中央目录（+24）的「未压缩大小」改写为超上限声明值。
+        let declared = u32::try_from(MAX_IMPORT_ENTRY_BYTES + 1).expect("上限值在 u32 内");
+        for (sig, name_at, size_at) in [
+            ([0x50u8, 0x4b, 0x03, 0x04], 30usize, 18usize),
+            ([0x50u8, 0x4b, 0x01, 0x02], 46usize, 24usize),
+        ] {
+            let at = locate_zip_header(&bytes, sig, "bomb.xml", name_at);
+            bytes[at + size_at..at + size_at + 4].copy_from_slice(&declared.to_le_bytes());
+        }
+
+        let error = prescan_zip(&bytes).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("声明解压后超过") && message.contains("已拒绝导入"),
             "报错：{message}"
         );
     }

@@ -15,4 +15,4 @@
 ## 3. 收口验证
 
 - [x] 3.1 `npm run check` 全链全绿（typecheck → lint → 前端 → 可靠性 → 驱动 → 验证 → 构建 → fmt → clippy → Rust）——exit=0
-- [ ] 3.2 提交推送后 `gh api repos/irisnb/next-story/dependabot/alerts` 复扫，8 条告警关闭状态如实记录（GitHub 复扫有延迟属预期，不提前宣称）；结果记入本 change 验证记录
+- [x] 3.2 提交推送后 `gh api repos/irisnb/next-story/dependabot/alerts` 复扫，8 条告警关闭状态如实记录（GitHub 复扫有延迟属预期，不提前宣称）；结果记入本 change 验证记录——推送 `f502226` 后复扫：**原 8 条全部自动关闭**（zip 五条＋happy-dom 三条）；复扫同时新出现 #35 minimatch medium（公告 2026-11-12T13:37 新发，dev 工具链传递依赖、非本次引入——HEAD~1 锁文件已含同版本；范围内无修复版，挂账另议，见验证记录）

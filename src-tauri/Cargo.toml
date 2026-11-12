@@ -28,14 +28,20 @@ tempfile = "3"
 reqwest = { version = "0.12", features = ["json"] }
 keyring = { version = "~3.6.3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "tokio"] }
 open = "5"
-# 生成真正的 Office Open XML `.docx`（docx-rs 0.4.22，MIT；换自已停更的 docx 1.1.2，
+# 生成真正的 Office Open XML `.docx`（docx-rs，MIT；换自已停更的 docx 1.1.2，
 # 见 change swap-docx-and-split-js-bundle）。不嵌图：关默认 image feature，
-# XML 渲染与 zip 打包核心路径不依赖它；精确锁版，升级经 Dependabot 递单人工审。
-docx-rs = { version = "=0.4.22", default-features = false }
+# XML 渲染与 zip 打包核心路径不依赖它。
+# 2026-11-12 安全修复（change fix-dependabot-security-alerts）：zip 8.x 全系因 CVE
+# 被 crates.io 下架，而 docx-rs 最新发布 0.4.22 仍要求 zip ^8.6.0，单方面升 zip 会
+# 双版本并存、告警不清。钉上游主线已合并 zip 9 升级的提交 ad7fede6a7（作者本人
+# 仓库，相对 0.4.22 增量最小）。切回条件：docx-rs 官方发布要求 zip ≥9.0.5 的
+# crates.io 版本（长期账本挂账）；跟进新提交＝显式版本决策，不静默漂移。
+docx-rs = { git = "https://github.com/bokuweb/docx-rs", rev = "ad7fede6a7", default-features = false }
 # Word 导入（add-word-import）解压防护预扫描：docx-rs 内部自行解压、无法注入逐
-# 条目限额，调用 read_docx 前用 zip 流式预扫描执行单条目与总量上限。zip 已是
-# docx-rs 的传递依赖（同一棵 8.x 树），提为直接依赖不引入新版本；只开 deflate。
-zip = { version = "8.6", default-features = false, features = ["deflate"] }
+# 条目限额，调用 read_docx 前用 zip 流式预扫描执行单条目与总量上限。zip 与
+# docx-rs（主线已要求 zip 9）统一在 9.x 树；下限 9.0.5 覆盖 critical 修复门槛
+# （CVE-2026-115905），全树单一版本；只开 deflate。
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 # Word 导入内容哈希（预览-提交一致性校验）。sha2 0.10 已在依赖树内（reqwest
 # 传递引入），提为直接依赖不引入新的外部 crate 或新版本。
 sha2 = "0.10"

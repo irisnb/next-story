@@ -385,7 +385,15 @@ fn render_docx_contains_required_ooxml_parts() {
     let file = fs::File::open(&path).expect("open docx");
     let mut archive = zip::ZipArchive::new(file).expect("open docx as zip");
     let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).expect("entry").name().to_string())
+        // zip 9：name() 返回 Result（文件名安全校验）；自家导出的包名必然可解析。
+        .map(|i| {
+            archive
+                .by_index(i)
+                .expect("entry")
+                .name()
+                .expect("entry name")
+                .to_string()
+        })
         .collect();
 
     // Word 打开 .docx 所需的 OOXML 包结构。

@@ -1329,7 +1329,14 @@ fn prescan_zip(bytes: &[u8]) -> Result<ZipScan, ProjectError> {
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().to_string();
+        // zip 9（CVE-2026-115905 修复）：不一致的双头文件名不再被静默接受，
+        // name() 返回 Result；解析失败＝按恶意构造处理，失败关死拒绝导入。
+        let name = entry
+            .name()
+            .map_err(|_| {
+                invalid("压缩包内文件名无法安全解析，已拒绝导入（可能是恶意文件）".to_string())
+            })?
+            .to_string();
         let capture = matches!(
             name.as_str(),
             "word/document.xml" | "docProps/app.xml" | "docProps/custom.xml" | "word/styles.xml"

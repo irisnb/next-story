@@ -7,7 +7,7 @@
 **辅助剧本创作的陪想软件。** 你在写作空间里亲手写；常驻 AI 面板像聊天窗口一样随时可问——AI 陪你想，不替你写。
 
 <p>
-  <img src="https://img.shields.io/badge/License-%E4%BF%9D%E7%95%99%E6%89%80%E6%9C%89%E6%9D%83%E5%88%A9%20%C2%B7%20%E5%85%81%E8%AE%B8%E4%BD%BF%E7%94%A8-000000" alt="许可：保留所有权利 · 允许使用" />
+  <img src="https://img.shields.io/badge/License-MIT-000000" alt="许可：MIT" />
   <img src="https://img.shields.io/badge/Platform-Windows-0078D4" alt="平台：Windows" />
   <img src="https://img.shields.io/badge/Version-0.1.1-000000" alt="版本：0.1.1" />
   <img src="https://img.shields.io/badge/Stack-Tauri%20%C2%B7%20React%20%C2%B7%20Rust-FFC131" alt="技术栈：Tauri · React · Rust" />
@@ -130,4 +130,4 @@ npm ci --prefix sidecar
 
 本项目用 OpenSpec 做规格驱动开发：propose（写清要做什么）→ 用户确认 → apply（实现）→ archive（归档进真相源），一次只开一个 change。能力真相源是 [`openspec/specs/`](openspec/specs/)，版本历史见 [Releases](https://github.com/irisnb/next-story/releases)；项目红线与协作规则见 [`AGENTS.md`](AGENTS.md)。
 
-许可：版权所有 © 2026 irisnb。允许免费下载、安装、使用本软件；未经书面许可，不得复用、修改、再分发本仓库的代码与文档，或用于商业用途（见 [LICENSE](LICENSE)）。
+许可：本仓库代码与文档以 [MIT](LICENSE) 协议开源，可自由使用、修改与再分发（含商业用途），需保留版权与许可声明。你在软件中写下的所有文字，权利完全属于你，与仓库许可无关。

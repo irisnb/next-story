@@ -15,5 +15,5 @@
 ## 3. 验证
 
 - [x] 3.1 `npm run check` 全绿（纯文档级变更的例行卫生确认；已核对 tests/ 无 README/LICENSE 内容断言）——首跑被既有测试夹具日期过期阻塞（诊断与修复见 verification.md），修后复跑 exit=0
-- [ ] 3.2 GitHub 仓库页许可识别复查：本地提交后 `gh repo view --json licenseInfo` 应显示 MIT（或注明缓存延迟，发布前复查）——当前仍显示 Other，待提交推送后复查
+- [x] 3.2 GitHub 仓库页许可识别复查：本地提交后 `gh repo view --json licenseInfo` 应显示 MIT（或注明缓存延迟，发布前复查）——推送 `a6fd647` 后复查，GitHub 识别为「MIT License」（此前为 Other），2026-11-12 实测
 - [x] 3.3 官网仓库许可表述人工核对（独立仓库，不在本 change 代码范围）：已核对，官网页脚为旧口径「保留所有权利；可下载安装使用」，结果记入 verification.md，发布前在官网仓库同步为 MIT 口径

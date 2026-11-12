@@ -18,11 +18,11 @@
 - **THEN** 均能找到对应已归档规格依据
 
 ### Requirement: 架构文档事实边界
-`docs/ARCHITECTURE.md` MUST 只描述已归档规格背书的能力；MUST NOT 宣称未实现的能力，MUST NOT 将已撤出方向（语义/向量检索、完整作品认知、后台预加载、记忆、Agent 循环等）写成已有或将有能力；文档定位 SHALL 为「可读可学的参考实现」，MUST NOT 作出「可复用框架」「开放许可」之类的承诺（许可维持现状）。
+`docs/ARCHITECTURE.md` MUST 只描述已归档规格背书的能力；MUST NOT 宣称未实现的能力，MUST NOT 将已撤出方向（语义/向量检索、完整作品认知、后台预加载、记忆、Agent 循环等）写成已有或将有能力；文档定位 SHALL 为「可读可学的参考实现」，MUST NOT 作出「可复用框架」之类的夸大宣称；许可表述 SHALL 与仓库 MIT 口径一致（见 `repo-license` 规格），MUST NOT 作出 MIT 之外的许可承诺。
 
 #### Scenario: 无越界宣称
 - **WHEN** 核对架构文档全部能力表述
-- **THEN** 无未实现能力宣称，无已撤出方向的呈现，无复用或许可承诺
+- **THEN** 无未实现能力宣称，无已撤出方向的呈现，无「可复用框架」夸大宣称，许可表述与 MIT 口径一致
 
 ### Requirement: README 与架构文档的衔接
 README「给开发者」分区 SHALL 链接到 `docs/ARCHITECTURE.md`；架构文档内 SHALL 提供返回 `docs/DEVELOPMENT.md`（怎么跑起来）的指引，两份文档分工明确：ARCHITECTURE.md 回答「是什么、能做什么」，DEVELOPMENT.md 回答「怎么构建、检查、打包、发布」。

@@ -265,6 +265,9 @@ const NSIS_DIR = "src-tauri/target/release/bundle/nsis";
 const MSI_DIR = "src-tauri/target/release/bundle/msi";
 const SETUP_EXE = "Next Story_0.2.0_x64-setup.exe";
 const SETUP_SIG = "Next Story_0.2.0_x64-setup.exe.sig";
+// GitHub 远端实存名：上传时空格被替换为点（2026-11-13 真机实证）。
+const SETUP_EXE_REMOTE = "Next.Story_0.2.0_x64-setup.exe";
+const SETUP_SIG_REMOTE = "Next.Story_0.2.0_x64-setup.exe.sig";
 const SETUP_MSI = "Next Story_0.2.0_x64_en-US.msi";
 
 // ---------------------------------------------------------------------------
@@ -350,10 +353,10 @@ test("buildLatestJson：空签名、非 https 直链、坏版本号均抛中文�
   assert.throws(() => release.buildLatestJson({ version: "0.2", notes: "x", signature: "s", url: "https://e/x" }), /x\.y\.z/);
 });
 
-test("buildReleaseUrl：版本化产物直链带 tag，文件名空格按 URL 编码", () => {
+test("buildReleaseUrl：版本化产物直链带 tag，文件名空格转为 GitHub 实存的点形", () => {
   assert.strictEqual(
     release.buildReleaseUrl("v0.2.0", SETUP_EXE),
-    "https://github.com/irisnb/next-story/releases/download/v0.2.0/Next%20Story_0.2.0_x64-setup.exe",
+    "https://github.com/irisnb/next-story/releases/download/v0.2.0/Next.Story_0.2.0_x64-setup.exe",
   );
 });
 
@@ -519,12 +522,12 @@ test("pickVersionedAssets：陈旧产物在场也只认本版本；缺 sig、多
   assert.ok(!noMsi.ok);
 });
 
-test("findMissingReleaseAssets 与 expectedReleaseAssetNames：五件套齐备/缺失判定", () => {
+test("findMissingReleaseAssets 与 expectedReleaseAssetNames：五件套齐备/缺失判定（远端点形名）", () => {
   const expected = release.expectedReleaseAssetNames({ setupExe: SETUP_EXE, setupSig: SETUP_SIG });
-  assert.deepStrictEqual(expected, [SETUP_EXE, SETUP_SIG, "latest.json", "NextStory-setup.exe", "NextStory-setup.msi"]);
+  assert.deepStrictEqual(expected, [SETUP_EXE_REMOTE, SETUP_SIG_REMOTE, "latest.json", "NextStory-setup.exe", "NextStory-setup.msi"]);
   assert.deepStrictEqual(release.findMissingReleaseAssets(expected, expected), []);
-  assert.deepStrictEqual(release.findMissingReleaseAssets([SETUP_EXE], expected), [
-    SETUP_SIG,
+  assert.deepStrictEqual(release.findMissingReleaseAssets([SETUP_EXE_REMOTE], expected), [
+    SETUP_SIG_REMOTE,
     "latest.json",
     "NextStory-setup.exe",
     "NextStory-setup.msi",
@@ -723,8 +726,8 @@ function draftReleaseJson(draft: boolean) {
     tag_name: "v0.2.0",
     draft,
     assets: [
-      { name: SETUP_EXE, browser_download_url: AUTHORITATIVE_URL },
-      { name: SETUP_SIG, browser_download_url: `${AUTHORITATIVE_URL}.sig` },
+      { name: SETUP_EXE_REMOTE, browser_download_url: AUTHORITATIVE_URL },
+      { name: SETUP_SIG_REMOTE, browser_download_url: `${AUTHORITATIVE_URL}.sig` },
       { name: "latest.json", browser_download_url: "https://github.com/irisnb/next-story/releases/download/v0.2.0/latest.json" },
       { name: "NextStory-setup.exe", browser_download_url: "https://github.com/irisnb/next-story/releases/download/v0.2.0/NextStory-setup.exe" },
       { name: "NextStory-setup.msi", browser_download_url: "https://github.com/irisnb/next-story/releases/download/v0.2.0/NextStory-setup.msi" },

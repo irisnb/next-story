@@ -195,9 +195,16 @@ export function buildLatestJson({ version, notes, signature, url, pubDate = new 
   };
 }
 
+/** GitHub 上传 Release 资产时会把文件名中的空格替换为点（2026-11-13 真机实证：
+ *  本地「Next Story_x64-setup.exe」在远端成为「Next.Story_x64-setup.exe」，
+ *  空格形直链 404、点形 200）。远端资产名与直链一律用点形；本地文件名保持空格形。 */
+export function toRemoteAssetName(fileName) {
+  return String(fileName).replace(/ /g, '.');
+}
+
 /** 版本化产物的发布直链（机器消费，不受「对外入口只用固定链接」规则约束）。 */
 export function buildReleaseUrl(tag, fileName) {
-  return `https://github.com/${REPO_SLUG}/releases/download/${tag}/${encodeURIComponent(fileName)}`;
+  return `https://github.com/${REPO_SLUG}/releases/download/${tag}/${encodeURIComponent(toRemoteAssetName(fileName))}`;
 }
 
 /** Release 正文 = 更新说明 + 既有 SmartScreen 指引（release-download 规格第 34–39 行）。 */
@@ -383,9 +390,10 @@ export function pickVersionedAssets({ nsisEntries, msiEntries, version }) {
   return { ok: true, setupExe, setupSig, msi: msis[0] };
 }
 
-/** draft 应有的 5 件附件名（版本化 NSIS + .sig + latest.json + 稳定名副本 exe/msi）。 */
+/** draft 应有的 5 件附件名（版本化 NSIS + .sig + latest.json + 稳定名副本 exe/msi）。
+ *  版本化名字经 toRemoteAssetName 转为 GitHub 实存的点形（空格会被远端换点）。 */
 export function expectedReleaseAssetNames({ setupExe, setupSig }) {
-  return [setupExe, setupSig, LATEST_JSON_NAME, STABLE_SETUP_EXE, STABLE_SETUP_MSI];
+  return [toRemoteAssetName(setupExe), toRemoteAssetName(setupSig), LATEST_JSON_NAME, STABLE_SETUP_EXE, STABLE_SETUP_MSI];
 }
 
 /** 给定实际附件名，返回缺失清单（空数组＝齐备）。 */
@@ -864,7 +872,7 @@ export async function runPublish(deps = {}) {
     if (missingAssets.length > 0) {
       fail('逐项核验', `draft 附件不齐（缺：${missingAssets.join('、')}；实有：${assetNames.join('、') || '无'}）`, 'draft 已保留；直接重跑 --publish 复用 draft 并覆盖上传附件。');
     }
-    const setupAsset = assets.find((asset) => asset.name === setupExe);
+    const setupAsset = assets.find((asset) => asset.name === toRemoteAssetName(setupExe));
     const authoritativeUrl = typeof setupAsset?.browser_download_url === 'string' ? setupAsset.browser_download_url : null;
     if (authoritativeUrl === null || authoritativeUrl === '') {
       fail('逐项核验', `draft 中 ${setupExe} 缺少下载直链。`);

@@ -803,7 +803,7 @@ test("发布阶段一条命令：draft 上传全套并逐项核验后转正式�
   const { io, kit, deps } = publishDeps((fakeIo) => [
     { match: ["gh", "release", "view"], result: failed("release not found: v0.2.0\n") },
     { match: ["gh", "release", "create"], result: ok("https://github.com/irisnb/next-story/releases/tag/v0.2.0\n") },
-    { match: ["gh", "releases/tags"], result: ok(draftReleaseJson(true)) },
+    { match: ["gh", "releases?per_page"], result: ok("[" + draftReleaseJson(true) + "]") },
     // GitHub 把附件名中的空格改写为点号 → 直链校准后按实际直链重传 latest.json。
     { match: ["gh", "release", "upload"], result: ok() },
     { match: ["gh", "release", "download"], result: ok(), effect: fakeDownloadLatestJson(fakeIo) },
@@ -852,7 +852,7 @@ test("发布阶段：更新说明同文两处（latest.json 与 Release 正文�
   const { io, deps } = publishDeps((fakeIo) => [
     { match: ["gh", "release", "view"], result: failed("release not found: v0.2.0\n") },
     { match: ["gh", "release", "create"], result: ok("url\n") },
-    { match: ["gh", "releases/tags"], result: ok(draftReleaseJson(true)) },
+    { match: ["gh", "releases?per_page"], result: ok("[" + draftReleaseJson(true) + "]") },
     { match: ["gh", "release", "upload"], result: ok() },
     { match: ["gh", "release", "download"], result: ok(), effect: fakeDownloadLatestJson(fakeIo) },
     { match: ["gh", "release", "edit"], result: ok() },
@@ -872,7 +872,7 @@ test("发布阶段失败可恢复：重跑时复用同 tag draft 并 --clobber �
     { match: ["gh", "release", "view"], result: ok(JSON.stringify({ tagName: "v0.2.0", isDraft: true })) },
     { match: ["gh", "release", "edit"], result: ok() }, // 复用时刷新正文（--notes-file）
     { match: ["gh", "release", "upload"], result: ok() },
-    { match: ["gh", "releases/tags"], result: ok(draftReleaseJson(true)) },
+    { match: ["gh", "releases?per_page"], result: ok("[" + draftReleaseJson(true) + "]") },
     { match: ["gh", "release", "download"], result: ok(), effect: fakeDownloadLatestJson(fakeIo) },
     { match: ["gh", "releases/latest"], result: ok(JSON.stringify({ tag_name: "v0.2.0" })) },
   ]);
@@ -933,7 +933,7 @@ test("发布阶段：更新说明为空先拒绝，重新输入后通过（预�
     (fakeIo) => [
       { match: ["gh", "release", "view"], result: failed("release not found: v0.2.0\n") },
       { match: ["gh", "release", "create"], result: ok("url\n") },
-      { match: ["gh", "releases/tags"], result: ok(draftReleaseJson(true)) },
+      { match: ["gh", "releases?per_page"], result: ok("[" + draftReleaseJson(true) + "]") },
       { match: ["gh", "release", "upload"], result: ok() },
       { match: ["gh", "release", "download"], result: ok(), effect: fakeDownloadLatestJson(fakeIo) },
       { match: ["gh", "release", "edit"], result: ok() },

@@ -839,15 +839,21 @@ export async function runPublish(deps = {}) {
 
     // ⑮ 逐项核验：附件齐、latest.json 可下载可解析、版本/签名/直链与产物一致
     log('[8/9] 逐项核验 draft（附件齐备、latest.json 版本/签名/直链与产物一致）…');
-    const releaseResult = exec('gh', ['api', `repos/${REPO_SLUG}/releases/tags/${tag}`]);
+    // GitHub 的 releases/tags/<tag> 接口不返回草稿（2026-11-13 真机实证：对草稿恒 404）；
+    // 草稿核验改走列表接口（对有权限者含草稿），按 tag_name 定位条目。
+    const releaseResult = exec('gh', ['api', `repos/${REPO_SLUG}/releases?per_page=100`]);
     if (releaseResult.error || releaseResult.status !== 0) {
-      fail('逐项核验', `读取 draft 信息失败：\n${tailOf(releaseResult.stderr, releaseResult.stdout)}`, 'draft 已保留；重跑 --publish 复用 draft 后继续核验。');
+      fail('逐项核验', `读取 Release 列表失败：\n${tailOf(releaseResult.stderr, releaseResult.stdout)}`, 'draft 已保留；重跑 --publish 复用 draft 后继续核验。');
     }
     let release;
     try {
-      release = JSON.parse(releaseResult.stdout);
+      const list = JSON.parse(releaseResult.stdout);
+      release = Array.isArray(list) ? list.find((entry) => entry && entry.tag_name === tag) : undefined;
     } catch {
-      fail('逐项核验', 'draft 信息不是合法 JSON。');
+      fail('逐项核验', 'Release 列表不是合法 JSON。');
+    }
+    if (!release) {
+      fail('逐项核验', `Release 列表中未找到 ${tag}（草稿与正式版均未命中）。`, 'draft 可能未创建成功；重跑 --publish 会重新创建或复用 draft。');
     }
     if (release?.draft !== true) {
       fail('逐项核验', '该 Release 已不是 draft 状态，核验中止（不得替换已发布产物）。', '如需修正，升版本号发新版本。');

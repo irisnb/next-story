@@ -368,3 +368,15 @@ button:active:not(:disabled) { transform: none; }
 .app-confirm .app-confirm-accept:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
 .app-confirm.app-confirm-danger .app-confirm-accept { background: var(--color-danger); border-color: var(--color-danger); }
 .app-confirm.app-confirm-danger .app-confirm-accept:hover:not(:disabled) { background: #b52e1a; border-color: #b52e1a; }
+/* add-auto-updater：帮助分区更新入口与「有新版」轻量标记（summary 层，收起态可见；
+   悬停提示走共享提示层的 data-hint）。 */
+.help-update { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 20px; }
+.help-update-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.5; color: var(--color-on-primary); background: var(--color-primary); }
+/* add-auto-updater：应用内更新对话框。外壳与按钮几何沿用 .app-confirm（居中模态、
+   128×40）；更新说明区限高滚动不截断；无总大小时只显示「正在下载…」文本，
+   不呈现进度条（不确定进度）。 */
+.update-dialog .update-dialog-body p { margin: 0 0 4px; }
+.update-dialog .update-dialog-hint { color: #737373; font-size: 13px; }
+.update-dialog .update-notes { margin: 8px 0 0; padding: 12px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: var(--border-hairline); border-radius: var(--radius-sm); background: var(--color-surface); font-size: 14px; line-height: 1.7; }
+.update-dialog .update-progress-track { margin-top: 10px; height: 6px; border-radius: 3px; background: var(--color-surface-hover); overflow: hidden; }
+.update-dialog .update-progress-fill { height: 100%; width: 0%; border-radius: 3px; background: var(--color-primary); }

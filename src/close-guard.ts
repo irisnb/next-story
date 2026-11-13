@@ -64,11 +64,22 @@ export function composeCloseGuards(guards: readonly CloseGuard[]): CloseGuard {
   };
 }
 
+/**
+ * 仅执行离开守卫判定（脏检查＋三选一对话框），不进入销毁阶段。
+ * 正常退出（`orchestrateCloseRequest`）与更新安装前准备（update-dialog，design D6）
+ * 共用同一段判定；返回 false 表示用户取消，调用方必须中止后续动作。
+ */
+export async function runLeaveGuard(
+  guard: Pick<CloseRequestOptions, "isDirty" | "guardLeave">,
+): Promise<boolean> {
+  return !guard.isDirty() || (await guard.guardLeave());
+}
+
 export async function orchestrateCloseRequest(
   options: CloseRequestOptions,
 ): Promise<CloseRequestResult> {
   options.preventDefault();
-  if (options.isDirty() && !await options.guardLeave()) return "kept-open";
+  if (!(await runLeaveGuard(options))) return "kept-open";
 
   try {
     await options.destroy();

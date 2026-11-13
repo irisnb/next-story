@@ -1,6 +1,6 @@
 [package]
 name = "next-story"
-version = "0.1.0"
+version = "0.1.2"
 description = "Next Story - 剧本写作桌面编辑器"
 authors = ["Next Story Team"]
 edition = "2021"
@@ -20,6 +20,10 @@ tauri-plugin-dialog = "~2.7.1"
 # 应用单实例：重复启动不建窗口、立即退出并聚焦已有主窗口（enforce-single-instance）。
 # 锁 2.4.5：最新 2.5.0 依赖 tauri ^2.12，与当前 ~2.11.5 冲突；tauri 升 2.12 后随升。
 tauri-plugin-single-instance = "~2.4.5"
+# 应用自动更新（add-auto-updater）：官方 updater 插件。
+# 钉 ~2.11.0：最新 2.14.x 要求 tauri ^2.12，与当前 ~2.11.5 冲突；tauri 升 2.12 后随升
+# （同 single-instance 锁 2.4.5 先例，见 openspec/changes/add-auto-updater/design.md D1）。
+tauri-plugin-updater = "~2.11.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-normalization = "0.1"

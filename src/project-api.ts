@@ -1048,3 +1048,15 @@ export function listenTrialAuthorization(
 ): Promise<UnlistenFn> {
   return listen<TrialAuthorizationEventPayload>("trial-authorization-request", (event) => handler(event.payload));
 }
+
+// ========== 应用更新命令（change: add-auto-updater） ==========
+
+/**
+ * 更新安装前显式停止 DSH sidecar（design D5 修正：插件 2.11.0 无插件级
+ * on_before_exit 钩子，停止改由前端显式执行）。后端优雅 3 秒→强杀、幂等；
+ * 调用时机＝离开守卫通过且准备完成之后、触发安装之前。失败抛错，由更新
+ * 对话框按准备失败处理（恢复现场、保留就绪状态、可重试）。
+ */
+export async function stopDriverForUpdate(call: InvokeFn = defaultInvoke): Promise<void> {
+  await call<void>("stop_driver_for_update");
+}

@@ -20,11 +20,13 @@
     "clippy:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "package:check": "node scripts/check-package-resources.mjs",
+    "release": "node scripts/release.mjs",
     "check": "npm run typecheck && npm run lint && npm run test:frontend && npm run test:reliability && npm run test:driver && npm run test:validation && npm run build && npm run fmt:rust && npm run clippy:rust && npm run test:rust"
   },
   "dependencies": {
     "@tauri-apps/api": "~2.11.1",
     "@tauri-apps/plugin-dialog": "~2.7.1",
+    "@tauri-apps/plugin-updater": "~2.11.0",
     "@tiptap/core": "3.31.3",
     "@tiptap/extension-bold": "3.31.3",
     "@tiptap/extension-color": "3.31.3",

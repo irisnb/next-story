@@ -143,3 +143,91 @@ gh release edit <tag> --notes-file <说明文件路径>
 **规则二：发布后复查。** 用 `gh release view <tag>` 确认中文渲染无误、附件齐全，再对外公布链接。
 
 安装包构建与上传步骤（四附件：NSIS/MSI 原名＋`NextStory-setup.exe`/`NextStory-setup.msi` 稳定名副本）沿用 `site-and-readme-launch`（2026-10-24）的既有流程；`releases/latest/download/NextStory-setup.exe` 固定链接依赖稳定名附件持续存在。
+
+## 发版（两阶段一条命令）
+
+从带自动更新的版本起，日常发版改用脚本 `scripts/release.mjs` 一条命令完成（change `add-auto-updater`），上面「发布流程」一节的两条规则（`--notes-file` 与发布后复查）已内建在脚本里，保留作对照。发版分两个阶段，中间由维护者本人完成 git 提交与打标签——脚本不代替做任何 git 写操作，每一步都看得见。
+
+### 准备阶段（`--prepare`）
+
+```powershell
+npm run release -- --prepare
+```
+
+脚本依次做七件事，任一步失败即以中文报错中止并打印「失败阶段＋已完成步骤＋安全重试指引」：
+
+1. **前置断言**：git 工作区干净、当前分支是 `main`、gh 已安装且已登录、origin 指向 `irisnb/next-story`、当前账号对该仓库有发布权限。
+2. **识别上一正式 Release**：仓库没有任何正式 Release＝**首次发布**，合法分支，跳过版本比对；网络／认证／API 失败与「没有上一版」严格区分，绝不会被误当作首次发布。
+3. **总门禁**：运行 `npm run check`（依次 10 个科目，可能 5–15 分钟），任一科目失败即止，不产出 Release。
+4. **版本严格递增检查**：读 `src-tauri/tauri.conf.json` 的 `version`（**版本号单一真相源，唯一手改处**），必须严格大于上一正式 Release 的标签版本，否则中止——忘了升版本号用户就收不到更新。
+5. **版本号同步**：把 `package.json`、`package-lock.json`（根对象与 `packages[""]` 两处）、`src-tauri/Cargo.toml` 同步到该版本，再运行 `cargo check` 同步 `src-tauri/Cargo.lock`，最后校验六处一致。
+6. **打包准备检查**：内置 Node（`sidecar/node-runtime/node.exe`）、DSH 依赖、常驻驱动三项齐备。
+7. **打印应提交的文件清单与下一步指引**。
+
+### 中间的维护者步骤（脚本不代做）
+
+准备阶段完成后，按脚本打印的指引**本人执行**：
+
+```powershell
+git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git commit -m "发版 v0.2.0"
+git push origin main
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+（版本号以脚本输出为准。）
+
+### 发布阶段（`--publish`）
+
+```powershell
+node scripts/release.mjs --publish
+```
+
+私钥不在默认位置时用 `--key <路径>` 指定。脚本依次做九件事：
+
+1. 校验工作区干净、`main` 分支、当前 HEAD 上有标签 `v<版本号>` 且与配置版本一致、远端已有该标签（不满足＝准备阶段没做完，中文报错指引回去补）。
+2. 检查私钥文件存在（默认 `C:\Users\Administrator\.tauri\next-story-updater.key`）。
+3. **交互输入中文更新说明**：每行一条、建议 1–5 条、每条一句话说用户能感知的变化；输入完展示预览，确认后同一份文字既进 `latest.json` 也进 Release 正文。
+4. **输入私钥密码**：密码只经环境变量传给打包工具，不写入任何文件、不落盘。
+5. 签名打包 `npm run tauri:build`（自动产出 `-setup.exe` 与 `.sig` 签名文件）。
+6. 收集产物：版本化 NSIS 安装包、`.sig`、MSI 备选，任一缺失即失败。
+7. 生成 `latest.json`（版本、更新说明、RFC 3339 时间、`windows-x86_64` 平台签名与下载直链），并复制稳定名副本 `NextStory-setup.exe` / `NextStory-setup.msi` 到临时目录。
+8. 创建 **draft** Release 并上传全部 5 件附件，逐项核验：附件齐备、`latest.json` 可下载可解析、其中版本／签名／直链与产物一致（GitHub 若改写含空格的附件直链，脚本按实际直链重写清单后再核验）。**核验全过才转正式发布**；正式发布前，上一正式 Release 始终是 `latest`，部分上传失败不会污染更新渠道。
+9. 转正式后复查 `releases/latest` 已指向新标签。
+
+### 各阶段失败恢复表
+
+| 失败位置 | 脚本行为 | 恢复方式 |
+| --- | --- | --- |
+| 前置断言（工作区不干净／非 main／gh 不可用） | 立即中止，未做任何改动 | 按报错修复环境后重跑同一阶段 |
+| 识别上一版（网络／认证失败） | 中止，不误判为首次发布 | 修网络或 `gh auth login` 后重跑 `--prepare` |
+| 总门禁任一科目失败 | 中止，不产出 Release | 把 `npm run check` 跑绿后重跑 `--prepare` |
+| 版本未严格大于上一版 | 中止，不写任何文件 | 手改 `tauri.conf.json` 的 `version` 后重跑 `--prepare` |
+| 版本同步／一致性校验失败 | 文本补丁是原子操作，失败即一个文件都不写 | 按报错修复后重跑 `--prepare` |
+| 签名打包失败 | 中止；工作区与标签未动 | 排查构建报错后直接重跑 `--publish` |
+| draft 上传／核验中途失败 | **draft 保留**，上一正式 Release 仍是 `latest`，已装应用不受影响 | 直接重跑 `--publish`：同标签 draft 自动复用并以 `--clobber` 覆盖附件 |
+| 标签已存在**正式发布**的 Release | 拒绝替换产物 | 升版本号发新版本；**不要**删除或重传已发布版本的附件与标签 |
+| 转正式发布这一步失败 | draft 与附件已就绪且核验通过 | 手动 `gh release edit v<版本> --draft=false`，或重跑 `--publish` |
+
+任何情况下都**不需要**（也不应该）删除已发布的版本或标签来「重来」。
+
+### 私钥保管
+
+更新签名私钥的位置、两处备份、三条铁律与换钥匙规则见 [updater-key-custody.md](updater-key-custody.md)。一句话后果：**私钥或密码丢失＝永远无法再向已装用户推送任何更新**，没有找回渠道。
+
+### 现有用户的最后一次手动升级
+
+自动更新从 0.2.0 起生效，但已装旧版的用户收不到更新提示——**由维护者经现有联系渠道逐个通知，完成最后一次手动升级**（人数 ≤5）。通知消息模板（版本号按实际填写）：
+
+> Next Story 出新版了（v0.2.1）。请手动下载安装一次，以后软件会自动检查更新、不再需要手动装：
+>
+> 下载地址：https://github.com/irisnb/next-story/releases/latest/download/NextStory-setup.exe
+>
+> 安装时 Windows 可能弹 SmartScreen 提示，属预期：点「更多信息」→「仍要运行」即可。
+>
+> 如果 GitHub 打不开或下载不动，跟我说一声，我直接把安装包发给你。
+
+### 安装阶段故障恢复方式
+
+（占位：安装器接管后的故障注入验证与恢复方式，待任务 7.3 真机验收后回填。）

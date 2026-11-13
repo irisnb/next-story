@@ -3359,4 +3359,78 @@ setInterval(() => {{}}, 1000);
         );
         manager_plain.shutdown_best_effort();
     }
+
+    /// 更新安装退出双保险（add-auto-updater 任务 2.2，
+    /// dsh-sidecar-lifecycle「更新安装退出时清理」）：清理逻辑 SHALL 幂等。
+    /// 缺口一：无存活代时 `shutdown_best_effort()` 必须是 no-op 且不 panic——
+    /// 用户冷启动后未用过 AI 直接装更新时，退出清理面对的就是空代。
+    #[test]
+    fn shutdown_best_effort_without_live_generation_is_noop() {
+        let manager = DshDriverManager::new();
+        {
+            let lifecycle = lock_recover(&manager.inner.lifecycle);
+            assert!(
+                lifecycle.current.is_none(),
+                "前置：从未启动过驱动，当前代为空"
+            );
+        }
+        // 空代调用：不 panic（测试通过即为证明），也不得无中生有。
+        manager.shutdown_best_effort();
+        let lifecycle = lock_recover(&manager.inner.lifecycle);
+        assert!(
+            lifecycle.current.is_none(),
+            "空代调用后 current 仍为空（no-op）"
+        );
+    }
+
+    /// 更新安装退出双保险（add-auto-updater 任务 2.2）：缺口二——两条退出
+    /// 路径（更新安装退出钩子与 `RunEvent::Exit`）可能先后触发同一清理，
+    /// 连续调用两次必须无害：第一次真实完成优雅停机（take 语义），第二次
+    /// 在已清空的代上是 no-op。假驱动退出时同步落盘哨兵文件，佐证第一次
+    /// 调用的优雅停机真实送达子进程（不只是把句柄从生命周期里拿走）。
+    #[test]
+    fn shutdown_best_effort_double_invocation_is_harmless() {
+        // 优雅假驱动：收到 shutdown 即 process.exit(0)，退出钩子写哨兵文件。
+        // 哨兵路径取脚本自身所在目录（spawn argv[1] 即驱动入口路径）。
+        let script = "import fs from 'node:fs';\n\
+             import path from 'node:path';\n\
+             import readline from 'node:readline';\n\
+             const marker = path.join(path.dirname(process.argv[1]), 'stopped.marker');\n\
+             console.log(JSON.stringify({ type: 'ready', protocol_version: 1 }));\n\
+             process.on('exit', () => fs.writeFileSync(marker, 'stopped'));\n\
+             const rl = readline.createInterface({ input: process.stdin });\n\
+             rl.on('line', (line) => {\n\
+               let cmd; try { cmd = JSON.parse(line); } catch { return; }\n\
+               if (cmd.type === 'shutdown') { process.exit(0); }\n\
+             });\n\
+             rl.on('close', () => process.exit(0));\n\
+             setInterval(() => {}, 1000);\n";
+        let (temp, paths, params) = fake_driver_paths(script);
+        let marker = temp.path().join("driver").join("stopped.marker");
+        let manager = DshDriverManager::new();
+        manager.ensure_started(&params, &paths).expect("驱动启动");
+        {
+            let lifecycle = lock_recover(&manager.inner.lifecycle);
+            assert!(
+                lifecycle.current.is_some(),
+                "前置：存在存活代，双调用才有意义"
+            );
+        }
+
+        // 第一次（模拟更新退出钩子或 Exit 事件中先到的一方）：真实停机。
+        manager.shutdown_best_effort();
+        assert!(
+            marker.exists(),
+            "第一次调用必须完成真实优雅停机（哨兵文件佐证子进程已退出）"
+        );
+
+        // 第二次（模拟另一方随后触发）：空代 no-op，不 panic。
+        manager.shutdown_best_effort();
+
+        let lifecycle = lock_recover(&manager.inner.lifecycle);
+        assert!(
+            lifecycle.current.is_none(),
+            "双调用后无残留代（take 语义：第二次不重复停机）"
+        );
+    }
 }

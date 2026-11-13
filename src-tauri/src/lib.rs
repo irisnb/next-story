@@ -853,6 +853,21 @@ async fn record_recent_work(
     .map_err(|e| e.to_string())
 }
 
+// ========== 应用更新命令（change: add-auto-updater） ==========
+
+/// 更新安装前显式停止 DSH sidecar（design.md D5 修正）：优雅 3 秒→强杀，幂等；
+/// 与 `RunEvent::Exit` 清理是同一函数，两条退出路径先后触发无害。不触发面向
+/// 前端的崩溃恢复通知——进程退出时该代已被 take、不再是当前代（幂等语义）。
+/// 优雅停机最长阻塞约 3 秒，放阻塞线程执行，不占主线程。
+#[tauri::command]
+async fn stop_driver_for_update() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::dsh_driver::global_driver_manager().shutdown_best_effort();
+    })
+    .await
+    .map_err(|e| format!("停止常驻驱动任务执行失败: {e}"))
+}
+
 // ========== Application Entry Point ==========
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -868,6 +883,12 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        // 应用自动更新（add-auto-updater）：最小形态注册，读 tauri.conf.json 的
+        // updater 配置（2.11.0 连裸 init() 也不提供，Builder::new().build() 即
+        // 官方等价形态，不带任何自定义钩子）；sidecar 停止不走插件钩子——插件
+        // 2.11.0 无插件级 on_before_exit（实证见 design.md D5 修正），改由前端在
+        // 安装前经 stop_driver_for_update 命令显式优雅停止。
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         // 进程内作品锁注册表：同一作品的操作串行化。
         .manage(ProjectLocks::default())
@@ -970,6 +991,7 @@ pub fn run() {
             test_llm_connection,
             load_recent_works,
             record_recent_work,
+            stop_driver_for_update,
             ai_orchestration::generate_ai_thinking,
             ai_host::ai_start_session,
             ai_orchestration::ai_send_message,

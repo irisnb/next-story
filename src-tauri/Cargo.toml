@@ -1,6 +1,6 @@
 [package]
 name = "next-story"
-version = "0.1.2"
+version = "0.2.0"
 description = "Next Story - 剧本写作桌面编辑器"
 authors = ["Next Story Team"]
 edition = "2021"

@@ -1,0 +1,14 @@
+[package]
+name = "keycheck"
+version = "0.1.0"
+edition = "2021"
+
+# add-auto-updater：私钥密码秒级预检工具。
+# 与 tauri 打包器使用同一 minisign 参考实现（rust-minisign），
+# 输错密码在发版脚本输入阶段当场拦截，不再浪费整轮构建。
+# 用法：keycheck <私钥路径>，密码经标准输入一行传入（不进命令行参数）。
+# 退出码：0＝密码正确；1＝密码错误；2＝用法错误；3＝钥匙文件不可读/不可解析。
+
+[dependencies]
+minisign = "0.7"
+base64 = "0.22"

@@ -761,12 +761,13 @@ function publishDeps(
     askSecret?: (prompt: string) => Promise<string>;
   },
 ) {
-  const io = createFakeIo({ files: PUBLISH_FILES, dirs: PUBLISH_DIRS, existsOnly: ["/keys/updater.key"] });
+  const io = createFakeIo({ files: PUBLISH_FILES, dirs: PUBLISH_DIRS, existsOnly: ["/keys/updater.key", "scripts/keycheck/target/release/keycheck.exe"] });
   const kit = createScriptedExec([
     { match: ["git", "status", "--porcelain"], result: ok() },
     { match: ["git", "branch", "--show-current"], result: ok("main\n") },
     { match: ["git", "tag", "--points-at"], result: ok("v0.2.0\n") },
     { match: ["git", "ls-remote"], result: ok("d3adb33f\trefs/tags/v0.2.0\n") },
+    { match: ["scripts/keycheck/target/release/keycheck.exe"], result: ok("OK\n") },
     { match: ["npm", "run", "tauri:build"], result: ok("构建完成\n") },
     ...makeEntries(io),
   ]);
@@ -801,6 +802,33 @@ function lastWrite(io: FakeIo, suffix: string): string {
   const entries = io.writes.filter((writeEntry) => writeEntry.path.endsWith(suffix));
   return entries.length > 0 ? entries[entries.length - 1].text : "";
 }
+
+test("发布阶段：密码预检三次不通过即止，绝不进入构建（2026-11-13 拍板）", async () => {
+  const io = createFakeIo({ files: PUBLISH_FILES, dirs: PUBLISH_DIRS, existsOnly: ["/keys/updater.key", "scripts/keycheck/target/release/keycheck.exe"] });
+  const kit = createScriptedExec([
+    { match: ["git", "status", "--porcelain"], result: ok() },
+    { match: ["git", "branch", "--show-current"], result: ok("main\n") },
+    { match: ["git", "tag", "--points-at"], result: ok("v0.2.0\n") },
+    { match: ["git", "ls-remote"], result: ok("d3adb33f\trefs/tags/v0.2.0\n") },
+    { match: ["scripts/keycheck/target/release/keycheck.exe"], result: failed("PASSWORD_WRONG\n") },
+  ]);
+  const deps = {
+    exec: kit.exec as ExecFn,
+    io,
+    log: () => {},
+    askText: queueAnswers(["新增自动检查更新", ""]),
+    askConfirm: async () => true,
+    askSecret: queueAnswers(["wrong-1", "wrong-2", "wrong-3"]),
+    now: () => new Date("2026-11-13T08:00:00.000Z"),
+    env: { PATH: "keep" },
+    keyPath: "/keys/updater.key",
+  };
+  const result = await release.runPublish(deps);
+  assert.ok(!result.ok, "三次错密码必须中止发布");
+  assert.match(String(result.message ?? ""), /连续三次密码不正确/);
+  assert.strictEqual(kit.callIndex("tauri:build"), -1, "密码未通过预检绝不进入构建");
+  assert.strictEqual(kit.calls.filter((call) => call.file.includes("keycheck")).length, 3, "每次输入都经秒级验证");
+});
 
 test("发布阶段一条命令：draft 上传全套并逐项核验后转正式（含直链校准与私钥不落盘）", async () => {
   const { io, kit, deps } = publishDeps((fakeIo) => [

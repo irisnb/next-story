@@ -712,6 +712,11 @@ async function collectNotes(askText, askConfirm, log) {
   return collected;
 }
 
+// 密码预检工具（scripts/keycheck）：与打包器同款 minisign 参考实现，秒级验证密码对错，
+// 输错在输入阶段当场拦下（2026-11-13 真机实证：错密码跑完 3 分钟构建才报错，浪费整轮时间）。
+const KEYCHECK_MANIFEST = 'scripts/keycheck/Cargo.toml';
+const KEYCHECK_EXE = 'scripts/keycheck/target/release/keycheck.exe';
+
 export async function runPublish(deps = {}) {
   const exec = deps.exec ?? createDefaultExec();
   const io = deps.io ?? createDefaultIo();
@@ -758,12 +763,44 @@ export async function runPublish(deps = {}) {
     log('[4/9] 收集中文更新说明…');
     const notes = await collectNotes(askText, askConfirm, log);
     completed.push('更新说明收集（已预览确认）');
-    log('[5/9] 收集私钥密码（只经环境变量传给打包工具，不写入任何文件、不落盘）…');
-    const password = await askSecret('请输入更新私钥的密码：');
-    if (!password) {
-      fail('私钥密码收集', '密码为空：签名打包无法进行。', '重跑 --publish 并输入 docs/updater-key-custody.md 记录的密码。');
+    log('[5/9] 收集私钥密码（输入后秒级验证，输错当场打回；密码只经环境变量传递，不写入任何文件、不落盘）…');
+    // 密码预检：keycheck 与打包器用同一 minisign 实现，密码对错秒回；工具不可用时警告并放行（预检绝不阻断合法发布）。
+    let keycheckReady = io.exists(KEYCHECK_EXE);
+    if (!keycheckReady) {
+      log('  密码预检工具首次使用，先编译（数秒，之后有缓存）…');
+      const buildKeycheck = exec('cargo', ['build', '--release', '--manifest-path', KEYCHECK_MANIFEST]);
+      keycheckReady = !buildKeycheck.error && buildKeycheck.status === 0 && io.exists(KEYCHECK_EXE);
     }
-    completed.push('私钥密码收集');
+    let password = '';
+    let passwordAccepted = false;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const input = await askSecret(attempt === 1 ? '请输入更新私钥的密码：' : `密码不正确（已秒级验证），请重新输入（第 ${attempt}/3 次，建议记事本核对后粘贴，注意英文输入法、首尾勿带空格）：`);
+      if (!input) {
+        fail('私钥密码收集', '密码为空：签名打包无法进行。', '重跑 --publish 并输入 docs/updater-key-custody.md 记录的密码。');
+      }
+      if (!keycheckReady) {
+        log('  ⚠️ 密码预检工具不可用，跳过秒级验证继续（若密码有误将在构建的签名步骤失败）。');
+        password = input;
+        passwordAccepted = true;
+        break;
+      }
+      const check = exec(KEYCHECK_EXE, [keyPath], { env: { ...env, KEYCHECK_PASSWORD: input } });
+      if (check.error || (check.status !== 0 && check.status !== 1)) {
+        log(`  ⚠️ 密码预检工具异常（不阻断发布）：${tailOf(check.stderr, check.stdout) || check.error}`);
+        password = input;
+        passwordAccepted = true;
+        break;
+      }
+      if (check.status === 0) {
+        password = input;
+        passwordAccepted = true;
+        break;
+      }
+    }
+    if (!passwordAccepted) {
+      fail('私钥密码收集', '连续三次密码不正确（每次均已秒级验证，未进入构建）。', '核对 docs/updater-key-custody.md 记录的密码后重跑 --publish；注意中文输入法可能打出全角字符、首尾勿带空格。');
+    }
+    completed.push(`私钥密码收集${keycheckReady ? '（已秒级验证密码正确）' : ''}`);
 
     // ⑩ 签名打包
     log('[6/9] 签名打包 npm run tauri:build（耗时通常比前端构建长，无输出属正常）…');

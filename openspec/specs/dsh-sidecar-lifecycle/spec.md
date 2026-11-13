@@ -13,7 +13,7 @@
 
 ### Requirement: Sidecar lifecycle is owned and bounded by the host
 
-Rust 宿主 SHALL 负责常驻 sidecar 进程的懒启动、就绪确认、stdout/stderr 排空、请求级超时、崩溃自动重启、优雅退出与进程树强制终止，并 MUST 防止 sidecar 进程或管道在失败后残留。宿主 SHALL 为每次进程启动分配单调递增的代际标识，并 SHALL 将 reader、请求等待表与进程句柄绑定到所属代际：事件路由、失败清空、标记死亡与就绪等待 MUST 只对当前代生效；旧代的迟到事件、EOF 与清理 MUST NOT 影响当前代的进程、请求或就绪等待。就绪确认 MUST 只接受协议版本正确的 ready 事件；启动期内收到错误事件、其他事件、EOF 或超时 MUST 判定启动失败并回收该代进程。只有已就绪的当前代意外退出才 SHALL 触发崩溃恢复通知；启动失败 MUST NOT 伪装为已建立驱动的崩溃恢复事件。宿主内部锁在中毒后 SHALL 以恢复策略继续完成生命周期、取消与退出清理，MUST NOT 连锁 panic。
+Rust 宿主 SHALL 负责常驻 sidecar 进程的懒启动、就绪确认、stdout/stderr 排空、请求级超时、崩溃自动重启、优雅退出与进程树强制终止，并 MUST 防止 sidecar 进程或管道在失败后残留。宿主 SHALL 为每次进程启动分配单调递增的代际标识，并 SHALL 将 reader、请求等待表与进程句柄绑定到所属代际：事件路由、失败清空、标记死亡与就绪等待 MUST 只对当前代生效；旧代的迟到事件、EOF 与清理 MUST NOT 影响当前代的进程、请求或就绪等待。就绪确认 MUST 只接受协议版本正确的 ready 事件；启动期内收到错误事件、其他事件、EOF 或超时 MUST 判定启动失败并回收该代进程。只有已就绪的当前代意外退出才 SHALL 触发崩溃恢复通知；启动失败 MUST NOT 伪装为已建立驱动的崩溃恢复事件。宿主内部锁在中毒后 SHALL 以恢复策略继续完成生命周期、取消与退出清理，MUST NOT 连锁 panic。应用退出清理 SHALL 覆盖两条退出路径：正常退出（`RunEvent::Exit`）与更新安装退出（更新器在安装前直接结束进程、不经 `RunEvent::Exit`）；更新安装流程 SHALL 在结束应用进程前先执行与正常退出同等的 sidecar 优雅结束与强制终止；停止逻辑 SHALL 幂等，以容忍两条路径先后触发而无害。
 
 #### Scenario: Sidecar 懒启动并就绪
 
@@ -46,6 +46,12 @@ Rust 宿主 SHALL 负责常驻 sidecar 进程的懒启动、就绪确认、stdou
 - **WHEN** 应用退出
 - **THEN** 宿主先尝试优雅结束 sidecar
 - **AND** 优雅结束超时后强制终止进程树并回收管道
+
+#### Scenario: 更新安装退出时清理
+
+- **WHEN** 更新安装流程即将结束应用进程（不经 `RunEvent::Exit`）
+- **THEN** sidecar 先被优雅结束（超时强杀），再进入安装退出
+- **AND** 更新安装不被仍在运行的 sidecar 文件占用阻塞
 
 #### Scenario: 启动闸门只认版本正确的 ready
 

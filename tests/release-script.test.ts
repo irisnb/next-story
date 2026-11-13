@@ -535,6 +535,7 @@ test("私钥不落盘（纯逻辑）：密码只进环境变量，latest.json �
   const password = "TOP-SECRET-PASSWORD-42";
   const env = release.buildTauriBuildEnv({ keyPath: "/keys/updater.key", password, baseEnv: { PATH: "p" } });
   assert.strictEqual(env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD, password);
+  assert.strictEqual(env.TAURI_SIGNING_PRIVATE_KEY, "/keys/updater.key");
   assert.strictEqual(env.TAURI_SIGNING_PRIVATE_KEY_PATH, "/keys/updater.key");
   assert.strictEqual(env.PATH, "p");
 
@@ -829,6 +830,7 @@ test("发布阶段一条命令：draft 上传全套并逐项核验后转正式�
   // 密码只经环境变量传给构建子进程，基础环境保留。
   const buildCall = kit.calls.find((call) => call.args.includes("tauri:build"));
   assert.strictEqual(buildCall?.opts?.env?.TAURI_SIGNING_PRIVATE_KEY_PASSWORD, "TOP-SECRET-PASSWORD-42");
+  assert.strictEqual(buildCall?.opts?.env?.TAURI_SIGNING_PRIVATE_KEY, "/keys/updater.key");
   assert.strictEqual(buildCall?.opts?.env?.TAURI_SIGNING_PRIVATE_KEY_PATH, "/keys/updater.key");
   assert.strictEqual(buildCall?.opts?.env?.PATH, "keep");
   // 脚本写出的所有文件（正文、latest.json）都不含密码（私钥不落盘）。

@@ -397,6 +397,9 @@ export function findMissingReleaseAssets(actualNames, expectedNames) {
 export function buildTauriBuildEnv({ keyPath, password, baseEnv = {} }) {
   return {
     ...baseEnv,
+    // 打包器实际读取 TAURI_SIGNING_PRIVATE_KEY（官方文档：接受"路径或内容"）；
+    // 2026-11-13 首次真机发版实证：只设 PATH 变体会报"no private key"致签名中断。
+    TAURI_SIGNING_PRIVATE_KEY: keyPath,
     TAURI_SIGNING_PRIVATE_KEY_PATH: keyPath,
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: password,
   };

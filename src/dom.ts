@@ -237,19 +237,23 @@ export interface FirstRunGuideDom {
   readonly next: HTMLButtonElement;
 }
 
-/** 设置页「帮助」分区的显式 DOM 依赖契约（first-run-guide-and-help；add-auto-updater 扩展更新入口）。 */
+/** 设置页「帮助」分区的显式 DOM 依赖契约（first-run-guide-and-help）。 */
 export interface HelpSectionDom {
   /** 「重看新手引导」入口：重放首启向导，永不写完成标记。 */
   readonly replayBtn: HTMLButtonElement;
   /** 常见问题列表容器（十条 FAQ 的渲染落点）。 */
   readonly faqList: HTMLElement;
-  /** 「检查更新」入口（add-auto-updater）：更新就绪后文案变「重启安装更新」。 */
+}
+
+/** 设置页「软件更新」分区的显式 DOM 依赖契约（standalone-update-drawer；原帮助分区内更新入口迁出独立抽屉）。 */
+export interface UpdateSectionDom {
+  /** 「检查更新」入口：更新就绪后文案变「重启安装更新」。 */
   readonly checkUpdateBtn: HTMLButtonElement;
   /** 更新状态文本行（最近检查结果／检查中／下载中／已就绪；空＝隐藏）。 */
   readonly updateStatus: HTMLElement;
   /** 当前版本号显示行（来自版本号单一真相源，经 getVersion 注入渲染）。 */
   readonly versionText: HTMLElement;
-  /** 帮助抽屉 summary 层的「有新版」轻量标记（收起态可见，add-auto-updater）。 */
+  /** 「软件更新」抽屉 summary 层的「有新版」轻量标记（收起态可见）。 */
   readonly updateBadge: HTMLElement;
 }
 
@@ -415,6 +419,8 @@ export interface AppDom {
   firstRunGuide: FirstRunGuideDom;
   /** 设置页「帮助」分区契约（first-run-guide-and-help）。 */
   helpSection: HelpSectionDom;
+  /** 设置页「软件更新」分区契约（standalone-update-drawer）。 */
+  updateSection: UpdateSectionDom;
   leaveDialog: HTMLDialogElement;
   btnSaveAndLeave: HTMLButtonElement;
   btnDiscardAndLeave: HTMLButtonElement;
@@ -770,10 +776,12 @@ export function getAppDom(): AppDom {
     helpSection: {
       replayBtn: requireElement<HTMLButtonElement>("btn-replay-first-run-guide"),
       faqList: requireElement("help-faq-list"),
+    },
+    updateSection: {
       checkUpdateBtn: requireElement<HTMLButtonElement>("btn-check-update"),
-      updateStatus: requireElement("help-update-status"),
-      versionText: requireElement("help-version"),
-      updateBadge: requireElement("help-update-badge"),
+      updateStatus: requireElement("update-status"),
+      versionText: requireElement("update-version"),
+      updateBadge: requireElement("update-badge"),
     },
     leaveDialog: requireElement("leave-dialog"),
     btnSaveAndLeave: requireElement("btn-save-and-leave"),

@@ -2,7 +2,7 @@
  * 应用内更新对话框（add-auto-updater design D3/D4/D6/D12）。
  *
  * 设计约束：
- * - 仅经用户主动操作（帮助入口点击或手动检查）打开；任何程序化路径
+ * - 仅经用户主动操作（软件更新分区入口点击或手动检查）打开；任何程序化路径
  *   （含启动检查发现新版）MUST NOT 自动弹出对话框或移动焦点；
  * - 状态机：检查中（仅手动入口、有限等待）／已是最新／失败／发现新版／
  *   下载中／已就绪（另有内部的「准备安装」锁定态）；
@@ -59,7 +59,7 @@ export type UpdateDialogStatus =
 /** 失败来源：检查失败（重试＝重新检查）或下载失败（重试＝重新下载）。 */
 export type UpdateFailureKind = "check" | "download";
 
-/** 帮助分区入口的联动快照（add-auto-updater 任务 4.3：入口状态可见）。 */
+/** 「软件更新」分区入口的联动快照（add-auto-updater 任务 4.3：入口状态可见）。 */
 export interface UpdateEntrySnapshot {
   /** 「有新版」轻量标记：发现新版起持续显示，直到安装。 */
   badge: boolean;
@@ -105,7 +105,7 @@ export interface UpdateDialogDependencies {
 export interface UpdateDialogController {
   /** 打开对话框并立即执行一次检查（手动检查入口）。 */
   openManualCheck(): void;
-  /** 帮助入口点击：有进行中流程时呈现现状，否则按手动检查打开。 */
+  /** 软件更新分区入口点击：有进行中流程时呈现现状，否则按手动检查打开。 */
   openEntry(): void;
   /**
    * 启动静默检查：失败与无更新完全静默；发现新版只经 onEntryState 设置

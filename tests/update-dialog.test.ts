@@ -370,7 +370,7 @@ test("稍后：对话框收起，入口「重启安装更新」可再入安装�
     buttonByLabel("稍后").click();
     assert.equal(queryDialog().open, false);
     assert.equal(h.snapshots[h.snapshots.length - 1]!.entryAction, "install");
-    // 再入：帮助入口打开即呈现已就绪（不重新检查、不重新下载）
+    // 再入：软件更新分区入口打开即呈现已就绪（不重新检查、不重新下载）
     h.controller.openEntry();
     assert.equal(queryDialog().open, true);
     assert.equal(h.controller.getStatus(), "ready");
@@ -764,7 +764,7 @@ test("启动检查发现新版：只设置入口标记，不弹窗、不移动�
     assert.equal(document.activeElement, focusedBefore, "不得移动焦点");
     assert.equal(document.activeElement, guideButton, "不打断首启引导");
     const last = h.snapshots[h.snapshots.length - 1]!;
-    assert.equal(last.badge, true, "仅设置帮助入口更新标记");
+    assert.equal(last.badge, true, "仅设置软件更新分区入口更新标记");
     assert.equal(last.statusText, "有新版本可用（0.3.0）");
     assert.equal(last.entryAction, "check");
   });

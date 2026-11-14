@@ -14,13 +14,14 @@ import { setupEditor } from "./editor";
 import { setupExport } from "./export";
 import { setupFileManagement } from "./file-management";
 import { setupFirstRunGuide } from "./first-run-guide";
-import { setupHelpSection, setupHelpUpdateEntry } from "./help-section";
+import { setupHelpSection } from "./help-section";
 import { setupLeaveDialog } from "./leave-dialog";
 import { setupLlmConfigForm } from "./llm-config-form";
 import { setupMaking } from "./making/making-module";
 import { createDefaultTrialWorkSource } from "./making/making-trial-controller";
 import { openUrl, stopDriverForUpdate } from "./project-api";
 import { createUpdateDialog, UPDATE_DOWNLOAD_PAGE_URL } from "./update-dialog";
+import { setupUpdateEntry } from "./update-section";
 import { setupWorkspaceProjectFlow } from "./workspace-project-flow";
 import { createWorkspaceTreeReceiver } from "./workspace-tree-flow";
 import { setupAiFeature } from "./ai-feature";
@@ -194,9 +195,9 @@ window.addEventListener("DOMContentLoaded", () => {
     await close.run(() => event.preventDefault());
   }).catch(reportCloseError);
 
-  // 应用内更新（add-auto-updater）：对话框只经帮助入口或手动检查打开；
+  // 应用内更新（add-auto-updater）：对话框只经软件更新分区入口或手动检查打开；
   // Update 对象为内存单例，仅本次运行有效、不做任何持久化。
-  let helpUpdateEntry: ReturnType<typeof setupHelpUpdateEntry> | null = null;
+  let updateEntry: ReturnType<typeof setupUpdateEntry> | null = null;
   const updateDialog = createUpdateDialog({
     checkUpdates: () => checkForUpdates(),
     openDownloadPage: () => { void openUrl(UPDATE_DOWNLOAD_PAGE_URL); },
@@ -223,17 +224,17 @@ window.addEventListener("DOMContentLoaded", () => {
     // 安装前显式停止 DSH sidecar（design D5 修正）：准备成功后、触发安装前执行；
     // 失败由对话框按准备失败处理（恢复现场、保留就绪状态、可重试）。
     stopDriver: () => stopDriverForUpdate(),
-    onEntryState: (snapshot) => helpUpdateEntry?.setUpdateView(snapshot),
+    onEntryState: (snapshot) => updateEntry?.setUpdateView(snapshot),
     reportError: (error) => console.error("更新流程出错:", error),
   });
-  helpUpdateEntry = setupHelpUpdateEntry(dom.helpSection, {
+  updateEntry = setupUpdateEntry(dom.updateSection, {
     openUpdate: () => updateDialog.openEntry(),
   });
   void getVersion().then(
-    (version) => helpUpdateEntry.renderVersion(version),
-    () => helpUpdateEntry.renderVersion(null),
+    (version) => updateEntry.renderVersion(version),
+    () => updateEntry.renderVersion(null),
   );
-  // 启动静默检查：失败与无更新完全静默；发现新版只设置帮助入口标记，
+  // 启动静默检查：失败与无更新完全静默；发现新版只设置软件更新分区入口标记，
   // 不弹窗、不移动焦点、不覆盖首启引导。
   void updateDialog.startupCheck();
 });

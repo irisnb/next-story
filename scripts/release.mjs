@@ -685,7 +685,7 @@ export async function runPrepare(deps = {}) {
 async function collectNotes(askText, askConfirm, log) {
   log('请输入更新说明（每行一条；建议 1–5 条、每条一句话说用户能感知的变化）。');
   log('示例：');
-  log('- 新增软件自动检查更新，打开软件即可在「帮助」里看到新版提示');
+  log('- 新增软件自动检查更新，打开软件即可在「软件更新」里看到新版提示');
   log('- 修复导出 Word 时偶发的段落顺序错乱');
   let collected = null;
   while (collected === null) {

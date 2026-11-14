@@ -203,7 +203,7 @@ button:active:not(:disabled) { transform: none; }
   flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-3);
   border: 0; border-radius: 0; box-shadow: none; background: transparent;
 }
-/* 仅三个主抽屉全部收起时居中；隐藏的嵌套折叠状态不影响判断。
+/* 仅各主抽屉全部收起时居中；隐藏的嵌套折叠状态不影响判断。
    自动外边距只分配模块内剩余高度；空间不足时归零，内容仍可完整滚动。 */
 #module-settings:not(:has(> .form-container > .setting-section > .settings-drawer[open])) > .form-container { margin-block: auto; padding-block: var(--space-6); }
 #module-settings .setting-section { display: block; margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -368,10 +368,10 @@ button:active:not(:disabled) { transform: none; }
 .app-confirm .app-confirm-accept:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
 .app-confirm.app-confirm-danger .app-confirm-accept { background: var(--color-danger); border-color: var(--color-danger); }
 .app-confirm.app-confirm-danger .app-confirm-accept:hover:not(:disabled) { background: #b52e1a; border-color: #b52e1a; }
-/* add-auto-updater：帮助分区更新入口与「有新版」轻量标记（summary 层，收起态可见；
-   悬停提示走共享提示层的 data-hint）。 */
-.help-update { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 20px; }
-.help-update-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.5; color: var(--color-on-primary); background: var(--color-primary); }
+/* add-auto-updater（standalone-update-drawer 迁至独立抽屉）：「软件更新」分区更新入口与
+   「有新版」轻量标记（summary 层，收起态可见；悬停提示走共享提示层的 data-hint）。 */
+.update-section { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.update-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.5; color: var(--color-on-primary); background: var(--color-primary); }
 /* add-auto-updater：应用内更新对话框。外壳与按钮几何沿用 .app-confirm（居中模态、
    128×40）；更新说明区限高滚动不截断；无总大小时只显示「正在下载…」文本，
    不呈现进度条（不确定进度）。 */

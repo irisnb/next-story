@@ -30,4 +30,4 @@
 
 ## 四、远端警报复扫
 
-推送后复扫 GitHub Dependabot 开放警报（预期 11 → 4：剩 zip ×3、minimatch ×1；Dependabot 消警有延迟，按实际所见记录）：**待推送后回填**。
+推送（`8ea0496..a4ee960`，2026-11-14）后即时复扫：**开放警报 11 → 4，与预期一致**——sidecar 侧 7 个（hono ×5、@hono/node-server ×2）已由 Dependabot 关闭；剩 zip ×3、minimatch ×1，均为有据挂账项（复评触发条件见长期账本）。
